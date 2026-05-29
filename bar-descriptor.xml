@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<qnx xmlns="http://www.qnx.com/schemas/application/1.0">
+
+    <id>com.BerryLife.Zalo10</id>
+
+    <configuration id="com.qnx.qcc.toolChain.666213485" name="Device-Debug">
+       <platformArchitecture>armle-v7</platformArchitecture>
+       <asset path="arm/o.le-v7-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
+    </configuration>
+    <configuration id="com.qnx.qcc.toolChain.2137696721" name="Device-Release">
+       <entryPointType>Qnx/Cascades</entryPointType>
+       <platformArchitecture>armle-v7</platformArchitecture>
+       <asset path="arm/o.le-v7/Zalo10.so" entry="true" type="Qnx/Elf">Zalo10.so</asset>
+    </configuration>
+    <configuration id="com.qnx.qcc.toolChain.560740241" name="Device-Profile">
+       <platformArchitecture>armle-v7</platformArchitecture>
+       <asset path="arm-p/o.le-v7-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
+    </configuration>
+    <configuration id="com.qnx.qcc.toolChain.1655019260" name="Simulator-Debug">
+       <platformArchitecture>x86</platformArchitecture>
+       <asset path="x86/o-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
+    </configuration>
+
+    <name>Zalo10</name>
+    <versionNumber>1.5.0</versionNumber>
+    <description>The Zalo10 application for BB10</description>
+    <author>BerryLife</author>
+    <buildId>0</buildId>
+
+    <icon>
+       <image>icon86.png</image>
+       <image>icon90.png</image>
+       <image>icon96.png</image>
+       <image>icon.png</image>
+       <image>icon110.png</image>
+    </icon>
+
+    <splashScreens>
+       <image>splash.png</image>
+       <image>splash720x1280.png</image>
+       <image>splash768x1280.png</image>
+       <image>splash720.png</image>
+       <image>splash1024x600.png</image>
+       <image>splash1280x720.png</image>
+       <image>splash1280x768.png</image>
+       <image>splash600x1024.png</image>
+    </splashScreens>
+
+    <initialWindow>
+        <systemChrome>none</systemChrome>
+        <autoOrients>true</autoOrients>
+    </initialWindow>
+
+    <asset path="icon.png">icon.png</asset>
+    <asset path="icon86.png">icon86.png</asset>
+    <asset path="icon90.png">icon90.png</asset>
+    <asset path="icon96.png">icon96.png</asset>
+    <asset path="icon110.png">icon110.png</asset>
+    <asset path="splash.png">splash.png</asset>
+    <asset path="splash720x1280.png">splash720x1280.png</asset>
+    <asset path="splash768x1280.png">splash768x1280.png</asset>
+    <asset path="splash720.png">splash720.png</asset>
+    <asset path="splash1024x600.png">splash1024x600.png</asset>
+    <asset path="splash1280x720.png">splash1280x720.png</asset>
+    <asset path="splash1280x768.png">splash1280x768.png</asset>
+    <asset path="splash600x1024.png">splash600x1024.png</asset>
+    <asset path="assets">assets</asset>
+    <!-- Icon dùng cho Hub (account tab + inbox item, xem HubIntegration.cpp)
+         nằm ở thư mục top-level "hubicons/" — KHÔNG đặt tên bắt đầu bằng
+         "assets" (đã thử "assets-public" ở gốc project, ngang hàng thật sự
+         với "assets/", vẫn bị Momentics báo lỗi y hệt "Asset folder is
+         packaged by another asset folder: assets-public" — validator này
+         có vẻ so khớp theo TIỀN TỐ TÊN CHUỖI ("assets-public" bắt đầu bằng
+         "assets") chứ không kiểm tra containment thật theo filesystem, nên
+         dù 2 thư mục ngang hàng, tên gần giống vẫn bị coi là xung đột).
+         "hubicons" không dính dáng gì tới chữ "assets" nên né được hẳn kiểu
+         nhầm lẫn này. Icon filename giữ nguyên (PreviewNoti.png,
+         PreviewNotiRead.png, PreviewNotiUNRead.png) — HubIntegration.cpp
+         (publicAssetPath()) phải khớp: "/apps/<progname>/public/hubicons/". -->
+    <asset path="hubicons" public="true">hubicons</asset>
+    <asset path="translations" dest="qm">
+        <include name="*.qm"/>
+    </asset>
+
+    <permission system="true">run_native</permission>
+    <permission>access_internet</permission>
+    <permission>access_location_services</permission>
+    <permission>post_notification</permission>
+    <permission>access_notify_settings_control</permission>
+    <permission>run_when_backgrounded</permission>
+    <permission system="true">_sys_run_headless</permission>
+    <permission system="true">_sys_headless_nostop</permission>
+    <!-- Bắt buộc cho UDS (Unified Data Source / Hub integration, xem
+         src/HubIntegration.cpp): PPS object "/pps/services/pim/unified" mà
+         uds_register_client() nói chuyện tới được BlackBerry bảo vệ bởi
+         quyền hệ thống này. Đây là quyền hạn chế ("_sys_" prefix) — theo
+         tài liệu BlackBerry, cần GỬI YÊU CẦU RIÊNG tới BlackBerry để được
+         cấp (không tự động có chỉ vì khai báo trong bar-descriptor.xml, dù
+         vẫn phải khai báo). Nếu app được build/sign qua quy trình nội bộ
+         không qua BlackBerry (self-signed / debug token), quyền restricted
+         này có thể không được thực thi chặt — nhưng để chạy đúng trên thiết
+         bị production/qua BlackBerry World trước đây thì cần xin cấp. -->
+    <permission system="true">_sys_access_pim_unified</permission>
+    <!-- FIX LẦN 8 (CHƯA TEST) cho bug "single-tap không mở app" — hướng
+         khác hẳn 7 lần trước (không sửa code UDS, mà là quyền hạn khai
+         báo). Đọc lại AccountService.hpp (header Cascades thật,
+         bb/pim/account/) dòng ~36-41: "Read access to the Account's
+         domain is automatically granted when requesting permission to
+         another domain (access_pimdomain_messages or
+         access_pimdomain_contacts or access_pimdomain_calendars or
+         access_pimdomain_notebooks)". App hiện có calendars/contacts/
+         calllogs nhưng KHÔNG có access_pimdomain_messages — trong khi Hub
+         (sys.pim.messages) về bản chất xử lý mọi thứ liên quan "message
+         item" dưới domain Messages. Nghi ngờ: việc "mở 1 message item" khi
+         tap có thể được Hub coi là hành động thuộc domain Messages, và
+         thiếu quyền này khiến Hub route invoke request thất bại âm thầm
+         (không log gì, khớp đúng triệu chứng đã quan sát 7 lần) — trong
+         khi long-press vẫn hoạt động vì nó là 1 action riêng do app tự
+         đăng ký qua UDS (uds_register_item_context_action), không đi qua
+         permission domain Messages mặc định của Hub. -->
+    <permission>access_pimdomain_messages</permission>
+    <permission>access_wifi_public</permission>
+    <permission>access_shared</permission>
+    <permission>access_pimdomain_calendars</permission>
+    <permission>use_camera</permission>
+    <permission>access_pimdomain_contacts</permission>
+    <permission>record_audio</permission>
+    <permission>read_personally_identifiable_information</permission>
+    <permission>access_phone</permission>
+    <permission system="true">_sys_inject_voice</permission>
+    <permission>read_phonecall_details</permission>
+    <permission>control_phone</permission>
+    <permission>access_pimdomain_calllogs</permission>
+    <permission>read_device_identifying_information</permission>
+
+    <env var="LD_LIBRARY_PATH" value="app/native/lib:/usr/lib/qt4/lib"/>
+    <env var="CASCADES_THEME" value="default"/>
+
+    <!-- Invocation target cho BlackBerry Hub (short-tap + long-press "Open in
+         Zalo10"). Cấu hình này đối chiếu theo BBCord/Beeper10 (2 app đã xác
+         nhận short-tap mở được app trên BB10 10.3.1):
+           - mime type RIÊNG của app (application/vnd.zalo10.hub.chat), KHÔNG
+             dùng mime chung chung (text/plain, plain/message) — mime chung
+             khiến Hub không tự brokering được khi short-tap (im lặng hoàn toàn).
+           - <property var="uris" value="pim:<mime>"/> trong filter là phần
+             Hub cần để khớp item -> target khi short-tap.
+           - Phải trùng ĐÚNG với HUB_MIME_TYPE_MESSAGE trong HubIntegration.cpp
+             (cả item lẫn item context action).
+         Long-press dùng chính target này qua target= trong HubIntegration.cpp. -->
+    <invoke-target id="com.BerryLife.Zalo10.invoke">
+        <invoke-target-name>Zalo10</invoke-target-name>
+        <icon><image>icon.png</image></icon>
+        <type>application</type>
+        <filter>
+            <action>bb.action.OPEN</action>
+            <action>bb.action.VIEW</action>
+            <mime-type>application/vnd.zalo10.hub.chat</mime-type>
+            <property var="uris" value="pim:application/vnd.zalo10.hub.chat"/>
+        </filter>
+    </invoke-target>
+
+    <!-- Active frame images (resolution-aware, selected at runtime via DisplayInfo) -->
+    <!-- 720x720  (Q10/Q5)      -> medium -->
+    <!-- 720x1280 (Z10/Z30/Z3)  -> big    -->
+    <!-- 1440x1440 (Passport)   -> big + small -->
+    <!-- 3 dòng khai báo riêng cho từng file ActiveFrame trước đây ở đây đã
+         bị XOÁ: chúng dùng đúng path/dest mà rule bulk "assets" ở trên đã
+         bao phủ sẵn ("assets" -> "assets", đệ quy toàn bộ cây thư mục) —
+         là khai báo trùng 100%, không có thuộc tính gì khác biệt. Momentics
+         (NDK 10.3.1) validate nghiêm hơn các bản cũ, báo lỗi "Only one asset
+         may be packaged as ..." và chặn hẳn build khi phát hiện trùng —
+         trước đây có thể từng "chạy được" chỉ vì build qua command-line
+         qcc/make (không đi qua bước Diagnosis này), không phải vì khai báo
+         đúng. Xoá 3 dòng thừa không ảnh hưởng gì: file vẫn được đóng gói
+         bình thường qua rule "assets" chung. -->
+
+</qnx>
