@@ -22,9 +22,18 @@ Page {
         }
     }
 
+    onCreationCompleted: {
+        // Trigger download avatar nếu chưa có localPath
+        if (profilePage.avatarPath.length === 0 && profilePage.avatarUrl.length > 0)
+            zService.downloadAvatar(profilePage.contactId, profilePage.avatarUrl)
+        // Trigger download bgavatar — dùng prefix "bg_" để phân biệt với avatar thường
+        if (profilePage.bgAvatarPath.length === 0 && profilePage.bgAvatarUrl.length > 0)
+            zService.downloadAvatar("bg_" + profilePage.contactId, profilePage.bgAvatarUrl)
+    }
+
     actions: [
         ActionItem {
-            title: "Nhắn tin"
+            title: "Send Message"
             imageSource: "asset:///images/ic_bbm.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             onTriggered: {
@@ -131,18 +140,6 @@ Page {
                 topPadding: ui.du(1)
                 bottomPadding: ui.du(2)
 
-                Button {
-                    text: "Nhắn tin"
-                    preferredWidth: ui.du(26)
-                    onClicked: {
-                        var chatPage = chatDef.createObject()
-                        if (!chatPage) return
-                        chatPage.threadId   = profilePage.contactId
-                        chatPage.threadName = profilePage.contactName
-                        chatPage.isGroup    = false
-                        navigationPane.push(chatPage)
-                    }
-                }
             }
 
             // ── Thông tin thêm (placeholder cho sau) ─────────────
@@ -187,6 +184,6 @@ Page {
         }
     ]
 
-    // navigationPane trỏ vào NavigationPane cha
-    property variant navigationPane: parent && parent.parent ? parent.parent : null
+    // navigationPane: được set từ bên ngoài khi push, hoặc lookup từ parent chain
+    property variant navigationPane: null
 }

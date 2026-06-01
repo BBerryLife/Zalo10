@@ -1,5 +1,5 @@
 1
-59
+58
 AboutSheet.qml
 ChatList.qml
 ChatView.qml
@@ -25,7 +25,6 @@ images/ic_contact.png
 images/ic_copy.png
 images/ic_copy_chat.png
 images/ic_create_event.png
-images/ic_create_group.png
 images/ic_create_group_disabled.png
 images/ic_emoticon_enabled.png
 images/ic_facebook.png

@@ -8,7 +8,6 @@ NavigationPane {
 
     Page {
         id: contactsPage
-        property bool populated: false
 
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
@@ -16,10 +15,9 @@ NavigationPane {
                 content: Container {
                     background: Color.create("#2575fc")
                     horizontalAlignment: HorizontalAlignment.Fill
-                    verticalAlignment: VerticalAlignment.Fill
+                    verticalAlignment:   VerticalAlignment.Fill
                     layout: DockLayout {}
                     leftPadding: ui.du(2.5)
-                    rightPadding: ui.du(2.5)
                     Label {
                         text: "Contacts"
                         textStyle {
@@ -27,7 +25,7 @@ NavigationPane {
                             base: SystemDefaults.TextStyles.TitleText
                             fontWeight: FontWeight.Bold
                         }
-                        verticalAlignment: VerticalAlignment.Center
+                        verticalAlignment:   VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Left
                     }
                 }
@@ -40,7 +38,6 @@ NavigationPane {
                 imageSource: "asset:///images/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
-                    contactsPage.populated = false
                     contactModel.clear()
                     zService.fetchFriends()
                     contactsLoading.visible = true
@@ -48,29 +45,23 @@ NavigationPane {
             },
             ActionItem {
                 title: "Add Contact"
-                imageSource: "asset:///images/ic_add_contact.png"
+                imageSource: "asset:///images/ic_add_friend.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: { }
+                onTriggered: {
+                    // TODO: mở màn hình tìm kiếm bạn bè
+                }
             }
         ]
 
-        onCreationCompleted: {
-            if (zService.loggedIn) {
-                zService.fetchFriends()
-                contactsLoading.visible = true
-            }
-        }
-
-        content: Container {
+        Container {
             layout: DockLayout {}
             horizontalAlignment: HorizontalAlignment.Fill
-            verticalAlignment: VerticalAlignment.Fill
+            verticalAlignment:   VerticalAlignment.Fill
 
             ListView {
-                id: contactsGrid
+                id: contactListView
                 horizontalAlignment: HorizontalAlignment.Fill
-                verticalAlignment: VerticalAlignment.Fill
-                dataModel: ArrayDataModel { id: contactModel }
+                verticalAlignment:   VerticalAlignment.Fill
 
                 layout: GridListLayout {
                     columnCount: 4
@@ -80,41 +71,45 @@ NavigationPane {
                 property variant profileDef: contactsProfileDef
                 property variant navPane: contactsNav
 
+                dataModel: ArrayDataModel { id: contactModel }
+
                 listItemComponents: [
                     ListItemComponent {
-                        type: "item"
+                        type: ""
                         Container {
                             id: gridCell
-                            preferredWidth: ui.du(20)
+                            preferredWidth:  ui.du(20)
                             preferredHeight: ui.du(20)
                             horizontalAlignment: HorizontalAlignment.Fill
-                            verticalAlignment: VerticalAlignment.Fill
+                            verticalAlignment:   VerticalAlignment.Fill
                             layout: DockLayout {}
 
                             ImageView {
-                                // localAvatar đã được C++ gán từ cache trước khi emit friendsReady
-                                imageSource: (ListItemData.localAvatar && ListItemData.localAvatar.length > 0)
-                                    ? ListItemData.localAvatar
-                                    : "asset:///images/blank.png"
+                                // Chỉ dùng file:// — không dùng https:// thô
+                                imageSource: {
+                                    var p = ListItemData.localAvatar || "";
+                                    return (p.indexOf("file://") === 0)
+                                        ? p : "asset:///images/blank.png";
+                                }
                                 horizontalAlignment: HorizontalAlignment.Fill
-                                verticalAlignment: VerticalAlignment.Fill
+                                verticalAlignment:   VerticalAlignment.Fill
                                 scalingMethod: ScalingMethod.AspectFill
                             }
 
                             Container {
                                 preferredHeight: ui.du(5)
                                 background: Color.create("#99000000")
-                                verticalAlignment: VerticalAlignment.Bottom
+                                verticalAlignment:   VerticalAlignment.Bottom
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 layout: DockLayout {}
                                 Label {
                                     text: {
-                                        var name = ListItemData.name || ListItemData.displayName || "?"
-                                        return name.length > 9 ? name.substring(0, 8) + "…" : name
+                                        var n = ListItemData.name || "?";
+                                        return n.length > 9 ? n.substring(0, 8) + "…" : n;
                                     }
                                     textStyle { fontSize: FontSize.XXSmall; color: Color.White }
                                     horizontalAlignment: HorizontalAlignment.Center
-                                    verticalAlignment: VerticalAlignment.Center
+                                    verticalAlignment:   VerticalAlignment.Center
                                     multiline: false
                                 }
                             }
@@ -125,12 +120,13 @@ NavigationPane {
                                     var lv   = gridCell.ListItem.view
                                     var page = lv.profileDef.createObject()
                                     if (!page) return
-                                    page.contactId    = item.threadId || item.uid || ""
-                                    page.contactName  = item.name || item.displayName || "?"
-                                    page.avatarPath   = item.localAvatar || ""
-                                    page.bgAvatarPath = item.localBgAvatar || ""
-                                    page.avatarUrl    = item.avatar || ""
-                                    page.bgAvatarUrl  = item.bgavatar || ""
+                                    page.contactId      = item.threadId || item.uid || ""
+                                    page.contactName    = item.name || "?"
+                                    page.avatarPath     = item.localAvatar || ""
+                                    page.bgAvatarPath   = item.localBgAvatar || ""
+                                    page.avatarUrl      = item.avatar || ""
+                                    page.bgAvatarUrl    = item.bgavatar || ""
+                                    page.navigationPane = lv.navPane  // set explicit ref
                                     lv.navPane.push(page)
                                 }
                             }
@@ -142,19 +138,9 @@ NavigationPane {
             ActivityIndicator {
                 id: contactsLoading
                 horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(12)
-                preferredHeight: ui.du(12)
-                running: visible
-                visible: false
-            }
-
-            Label {
-                id: contactsEmpty
-                text: "No contacts found"
-                visible: false
-                horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
+                verticalAlignment:   VerticalAlignment.Center
+                preferredWidth: ui.du(12); preferredHeight: ui.du(12)
+                running: visible; visible: false
             }
         }
 
@@ -168,50 +154,26 @@ NavigationPane {
 
                 onFriendsReady: {
                     contactsLoading.visible = false
-                    // Guard: chỉ populate 1 lần, tránh fetchFriends() gọi 2 lần từ main.qml
-                    if (contactsPage.populated && contactModel.size() > 0)
-                        return
-                    contactsPage.populated = true
+                    if (friends.length === 0) return
 
+                    // Rebuild model
                     contactModel.clear()
-                    for (var i = 0; i < friends.length; i++) {
-                        // localAvatar đã được C++ gán từ cache nếu có
-                        // Nếu chưa có thì download — khi xong sẽ emit avatarReady
-                        var f = friends[i]
-                        contactModel.append(f)
-                        var tid = f.threadId || f.uid || ""
-                        if (tid.length > 0) {
-                            if ((f.avatar || "").length > 0 && (!f.localAvatar || f.localAvatar.length === 0))
-                                zService.downloadAvatar(tid, f.avatar)
-                            if ((f.bgavatar || "").length > 0 && (!f.localBgAvatar || f.localBgAvatar.length === 0))
-                                zService.downloadAvatar("bg_" + tid, f.bgavatar)
-                        }
-                    }
-                    contactsEmpty.visible = (friends.length === 0)
-                }
+                    for (var i = 0; i < friends.length; i++)
+                        contactModel.append(friends[i])
 
-                onAvatarReady: {
-                    for (var i = 0; i < contactModel.size(); i++) {
-                        var d = contactModel.value(i)
-                        var tid = d.threadId || d.uid || ""
-                        if (threadId.indexOf("bg_") === 0) {
-                            if (("bg_" + tid) === threadId) {
-                                d.localBgAvatar = localPath
-                                contactModel.replace(i, d)
-                                break
-                            }
-                        } else {
-                            if (tid === threadId) {
-                                d.localAvatar = localPath
-                                contactModel.replace(i, d)
-                                break
-                            }
-                        }
+                    // Trigger download avatar cho những item chưa có localAvatar
+                    // C++ sẽ re-emit friendsReady lần 2 khi tất cả xong → model rebuild lại
+                    for (var j = 0; j < friends.length; j++) {
+                        var f = friends[j]
+                        var tid = f.threadId || f.uid || ""
+                        var url = f.avatar || ""
+                        if (tid !== "" && url !== "" && (f.localAvatar || "") === "")
+                            zService.downloadAvatar(tid, url)
                     }
                 }
 
                 onLoginSuccess: {
-                    contactsPage.populated = false
+                    contactModel.clear()
                     zService.fetchFriends()
                     contactsLoading.visible = true
                 }

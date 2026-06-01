@@ -12,6 +12,7 @@ QT += network script
 LIBS += -lbbcascades -lbbsystem -lbb
 LIBS += -lQtNetwork -lQtScript
 LIBS += -lssl -lcrypto
+LIBS += -lsqlite3
 
 INCLUDEPATH += src
 
@@ -28,4 +29,9 @@ OTHER_FILES += \
     bar-descriptor.xml \
     assets/main.qml \
     assets/ChatList.qml \
-    assets/ChatView.qml
+    assets/ChatView.qml \
+    assets/ContactsTab.qml \
+    assets/LoginView.qml \
+    assets/ProfileView.qml \
+    assets/SettingsSheet.qml \
+    assets/AboutSheet.qml

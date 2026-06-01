@@ -64,7 +64,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_copy.png) \
         $$quote($$BASEDIR/assets/images/ic_copy_chat.png) \
         $$quote($$BASEDIR/assets/images/ic_create_event.png) \
-        $$quote($$BASEDIR/assets/images/ic_create_group.png) \
         $$quote($$BASEDIR/assets/images/ic_create_group_disabled.png) \
         $$quote($$BASEDIR/assets/images/ic_emoticon_enabled.png) \
         $$quote($$BASEDIR/assets/images/ic_facebook.png) \

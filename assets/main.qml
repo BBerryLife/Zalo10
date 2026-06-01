@@ -68,7 +68,13 @@ TabbedPane {
         NavigationPane {
             id: chatsNav
             peekEnabled: false
-            
+
+            // onPopTransitionEnded là signal đúng của NavigationPane (không phải Page).
+            // Dùng để clearActiveThread khi user back ra khỏi ChatView.
+            onPopTransitionEnded: {
+                zService.clearActiveThread();
+            }
+
             Page {
                 id: chatsPage
                 
@@ -304,7 +310,11 @@ TabbedPane {
         NavigationPane {
             id: groupsNav
             peekEnabled: false
-            
+
+            onPopTransitionEnded: {
+                zService.clearActiveThread();
+            }
+
             Page {
                 id: groupsPage
                 
@@ -586,19 +596,22 @@ TabbedPane {
                                     dividerVisible: true
                                     Container {
                                         layout: DockLayout {}
-                                        preferredHeight: ui.du(12.0)
+                                        preferredHeight: ui.du(14.0)
                                         
+                                        // Avatar
                                         ImageView {
                                             imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/blank.png"
-                                            preferredWidth: ui.du(12.0)
-                                            preferredHeight: ui.du(12.0)
+                                            preferredWidth: ui.du(10.0)
+                                            preferredHeight: ui.du(10.0)
                                             horizontalAlignment: HorizontalAlignment.Left
                                             verticalAlignment: VerticalAlignment.Center
                                             scalingMethod: ScalingMethod.AspectFill
+                                            leftMargin: ui.du(2)
                                         }
                                         
+                                        // Tên + tin nhắn
                                         Container {
-                                            leftPadding: ui.du(13.0)
+                                            leftPadding: ui.du(14.0)
                                             rightPadding: ui.du(2.0)
                                             verticalAlignment: VerticalAlignment.Center
                                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
@@ -609,16 +622,27 @@ TabbedPane {
                                                 text: ListItemData.name || "Unknown User"
                                                 textStyle {
                                                     base: SystemDefaults.TextStyles.TitleText
+                                                    fontWeight: FontWeight.Bold
                                                 }
                                             }
                                             
                                             Label {
-                                                text: ListItemData.msg || "Wants to be friends"
+                                                text: ListItemData.msg || "Muốn kết bạn với bạn"
                                                 textStyle {
                                                     base: SystemDefaults.TextStyles.SubtitleText
                                                     color: Color.DarkGray
                                                 }
                                                 multiline: false
+                                            }
+                                            
+                                            // Nút Accept nhỏ gọn
+                                            Button {
+                                                text: "Chấp nhận"
+                                                topMargin: ui.du(0.8)
+                                                preferredHeight: ui.du(5)
+                                                onClicked: {
+                                                    // TODO: gọi zService.acceptFriendRequest(ListItemData.uid)
+                                                }
                                             }
                                         }
                                     }
@@ -668,7 +692,8 @@ TabbedPane {
                                 var d = inviteModel.value(i)
                                 if ((d.uid || "") === threadId) {
                                     d.localAvatar = localPath
-                                    inviteModel.replace(i, d)
+                                    inviteModel.removeAt(i)
+                                    inviteModel.insert(i, d)
                                     break
                                 }
                             }

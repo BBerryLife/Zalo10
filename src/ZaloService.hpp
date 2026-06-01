@@ -15,6 +15,9 @@
 #include <QByteArray>
 #include <QSettings>
 #include <QFile>
+#include <QSslSocket>
+#include <QStringList>
+#include <sqlite3.h>
 
 class ZaloService : public QObject
 {
@@ -43,6 +46,11 @@ public:
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
+    // Gọi khi mở / đóng ChatView để biết thread đang xem
+    Q_INVOKABLE void setActiveThread(const QString &threadId, bool isGroup);
+    Q_INVOKABLE void clearActiveThread();
+    Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
+    Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
 
 signals:
     void loggedInChanged();
@@ -56,6 +64,10 @@ signals:
     void invitesReady(const QVariantList &invites);       // friend requests
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
+    // Phát khi poll nhận được tin nhắn mới trong thread đang mở
+    void newMessage(const QString &threadId, const QVariantMap &message);
+    // Phát khi lastMessage của một thread thay đổi (để cập nhật danh sách)
+    void threadLastMessageChanged(const QString &threadId, const QString &lastMsg, const QString &lastTime);
     // threadId, localFilePath (file:///tmp/...)
     void avatarReady(const QString &threadId, const QString &localPath);
 
@@ -86,7 +98,16 @@ private slots:
     void onQRExpired();
     void onListenTimer();
     void onListenDone();
+    void onPollMsgDone();
     void onAvatarDownloaded();
+
+    // WebSocket (RFC 6455 over QSslSocket) — real-time messages
+    void onWsConnected();
+    void onWsEncrypted();
+    void onWsReadyRead();
+    void onWsDisconnected();
+    void onWsSslErrors(const QList<QSslError> &errors);
+    void onWsReconnectTimer();
 
 private:
     // Cấu trúc đóng gói tham số mã hóa phục vụ API login
@@ -137,6 +158,26 @@ private:
     QNetworkAccessManager *m_manager;
     QTimer *m_qrExpireTimer;
     QTimer *m_listenTimer;
+    QTimer *m_wsReconnectTimer;
+
+    // WebSocket over QSslSocket (RFC 6455) — real-time messages
+    QSslSocket *m_webSocket;
+    QStringList m_wsUrls;       // zpw_ws[] từ login response (dùng m_wsUrls thay m_zpwWsUrls nội bộ)
+    int         m_wsUrlIndex;
+    QString     m_wsCipherKey;
+    bool        m_wsConnected;
+    bool        m_wsHandshakeSent;
+    QString     m_wsExpectedAccept; // Sec-WebSocket-Accept expected
+    QByteArray  m_wsBuffer;         // buffer cho incomplete frames
+    void connectWebSocket();
+    void disconnectWebSocket();
+    void sendWsHandshake(const QUrl &url);
+    bool parseWsHandshakeResponse(const QByteArray &data, int &headerEnd);
+    void handleWsFrame(int opcode, const QByteArray &payload);
+    void handleWsMessage(int opcode, const QByteArray &payload);
+    QByteArray maskWsFrame(int opcode, const QByteArray &data); // client→server cần mask
+    void sendWsPing();                                            // cmd=2 subCmd=1 keepalive
+    void sendWsRequest(int cmd, int subCmd, const QString &jsonData); // generic WS send
 
     // Trạng thái phiên làm việc
     QString m_userAgent;
@@ -159,12 +200,26 @@ private:
     QString m_groupServiceUrl;
     QString m_profileServiceUrl;   // zpwServiceMap.profile[0]
     QString m_groupPollServiceUrl; // zpwServiceMap.group_poll[0]
-    QString m_externalToken; // Token (zpw_enk) do user cung cấp thủ công, ưu tiên hơn key từ server
+    QString m_friendServiceUrl;    // zpwServiceMap.friend[0]
+    QString m_externalToken;
+    QStringList m_zpwWsUrls; // zpw_ws[] — lưu session, copy sang m_wsUrls khi connect
+
+    // Thread đang mở trong ChatView (để poll tin nhắn mới)
+    QString m_activeThreadId;
+    bool    m_activeThreadIsGroup;
+    QString m_lastPollMsgId; // msgId cuối cùng đã biết, tránh emit trùng
+    QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
 
     // Cache avatar: url -> localPath (file:///tmp/avatar_<md5>.jpg)
     QMap<QString, QString> m_avatarCache;
     QSet<QString> m_pendingAvatars; // Ngăn tải trùng lặp
     QMap<QString, QSet<QString> > m_pendingAvatarWaiters; // url -> set of threadIds đang chờ
+
+    // Re-emit friendsReady sau khi avatar load xong
+    sqlite3 *m_db;
+    QVariantList m_pendingFriends;
+    int m_pendingFriendAvatarCount;
+    int m_loadedFriendAvatarCount;
 
     // Định nghĩa hằng số môi trường Zalo Web
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
