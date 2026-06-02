@@ -1053,16 +1053,51 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             if (encType == 2 && !plain.isEmpty()) {
                 // inflate (zlib) — zca-js dùng pako.inflate
                 // BB10 Qt4 không có zlib built-in qua Qt, dùng zlib trực tiếp
+                // zca-js dùng pako.inflate = raw deflate (không có zlib header)
+                // Phải dùng inflate với windowBits=-15 (raw deflate), không phải uncompress
                 QByteArray inflated;
-                inflated.resize(plain.size() * 8 + 1024);
-                uLongf destLen = inflated.size();
-                if (uncompress((Bytef*)inflated.data(), &destLen,
-                                (const Bytef*)plain.constData(), plain.size()) == Z_OK) {
-                    inflated.resize(destLen);
-                    d = jsonToMap(inflated)["data"].toMap();
+                inflated.resize(plain.size() * 16 + 4096);
+                z_stream zs;
+                memset(&zs, 0, sizeof(zs));
+                zs.next_in  = (Bytef*)plain.constData();
+                zs.avail_in = plain.size();
+                zs.next_out  = (Bytef*)inflated.data();
+                zs.avail_out = inflated.size();
+                bool inflateOk = false;
+                if (inflateInit2(&zs, -15) == Z_OK) { // -15 = raw deflate
+                    int ret2 = inflate(&zs, Z_FINISH);
+                    inflateEnd(&zs);
+                    if (ret2 == Z_STREAM_END || ret2 == Z_OK) {
+                        inflated.resize(zs.total_out);
+                        inflateOk = true;
+                    }
+                }
+                if (inflateOk) {
+                    qDebug() << "[Zalo WS] inflated (first150):" << QString::fromUtf8(inflated.left(150));
+                    QVariantMap parsed = jsonToMap(inflated);
+                    // zca-js: inflate result is direct JSON, no "data" wrapper
+                    if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                        d = parsed["data"].toMap();
+                    else
+                        d = parsed; // direct struct: { ms:[], msgs:[], ... }
+                } else {
+                    qDebug() << "[Zalo WS] inflate FAILED, trying raw plain";
+                    qDebug() << "[Zalo WS] plain (first150):" << QString::fromUtf8(plain.left(150));
+                    QVariantMap parsed = jsonToMap(plain);
+                    if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                        d = parsed["data"].toMap();
+                    else
+                        d = parsed;
                 }
             } else if (!plain.isEmpty()) {
-                d = jsonToMap(plain)["data"].toMap();
+                qDebug() << "[Zalo WS] encType=3 plain (first150):" << QString::fromUtf8(plain.left(150));
+                QVariantMap parsed = jsonToMap(plain);
+                if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                    d = parsed["data"].toMap();
+                else
+                    d = parsed;
+            } else {
+                qDebug() << "[Zalo WS] decrypt returned empty for encType=" << encType;
             }
         } else {
             // Fallback AES-CBC (encType=1): thử m_secretKey trước, sau đó m_wsCipherKey
@@ -1073,14 +1108,25 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             d = r.contains("data") ? r["data"].toMap() : r;
         }
 
-        QVariantList msgs = isGroup ? d["groupMsgs"].toList() : d["msgs"].toList();
-        // Zalo đôi khi wrap trong d["data"] thêm 1 lớp
+        // zca-js real-time: field "ms" (not "msgs") for cmd=501/521
+        QVariantList msgs;
+        if (isGroup) {
+            msgs = d["groupMsgs"].toList();
+            if (msgs.isEmpty()) msgs = d["ms"].toList();
+            if (msgs.isEmpty()) msgs = d["msgs"].toList();
+        } else {
+            msgs = d["ms"].toList();
+            if (msgs.isEmpty()) msgs = d["msgs"].toList();
+            if (msgs.isEmpty()) msgs = d["groupMsgs"].toList(); // fallback
+        }
+        // Zalo sometimes wraps in d["data"]
         if (msgs.isEmpty()) {
             QVariantMap dd = d["data"].toMap();
-            msgs = isGroup ? dd["groupMsgs"].toList() : dd["msgs"].toList();
+            msgs = isGroup ? dd["groupMsgs"].toList() : dd["ms"].toList();
+            if (msgs.isEmpty()) msgs = isGroup ? dd["ms"].toList() : dd["msgs"].toList();
         }
         qDebug() << "[Zalo WS] cmd=501/521 encType=" << (outer.contains("encrypt") ? outer["encrypt"].toInt() : 1)
-                 << "msgs.size=" << msgs.size() << "isGroup=" << isGroup;
+                 << "d.keys=" << d.keys() << "msgs.size=" << msgs.size() << "isGroup=" << isGroup;
 
         for (int i = 0; i < msgs.size(); ++i) {
             QVariantMap m = msgs[i].toMap();
@@ -1133,15 +1179,42 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QByteArray cipherBytes = QByteArray::fromBase64(rawB64.toUtf8());
             QByteArray plain = aesGcmDecrypt(m_wsCipherKey.toUtf8(), cipherBytes);
             if (encType == 2 && !plain.isEmpty()) {
-                QByteArray inflated; inflated.resize(plain.size() * 8 + 1024);
-                uLongf destLen = inflated.size();
-                if (uncompress((Bytef*)inflated.data(), &destLen,
-                                (const Bytef*)plain.constData(), plain.size()) == Z_OK) {
-                    inflated.resize(destLen);
-                    d = jsonToMap(inflated)["data"].toMap();
+                QByteArray inflated;
+                inflated.resize(plain.size() * 16 + 4096);
+                z_stream zs2; memset(&zs2, 0, sizeof(zs2));
+                zs2.next_in = (Bytef*)plain.constData(); zs2.avail_in = plain.size();
+                zs2.next_out = (Bytef*)inflated.data(); zs2.avail_out = inflated.size();
+                bool inflateOk2 = false;
+                if (inflateInit2(&zs2, -15) == Z_OK) {
+                    int r2 = inflate(&zs2, Z_FINISH); inflateEnd(&zs2);
+                    if (r2 == Z_STREAM_END || r2 == Z_OK) { inflated.resize(zs2.total_out); inflateOk2 = true; }
+                }
+                if (inflateOk2) {
+                    qDebug() << "[Zalo WS] inflated (first150):" << QString::fromUtf8(inflated.left(150));
+                    QVariantMap parsed = jsonToMap(inflated);
+                    // zca-js: inflate result is direct JSON, no "data" wrapper
+                    if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                        d = parsed["data"].toMap();
+                    else
+                        d = parsed; // direct struct: { ms:[], msgs:[], ... }
+                } else {
+                    qDebug() << "[Zalo WS] inflate FAILED, trying raw plain";
+                    qDebug() << "[Zalo WS] plain (first150):" << QString::fromUtf8(plain.left(150));
+                    QVariantMap parsed = jsonToMap(plain);
+                    if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                        d = parsed["data"].toMap();
+                    else
+                        d = parsed;
                 }
             } else if (!plain.isEmpty()) {
-                d = jsonToMap(plain)["data"].toMap();
+                qDebug() << "[Zalo WS] encType=3 plain (first150):" << QString::fromUtf8(plain.left(150));
+                QVariantMap parsed = jsonToMap(plain);
+                if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                    d = parsed["data"].toMap();
+                else
+                    d = parsed;
+            } else {
+                qDebug() << "[Zalo WS] decrypt returned empty for encType=" << encType;
             }
         } else {
             // encType=1: thử m_secretKey trước (zpw_enk), sau đó wsCipherKey
@@ -1153,8 +1226,9 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
         }
 
         QVariantList rawMsgs = d["msgs"].toList();
+        if (rawMsgs.isEmpty()) rawMsgs = d["ms"].toList();
         qDebug() << "[Zalo WS] old_messages DM count:" << rawMsgs.size()
-                 << "activeThread:" << m_activeThreadId;
+                 << "d.keys=" << d.keys() << "activeThread:" << m_activeThreadId;
 
         QVariantList msgs;
         qint64 maxMsgNum = -1;

@@ -102,6 +102,7 @@ Page {
         if (cached && cached.length > 0) {
             for (var i = 0; i < cached.length; i++)
                 msgModel.append(cached[i]);
+            chatViewPage.rebuildGroups();
             msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.None);
         }
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
@@ -165,9 +166,10 @@ Page {
                             Container {
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 topPadding:    rowRoot.grouped ? 6 : 18
-                                bottomPadding: 18
-                                leftPadding:   18
-                                rightPadding:  18
+                                // bottomPadding lớn hơn để chừa chỗ cho Send/Delivered/Read
+                                bottomPadding: 28
+                                leftPadding:   22
+                                rightPadding:  22
 
                                 // Header: tên bold + timestamp (chỉ ở tin đầu nhóm)
                                 Container {
@@ -323,6 +325,14 @@ Page {
 
     // ─── Helper: tính bubblePos và grouped cho toàn bộ model ─────
     // Gọi lại mỗi khi thêm tin để cập nhật nhóm và timestamp
+    // isMine normalizer: true/false/"true"/"false"/1/0 → bool
+    function normMine(v) {
+        if (v === true  || v === 1)        return true;
+        if (v === false || v === 0)        return false;
+        if (typeof v === "string") return (v === "true" || v === "1");
+        return false;
+    }
+
     function rebuildGroups() {
         var size = msgModel.size();
         if (size === 0) return;
@@ -331,36 +341,31 @@ Page {
             var prev = (i > 0) ? msgModel.value(i - 1) : null;
             var next = (i < size - 1) ? msgModel.value(i + 1) : null;
 
-            var samePrev = prev && (prev.isMine === cur.isMine
-                           || (String(prev.isMine) === String(cur.isMine)))
-                           && (prev.senderId === cur.senderId || (!prev.senderId && !cur.senderId));
-            var sameNext = next && (next.isMine === cur.isMine
-                           || (String(next.isMine) === String(cur.isMine)))
-                           && (next.senderId === cur.senderId || (!next.senderId && !cur.senderId));
+            var curMine  = chatViewPage.normMine(cur.isMine);
+            var prevMine = prev ? chatViewPage.normMine(prev.isMine) : !curMine;
+            var nextMine = next ? chatViewPage.normMine(next.isMine) : !curMine;
+
+            // Gộp theo isMine — không dùng senderId (senderId không nhất quán)
+            var samePrev = prev && (prevMine === curMine);
+            var sameNext = next && (nextMine === curMine);
 
             var pos;
-            if (samePrev && sameNext)      pos = "middle";
+            if (samePrev && sameNext)       pos = "middle";
             else if (samePrev && !sameNext) pos = "bottom";
             else if (!samePrev && sameNext) pos = "top";
             else                            pos = "full";
 
             cur.bubblePos = pos;
-            cur.grouped   = samePrev; // ẩn header (tên+time) nếu grouped
+            cur.grouped   = samePrev;
             cur.selfName  = chatViewPage.selfName;
 
-            // Timestamp hiển thị = latestTs của nhóm
-            // Tìm tin cuối cùng của nhóm liên tiếp này
+            // Timestamp: hiển thị ts của tin CUỐI cùng trong nhóm
             if (!sameNext) {
-                // Đây là tin cuối nhóm — gán latestTs = ts của chính nó
                 cur.latestTs = cur.ts;
-                // Backfill latestTs cho tất cả tin trước trong cùng nhóm
                 var k = i - 1;
                 while (k >= 0) {
                     var prev2 = msgModel.value(k);
-                    var sameAsCur = (prev2.isMine === cur.isMine
-                                    || String(prev2.isMine) === String(cur.isMine))
-                                    && (prev2.senderId === cur.senderId);
-                    if (!sameAsCur) break;
+                    if (chatViewPage.normMine(prev2.isMine) !== curMine) break;
                     prev2.latestTs = cur.ts;
                     msgModel.replace(k, prev2);
                     k--;
