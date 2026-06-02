@@ -209,6 +209,7 @@ private:
     bool    m_activeThreadIsGroup;
     QString m_lastPollMsgId; // msgId cuối cùng đã biết, tránh emit trùng
     QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
+    QString m_pendingDmThreadId;  // DM thread đang chờ WS cmd=510 response
 
     // Cache avatar: url -> localPath (file:///tmp/avatar_<md5>.jpg)
     QMap<QString, QString> m_avatarCache;
@@ -229,3 +230,4 @@ private:
 };
 
 #endif // ZALOSERVICE_HPP
+// NOTE: m_pendingDmThreadId added below m_seenMsgIds

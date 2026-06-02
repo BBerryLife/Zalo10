@@ -43,6 +43,14 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/LoginView.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png) \
         $$quote($$BASEDIR/assets/images/ConversationPaneSend.png) \
         $$quote($$BASEDIR/assets/images/action_delete.png) \
         $$quote($$BASEDIR/assets/images/ai_add_task.png) \
@@ -107,6 +115,8 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/applicationui.hpp)
 }
 
+INCLUDEPATH += $$quote($$BASEDIR/src)
+
 CONFIG += precompile_header
 
 PRECOMPILED_HEADER = $$quote($$BASEDIR/precompiled.h)
@@ -123,7 +133,16 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/*.qs) \
         $$quote($$BASEDIR/../assets/images/*.qml) \
         $$quote($$BASEDIR/../assets/images/*.js) \
-        $$quote($$BASEDIR/../assets/images/*.qs)
+        $$quote($$BASEDIR/../assets/images/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/incoming/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/incoming/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/incoming/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.qs)
 
     HEADERS += \
         $$quote($$BASEDIR/../src/*.h) \

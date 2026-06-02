@@ -1,5 +1,5 @@
 1
-58
+66
 AboutSheet.qml
 ChatList.qml
 ChatView.qml
@@ -9,6 +9,14 @@ images/ai_add_task.png
 images/barcode.png
 images/berrylife.png
 images/blank.png
+images/Bubble/incoming/bottom.png
+images/Bubble/incoming/full.png
+images/Bubble/incoming/middle.png
+images/Bubble/incoming/top.png
+images/Bubble/outgoing/bottom.png
+images/Bubble/outgoing/full.png
+images/Bubble/outgoing/middle.png
+images/Bubble/outgoing/top.png
 images/ca_video_chat_active.png
 images/ConversationPaneSend.png
 images/cs_spark_small.png
