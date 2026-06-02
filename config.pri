@@ -44,13 +44,21 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/full.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/middle.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/top.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/bottom.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/full.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/middle.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png.amd) \
         $$quote($$BASEDIR/assets/images/ConversationPaneSend.png) \
         $$quote($$BASEDIR/assets/images/action_delete.png) \
         $$quote($$BASEDIR/assets/images/ai_add_task.png) \
@@ -114,8 +122,6 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/ZaloService.hpp) \
         $$quote($$BASEDIR/src/applicationui.hpp)
 }
-
-INCLUDEPATH += $$quote($$BASEDIR/src)
 
 CONFIG += precompile_header
 

@@ -8,10 +8,11 @@ Page {
     property string threadName:  ""
     property bool   isGroup:     false
     property string avatarUrl:   ""
+    property string selfName:    "Me"   // truyền từ main.qml
     property string pendingMsg:  ""
     property bool   initialized: false
 
-    // ─── TITLE BAR ───────────────────────────────────────────────────────────
+    // ─── TITLE BAR ───────────────────────────────────────────────
     titleBar: TitleBar {
         scrollBehavior: TitleBarScrollBehavior.Sticky
         kind: TitleBarKind.FreeForm
@@ -22,7 +23,7 @@ Page {
                 verticalAlignment:   VerticalAlignment.Fill
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-                // Avatar vuông full-height
+                // Avatar vuông BBM full-height
                 Container {
                     id: avatarBlock
                     verticalAlignment: VerticalAlignment.Fill
@@ -31,6 +32,7 @@ Page {
                                      ? titleBarLUH.layoutFrame.height : ui.du(7)
                     minWidth:        titleBarLUH.layoutFrame.height > 0
                                      ? titleBarLUH.layoutFrame.height : ui.du(7)
+
                     ImageView {
                         horizontalAlignment: HorizontalAlignment.Fill
                         verticalAlignment:   VerticalAlignment.Fill
@@ -55,7 +57,7 @@ Page {
                     attachedObjects: [ LayoutUpdateHandler { id: titleBarLUH } ]
                 }
 
-                // Tên + subtitle
+                // Name + subtitle
                 Container {
                     verticalAlignment: VerticalAlignment.Center
                     leftPadding: ui.du(1.5)
@@ -72,29 +74,26 @@ Page {
                     }
                 }
 
-                // Voice call — kích thước cố định tránh giãn trên Q10/Q5/Classic
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
                     preferredWidth: ui.du(7); preferredHeight: ui.du(7)
                     defaultImageSource: "asset:///images/ic_voice_call.png"
                     pressedImageSource: "asset:///images/ic_voice_call.png"
                     rightMargin: ui.du(0.3)
-                    onClicked: { callSheet.open(); }
+                    onClicked: { callSheet.open() }
                 }
-                // Video call
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
                     preferredWidth: ui.du(7); preferredHeight: ui.du(7)
                     defaultImageSource: "asset:///images/ca_video_chat_active.png"
                     pressedImageSource: "asset:///images/ca_video_chat_active.png"
                     rightMargin: ui.du(0.5)
-                    onClicked: { videoCallSheet.open(); }
+                    onClicked: { videoCallSheet.open() }
                 }
             }
         }
     }
 
-    // ─── LOAD MESSAGES ───────────────────────────────────────────────────────
     onThreadIdChanged: {
         if (chatViewPage.threadId === "" || chatViewPage.initialized) return;
         chatViewPage.initialized = true;
@@ -108,14 +107,14 @@ Page {
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
     }
 
-    // ─── CONTENT ─────────────────────────────────────────────────────────────
+    // ─── CONTENT ─────────────────────────────────────────────────
     content: Container {
         layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment:   VerticalAlignment.Fill
-        background: Color.create("#e5e5e5")
+        background: Color.create("#d6d6d6")
 
-        // ── Message list ──────────────────────────────────────────────────────
+        // ── Message list ─────────────────────────────────────────
         ListView {
             id: msgList
             horizontalAlignment: HorizontalAlignment.Fill
@@ -128,82 +127,118 @@ Page {
                     Container {
                         id: rowRoot
                         horizontalAlignment: HorizontalAlignment.Fill
-                        property bool mine: (ListItemData.isMine === true || ListItemData.isMine === "true")
 
-                        topPadding: 3; bottomPadding: 3
-                        // Outgoing: đẩy sang phải bằng leftPadding lớn
-                        // Incoming: đẩy sang trái bằng rightPadding lớn
-                        leftPadding:  rowRoot.mine ? 80 : 10
-                        rightPadding: rowRoot.mine ? 10 : 80
+                        // mine = TIN CỦA TÔI → bên TRÁI (theo yêu cầu)
+                        // người khác          → bên PHẢI
+                        property bool mine: (ListItemData.isMine === true
+                                             || ListItemData.isMine === "true")
 
-                        // Tên group (chỉ tin người khác)
-                        Label {
-                            visible: !rowRoot.mine && (ListItemData.isGroup || false)
-                                     && (ListItemData.dName || "").length > 0
-                            text: ListItemData.dName || ""
-                            horizontalAlignment: HorizontalAlignment.Left
-                            topMargin: 2; bottomMargin: 2
-                            textStyle { fontSize: FontSize.XSmall; fontWeight: FontWeight.W600; color: Color.create("#0073BC") }
-                        }
+                        // Gộp tin: nếu cùng sender với tin liền trước
+                        property bool grouped: ListItemData.grouped === true
 
-                        // ── BUBBLE (QML thuần — không dùng image) ────────────
-                        // outgoing: nền trắng  #FFFFFF  text đen  — như BBM
-                        // incoming: nền trắng  #FFFFFF  text đen  (BBM cũng dùng trắng cho cả 2)
-                        // Điểm phân biệt là vị trí căn trái/phải theo leftPadding/rightPadding ở rowRoot
+                        topPadding:    rowRoot.grouped ? 1 : 4
+                        bottomPadding: 1
+                        // mine (trái): rightPadding lớn để đẩy bubble vào bên trái
+                        // người khác (phải): leftPadding lớn để đẩy sang phải
+                        leftPadding:   rowRoot.mine ? 6  : 80
+                        rightPadding:  rowRoot.mine ? 80 : 6
+
+                        // ── Bubble BBM: dùng image làm nền ──────────
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
-                            background: Color.White
-                            topPadding: 14; bottomPadding: 14
-                            leftPadding: 18; rightPadding: 18
+                            layout: DockLayout {}
 
-                            // Header: dName + timestamp trên cùng 1 row
-                            Container {
-                                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                            // Bubble image — full/top/middle/bottom theo nhóm
+                            // mine=trái dùng outgoing, người khác=phải dùng incoming
+                            ImageView {
+                                objectName: "background"
                                 horizontalAlignment: HorizontalAlignment.Fill
-                                bottomMargin: 6
+                                verticalAlignment:   VerticalAlignment.Fill
+                                imageSource: {
+                                    var dir = rowRoot.mine ? "outgoing" : "incoming";
+                                    var variant = ListItemData.bubblePos || "full";
+                                    return "asset:///images/Bubble/" + dir + "/" + variant + ".png.amd";
+                                }
+                            }
 
+                            // Nội dung bên trong bubble
+                            Container {
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                topPadding:    rowRoot.grouped ? 6 : 18
+                                bottomPadding: 18
+                                leftPadding:   18
+                                rightPadding:  18
+
+                                // Header: tên bold + timestamp (chỉ ở tin đầu nhóm)
                                 Container {
-                                    layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                    visible: !rowRoot.grouped
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    bottomMargin: 4
+
+                                    // Tên người gửi — BOLD như BBM (yêu cầu #2)
                                     Label {
-                                        visible: !rowRoot.mine && (ListItemData.dName || "").length > 0
-                                        text: ListItemData.dName || ""
-                                        textStyle { fontSize: FontSize.Small; fontWeight: FontWeight.W500; color: Color.create("#0073BC") }
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        // mine: hiển thị selfName; người khác: dName
+                                        text: {
+                                            if (rowRoot.mine) {
+                                                // Lấy selfName từ ListItemData (được inject)
+                                                return ListItemData.selfName || "Me";
+                                            }
+                                            return ListItemData.dName || "Unknown";
+                                        }
+                                        textStyle {
+                                            fontSize:   FontSize.Small
+                                            fontWeight: FontWeight.Bold
+                                            color: rowRoot.mine
+                                                ? Color.create("#555555")
+                                                : Color.create("#0073BC")
+                                        }
+                                        topMargin: 0; bottomMargin: 0
+                                    }
+
+                                    // Timestamp (cập nhật lên tin mới nhất trong nhóm)
+                                    Label {
+                                        text: {
+                                            var ts = ListItemData.latestTs || ListItemData.ts;
+                                            if (!ts) return "";
+                                            var n = ts * 1;
+                                            if (n > 0 && n < 1e12) n *= 1000;
+                                            var d  = new Date(n);
+                                            var dow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
+                                            var h  = d.getHours();
+                                            var m2 = d.getMinutes();
+                                            var ampm = h >= 12 ? "PM" : "AM";
+                                            var h12 = h % 12; if (h12 === 0) h12 = 12;
+                                            return dow + " " + h12 + ":" + (m2 < 10 ? "0" : "") + m2 + " " + ampm;
+                                        }
+                                        horizontalAlignment: HorizontalAlignment.Right
+                                        textStyle {
+                                            fontSize: FontSize.XSmall
+                                            color:    Color.create("#777777")
+                                        }
                                         topMargin: 0; bottomMargin: 0
                                     }
                                 }
 
+                                // Tin nhắn
                                 Label {
                                     text: {
-                                        var ts = ListItemData.ts;
-                                        if (!ts) return "";
-                                        var n = ts * 1;
-                                        if (n > 0 && n < 1e12) n *= 1000;
-                                        var d = new Date(n);
-                                        var h = d.getHours(), m2 = d.getMinutes();
-                                        return h + ":" + (m2 < 10 ? "0" : "") + m2;
+                                        var c = ListItemData.content;
+                                        if (typeof c === "string" && c.length > 0) return c;
+                                        if (c && typeof c === "object" && c.content) return c.content;
+                                        return "[Image/Sticker]";
                                     }
-                                    horizontalAlignment: HorizontalAlignment.Right
-                                    textStyle { fontSize: FontSize.XSmall; color: Color.create("#999999") }
+                                    textStyle {
+                                        base:  SystemDefaults.TextStyles.BodyText
+                                        color: Color.create("#111111")
+                                    }
+                                    multiline: true
                                     topMargin: 0; bottomMargin: 0
                                 }
                             }
-
-                            // Nội dung tin
-                            Label {
-                                text: {
-                                    var c = ListItemData.content;
-                                    if (typeof c === "string" && c.length > 0) return c;
-                                    if (c && typeof c === "object" && c.content) return c.content;
-                                    return "[Image/Sticker]";
-                                }
-                                textStyle { base: SystemDefaults.TextStyles.BodyText; color: Color.Black }
-                                multiline: true
-                                topMargin: 0; bottomMargin: 0
-                            }
-                        }
-                        // ── end BUBBLE ────────────────────────────────────────
-
-                    }
+                        } // end bubble DockLayout
+                    } // end rowRoot
                 }
             ]
         } // end ListView
@@ -211,51 +246,61 @@ Page {
         // 1px separator
         Container { horizontalAlignment: HorizontalAlignment.Fill; preferredHeight: 1; background: Color.Black }
 
-        // ── Input bar — BBM ConversationInputControl layout ────────────────
-        // [attach] [TextField flex] [emoticon]   Send = ActionBar
+        // ── Input bar ─────────────────────────────────────────────
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             background: Color.create("#F8F8F8")
-            topPadding: ui.du(1); bottomPadding: ui.du(1)
-            leftPadding: ui.du(1); rightPadding: ui.du(1)
+            topPadding:    ui.du(1.2)
+            bottomPadding: ui.du(1.2)
+            leftPadding:   ui.du(1.2)
+            rightPadding:  ui.du(1.2)
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
+            // Attach — to hơn (yêu cầu #3)
             ImageButton {
                 verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(5.5); preferredHeight: ui.du(5.5)
+                preferredWidth: ui.du(7); preferredHeight: ui.du(7)
                 rightMargin: ui.du(1)
                 defaultImageSource: "asset:///images/ic_attach.png"
                 pressedImageSource: "asset:///images/ic_attach.png"
                 onClicked: { /* TODO */ }
             }
 
+            // TextField — cao hơn (yêu cầu #3)
             Container {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
+
                 TextField {
                     id: inputField
                     hintText: "Enter a message"
                     inputMode: TextFieldInputMode.Chat
+                    minHeight: ui.du(6)
                     input {
                         flags: TextInputFlag.SpellCheck | TextInputFlag.WordSubstitution
                         submitKey: SubmitKey.Send
-                        onSubmitted: { doSend(); }
+                        onSubmitted: { doSend() }
                     }
-                    onTextChanging: { sendAction.enabled = (inputField.text.trim().length > 0); }
+                    onTextChanging: {
+                        sendAction.enabled = (inputField.text.trim().length > 0)
+                    }
                 }
             }
 
+            // Emoticon — to hơn (yêu cầu #3)
             ImageButton {
                 verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(5.5); preferredHeight: ui.du(5.5)
-                leftMargin: ui.du(0.5)
+                preferredWidth: ui.du(7); preferredHeight: ui.du(7)
+                leftMargin: ui.du(1)
                 defaultImageSource: "asset:///images/ic_emoticon_enabled.png"
                 pressedImageSource: "asset:///images/ic_emoticon_enabled.png"
                 onClicked: { /* TODO */ }
             }
         }
-    }
 
+    } // end content
+
+    // Send button trên NavigationPane ActionBar
     actions: [
         ActionItem {
             id: sendAction
@@ -263,7 +308,7 @@ Page {
             imageSource: "asset:///images/ConversationPaneSend.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             enabled: false
-            onTriggered: { doSend(); }
+            onTriggered: { doSend() }
         }
     ]
 
@@ -276,36 +321,77 @@ Page {
         zService.sendMessage(chatViewPage.threadId, txt, chatViewPage.isGroup);
     }
 
+    // ─── Helper: tính bubblePos và grouped cho toàn bộ model ─────
+    // Gọi lại mỗi khi thêm tin để cập nhật nhóm và timestamp
+    function rebuildGroups() {
+        var size = msgModel.size();
+        if (size === 0) return;
+        for (var i = 0; i < size; i++) {
+            var cur  = msgModel.value(i);
+            var prev = (i > 0) ? msgModel.value(i - 1) : null;
+            var next = (i < size - 1) ? msgModel.value(i + 1) : null;
+
+            var samePrev = prev && (prev.isMine === cur.isMine
+                           || (String(prev.isMine) === String(cur.isMine)))
+                           && (prev.senderId === cur.senderId || (!prev.senderId && !cur.senderId));
+            var sameNext = next && (next.isMine === cur.isMine
+                           || (String(next.isMine) === String(cur.isMine)))
+                           && (next.senderId === cur.senderId || (!next.senderId && !cur.senderId));
+
+            var pos;
+            if (samePrev && sameNext)      pos = "middle";
+            else if (samePrev && !sameNext) pos = "bottom";
+            else if (!samePrev && sameNext) pos = "top";
+            else                            pos = "full";
+
+            cur.bubblePos = pos;
+            cur.grouped   = samePrev; // ẩn header (tên+time) nếu grouped
+            cur.selfName  = chatViewPage.selfName;
+
+            // Timestamp hiển thị = latestTs của nhóm
+            // Tìm tin cuối cùng của nhóm liên tiếp này
+            if (!sameNext) {
+                // Đây là tin cuối nhóm — gán latestTs = ts của chính nó
+                cur.latestTs = cur.ts;
+                // Backfill latestTs cho tất cả tin trước trong cùng nhóm
+                var k = i - 1;
+                while (k >= 0) {
+                    var prev2 = msgModel.value(k);
+                    var sameAsCur = (prev2.isMine === cur.isMine
+                                    || String(prev2.isMine) === String(cur.isMine))
+                                    && (prev2.senderId === cur.senderId);
+                    if (!sameAsCur) break;
+                    prev2.latestTs = cur.ts;
+                    msgModel.replace(k, prev2);
+                    k--;
+                }
+            }
+            msgModel.replace(i, cur);
+        }
+    }
+
     attachedObjects: [
-        // ── Voice call sheet ──────────────────────────────────────────────────
         Sheet {
             id: callSheet
             peekEnabled: false
             Page {
                 titleBar: TitleBar {
                     title: "Voice Call"
-                    dismissAction: ActionItem {
-                        title: "End"
-                        onTriggered: { callSheet.close(); }
-                    }
+                    dismissAction: ActionItem { title: "End"; onTriggered: { callSheet.close() } }
                 }
                 content: Container {
                     layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment:   VerticalAlignment.Fill
                     background: Color.create("#1a1a1a")
-
-                    // Avatar lớn giữa màn hình
                     Container {
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         layout: DockLayout {}
                         horizontalAlignment: HorizontalAlignment.Fill
-
                         Container {
                             horizontalAlignment: HorizontalAlignment.Center
                             verticalAlignment:   VerticalAlignment.Center
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-
                             ImageView {
                                 horizontalAlignment: HorizontalAlignment.Center
                                 preferredWidth: ui.du(22); preferredHeight: ui.du(22)
@@ -320,7 +406,6 @@ Page {
                                 topMargin: ui.du(2)
                             }
                             Label {
-                                id: callStatus
                                 text: "Calling..."
                                 horizontalAlignment: HorizontalAlignment.Center
                                 textStyle { color: Color.create("#aaaaaa"); fontSize: FontSize.Medium }
@@ -328,56 +413,40 @@ Page {
                             }
                         }
                     }
-
-                    // Nút End call
                     Container {
                         horizontalAlignment: HorizontalAlignment.Center
-                        bottomPadding: ui.du(5)
-                        topPadding: ui.du(3)
-
+                        bottomPadding: ui.du(5); topPadding: ui.du(3)
                         ImageButton {
                             horizontalAlignment: HorizontalAlignment.Center
                             preferredWidth: ui.du(14); preferredHeight: ui.du(14)
                             defaultImageSource: "asset:///images/ic_voice_call.png"
                             pressedImageSource: "asset:///images/ic_voice_call.png"
-                            onClicked: { callSheet.close(); }
+                            onClicked: { callSheet.close() }
                         }
-                        Label {
-                            text: "End"
-                            horizontalAlignment: HorizontalAlignment.Center
-                            textStyle { color: Color.White; fontSize: FontSize.Small }
-                            topMargin: ui.du(1)
-                        }
+                        Label { text: "End"; horizontalAlignment: HorizontalAlignment.Center; textStyle { color: Color.White; fontSize: FontSize.Small } }
                     }
                 }
             }
         },
 
-        // ── Video call sheet ──────────────────────────────────────────────────
         Sheet {
             id: videoCallSheet
             peekEnabled: false
             Page {
                 titleBar: TitleBar {
                     title: "Video Call"
-                    dismissAction: ActionItem {
-                        title: "End"
-                        onTriggered: { videoCallSheet.close(); }
-                    }
+                    dismissAction: ActionItem { title: "End"; onTriggered: { videoCallSheet.close() } }
                 }
                 content: Container {
                     layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment:   VerticalAlignment.Fill
                     background: Color.create("#0d0d0d")
-
-                    // "Camera feed" placeholder
                     Container {
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         layout: DockLayout {}
                         horizontalAlignment: HorizontalAlignment.Fill
                         background: Color.create("#111111")
-
                         Container {
                             horizontalAlignment: HorizontalAlignment.Center
                             verticalAlignment:   VerticalAlignment.Center
@@ -402,8 +471,6 @@ Page {
                                 topMargin: ui.du(1)
                             }
                         }
-
-                        // PiP: thumbnail camera mình (góc trên phải)
                         Container {
                             horizontalAlignment: HorizontalAlignment.Right
                             verticalAlignment:   VerticalAlignment.Top
@@ -411,67 +478,32 @@ Page {
                             preferredWidth: ui.du(16); preferredHeight: ui.du(22)
                             background: Color.create("#333333")
                             layout: DockLayout {}
-                            Label {
-                                text: "You"
-                                horizontalAlignment: HorizontalAlignment.Center
-                                verticalAlignment:   VerticalAlignment.Center
-                                textStyle { color: Color.create("#888888"); fontSize: FontSize.Small }
-                            }
+                            Label { text: "You"; horizontalAlignment: HorizontalAlignment.Center; verticalAlignment: VerticalAlignment.Center; textStyle { color: Color.create("#888888"); fontSize: FontSize.Small } }
                         }
                     }
-
-                    // Controls: mute + camera + end
                     Container {
                         horizontalAlignment: HorizontalAlignment.Fill
                         background: Color.create("#1a1a1a")
                         topPadding: ui.du(2); bottomPadding: ui.du(3)
                         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-
                         Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
-
                         Container {
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            horizontalAlignment: HorizontalAlignment.Center
-                            ImageButton {
-                                horizontalAlignment: HorizontalAlignment.Center
-                                preferredWidth: ui.du(10); preferredHeight: ui.du(10)
-                                defaultImageSource: "asset:///images/ic_microphone.png"
-                                pressedImageSource: "asset:///images/ic_microphone.png"
-                                onClicked: { /* TODO: mute */ }
-                            }
+                            ImageButton { horizontalAlignment: HorizontalAlignment.Center; preferredWidth: ui.du(10); preferredHeight: ui.du(10); defaultImageSource: "asset:///images/ic_microphone.png"; pressedImageSource: "asset:///images/ic_microphone.png"; onClicked: {} }
                             Label { text: "Mute"; horizontalAlignment: HorizontalAlignment.Center; textStyle { color: Color.White; fontSize: FontSize.XSmall } }
                         }
-
                         Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
-
                         Container {
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            horizontalAlignment: HorizontalAlignment.Center
-                            ImageButton {
-                                horizontalAlignment: HorizontalAlignment.Center
-                                preferredWidth: ui.du(13); preferredHeight: ui.du(13)
-                                defaultImageSource: "asset:///images/ca_video_chat_active.png"
-                                pressedImageSource: "asset:///images/ca_video_chat_active.png"
-                                onClicked: { videoCallSheet.close(); }
-                            }
+                            ImageButton { horizontalAlignment: HorizontalAlignment.Center; preferredWidth: ui.du(13); preferredHeight: ui.du(13); defaultImageSource: "asset:///images/ca_video_chat_active.png"; pressedImageSource: "asset:///images/ca_video_chat_active.png"; onClicked: { videoCallSheet.close() } }
                             Label { text: "End"; horizontalAlignment: HorizontalAlignment.Center; textStyle { color: Color.White; fontSize: FontSize.XSmall } }
                         }
-
                         Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
-
                         Container {
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            horizontalAlignment: HorizontalAlignment.Center
-                            ImageButton {
-                                horizontalAlignment: HorizontalAlignment.Center
-                                preferredWidth: ui.du(10); preferredHeight: ui.du(10)
-                                defaultImageSource: "asset:///images/ic_video_chat.png"
-                                pressedImageSource: "asset:///images/ic_video_chat.png"
-                                onClicked: { /* TODO: flip camera */ }
-                            }
+                            ImageButton { horizontalAlignment: HorizontalAlignment.Center; preferredWidth: ui.du(10); preferredHeight: ui.du(10); defaultImageSource: "asset:///images/ic_video_chat.png"; pressedImageSource: "asset:///images/ic_video_chat.png"; onClicked: {} }
                             Label { text: "Flip"; horizontalAlignment: HorizontalAlignment.Center; textStyle { color: Color.White; fontSize: FontSize.XSmall } }
                         }
-
                         Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
                     }
                 }
@@ -494,7 +526,10 @@ Page {
                         added = true;
                     }
                 }
-                if (added) msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                if (added) {
+                    chatViewPage.rebuildGroups();
+                    msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                }
             }
 
             onMessageSent: {
@@ -503,15 +538,18 @@ Page {
                 sendAction.enabled = (inputField.text.trim().length > 0);
                 if (success && chatViewPage.pendingMsg !== "") {
                     var m = {
-                        msgId:   "local_" + new Date().getTime(),
-                        content: chatViewPage.pendingMsg,
-                        isMine:  true,
-                        isGroup: chatViewPage.isGroup,
-                        dName:   "",
-                        ts:      String(new Date().getTime())
+                        msgId:    "local_" + new Date().getTime(),
+                        content:  chatViewPage.pendingMsg,
+                        isMine:   true,
+                        isGroup:  chatViewPage.isGroup,
+                        senderId: "self",
+                        dName:    chatViewPage.selfName,
+                        ts:       String(new Date().getTime()),
+                        selfName: chatViewPage.selfName
                     };
                     msgModel.append(m);
                     zService.dbSaveMessage(m, chatViewPage.threadId);
+                    chatViewPage.rebuildGroups();
                     msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
                     chatViewPage.pendingMsg = "";
                 }
@@ -523,7 +561,10 @@ Page {
                 for (var i = 0; i < msgModel.size(); i++) {
                     if (msgModel.value(i).msgId === message.msgId) return;
                 }
-                msgModel.append(message);
+                var msg = message;
+                msg.selfName = chatViewPage.selfName;
+                msgModel.append(msg);
+                chatViewPage.rebuildGroups();
                 msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
             }
         }

@@ -6,6 +6,9 @@ TabbedPane {
     id: root
     showTabsOnActionBar: false
     sidebarState: SidebarState.VisibleCompact
+
+    // Self display name 2014 populated on loginSuccess
+    property string selfName: "Me"
     
     // ========== MENU TRƯỢT (TRÁI - HỆ THỐNG) ==========
     Menu.definition: MenuDefinition {
@@ -214,6 +217,7 @@ TabbedPane {
                             page.threadName = item.name || "Chat"
                             page.isGroup = false
                             page.avatarUrl = item.localAvatar || item.avatar || ""
+                            page.selfName = root.selfName
                             chatsNav.push(page)
                         }
                     }
@@ -273,6 +277,8 @@ TabbedPane {
                             }
                         }
                         onLoginSuccess: {
+                            if (typeof displayName !== "undefined" && displayName.length > 0)
+                                root.selfName = displayName;
                             zService.fetchFriends()
                             chatsLoading.visible = true
                         }
@@ -454,6 +460,7 @@ TabbedPane {
                             page.threadName = item.name || "Group"
                             page.isGroup = true
                             page.avatarUrl = item.localAvatar || item.avatar || ""
+                            page.selfName = root.selfName
                             groupsNav.push(page)
                         }
                     }

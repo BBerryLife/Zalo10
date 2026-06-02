@@ -1065,13 +1065,22 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 d = jsonToMap(plain)["data"].toMap();
             }
         } else {
-            // Fallback AES-CBC cũ (encType=1)
-            QString dec = aesDecryptBase64(m_wsCipherKey, outer["data"].toString());
+            // Fallback AES-CBC (encType=1): thử m_secretKey trước, sau đó m_wsCipherKey
+            QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
+            if (dec.isEmpty() || dec.trimmed() == "{}")
+                dec = aesDecryptBase64(m_wsCipherKey, outer["data"].toString());
             QVariantMap r = jsonToMap(dec.toUtf8());
             d = r.contains("data") ? r["data"].toMap() : r;
         }
 
         QVariantList msgs = isGroup ? d["groupMsgs"].toList() : d["msgs"].toList();
+        // Zalo đôi khi wrap trong d["data"] thêm 1 lớp
+        if (msgs.isEmpty()) {
+            QVariantMap dd = d["data"].toMap();
+            msgs = isGroup ? dd["groupMsgs"].toList() : dd["msgs"].toList();
+        }
+        qDebug() << "[Zalo WS] cmd=501/521 encType=" << (outer.contains("encrypt") ? outer["encrypt"].toInt() : 1)
+                 << "msgs.size=" << msgs.size() << "isGroup=" << isGroup;
 
         for (int i = 0; i < msgs.size(); ++i) {
             QVariantMap m = msgs[i].toMap();
@@ -1135,7 +1144,10 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 d = jsonToMap(plain)["data"].toMap();
             }
         } else {
-            QString dec = aesDecryptBase64(m_wsCipherKey, outer["data"].toString());
+            // encType=1: thử m_secretKey trước (zpw_enk), sau đó wsCipherKey
+            QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
+            if (dec.isEmpty() || dec.trimmed() == "{}")
+                dec = aesDecryptBase64(m_wsCipherKey, outer["data"].toString());
             QVariantMap r = jsonToMap(dec.toUtf8());
             d = r.contains("data") ? r["data"].toMap() : r;
         }
@@ -1885,13 +1897,23 @@ void ZaloService::onListenTimer()
     if (m_wsConnected) {
         sendWsPing();
         qDebug() << "[Zalo WS] ping sent";
+
+        // DM: nếu đang mở 1-1 thread, gửi cmd=510 poll incremental để bắt tin mới
+        // (WS cmd=501 là push real-time, nhưng có thể miss nếu WS vừa reconnect)
+        if (!m_activeThreadIsGroup && !m_activeThreadId.isEmpty()) {
+            QString req510 = QString("{\"first\":false,\"lastId\":\"%1\",\"toid\":\"%2\",\"preIds\":[]}")
+                             .arg(m_lastPollMsgId.isEmpty() ? "0" : m_lastPollMsgId)
+                             .arg(m_activeThreadId);
+            sendWsRequest(510, 1, req510);
+            qDebug() << "[Zalo WS] DM incremental poll cmd=510 toid=" << m_activeThreadId
+                     << "lastId=" << m_lastPollMsgId;
+        }
     } else {
         // WS mất kết nối → thử reconnect
         if (!m_wsReconnectTimer->isActive())
             m_wsReconnectTimer->start(2000);
     }
-    // Group DM vẫn cần poll HTTP để cập nhật lastMessage trên danh sách chat
-    // (WS cmd=521 handle real-time, nhưng getrecentgroup để refresh danh sách)
+    // Group: poll HTTP để cập nhật lastMessage trên danh sách chat
     if (!m_activeThreadIsGroup || m_activeThreadId.isEmpty()) return;
     QVariantMap params;
     params["zpw_ver"]  = QString::number(API_VERSION);
