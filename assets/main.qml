@@ -213,6 +213,7 @@ TabbedPane {
                             page.threadId = item.threadId || item.uid || ""
                             page.threadName = item.name || "Chat"
                             page.isGroup = false
+                            page.avatarUrl = item.localAvatar || item.avatar || ""
                             chatsNav.push(page)
                         }
                     }
@@ -452,6 +453,7 @@ TabbedPane {
                             page.threadId = item.threadId || ""
                             page.threadName = item.name || "Group"
                             page.isGroup = true
+                            page.avatarUrl = item.localAvatar || item.avatar || ""
                             groupsNav.push(page)
                         }
                     }
