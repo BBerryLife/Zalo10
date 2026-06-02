@@ -164,7 +164,7 @@ private:
     QSslSocket *m_webSocket;
     QStringList m_wsUrls;       // zpw_ws[] từ login response (dùng m_wsUrls thay m_zpwWsUrls nội bộ)
     int         m_wsUrlIndex;
-    QString     m_wsCipherKey;
+    QByteArray  m_wsCipherKey;  // raw AES key bytes (từ WS cmd=1 handshake)
     bool        m_wsConnected;
     bool        m_wsHandshakeSent;
     QString     m_wsExpectedAccept; // Sec-WebSocket-Accept expected

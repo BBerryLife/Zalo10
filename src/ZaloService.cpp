@@ -1015,7 +1015,9 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
     // cmd=1 subCmd=1: server gửi cipherKey → lưu và gửi ping đầu tiên
     if (cmd == 1 && subCmd == 1) {
         QVariantMap parsed = jsonToMap(data);
-        m_wsCipherKey = parsed["key"].toString();
+        // Server gửi key dạng base64 — decode thành raw bytes ngay khi nhận
+        QString keyB64 = parsed["key"].toString();
+        m_wsCipherKey = QByteArray::fromBase64(keyB64.toUtf8());
         qDebug() << "[Zalo WS] Handshake OK, cipherKey len:" << m_wsCipherKey.size();
 
         // Gửi PING ngay (cmd=2 subCmd=1) theo zca-js
@@ -1049,25 +1051,33 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QString rawB64 = outer["data"].toString();
             if (encType == 2) rawB64 = QUrl::fromPercentEncoding(rawB64.toUtf8());
             QByteArray cipherBytes = QByteArray::fromBase64(rawB64.toUtf8());
-            QByteArray plain = aesGcmDecrypt(m_wsCipherKey.toUtf8(), cipherBytes);
+            qDebug() << "[Zalo WS] GCM decrypt cmd501: keyLen=" << m_wsCipherKey.size()
+                     << "cipherLen=" << cipherBytes.size()
+                     << "keyHex8=" << m_wsCipherKey.left(8).toHex()
+                     << "ivHex8=" << cipherBytes.left(8).toHex();
+            QByteArray plain = aesGcmDecrypt(m_wsCipherKey, cipherBytes);
+            qDebug() << "[Zalo WS] GCM result501: plainLen=" << plain.size();
             if (encType == 2 && !plain.isEmpty()) {
-                // inflate (zlib) — zca-js dùng pako.inflate
-                // BB10 Qt4 không có zlib built-in qua Qt, dùng zlib trực tiếp
-                // zca-js dùng pako.inflate = raw deflate (không có zlib header)
-                // Phải dùng inflate với windowBits=-15 (raw deflate), không phải uncompress
+                // Format: gzip (1f 8b ...) — windowBits = 15+16
                 QByteArray inflated;
-                inflated.resize(plain.size() * 16 + 4096);
+                inflated.resize(plain.size() * 8 + 4096);
                 z_stream zs;
                 memset(&zs, 0, sizeof(zs));
                 zs.next_in  = (Bytef*)plain.constData();
                 zs.avail_in = plain.size();
-                zs.next_out  = (Bytef*)inflated.data();
-                zs.avail_out = inflated.size();
                 bool inflateOk = false;
-                if (inflateInit2(&zs, -15) == Z_OK) { // -15 = raw deflate
-                    int ret2 = inflate(&zs, Z_FINISH);
+                if (inflateInit2(&zs, 15 + 16) == Z_OK) {
+                    int outPos = 0, ret2 = Z_OK;
+                    do {
+                        if (outPos >= inflated.size())
+                            inflated.resize(inflated.size() * 2);
+                        zs.next_out  = (Bytef*)(inflated.data() + outPos);
+                        zs.avail_out = inflated.size() - outPos;
+                        ret2 = inflate(&zs, Z_SYNC_FLUSH);
+                        outPos = zs.total_out;
+                    } while ((ret2 == Z_OK || ret2 == Z_BUF_ERROR) && zs.avail_in > 0);
                     inflateEnd(&zs);
-                    if (ret2 == Z_STREAM_END || ret2 == Z_OK) {
+                    if ((ret2 == Z_STREAM_END || ret2 == Z_OK) && zs.total_out > 0) {
                         inflated.resize(zs.total_out);
                         inflateOk = true;
                     }
@@ -1100,10 +1110,10 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 qDebug() << "[Zalo WS] decrypt returned empty for encType=" << encType;
             }
         } else {
-            // Fallback AES-CBC (encType=1): thử m_secretKey trước, sau đó m_wsCipherKey
+            // Fallback AES-CBC (encType=1): thử m_secretKey trước (zpw_enk), sau đó wsCipherKey
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             if (dec.isEmpty() || dec.trimmed() == "{}")
-                dec = aesDecryptBase64(m_wsCipherKey, outer["data"].toString());
+                dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
             QVariantMap r = jsonToMap(dec.toUtf8());
             d = r.contains("data") ? r["data"].toMap() : r;
         }
@@ -1111,30 +1121,46 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
         // zca-js real-time: field "ms" (not "msgs") for cmd=501/521
         QVariantList msgs;
         if (isGroup) {
+            // zca-js cmd=521: parsedData.groupMsgs
             msgs = d["groupMsgs"].toList();
+            if (msgs.isEmpty()) msgs = d["msgs"].toList();
             if (msgs.isEmpty()) msgs = d["ms"].toList();
-            if (msgs.isEmpty()) msgs = d["msgs"].toList();
         } else {
-            msgs = d["ms"].toList();
-            if (msgs.isEmpty()) msgs = d["msgs"].toList();
+            // zca-js cmd=501: parsedData.msgs
+            msgs = d["msgs"].toList();
+            if (msgs.isEmpty()) msgs = d["ms"].toList();
             if (msgs.isEmpty()) msgs = d["groupMsgs"].toList(); // fallback
         }
         // Zalo sometimes wraps in d["data"]
         if (msgs.isEmpty()) {
             QVariantMap dd = d["data"].toMap();
-            msgs = isGroup ? dd["groupMsgs"].toList() : dd["ms"].toList();
-            if (msgs.isEmpty()) msgs = isGroup ? dd["ms"].toList() : dd["msgs"].toList();
+            msgs = isGroup ? dd["groupMsgs"].toList() : dd["msgs"].toList();
+            if (msgs.isEmpty()) msgs = isGroup ? dd["msgs"].toList() : dd["ms"].toList();
+            if (msgs.isEmpty()) msgs = dd["ms"].toList();
         }
         qDebug() << "[Zalo WS] cmd=501/521 encType=" << (outer.contains("encrypt") ? outer["encrypt"].toInt() : 1)
                  << "d.keys=" << d.keys() << "msgs.size=" << msgs.size() << "isGroup=" << isGroup;
 
         for (int i = 0; i < msgs.size(); ++i) {
             QVariantMap m = msgs[i].toMap();
-            bool isSelf = (m["uidFrom"].toString() == m_uid);
-            if (isSelf) continue; // Tin mình gửi đã append khi onSendMsgDone
 
-            QString threadId = isGroup ? m["idTo"].toString() : m["uidFrom"].toString();
-            if (threadId.isEmpty()) continue;
+            // Zalo server dùng "0" để encode uid của mình trong WS push
+            QString rawUidFrom = m["uidFrom"].toString();
+            QString rawIdTo    = m["idTo"].toString();
+            bool isSelf = (rawUidFrom == "0"); // "0" = tin của mình
+
+            // Resolve "0" → m_uid
+            QString uidFrom = isSelf      ? m_uid : rawUidFrom;
+            QString idTo    = (rawIdTo == "0") ? m_uid : rawIdTo;
+
+            QString threadId;
+            if (isGroup) {
+                threadId = idTo;
+            } else {
+                // zca-js Message.js: threadId = uidFrom=="0" ? idTo : uidFrom
+                threadId = isSelf ? idTo : uidFrom;
+            }
+            if (threadId.isEmpty() || threadId == m_uid) continue;
 
             QString msgId = m["msgId"].toString();
             if (!msgId.isEmpty()) {
@@ -1145,13 +1171,13 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QVariantMap out;
             out["msgId"]    = msgId;
             out["content"]  = m["content"].toString();
-            out["senderId"] = m["uidFrom"].toString();
+            out["senderId"] = uidFrom;
             out["dName"]    = m["dName"].toString();
             out["ts"]       = m["ts"].toString();
             out["isGroup"]  = isGroup;
-            out["isMine"]   = false;
+            out["isMine"]   = isSelf;
 
-            qDebug() << "[Zalo WS] new msg from" << out["senderId"].toString()
+            qDebug() << "[Zalo WS] new msg from" << uidFrom
                      << "thread" << threadId << out["content"].toString().left(30);
             dbSaveMessage(out, threadId);
             emit newMessage(threadId, out);
@@ -1177,17 +1203,28 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QString rawB64 = outer["data"].toString();
             if (encType == 2) rawB64 = QUrl::fromPercentEncoding(rawB64.toUtf8());
             QByteArray cipherBytes = QByteArray::fromBase64(rawB64.toUtf8());
-            QByteArray plain = aesGcmDecrypt(m_wsCipherKey.toUtf8(), cipherBytes);
+            QByteArray plain = aesGcmDecrypt(m_wsCipherKey, cipherBytes);
             if (encType == 2 && !plain.isEmpty()) {
+                // Format: gzip (1f 8b ...) — windowBits = 15+16
                 QByteArray inflated;
-                inflated.resize(plain.size() * 16 + 4096);
+                inflated.resize(plain.size() * 8 + 4096);
                 z_stream zs2; memset(&zs2, 0, sizeof(zs2));
                 zs2.next_in = (Bytef*)plain.constData(); zs2.avail_in = plain.size();
-                zs2.next_out = (Bytef*)inflated.data(); zs2.avail_out = inflated.size();
                 bool inflateOk2 = false;
-                if (inflateInit2(&zs2, -15) == Z_OK) {
-                    int r2 = inflate(&zs2, Z_FINISH); inflateEnd(&zs2);
-                    if (r2 == Z_STREAM_END || r2 == Z_OK) { inflated.resize(zs2.total_out); inflateOk2 = true; }
+                if (inflateInit2(&zs2, 15 + 16) == Z_OK) {
+                    int outPos2 = 0, r2 = Z_OK;
+                    do {
+                        if (outPos2 >= inflated.size()) inflated.resize(inflated.size() * 2);
+                        zs2.next_out  = (Bytef*)(inflated.data() + outPos2);
+                        zs2.avail_out = inflated.size() - outPos2;
+                        r2 = inflate(&zs2, Z_SYNC_FLUSH);
+                        outPos2 = zs2.total_out;
+                    } while ((r2 == Z_OK || r2 == Z_BUF_ERROR) && zs2.avail_in > 0);
+                    inflateEnd(&zs2);
+                    if ((r2 == Z_STREAM_END || r2 == Z_OK) && zs2.total_out > 0) {
+                        inflated.resize(zs2.total_out);
+                        inflateOk2 = true;
+                    }
                 }
                 if (inflateOk2) {
                     qDebug() << "[Zalo WS] inflated (first150):" << QString::fromUtf8(inflated.left(150));
@@ -1220,7 +1257,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             // encType=1: thử m_secretKey trước (zpw_enk), sau đó wsCipherKey
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             if (dec.isEmpty() || dec.trimmed() == "{}")
-                dec = aesDecryptBase64(m_wsCipherKey, outer["data"].toString());
+                dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
             QVariantMap r = jsonToMap(dec.toUtf8());
             d = r.contains("data") ? r["data"].toMap() : r;
         }
@@ -2211,11 +2248,16 @@ QString ZaloService::aesEncryptBase64_256(const QString &keyStr, const QString &
 // Layout: iv[0:16] + aad[16:32] + ciphertext[32:N-16] + tag[N-16:N]
 // encryptType=2: base64(urlencoded(data)) → inflate(plaintext)
 // encryptType=3: base64(data)            → plaintext trực tiếp (no inflate)
-static QByteArray aesGcmDecrypt(const QByteArray &keyB64, const QByteArray &cipherBytes)
+// keyRaw: raw bytes của AES key (16 hoặc 32 bytes) — KHÔNG phải base64
+static QByteArray aesGcmDecrypt(const QByteArray &keyRaw, const QByteArray &cipherBytes)
 {
     if (cipherBytes.size() < 48) return QByteArray(); // iv(16)+aad(16)+tag(16) minimum
-    QByteArray keyRaw = QByteArray::fromBase64(keyB64);
-    if (keyRaw.size() != 16 && keyRaw.size() != 32) return QByteArray();
+    // keyRaw đã là raw bytes — nếu size không đúng thì thử decode base64 một lần
+    QByteArray key = keyRaw;
+    if (key.size() != 16 && key.size() != 24 && key.size() != 32) {
+        key = QByteArray::fromBase64(keyRaw);
+    }
+    if (key.size() != 16 && key.size() != 24 && key.size() != 32) return QByteArray();
 
     const unsigned char *iv  = (const unsigned char*)cipherBytes.constData();       // bytes 0-15
     const unsigned char *aad = (const unsigned char*)cipherBytes.constData() + 16;  // bytes 16-31
@@ -2227,11 +2269,13 @@ static QByteArray aesGcmDecrypt(const QByteArray &keyB64, const QByteArray &ciph
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     if (!ctx) return QByteArray();
 
-    const EVP_CIPHER *cipher_type = (keyRaw.size() == 16) ? EVP_aes_128_gcm() : EVP_aes_256_gcm();
+    const EVP_CIPHER *cipher_type = (key.size() == 16) ? EVP_aes_128_gcm()
+                                  : (key.size() == 24) ? EVP_aes_192_gcm()
+                                  :                      EVP_aes_256_gcm();
     EVP_DecryptInit_ex(ctx, cipher_type, NULL, NULL, NULL);
     EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 16, NULL);
     EVP_DecryptInit_ex(ctx, NULL, NULL,
-        (const unsigned char*)keyRaw.constData(), iv);
+        (const unsigned char*)key.constData(), iv);
     // AAD
     int len = 0;
     EVP_DecryptUpdate(ctx, NULL, &len, aad, 16);
@@ -2244,7 +2288,12 @@ static QByteArray aesGcmDecrypt(const QByteArray &keyB64, const QByteArray &ciph
     EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void*)tag);
     int ret = EVP_DecryptFinal_ex(ctx, (unsigned char*)out.data() + outLen, &len);
     EVP_CIPHER_CTX_free(ctx);
-    if (ret <= 0) return QByteArray(); // tag mismatch
+    if (ret <= 0) {
+        qDebug() << "[Zalo WS] aesGcmDecrypt: EVP_DecryptFinal FAILED ret=" << ret
+                 << "keyLen=" << key.size() << "cipherLen=" << cipherLen
+                 << "tagHex=" << QByteArray((const char*)tag, 16).toHex();
+        return QByteArray(); // tag mismatch
+    }
     out.resize(outLen + len);
     return out;
 }
