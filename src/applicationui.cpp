@@ -5,11 +5,13 @@
 #include <bb/cascades/QmlDocument>
 #include <bb/cascades/AbstractPane>
 #include <bb/cascades/LocaleHandler>
+#include <bb/cascades/ThemeSupport>
 #include <bb/system/InvokeManager>
 #include <bb/system/InvokeRequest>
 
 #include <QTranslator>
 #include <QLocale>
+#include <QSettings>
 #include <QDebug>
 
 using namespace bb::cascades;
@@ -50,6 +52,24 @@ void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
 void ApplicationUI::minimizeApp()
 {
     Application::instance()->minimize();
+}
+
+void ApplicationUI::setDarkTheme(bool dark)
+{
+    QSettings settings("Berrylife", "Zalo10");
+    settings.setValue("darkTheme", dark);
+    settings.sync();
+    // Apply immediately — takes effect on next app launch for full theme
+    // For runtime: toggle VisualStyle now so system controls update
+    Application::instance()->themeSupport()->setVisualStyle(
+        dark ? VisualStyle::Dark : VisualStyle::Bright);
+    qDebug() << "[App] setDarkTheme:" << dark;
+}
+
+bool ApplicationUI::getDarkTheme()
+{
+    QSettings settings("Berrylife", "Zalo10");
+    return settings.value("darkTheme", false).toBool();
 }
 
 void ApplicationUI::onSystemLanguageChanged()

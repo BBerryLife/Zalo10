@@ -30,6 +30,8 @@ OTHER_FILES += \
     assets/main.qml \
     assets/ChatList.qml \
     assets/ChatView.qml \
+    assets/EmojiPanel.qml \
+    assets/EmojiButton.qml \
     assets/ContactsTab.qml \
     assets/LoginView.qml \
     assets/ProfileView.qml \

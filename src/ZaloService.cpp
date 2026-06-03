@@ -1176,6 +1176,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             out["ts"]       = m["ts"].toString();
             out["isGroup"]  = isGroup;
             out["isMine"]   = isSelf;
+            out["msgType"]  = m["msgType"].toInt();
 
             qDebug() << "[Zalo WS] new msg from" << uidFrom
                      << "thread" << threadId << out["content"].toString().left(30);
@@ -1285,6 +1286,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             out["ts"]       = m["ts"].toString();
             out["isGroup"]  = false;
             out["isMine"]   = isMine;
+            out["msgType"]  = m["msgType"].toInt();
             msgs.append(out);
 
             if (!msgId.isEmpty()) {
@@ -1795,19 +1797,20 @@ void ZaloService::fetchInvites()
 {
     if (!m_loggedIn) return;
 
-    // Dùng /api/friend/received/list — endpoint cho received friend requests thật sự
-    // (tương tự getSentFriendRequest dùng /api/friend/requested/list trong zca-js)
+    // zca-js getFriendRecommendations: endpoint /api/friend/recommendsv2/list
+    // Returns BOTH recommendations (type=1) AND received friend requests (type=2).
+    // We filter for type=2 (ReceivedFriendRequest) only — NOT type=1 (PYMK / People You May Know).
     QString base = m_friendServiceUrl.isEmpty() ? m_profileServiceUrl : m_friendServiceUrl;
     QVariantMap innerParams;
     innerParams["imei"] = m_imei;
 
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
-    QString urlStr = base + "/api/friend/received/list"
+    QString urlStr = base + "/api/friend/recommendsv2/list"
                    + "?zpw_ver=" + QString::number(API_VERSION)
                    + "&zpw_type=" + QString::number(API_TYPE)
                    + "&params=" + QUrl::toPercentEncoding(encParams);
 
-    qDebug() << "[Zalo] fetchInvites (received) GET" << urlStr.left(120);
+    qDebug() << "[Zalo] fetchInvites (recommendsv2) GET" << urlStr.left(120);
     QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
     connect(reply, SIGNAL(finished()), this, SLOT(onFetchInvitesDone()));
 }
@@ -1822,10 +1825,9 @@ void ZaloService::onFetchInvitesDone()
     qDebug() << "[Zalo] fetchInvites raw (first300):" << raw.left(300);
     QVariantMap root = jsonToMap(raw);
 
-    // error_code=112 = không có pending requests — emit empty list
     int ec = root["error_code"].toInt();
     if (ec != 0) {
-        qDebug() << "[Zalo] fetchInvites error_code:" << ec << "(0 pending requests or error)";
+        qDebug() << "[Zalo] fetchInvites error_code:" << ec;
         emit invitesReady(QVariantList());
         return;
     }
@@ -1833,20 +1835,35 @@ void ZaloService::onFetchInvitesDone()
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] fetchInvites decrypted (first300):" << dec.left(300);
     QVariantMap outer = jsonToMap(dec.toUtf8());
+    qDebug() << "[Zalo] fetchInvites raw outer keys:" << outer.keys();
 
-    // /api/friend/received/list response: { data: { list: [ {uid, displayName, avatar, msg} ] } }
-    QVariantList list;
+    // recommendsv2/list response: { data: { items: [ {type, uid, dName, avatar, msg, ...} ] } }
+    // type=1 → RecommendedFriend (PYMK — People You May Know) — SKIP
+    // type=2 → ReceivedFriendRequest — KEEP
+    QVariantList rawList;
     if (outer.contains("data") && outer["data"].type() == QVariant::Map) {
         QVariantMap d = outer["data"].toMap();
-        list = d["list"].toList();
-        if (list.isEmpty()) list = d["items"].toList();
+        rawList = d["items"].toList();
+        if (rawList.isEmpty()) rawList = d["list"].toList();
+        if (rawList.isEmpty()) rawList = d["received"].toList();
+        if (rawList.isEmpty() && d.contains("data"))
+            rawList = d["data"].toList();
+    } else if (outer.contains("data") && outer["data"].type() == QVariant::List) {
+        rawList = outer["data"].toList();
     }
 
-    qDebug() << "[Zalo] fetchInvites received list count:" << list.size();
+    qDebug() << "[Zalo] fetchInvites raw list count:" << rawList.size();
 
     QVariantList invites;
-    for (int i = 0; i < list.size(); ++i) {
-        QVariantMap info = list[i].toMap();
+    for (int i = 0; i < rawList.size(); ++i) {
+        QVariantMap info = rawList[i].toMap();
+
+        // Filter: only type=2 (ReceivedFriendRequest); skip type=1 (PYMK)
+        int itemType = info["type"].toInt();
+        if (itemType != 0 && itemType != 2) {
+            qDebug() << "[Zalo] fetchInvites skip type=" << itemType;
+            continue;
+        }
 
         QString uid = info["uid"].toString();
         if (uid.isEmpty()) uid = info["userId"].toString();
@@ -1854,6 +1871,7 @@ void ZaloService::onFetchInvitesDone()
         if (uid.isEmpty()) continue;
 
         QString name = info["zaloName"].toString();
+        if (name.isEmpty()) name = info["dName"].toString();
         if (name.isEmpty()) name = info["displayName"].toString();
         if (name.isEmpty()) name = info["fullName"].toString();
 
@@ -1865,7 +1883,7 @@ void ZaloService::onFetchInvitesDone()
                         ? "Muon ket ban voi ban" : info["msg"].toString();
         invites.append(inv);
     }
-    qDebug() << "[Zalo] fetchInvites found" << invites.size() << "pending requests";
+    qDebug() << "[Zalo] fetchInvites found" << invites.size() << "received requests";
     emit invitesReady(invites);
 }
 
@@ -1961,6 +1979,7 @@ void ZaloService::onFetchMsgDone()
         out["ts"]       = m["ts"].toString();
         out["isGroup"]  = isGroup;
         out["isMine"]   = isMine;
+        out["msgType"]  = m["msgType"].toInt();
         msgs.append(out);
         // Debug từng tin để xác minh isMine
         if (i < 5)
@@ -2042,6 +2061,147 @@ void ZaloService::onSendMsgDone()
     reply->deleteLater();
     qDebug() << "[Zalo] sendMessage response:" << raw.left(200);
     emit messageSent(!hasError, tid);
+}
+
+// ─── Send Photo ──────────────────────────────────────────────────────────────
+void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup)
+{
+    if (!m_loggedIn) return;
+
+    // Read file
+    QString path = localFilePath;
+    if (path.startsWith("file://")) path = path.mid(7);
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qDebug() << "[Zalo] sendPhoto: cannot open" << path;
+        emit messageSent(false, threadId);
+        return;
+    }
+    QByteArray fileData = file.readAll();
+    file.close();
+
+    // Detect MIME type from extension
+    QString ext = path.section('.', -1).toLower();
+    QString mime = "image/jpeg";
+    if (ext == "png")  mime = "image/png";
+    if (ext == "gif")  mime = "image/gif";
+    if (ext == "webp") mime = "image/webp";
+
+    QString clientId = QString::number(QDateTime::currentMSecsSinceEpoch());
+    QString boundary = "----ZaloBoundary" + clientId;
+
+    // Build multipart body inline — no lambdas (BB10 NDK gcc 4.6 C++0x subset)
+    QByteArray bnd = ("--" + boundary).toUtf8();
+    QByteArray body;
+    // text field: clientId
+    body += bnd + "\r\nContent-Disposition: form-data; name=\"clientId\"\r\n\r\n" + clientId.toUtf8() + "\r\n";
+    // text field: ttl
+    body += bnd + "\r\nContent-Disposition: form-data; name=\"ttl\"\r\n\r\n0\r\n";
+    if (isGroup) {
+        body += bnd + "\r\nContent-Disposition: form-data; name=\"grid\"\r\n\r\n" + threadId.toUtf8() + "\r\n";
+        body += bnd + "\r\nContent-Disposition: form-data; name=\"visibility\"\r\n\r\n0\r\n";
+    } else {
+        body += bnd + "\r\nContent-Disposition: form-data; name=\"toid\"\r\n\r\n" + threadId.toUtf8() + "\r\n";
+        body += bnd + "\r\nContent-Disposition: form-data; name=\"imei\"\r\n\r\n" + m_imei.toUtf8() + "\r\n";
+    }
+
+    // File part
+    QString filename = path.section('/', -1);
+    body += "--" + boundary.toUtf8() + "\r\n";
+    body += "Content-Disposition: form-data; name=\"fileContent\"; filename=\"" + filename.toUtf8() + "\"\r\n";
+    body += "Content-Type: " + mime.toUtf8() + "\r\n\r\n";
+    body += fileData + "\r\n";
+    body += "--" + boundary.toUtf8() + "--\r\n";
+
+    // Encrypt params (Zalo wraps file metadata in params field)
+    QVariantMap photoMeta;
+    photoMeta["toid"]     = isGroup ? "" : threadId;
+    photoMeta["grid"]     = isGroup ? threadId : "";
+    photoMeta["clientId"] = clientId;
+    photoMeta["ttl"]      = 0;
+    if (!isGroup) photoMeta["imei"] = m_imei;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(photoMeta)));
+
+    QString base = isGroup ? m_groupServiceUrl + "/api/group/photo"
+                           : m_chatServiceUrl  + "/api/message/photo";
+    QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
+                          + "&zpw_type=" + QString::number(API_TYPE)
+                          + "&params=" + QUrl::toPercentEncoding(encParams);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader,
+                  "multipart/form-data; boundary=" + boundary);
+
+    qDebug() << "[Zalo] sendPhoto POST" << urlStr.left(100) << "size:" << fileData.size();
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("threadId", threadId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onSendPhotoDone()));
+}
+
+void ZaloService::onSendPhotoDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    bool ok  = (reply->error() == QNetworkReply::NoError);
+    QString tid = reply->property("threadId").toString();
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+    qDebug() << "[Zalo] sendPhoto response:" << raw.left(300);
+    emit messageSent(ok, tid);
+}
+
+// ─── Download image message thumbnail for display ───────────────────────────
+void ZaloService::downloadImageMessage(const QString &msgId, const QString &url)
+{
+    if (url.isEmpty() || msgId.isEmpty()) return;
+
+    // Cache check
+    if (m_avatarCache.contains(url)) {
+        emit imageMsgReady(msgId, m_avatarCache[url]);
+        return;
+    }
+    if (m_pendingAvatars.contains(url)) return;
+    m_pendingAvatars.insert(url);
+
+    QNetworkRequest req = buildRequest(url, "https://chat.zalo.me/");
+    req.setRawHeader("Accept", "image/webp,image/apng,image/*,*/*;q=0.8");
+    QNetworkReply *reply = m_manager->get(req);
+    reply->setProperty("msgId", msgId);
+    reply->setProperty("imgUrl", url);
+    connect(reply, SIGNAL(finished()), this, SLOT(onImageMsgDownloaded()));
+}
+
+void ZaloService::onImageMsgDownloaded()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString msgId = reply->property("msgId").toString();
+    QString url   = reply->property("imgUrl").toString();
+    QByteArray data = reply->readAll();
+    reply->deleteLater();
+    m_pendingAvatars.remove(url);
+
+    if (data.isEmpty()) {
+        qDebug() << "[Zalo] downloadImageMessage empty for msgId" << msgId;
+        return;
+    }
+
+    // Detect extension from content-type
+    QString ext = "jpg";
+    QByteArray ct = reply->rawHeader("Content-Type");
+    if (ct.contains("png"))  ext = "png";
+    if (ct.contains("gif"))  ext = "gif";
+    if (ct.contains("webp")) ext = "webp";
+
+    QString tmpPath = QDir::tempPath() + "/zalo_img_" + md5Hex(url) + "." + ext;
+    QFile f(tmpPath);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(data);
+        f.close();
+    }
+    QString filePath = "file://" + tmpPath;
+    m_avatarCache[url] = filePath;
+    emit imageMsgReady(msgId, filePath);
 }
 
 void ZaloService::onQRExpired()
@@ -2190,6 +2350,7 @@ void ZaloService::onPollMsgDone()
         out["ts"]       = m["ts"].toString();
         out["isGroup"]  = isGroup;
         out["isMine"]   = (m["uidFrom"].toString() == m_uid);
+        out["msgType"]  = m["msgType"].toInt();
 
         dbSaveMessage(out, tid);
         emit newMessage(tid, out);

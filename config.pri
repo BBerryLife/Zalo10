@@ -41,6 +41,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ChatView.qml) \
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
         $$quote($$BASEDIR/assets/EmojiButton.qml) \
+        $$quote($$BASEDIR/assets/EmojiPanel.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
@@ -65,6 +66,68 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png.amd) \
         $$quote($$BASEDIR/assets/images/ConversationPaneSend.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT  File - Mail.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT Fie - ZIP (Compressed).png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - App (BB App World).png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Audio (Music).png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Bluetooth.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Contact.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Custom.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Doc.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Document.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Executable FIle.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Folder.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Generic.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Map.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Multiple Generic.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - NFC.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - PDF.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - PPT.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Phone.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Picture (Image).png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Ringtone.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - SMS.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Smart Trigger.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - TXT.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Video.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Voice Note (Audio Recording).png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - Webpage (Hyperlink).png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - WiFi.png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File - XLS (Spreadsheet).png) \
+        $$quote($$BASEDIR/assets/images/File Types/BT File- Calendar.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - APK.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Attachment.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Audio.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Calendar.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Certificate Message.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Certificate.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Certificates.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Document.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Failed Certificate.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Failed Certificates.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Folder.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Generic.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Important Certificate.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Important Certificates.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Location.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Locked Message.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Message.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Music.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - PDF.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - PGP Key.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - PPT.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - PTG.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Picture (Image).png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - TXT.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Unknown.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - VCF (Contanct).png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Video.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Voice Note (Audio Recording).png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Voicemail.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - Webpage (Hyperlink).png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - XLS (Spreadsheet).png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - ZIP (Compressed).png) \
+        $$quote($$BASEDIR/assets/images/File Types/Thumbs.db) \
         $$quote($$BASEDIR/assets/images/action_delete.png) \
         $$quote($$BASEDIR/assets/images/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/barcode.png) \
@@ -640,6 +703,9 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.qml) \
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.js) \
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.qs) \
+        $$quote($$BASEDIR/../assets/images/File Types/*.qml) \
+        $$quote($$BASEDIR/../assets/images/File Types/*.js) \
+        $$quote($$BASEDIR/../assets/images/File Types/*.qs) \
         $$quote($$BASEDIR/../assets/images/emoji/*.qml) \
         $$quote($$BASEDIR/../assets/images/emoji/*.js) \
         $$quote($$BASEDIR/../assets/images/emoji/*.qs) \

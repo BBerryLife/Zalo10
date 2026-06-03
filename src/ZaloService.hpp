@@ -46,6 +46,8 @@ public:
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
+    Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup);
+    Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url);
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
     // Gọi khi mở / đóng ChatView để biết thread đang xem
     Q_INVOKABLE void setActiveThread(const QString &threadId, bool isGroup);
@@ -71,6 +73,8 @@ signals:
     void threadLastMessageChanged(const QString &threadId, const QString &lastMsg, const QString &lastTime);
     // threadId, localFilePath (file:///tmp/...)
     void avatarReady(const QString &threadId, const QString &localPath);
+    // msgId, localFilePath — for image messages downloaded for display
+    void imageMsgReady(const QString &msgId, const QString &localPath);
 
 private slots:
     // Slot xử lý luồng đăng nhập bằng QR Code
@@ -96,6 +100,8 @@ private slots:
     void onGroupDetailsDone();
     void onFetchMsgDone();
     void onSendMsgDone();
+    void onSendPhotoDone();
+    void onImageMsgDownloaded();
     void onQRExpired();
     void onListenTimer();
     void onListenDone();

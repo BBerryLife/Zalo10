@@ -3,7 +3,9 @@
 
 #include <QObject>
 #include <QString>
+#include <QSettings>
 #include <bb/system/InvokeManager>
+#include <bb/cascades/ThemeSupport>
 
 namespace bb { namespace cascades { class LocaleHandler; class AbstractPane; } }
 class QTranslator;
@@ -20,6 +22,9 @@ public slots:
     // Dùng InvokeManager để mở email composer — học từ dự án cũ
     void invokeEmail(const QString &to, const QString &subject);
     void minimizeApp();
+    // Lưu dark theme preference — áp dụng ngay và save vào QSettings
+    Q_INVOKABLE void setDarkTheme(bool dark);
+    Q_INVOKABLE bool getDarkTheme();
 
 private slots:
     void onSystemLanguageChanged();

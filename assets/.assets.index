@@ -1,10 +1,11 @@
 1
-565
+628
 AboutSheet.qml
 ChatList.qml
 ChatView.qml
 ContactsTab.qml
 EmojiButton.qml
+EmojiPanel.qml
 images/action_delete.png
 images/ai_add_task.png
 images/barcode.png
@@ -522,6 +523,68 @@ images/emoji/symbols/emoji_38_20e3_64.png
 images/emoji/symbols/emoji_39_20e3_64.png
 images/emoji/symbols/order.txt
 images/failed.png
+images/File Types/BT  File - Mail.png
+images/File Types/BT Fie - ZIP (Compressed).png
+images/File Types/BT File - App (BB App World).png
+images/File Types/BT File - Audio (Music).png
+images/File Types/BT File - Bluetooth.png
+images/File Types/BT File - Contact.png
+images/File Types/BT File - Custom.png
+images/File Types/BT File - Doc.png
+images/File Types/BT File - Document.png
+images/File Types/BT File - Executable FIle.png
+images/File Types/BT File - Folder.png
+images/File Types/BT File - Generic.png
+images/File Types/BT File - Map.png
+images/File Types/BT File - Multiple Generic.png
+images/File Types/BT File - NFC.png
+images/File Types/BT File - PDF.png
+images/File Types/BT File - Phone.png
+images/File Types/BT File - Picture (Image).png
+images/File Types/BT File - PPT.png
+images/File Types/BT File - Ringtone.png
+images/File Types/BT File - Smart Trigger.png
+images/File Types/BT File - SMS.png
+images/File Types/BT File - TXT.png
+images/File Types/BT File - Video.png
+images/File Types/BT File - Voice Note (Audio Recording).png
+images/File Types/BT File - Webpage (Hyperlink).png
+images/File Types/BT File - WiFi.png
+images/File Types/BT File - XLS (Spreadsheet).png
+images/File Types/BT File- Calendar.png
+images/File Types/File Type - APK.png
+images/File Types/File Type - Attachment.png
+images/File Types/File Type - Audio.png
+images/File Types/File Type - Calendar.png
+images/File Types/File Type - Certificate Message.png
+images/File Types/File Type - Certificate.png
+images/File Types/File Type - Certificates.png
+images/File Types/File Type - Document.png
+images/File Types/File Type - Failed Certificate.png
+images/File Types/File Type - Failed Certificates.png
+images/File Types/File Type - Folder.png
+images/File Types/File Type - Generic.png
+images/File Types/File Type - Important Certificate.png
+images/File Types/File Type - Important Certificates.png
+images/File Types/File Type - Location.png
+images/File Types/File Type - Locked Message.png
+images/File Types/File Type - Message.png
+images/File Types/File Type - Music.png
+images/File Types/File Type - PDF.png
+images/File Types/File Type - PGP Key.png
+images/File Types/File Type - Picture (Image).png
+images/File Types/File Type - PPT.png
+images/File Types/File Type - PTG.png
+images/File Types/File Type - TXT.png
+images/File Types/File Type - Unknown.png
+images/File Types/File Type - VCF (Contanct).png
+images/File Types/File Type - Video.png
+images/File Types/File Type - Voice Note (Audio Recording).png
+images/File Types/File Type - Voicemail.png
+images/File Types/File Type - Webpage (Hyperlink).png
+images/File Types/File Type - XLS (Spreadsheet).png
+images/File Types/File Type - ZIP (Compressed).png
+images/File Types/Thumbs.db
 images/grey_pellet.png
 images/ic_add_comment.png
 images/ic_add_contact.png
