@@ -103,6 +103,16 @@
     <permission system="true">_sys_headless_nostop</permission>
     <permission>access_wifi_public</permission>
     <permission>access_shared</permission>
+    <permission>access_pimdomain_calendars</permission>
+    <permission>use_camera</permission>
+    <permission>access_pimdomain_contacts</permission>
+    <permission>record_audio</permission>
+    <permission>read_personally_identifiable_information</permission>
+    <permission>access_phone</permission>
+    <permission system="true">_sys_inject_voice</permission>
+    <permission>read_phonecall_details</permission>
+    <permission>control_phone</permission>
+    <permission>access_pimdomain_calllogs</permission>
     <env var="LD_LIBRARY_PATH" value="app/native/lib:/usr/lib/qt4/lib"/>
 
 </qnx>

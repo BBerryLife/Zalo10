@@ -1025,11 +1025,11 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
         // Bắt đầu ping timer 25s
         if (m_listenTimer) m_listenTimer->start(25000);
         // Nếu có DM thread đang chờ → gửi cmd=510 ngay
-        if (!m_pendingDmThreadId.isEmpty()) {
+        if (!m_pendingDmThreadIds.isEmpty()) {
             QString req510 = QString("{\"first\":true,\"lastId\":null,\"toid\":\"%1\",\"preIds\":[]}")
-                             .arg(m_pendingDmThreadId);
+                             .arg(m_pendingDmThreadIds.head());
             sendWsRequest(510, 1, req510);
-            qDebug() << "[Zalo WS] WS ready, auto-fetch DM toid=" << m_pendingDmThreadId;
+            qDebug() << "[Zalo WS] WS ready, auto-fetch DM toid=" << m_pendingDmThreadIds.head();
         }
         return;
     }
@@ -1296,11 +1296,60 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
 
         if (!newestMsgId.isEmpty()) m_lastPollMsgId = newestMsgId;
 
-        // Lưu cache và emit — dùng pendingDmThreadId (chính xác) thay vì activeThreadId
-        QString emitThread = m_pendingDmThreadId.isEmpty() ? m_activeThreadId : m_pendingDmThreadId;
-        m_pendingDmThreadId.clear();
+        // Suy ra threadId thật từ nội dung tin
+        QString inferredThread;
+        for (int i = 0; i < rawMsgs.size(); ++i) {
+            QVariantMap m = rawMsgs[i].toMap();
+            QString uidFrom = m["uidFrom"].toString();
+            QString uidTo   = m["idTo"].toString();
+            if (uidTo == "0") uidTo = m_uid;
+            if (uidFrom == m_uid) {
+                if (!uidTo.isEmpty() && uidTo != m_uid) {
+                    inferredThread = uidTo; break;
+                }
+            } else if (!uidFrom.isEmpty()) {
+                inferredThread = uidFrom; break;
+            }
+        }
+
+        QString emitThread;
+
+        if (!inferredThread.isEmpty()) {
+            // Chỉ chấp nhận nếu inferredThread có trong queue (request thật của ta)
+            if (m_pendingDmThreadIds.contains(inferredThread)) {
+                m_pendingDmThreadIds.removeAll(inferredThread);
+                emitThread = inferredThread;
+            } else {
+                // Stale response: server trả data cũ — bỏ qua, nhưng retry thread đầu queue
+                qDebug() << "[Zalo WS] Stale old_messages: inferred=" << inferredThread
+                         << "queue.head="
+                         << (m_pendingDmThreadIds.isEmpty() ? "(empty)" : m_pendingDmThreadIds.head());
+                // Không pop queue — để retry request cho thread đang đợi
+                // Gửi lại cmd=510 cho thread đầu queue
+                if (!m_pendingDmThreadIds.isEmpty()) {
+                    QString retryToid = m_pendingDmThreadIds.head();
+                    QString retryLastId = m_threadLastMsgId.value(retryToid, "0");
+                    QString req510 = QString("{\"first\":true,\"lastId\":\"%1\",\"toid\":\"%2\",\"preIds\":[]}")
+                                     .arg(retryLastId).arg(retryToid);
+                    sendWsRequest(510, 1, req510);
+                    qDebug() << "[Zalo WS] Retrying cmd=510 for toid=" << retryToid;
+                }
+                return;
+            }
+        } else {
+            // Không infer được (msgs rỗng) — pop queue để không block
+            emitThread = m_pendingDmThreadIds.isEmpty()
+                ? m_activeThreadId
+                : m_pendingDmThreadIds.dequeue();
+        }
+
+        qDebug() << "[Zalo WS] old_messages: emitThread=" << emitThread
+                 << "msgs=" << msgs.size();
         for (int i = 0; i < msgs.size(); ++i)
             dbSaveMessage(msgs[i].toMap(), emitThread);
+        // Lưu per-thread lastId để fetch sau chính xác
+        if (!newestMsgId.isEmpty())
+            m_threadLastMsgId[emitThread] = newestMsgId;
         if (!emitThread.isEmpty())
             emit messagesReady(emitThread, msgs);
         return;
@@ -1845,7 +1894,7 @@ void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
         // DM: dùng WebSocket cmd=510 requestOldMessages (theo zca-js listen.js)
         // HTTP /api/message/getmsglist không tồn tại → 404
         // Server sẽ trả lời bằng WS cmd=510 subCmd=1 → onWsReadyRead → handleWsMessage
-        m_pendingDmThreadId = threadId;
+        m_pendingDmThreadIds.enqueue(threadId);
         if (!m_wsConnected || !m_webSocket) {
             // WS chưa sẵn sàng — connect, khi handshake xong sẽ tự gửi cmd=510
             qDebug() << "[Zalo] fetchMessages DM: WS not ready, connecting for" << threadId;
@@ -1853,10 +1902,12 @@ void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
             return;
         }
         // PHẢI có toid = uid người kia (zca-js requestOldMessages: {first,lastId,toid,preIds})
-        QString req510 = QString("{\"first\":true,\"lastId\":null,\"toid\":\"%1\",\"preIds\":[]}")
-                         .arg(threadId);
+        // Dùng per-thread lastId: nếu chưa có thì "0" (server trả tất cả), không dùng null
+        QString lastId = m_threadLastMsgId.value(threadId, "0");
+        QString req510 = QString("{\"first\":true,\"lastId\":\"%1\",\"toid\":\"%2\",\"preIds\":[]}")
+                         .arg(lastId).arg(threadId);
         sendWsRequest(510, 1, req510);
-        qDebug() << "[Zalo] fetchMessages DM: sent WS cmd=510 toid=" << threadId;
+        qDebug() << "[Zalo] fetchMessages DM: sent WS cmd=510 toid=" << threadId << "lastId=" << lastId;
     }
 }
 

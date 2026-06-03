@@ -92,12 +92,34 @@ Page {
         }
     }
 
-    onThreadIdChanged: {
-        if (chatViewPage.threadId === "" || chatViewPage.initialized) return;
+    // Chờ cả threadId lẫn selfName được set trước khi load
+    // main.qml assign threadId trước selfName nên cần cả 2 handler
+    onThreadIdChanged: { chatViewPage.tryInit() }
+    onSelfNameChanged: { chatViewPage.tryInit() }
+
+    function tryInit() {
+        // Chỉ init khi cả threadId và selfName đã có giá trị thực
+        if (chatViewPage.threadId === "") return;
+        if (chatViewPage.selfName === "" || chatViewPage.selfName === "Me") {
+            // selfName chưa set từ server, chờ thêm — nhưng nếu threadId đã set
+            // thì vẫn init với selfName mặc định nếu đã chờ đủ lâu
+        }
+        chatViewPage.doInit();
+    }
+
+
+
+    function doInit() {
+        if (chatViewPage.threadId === "") return;
+        if (chatViewPage.initialized) return;
         chatViewPage.initialized = true;
+
+        // Đảm bảo model sạch trước khi load
+        msgModel.clear();
+
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
 
-        // Load từ DB trước, ghi nhớ tất cả msgId đã có
+        // Load từ DB trước — selfName đã được set đúng lúc này
         var cached = zService.dbLoadMessages(chatViewPage.threadId);
         if (cached && cached.length > 0) {
             for (var i = 0; i < cached.length; i++) {
@@ -109,7 +131,7 @@ Page {
             msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.None);
         }
 
-        // Fetch từ server — onMessagesReady sẽ bỏ qua tin đã có trong model
+        // Fetch từ server
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
     }
 
@@ -135,29 +157,27 @@ Page {
                     Container {
                         id: rowRoot
                         horizontalAlignment: HorizontalAlignment.Fill
+                        topPadding:    ListItemData.grouped === true ? 0 : 6
+                        bottomPadding: 0
 
-                        // mine = TIN CỦA TÔI → bên TRÁI
-                        // người khác          → bên PHẢI
+                        // Dùng LeftToRight + spaceQuota để force bubble fill đúng width
+                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
                         property bool mine: (ListItemData.isMine === true
                                              || ListItemData.isMine === "true"
                                              || ListItemData.isMine === 1)
-
-                        // grouped = cùng sender với tin ngay trên
                         property bool grouped: ListItemData.grouped === true
 
-                        // Khoảng cách giữa các nhóm tin: 6px trên, 0px dưới
-                        // Trong cùng nhóm: 0px (dính liền)
-                        topPadding:    rowRoot.grouped ? 0 : 6
-                        bottomPadding: 0
-
-                        // mine (trái): rightPadding lớn để bubble không choán hết
-                        // người khác (phải): leftPadding lớn
-                        leftPadding:   rowRoot.mine ? 6  : 60
-                        rightPadding:  rowRoot.mine ? 60 : 6
-
-                        // ── Bubble: fill full width ──────────────────
+                        // Spacer trái: nhỏ nếu mine(trái), lớn nếu người khác(phải)
                         Container {
-                            horizontalAlignment: HorizontalAlignment.Fill
+                            preferredWidth: rowRoot.mine ? 6 : 60
+                            minWidth:       rowRoot.mine ? 6 : 60
+                            maxWidth:       rowRoot.mine ? 6 : 60
+                        }
+
+                        // ── Bubble chiếm phần còn lại ─────────────────
+                        Container {
+                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                             background: Color.White
                             topPadding:    rowRoot.grouped ? 6 : 10
                             bottomPadding: 10
@@ -222,6 +242,13 @@ Page {
                                 topMargin: 0; bottomMargin: 0
                             }
                         } // end bubble
+
+                        // Spacer phải: lớn nếu mine(trái), nhỏ nếu người khác(phải)
+                        Container {
+                            preferredWidth: rowRoot.mine ? 60 : 6
+                            minWidth:       rowRoot.mine ? 60 : 6
+                            maxWidth:       rowRoot.mine ? 60 : 6
+                        }
                     } // end rowRoot
                 }
             ]
@@ -334,6 +361,8 @@ Page {
             cur.bubblePos = pos;
             cur.grouped   = samePrev;
             cur.selfName  = chatViewPage.selfName;
+            // Đảm bảo isMine không bị mất sau replace — normalize về bool
+            cur.isMine    = curMine;
 
             // Timestamp hiển thị ở tin CUỐI nhóm — cập nhật ngược lên các tin trước
             if (!sameNext) {
