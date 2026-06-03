@@ -1,5 +1,5 @@
 1
-560
+564
 AboutSheet.qml
 ChatList.qml
 ChatView.qml
@@ -11,12 +11,16 @@ images/berrylife.png
 images/blank.png
 images/Bubble/incoming/bottom.png
 images/Bubble/incoming/bottom.png.amd
+images/Bubble/incoming/bottom_flipped.png
 images/Bubble/incoming/full.png
 images/Bubble/incoming/full.png.amd
+images/Bubble/incoming/full_flipped.png
 images/Bubble/incoming/middle.png
 images/Bubble/incoming/middle.png.amd
+images/Bubble/incoming/middle_flipped.png
 images/Bubble/incoming/top.png
 images/Bubble/incoming/top.png.amd
+images/Bubble/incoming/top_flipped.png
 images/Bubble/outgoing/bottom.png
 images/Bubble/outgoing/bottom.png.amd
 images/Bubble/outgoing/full.png

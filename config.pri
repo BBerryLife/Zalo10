@@ -45,12 +45,16 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom_flipped.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/full.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/full_flipped.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/middle.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/middle_flipped.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/top.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/top_flipped.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/bottom.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/bottom.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/full.png) \

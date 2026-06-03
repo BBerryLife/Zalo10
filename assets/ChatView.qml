@@ -8,7 +8,7 @@ Page {
     property string threadName:  ""
     property bool   isGroup:     false
     property string avatarUrl:   ""
-    property string selfName:    "Me"   // truyền từ main.qml
+    property string selfName:    "Me"
     property string pendingMsg:  ""
     property bool   initialized: false
 
@@ -23,7 +23,6 @@ Page {
                 verticalAlignment:   VerticalAlignment.Fill
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-                // Avatar vuông BBM full-height
                 Container {
                     id: avatarBlock
                     verticalAlignment: VerticalAlignment.Fill
@@ -57,7 +56,6 @@ Page {
                     attachedObjects: [ LayoutUpdateHandler { id: titleBarLUH } ]
                 }
 
-                // Name + subtitle
                 Container {
                     verticalAlignment: VerticalAlignment.Center
                     leftPadding: ui.du(1.5)
@@ -98,13 +96,20 @@ Page {
         if (chatViewPage.threadId === "" || chatViewPage.initialized) return;
         chatViewPage.initialized = true;
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
+
+        // Load từ DB trước, ghi nhớ tất cả msgId đã có
         var cached = zService.dbLoadMessages(chatViewPage.threadId);
         if (cached && cached.length > 0) {
-            for (var i = 0; i < cached.length; i++)
-                msgModel.append(cached[i]);
+            for (var i = 0; i < cached.length; i++) {
+                var c = cached[i];
+                c.selfName = chatViewPage.selfName;
+                msgModel.append(c);
+            }
             chatViewPage.rebuildGroups();
             msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.None);
         }
+
+        // Fetch từ server — onMessagesReady sẽ bỏ qua tin đã có trong model
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
     }
 
@@ -122,6 +127,8 @@ Page {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: ArrayDataModel { id: msgModel }
 
+            flickMode: FlickMode.Momentum
+
             listItemComponents: [
                 ListItemComponent {
                     type: ""
@@ -129,117 +136,92 @@ Page {
                         id: rowRoot
                         horizontalAlignment: HorizontalAlignment.Fill
 
-                        // mine = TIN CỦA TÔI → bên TRÁI (theo yêu cầu)
+                        // mine = TIN CỦA TÔI → bên TRÁI
                         // người khác          → bên PHẢI
                         property bool mine: (ListItemData.isMine === true
-                                             || ListItemData.isMine === "true")
+                                             || ListItemData.isMine === "true"
+                                             || ListItemData.isMine === 1)
 
-                        // Gộp tin: nếu cùng sender với tin liền trước
+                        // grouped = cùng sender với tin ngay trên
                         property bool grouped: ListItemData.grouped === true
 
-                        topPadding:    rowRoot.grouped ? 1 : 4
-                        bottomPadding: 1
-                        // mine (trái): rightPadding lớn để đẩy bubble vào bên trái
-                        // người khác (phải): leftPadding lớn để đẩy sang phải
-                        leftPadding:   rowRoot.mine ? 6  : 80
-                        rightPadding:  rowRoot.mine ? 80 : 6
+                        // Khoảng cách giữa các nhóm tin: 6px trên, 0px dưới
+                        // Trong cùng nhóm: 0px (dính liền)
+                        topPadding:    rowRoot.grouped ? 0 : 6
+                        bottomPadding: 0
 
-                        // ── Bubble BBM: dùng image làm nền ──────────
+                        // mine (trái): rightPadding lớn để bubble không choán hết
+                        // người khác (phải): leftPadding lớn
+                        leftPadding:   rowRoot.mine ? 6  : 60
+                        rightPadding:  rowRoot.mine ? 60 : 6
+
+                        // ── Bubble: fill full width ──────────────────
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
-                            layout: DockLayout {}
+                            background: Color.White
+                            topPadding:    rowRoot.grouped ? 6 : 10
+                            bottomPadding: 10
+                            leftPadding:   14
+                            rightPadding:  14
 
-                            // Bubble image — full/top/middle/bottom theo nhóm
-                            // mine=trái dùng outgoing, người khác=phải dùng incoming
-                            ImageView {
-                                objectName: "background"
-                                horizontalAlignment: HorizontalAlignment.Fill
-                                verticalAlignment:   VerticalAlignment.Fill
-                                imageSource: {
-                                    var dir = rowRoot.mine ? "outgoing" : "incoming";
-                                    var variant = ListItemData.bubblePos || "full";
-                                    return "asset:///images/Bubble/" + dir + "/" + variant + ".png.amd";
-                                }
-                            }
-
-                            // Nội dung bên trong bubble
+                            // Header: tên + timestamp — chỉ hiện ở tin ĐẦU nhóm
                             Container {
+                                visible: !rowRoot.grouped
+                                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                 horizontalAlignment: HorizontalAlignment.Fill
-                                topPadding:    rowRoot.grouped ? 6 : 18
-                                // bottomPadding lớn hơn để chừa chỗ cho Send/Delivered/Read
-                                bottomPadding: 28
-                                leftPadding:   22
-                                rightPadding:  22
+                                bottomMargin: 2
 
-                                // Header: tên bold + timestamp (chỉ ở tin đầu nhóm)
-                                Container {
-                                    visible: !rowRoot.grouped
-                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                                    horizontalAlignment: HorizontalAlignment.Fill
-                                    bottomMargin: 4
-
-                                    // Tên người gửi — BOLD như BBM (yêu cầu #2)
-                                    Label {
-                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                                        // mine: hiển thị selfName; người khác: dName
-                                        text: {
-                                            if (rowRoot.mine) {
-                                                // Lấy selfName từ ListItemData (được inject)
-                                                return ListItemData.selfName || "Me";
-                                            }
-                                            return ListItemData.dName || "Unknown";
-                                        }
-                                        textStyle {
-                                            fontSize:   FontSize.Small
-                                            fontWeight: FontWeight.Bold
-                                            color: rowRoot.mine
-                                                ? Color.create("#555555")
-                                                : Color.create("#0073BC")
-                                        }
-                                        topMargin: 0; bottomMargin: 0
+                                Label {
+                                    layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                    text: rowRoot.mine
+                                          ? (ListItemData.selfName || "Me")
+                                          : (ListItemData.dName    || "Unknown")
+                                    textStyle {
+                                        fontSize:   FontSize.Small
+                                        fontWeight: FontWeight.Bold
+                                        color: rowRoot.mine
+                                            ? Color.create("#555555")
+                                            : Color.create("#0073BC")
                                     }
-
-                                    // Timestamp (cập nhật lên tin mới nhất trong nhóm)
-                                    Label {
-                                        text: {
-                                            var ts = ListItemData.latestTs || ListItemData.ts;
-                                            if (!ts) return "";
-                                            var n = ts * 1;
-                                            if (n > 0 && n < 1e12) n *= 1000;
-                                            var d  = new Date(n);
-                                            var dow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
-                                            var h  = d.getHours();
-                                            var m2 = d.getMinutes();
-                                            var ampm = h >= 12 ? "PM" : "AM";
-                                            var h12 = h % 12; if (h12 === 0) h12 = 12;
-                                            return dow + " " + h12 + ":" + (m2 < 10 ? "0" : "") + m2 + " " + ampm;
-                                        }
-                                        horizontalAlignment: HorizontalAlignment.Right
-                                        textStyle {
-                                            fontSize: FontSize.XSmall
-                                            color:    Color.create("#777777")
-                                        }
-                                        topMargin: 0; bottomMargin: 0
-                                    }
+                                    topMargin: 0; bottomMargin: 0
                                 }
 
-                                // Tin nhắn
                                 Label {
                                     text: {
-                                        var c = ListItemData.content;
-                                        if (typeof c === "string" && c.length > 0) return c;
-                                        if (c && typeof c === "object" && c.content) return c.content;
-                                        return "[Image/Sticker]";
+                                        var ts = ListItemData.latestTs || ListItemData.ts;
+                                        if (!ts) return "";
+                                        var n = ts * 1;
+                                        if (n > 0 && n < 1e12) n *= 1000;
+                                        var d   = new Date(n);
+                                        var dow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
+                                        var h   = d.getHours();
+                                        var m2  = d.getMinutes();
+                                        var ap  = h >= 12 ? "PM" : "AM";
+                                        var h12 = h % 12; if (h12 === 0) h12 = 12;
+                                        return dow + " " + h12 + ":" + (m2 < 10 ? "0" : "") + m2 + " " + ap;
                                     }
-                                    textStyle {
-                                        base:  SystemDefaults.TextStyles.BodyText
-                                        color: Color.create("#111111")
-                                    }
-                                    multiline: true
+                                    horizontalAlignment: HorizontalAlignment.Right
+                                    textStyle { fontSize: FontSize.XSmall; color: Color.create("#777777") }
                                     topMargin: 0; bottomMargin: 0
                                 }
                             }
-                        } // end bubble DockLayout
+
+                            // Nội dung tin nhắn
+                            Label {
+                                text: {
+                                    var c = ListItemData.content;
+                                    if (typeof c === "string" && c.length > 0) return c;
+                                    if (c && typeof c === "object" && c.content) return c.content;
+                                    return "[Image/Sticker]";
+                                }
+                                textStyle {
+                                    base:  SystemDefaults.TextStyles.BodyText
+                                    color: Color.create("#111111")
+                                }
+                                multiline: true
+                                topMargin: 0; bottomMargin: 0
+                            }
+                        } // end bubble
                     } // end rowRoot
                 }
             ]
@@ -248,7 +230,7 @@ Page {
         // 1px separator
         Container { horizontalAlignment: HorizontalAlignment.Fill; preferredHeight: 1; background: Color.Black }
 
-        // ── Input bar ─────────────────────────────────────────────
+        // ── Input bar ────────────────────────────────────────────
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             background: Color.create("#F8F8F8")
@@ -258,7 +240,6 @@ Page {
             rightPadding:  ui.du(1.2)
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-            // Attach — to hơn (yêu cầu #3)
             ImageButton {
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(7); preferredHeight: ui.du(7)
@@ -268,11 +249,9 @@ Page {
                 onClicked: { /* TODO */ }
             }
 
-            // TextField — cao hơn (yêu cầu #3)
             Container {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
-
                 TextField {
                     id: inputField
                     hintText: "Enter a message"
@@ -289,7 +268,6 @@ Page {
                 }
             }
 
-            // Emoticon — to hơn (yêu cầu #3)
             ImageButton {
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(7); preferredHeight: ui.du(7)
@@ -302,7 +280,6 @@ Page {
 
     } // end content
 
-    // Send button trên NavigationPane ActionBar
     actions: [
         ActionItem {
             id: sendAction
@@ -323,43 +300,42 @@ Page {
         zService.sendMessage(chatViewPage.threadId, txt, chatViewPage.isGroup);
     }
 
-    // ─── Helper: tính bubblePos và grouped cho toàn bộ model ─────
-    // Gọi lại mỗi khi thêm tin để cập nhật nhóm và timestamp
-    // isMine normalizer: true/false/"true"/"false"/1/0 → bool
+    // ─── isMine normalizer ───────────────────────────────────────
     function normMine(v) {
-        if (v === true  || v === 1)        return true;
-        if (v === false || v === 0)        return false;
-        if (typeof v === "string") return (v === "true" || v === "1");
+        if (v === true  || v === 1)  return true;
+        if (v === false || v === 0)  return false;
+        if (typeof v === "string")   return (v === "true" || v === "1");
         return false;
     }
 
+    // ─── Xây lại bubblePos + grouped + latestTs cho toàn bộ model
     function rebuildGroups() {
         var size = msgModel.size();
         if (size === 0) return;
+
         for (var i = 0; i < size; i++) {
             var cur  = msgModel.value(i);
-            var prev = (i > 0) ? msgModel.value(i - 1) : null;
-            var next = (i < size - 1) ? msgModel.value(i + 1) : null;
+            var prev = (i > 0)          ? msgModel.value(i - 1) : null;
+            var next = (i < size - 1)   ? msgModel.value(i + 1) : null;
 
             var curMine  = chatViewPage.normMine(cur.isMine);
             var prevMine = prev ? chatViewPage.normMine(prev.isMine) : !curMine;
             var nextMine = next ? chatViewPage.normMine(next.isMine) : !curMine;
 
-            // Gộp theo isMine — không dùng senderId (senderId không nhất quán)
-            var samePrev = prev && (prevMine === curMine);
-            var sameNext = next && (nextMine === curMine);
+            var samePrev = (prev !== null) && (prevMine === curMine);
+            var sameNext = (next !== null) && (nextMine === curMine);
 
             var pos;
-            if (samePrev && sameNext)       pos = "middle";
-            else if (samePrev && !sameNext) pos = "bottom";
-            else if (!samePrev && sameNext) pos = "top";
-            else                            pos = "full";
+            if      ( samePrev &&  sameNext) pos = "middle";
+            else if ( samePrev && !sameNext) pos = "bottom";
+            else if (!samePrev &&  sameNext) pos = "top";
+            else                             pos = "full";
 
             cur.bubblePos = pos;
             cur.grouped   = samePrev;
             cur.selfName  = chatViewPage.selfName;
 
-            // Timestamp: hiển thị ts của tin CUỐI cùng trong nhóm
+            // Timestamp hiển thị ở tin CUỐI nhóm — cập nhật ngược lên các tin trước
             if (!sameNext) {
                 cur.latestTs = cur.ts;
                 var k = i - 1;
@@ -372,6 +348,29 @@ Page {
                 }
             }
             msgModel.replace(i, cur);
+        }
+    }
+
+    // ─── Helper: lấy set msgId hiện có trong model (chỉ id thật, bỏ local_)
+    function buildExistingIds() {
+        var ids = {};
+        for (var i = 0; i < msgModel.size(); i++) {
+            var mid = msgModel.value(i).msgId;
+            if (mid && mid.indexOf("local_") !== 0)
+                ids[mid] = true;
+        }
+        return ids;
+    }
+
+    // ─── Helper: xóa local placeholder có content khớp (tìm từ cuối lên)
+    function removeLocalPlaceholder(content) {
+        for (var k = msgModel.size() - 1; k >= 0; k--) {
+            var item = msgModel.value(k);
+            if (item.msgId && item.msgId.indexOf("local_") === 0
+                    && item.content === content) {
+                msgModel.removeAt(k);
+                return;
+            }
         }
     }
 
@@ -519,18 +518,29 @@ Page {
             target: zService
 
             onMessagesReady: {
-                var sig_tid = threadId;
-                if (sig_tid !== chatViewPage.threadId) return;
-                var existing = {};
-                for (var i = 0; i < msgModel.size(); i++)
-                    existing[msgModel.value(i).msgId] = true;
+                // Bỏ qua nếu không phải thread đang mở
+                if (threadId !== chatViewPage.threadId) return;
+
+                // Tập hợp tất cả msgId thật đã có trong model
+                var existing = chatViewPage.buildExistingIds();
+
                 var added = false;
                 for (var j = 0; j < messages.length; j++) {
-                    if (!existing[messages[j].msgId]) {
-                        msgModel.append(messages[j]);
-                        added = true;
+                    var msg = messages[j];
+                    // Bỏ qua tin đã có
+                    if (existing[msg.msgId]) continue;
+
+                    // Nếu là tin của mình → xóa local placeholder trùng content
+                    if (chatViewPage.normMine(msg.isMine)) {
+                        chatViewPage.removeLocalPlaceholder(msg.content);
                     }
+
+                    var nm = msg;
+                    nm.selfName = chatViewPage.selfName;
+                    msgModel.append(nm);
+                    added = true;
                 }
+
                 if (added) {
                     chatViewPage.rebuildGroups();
                     msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
@@ -538,10 +548,12 @@ Page {
             }
 
             onMessageSent: {
-                var sig_tid = threadId;
-                if (sig_tid !== chatViewPage.threadId) return;
+                if (threadId !== chatViewPage.threadId) return;
                 sendAction.enabled = (inputField.text.trim().length > 0);
+
                 if (success && chatViewPage.pendingMsg !== "") {
+                    // Thêm local placeholder — KHÔNG lưu DB
+                    // Sẽ bị xóa khi tin thật từ server về qua onMessagesReady/onNewMessage
                     var m = {
                         msgId:    "local_" + new Date().getTime(),
                         content:  chatViewPage.pendingMsg,
@@ -553,7 +565,6 @@ Page {
                         selfName: chatViewPage.selfName
                     };
                     msgModel.append(m);
-                    zService.dbSaveMessage(m, chatViewPage.threadId);
                     chatViewPage.rebuildGroups();
                     msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
                     chatViewPage.pendingMsg = "";
@@ -561,13 +572,21 @@ Page {
             }
 
             onNewMessage: {
-                var sig_tid = threadId;
-                if (sig_tid !== chatViewPage.threadId) return;
+                if (threadId !== chatViewPage.threadId) return;
+
+                // Bỏ qua nếu msgId đã có
                 for (var i = 0; i < msgModel.size(); i++) {
                     if (msgModel.value(i).msgId === message.msgId) return;
                 }
+
                 var msg = message;
                 msg.selfName = chatViewPage.selfName;
+
+                // Nếu là tin của mình → xóa local placeholder trùng content
+                if (chatViewPage.normMine(msg.isMine)) {
+                    chatViewPage.removeLocalPlaceholder(msg.content);
+                }
+
                 msgModel.append(msg);
                 chatViewPage.rebuildGroups();
                 msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
