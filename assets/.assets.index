@@ -1,9 +1,10 @@
 1
-564
+565
 AboutSheet.qml
 ChatList.qml
 ChatView.qml
 ContactsTab.qml
+EmojiButton.qml
 images/action_delete.png
 images/ai_add_task.png
 images/barcode.png

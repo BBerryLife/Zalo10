@@ -40,6 +40,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ChatList.qml) \
         $$quote($$BASEDIR/assets/ChatView.qml) \
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
+        $$quote($$BASEDIR/assets/EmojiButton.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
