@@ -7,8 +7,8 @@ Container {
 
     signal emojiTapped(string file, string category)
 
-    preferredWidth:  ui.du(5.5)
     preferredHeight: ui.du(5.5)
+    maxWidth: ui.du(6)
     layout: DockLayout {}
 
     ImageButton {
