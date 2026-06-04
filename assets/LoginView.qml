@@ -37,7 +37,7 @@ Page {
 
         Container { preferredHeight: ui.du(2) }
 
-        // ── Khung QR lớn hơn ─────────────────────────────────
+        // - Khung QR lớn hơn -
         Container {
             horizontalAlignment: HorizontalAlignment.Center
             layout: DockLayout {}

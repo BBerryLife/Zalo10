@@ -164,6 +164,16 @@ TabbedPane {
                                             verticalAlignment: VerticalAlignment.Center
                                             scalingMethod: ScalingMethod.AspectFill
                                         }
+
+                                        // Spark badge khi có tin nhắn mới chưa đọc
+                                        ImageView {
+                                            visible: ListItemData.hasUnread === true
+                                            imageSource: "asset:///images/cs_spark_small.png"
+                                            preferredWidth:  ui.du(3.5)
+                                            preferredHeight: ui.du(3.5)
+                                            horizontalAlignment: HorizontalAlignment.Left
+                                            verticalAlignment:   VerticalAlignment.Top
+                                        }
                                         
                                         // Text container
                                         Container {
@@ -185,7 +195,17 @@ TabbedPane {
                                                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                                 
                                                 Label {
-                                                    text: (ListItemData.lastMessage || ListItemData.lastMsg || "No messages yet")
+                                                    text: {
+                                                        var lm = ListItemData.lastMessage || ListItemData.lastMsg || "";
+                                                        if (lm.length === 0) return "No messages yet";
+                                                        var prefix = "";
+                                                        if (ListItemData.lastMsgIsMine === true || ListItemData.lastMsgIsMine === "true") {
+                                                            prefix = "Me: ";
+                                                        } else if (ListItemData.lastSenderName && ListItemData.lastSenderName.length > 0) {
+                                                            prefix = ListItemData.lastSenderName.split(" ")[0] + ": ";
+                                                        }
+                                                        return prefix + lm;
+                                                    }
                                                     textStyle {
                                                         base: SystemDefaults.TextStyles.SubtitleText
                                                         color: Color.DarkGray
@@ -218,6 +238,10 @@ TabbedPane {
                             page.isGroup = false
                             page.avatarUrl = item.localAvatar || item.avatar || ""
                             page.selfName = root.selfName
+                            // Clear unread badge khi mở chat
+                            var idx = indexPath[0]
+                            var d = friendModel.value(idx)
+                            if (d) { d.hasUnread = false; friendModel.replace(idx, d) }
                             chatsNav.push(page)
                         }
                     }
@@ -253,7 +277,11 @@ TabbedPane {
                             friendModel.clear()
                             for (var i = 0; i < friends.length; i++) {
                                 var f = friends[i]
-                                f.localAvatar = ""
+                                f.localAvatar    = ""
+                                f.hasUnread      = false
+                                f.lastMsgIsMine  = false
+                                f.lastSenderName = ""
+                                f.lastMessage    = f.lastMessage || f.lastMsg || ""
                                 if (f.lastTime && f.lastTime !== "") {
                                     var ts = parseInt(f.lastTime)
                                     if (!isNaN(ts)) f.lastTime = root.formatTime(ts)
@@ -284,6 +312,29 @@ TabbedPane {
                                 contactsTab.content.selfName = root.selfName;
                             zService.fetchFriends()
                             chatsLoading.visible = true
+                        }
+                        onNewMessage: {
+                            var tid = threadId;
+                            var snippet = (message.msgType === 2 || message.msgType === "2")
+                                ? "[Photo]" : (message.content || "").substring(0, 60);
+                            var isMine = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
+                            var senderName = message.dName || "";
+                            for (var i = 0; i < friendModel.size(); i++) {
+                                var d = friendModel.value(i);
+                                if ((d.threadId || d.uid || "") === tid) {
+                                    d.lastMessage    = snippet;
+                                    d.lastMsgIsMine  = isMine;
+                                    d.lastSenderName = senderName;
+                                    d.hasUnread      = !isMine;
+                                    friendModel.removeAt(i);
+                                    friendModel.insert(0, d);
+                                    return;
+                                }
+                            }
+                        }
+                        onMessageSent: {
+                            // Update lastMessage cho tin tôi gửi — dùng threadId + content từ signal
+                            // Hiện tại signal onMessageSent không truyền threadId/content nên bỏ qua
                         }
                     }
                 ]
@@ -462,7 +513,10 @@ TabbedPane {
                             page.threadId = item.threadId || ""
                             page.threadName = item.name || "Group"
                             page.isGroup = true
-                            page.avatarUrl = item.localAvatar || item.avatar || ""
+                            var av = item.localAvatar || item.avatar || ""
+                            // Groups: nếu không có avatar dùng blank thay vì chữ cái đầu
+                            if (av.length === 0) av = "asset:///images/blank.png"
+                            page.avatarUrl = av
                             page.selfName = root.selfName
                             groupsNav.push(page)
                         }

@@ -75,9 +75,13 @@ NavigationPane {
 
                 dataModel: ArrayDataModel { id: contactModel }
 
+                function itemType(data, indexPath) {
+                    return "gridItem";
+                }
+
                 listItemComponents: [
                     ListItemComponent {
-                        type: ""
+                        type: "gridItem"
                         Container {
                             id: gridCell
                             preferredWidth:  ui.du(20)
@@ -165,13 +169,23 @@ NavigationPane {
                         contactModel.append(friends[i])
 
                     // Trigger download avatar cho những item chưa có localAvatar
-                    // C++ sẽ re-emit friendsReady lần 2 khi tất cả xong → model rebuild lại
                     for (var j = 0; j < friends.length; j++) {
                         var f = friends[j]
                         var tid = f.threadId || f.uid || ""
                         var url = f.avatar || ""
                         if (tid !== "" && url !== "" && (f.localAvatar || "") === "")
                             zService.downloadAvatar(tid, url)
+                    }
+                }
+
+                onAvatarReady: {
+                    for (var i = 0; i < contactModel.size(); i++) {
+                        var d = contactModel.value(i)
+                        if ((d.threadId || d.uid || "") === threadId) {
+                            d.localAvatar = localPath
+                            contactModel.replace(i, d)
+                            break
+                        }
                     }
                 }
 

@@ -76,7 +76,7 @@ Page {
             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
             horizontalAlignment: HorizontalAlignment.Fill
 
-            // ── Ảnh nền ──────────────────────────────────────────
+            // - Ảnh nền -
             Container {
                 preferredHeight: ui.du(28)
                 horizontalAlignment: HorizontalAlignment.Fill
@@ -130,7 +130,7 @@ Page {
                 }
             }
 
-            // ── Tên ──────────────────────────────────────────────
+            // - Tên -
             Container {
                 topPadding: ui.du(2)
                 bottomPadding: ui.du(1)
@@ -148,10 +148,10 @@ Page {
                 }
             }
 
-            // ── Divider ───────────────────────────────────────────
+            // - Divider -
             Divider { topMargin: ui.du(1); bottomMargin: ui.du(1) }
 
-            // ── Nút hành động ─────────────────────────────────────
+            // - Nút hành động -
             Container {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 horizontalAlignment: HorizontalAlignment.Center
@@ -160,7 +160,7 @@ Page {
 
             }
 
-            // ── Thông tin thêm (placeholder cho sau) ─────────────
+            // - Thông tin thêm (placeholder cho sau) -
             Container {
                 leftPadding: ui.du(3)
                 rightPadding: ui.du(3)

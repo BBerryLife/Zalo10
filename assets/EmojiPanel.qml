@@ -3,10 +3,10 @@ import bb.cascades 1.4
 Container {
     id: emojiPanel
 
-    // ─── Public API ──────────────────────────────────────────────
+    // - Public API -
     signal emojiPicked(string charStr)
 
-    // ─── Internal state ──────────────────────────────────────────
+    // - Internal state -
     property real   pageWidth:       0
     property int    categoryIndex:   0
     property int    pagePeople:   0
@@ -15,7 +15,7 @@ Container {
     property int    pagePlaces:   0
     property int    pageSymbols:  0
 
-    // ─── Convert emoji filename to Unicode character ──────────────
+    // - Convert emoji filename to Unicode character -
     function fileToChar(filename) {
         var s = filename.replace("emoji_", "").replace("_64.png", "");
         var parts = s.split("_");
@@ -33,7 +33,7 @@ Container {
     }
 
 
-    // ── Measure page width ──────────────────────────────
+    // - Measure page width -
     attachedObjects: [
         LayoutUpdateHandler {
             id: panelLUH
@@ -45,7 +45,7 @@ Container {
     ]
 
 
-    // ── People ──
+    // - People -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -340,7 +340,7 @@ Container {
         }
     }
 
-    // ── Nature ──
+    // - Nature -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -489,7 +489,7 @@ Container {
         }
     }
 
-    // ── Objects ──
+    // - Objects -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -754,7 +754,7 @@ Container {
         }
     }
 
-    // ── Places ──
+    // - Places -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -925,7 +925,7 @@ Container {
         }
     }
 
-    // ── Symbols ──
+    // - Symbols -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -1134,7 +1134,7 @@ Container {
     }
 
 
-    // ── Bottom: Category tabs + Backspace ────────────────
+    // - Bottom: Category tabs + Backspace -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         background: Color.create("#E0E0E0")

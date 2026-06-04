@@ -6,7 +6,7 @@ Page {
     id: chatListPage
     property bool fetchStarted: false
     
-    // ── HEADER NATIVE MÀU XANH #2575fc ───────────────────────
+    // - HEADER NATIVE MÀU XANH #2575fc -
     titleBar: TitleBar {
         kind: TitleBarKind.FreeForm
         kindProperties: FreeFormTitleBarKindProperties {
@@ -40,7 +40,7 @@ Page {
         }
     }
     
-    // ── ACTION BAR DƯỚI ĐÁY CHUẨN BB10 ───────────────────────
+    // - ACTION BAR DƯỚI ĐÁY CHUẨN BB10 -
     actions: [
         ActionItem {
             title: "Refresh"

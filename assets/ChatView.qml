@@ -10,13 +10,13 @@ Page {
     property string threadName:  ""
     property bool   isGroup:     false
     property string avatarUrl:   ""
-    property string selfName:    "Me"
+    property string selfName:    ""
     property string pendingMsg:  ""
     property bool   initialized: false
     property bool   emojiPanelOpen: false
     property string pendingAttachPath: ""  // path selected by FilePicker
 
-    // ─── TITLE BAR ───────────────────────────────────────────────
+    // - TITLE BAR -
     titleBar: TitleBar {
         scrollBehavior: TitleBarScrollBehavior.Sticky
         kind: TitleBarKind.FreeForm
@@ -106,20 +106,22 @@ Page {
     onThreadIdChanged: {
         chatViewPage.initialized = false;
         msgModel.clear();
-        chatViewPage.tryInit();
+        // Nếu selfName đã được set rồi (trường hợp selfName assign trước threadId)
+        if (chatViewPage.selfName !== "") {
+            chatViewPage.tryInit();
+        }
+        // Nếu selfName chưa có, onSelfNameChanged sẽ trigger sau
     }
 
     onSelfNameChanged: {
-        // selfName thay đổi nghĩa là props vừa được assign
         if (!chatViewPage.initialized) {
             chatViewPage.tryInit();
         }
     }
 
     function tryInit() {
-        // Cần cả threadId lẫn selfName trước khi init
         if (chatViewPage.threadId === "") return;
-        if (chatViewPage.selfName === "") return;
+        if (chatViewPage.selfName === "") return;  // Đợi selfName thật
         chatViewPage.doInit();
     }
 
@@ -127,10 +129,9 @@ Page {
 
     function doInit() {
         if (chatViewPage.threadId === "") return;
+        if (chatViewPage.selfName === "") return;
         if (chatViewPage.initialized) return;
         chatViewPage.initialized = true;
-
-        // Model đã được clear trong onThreadIdChanged — không cần clear lại ở đây
 
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
 
@@ -150,14 +151,14 @@ Page {
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
     }
 
-    // ─── CONTENT ─────────────────────────────────────────────────
+    // - CONTENT -
     content: Container {
         layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment:   VerticalAlignment.Fill
         background: Color.create("#d6d6d6")
 
-        // ── Message list ─────────────────────────────────────────
+        // - Message list -
         ListView {
             id: msgList
             horizontalAlignment: HorizontalAlignment.Fill
@@ -190,7 +191,7 @@ Page {
                             maxWidth:       rowRoot.mine ? 6 : 60
                         }
 
-                        // ── Bubble chiếm phần còn lại ─────────────────
+                        // - Bubble chiếm phần còn lại -
                         Container {
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                             background: Color.White
@@ -259,11 +260,17 @@ Page {
 
                                 topMargin: 0; bottomMargin: 0
 
-                                // ── Text message ──
+                                // - Text message -
                                 Label {
                                     visible: !parent.isImage
-                                    text: (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
-                                          ? ListItemData.content : "[Sticker]"
+                                    text: {
+                                        if (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
+                                            return ListItemData.content;
+                                        // msgType=2 nhưng content rỗng (tin ảnh cũ chưa migrate) → hiện [Photo]
+                                        if (ListItemData.msgType === 2 || ListItemData.msgType === "2")
+                                            return "[Photo]";
+                                        return "[Sticker]";
+                                    }
                                     textStyle {
                                         base:  SystemDefaults.TextStyles.BodyText
                                         color: Color.create("#111111")
@@ -271,7 +278,7 @@ Page {
                                     multiline: true
                                     topMargin: 0; bottomMargin: 0
                                 }
-                                // ── Image message — full bubble width ──
+                                // - Image message — full bubble width -
                                 Container {
                                     visible: parent.isImage
                                     horizontalAlignment: HorizontalAlignment.Fill
@@ -312,7 +319,7 @@ Page {
 
 
 
-        // ── Emoji Picker Panel ────────────────────────────────────
+        // - Emoji Picker Panel -
         // Chiều cao cố định ~250dp giống BBM keyboard replacement panel
         EmojiPanel {
             id: emojiPanel
@@ -326,7 +333,7 @@ Page {
         }
 
 
-        // ── Input bar ────────────────────────────────────────────
+        // - Input bar -
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             background: Color.create("#F8F8F8")
@@ -405,7 +412,7 @@ Page {
         zService.sendMessage(chatViewPage.threadId, txt, chatViewPage.isGroup);
     }
 
-    // ─── isMine normalizer ───────────────────────────────────────
+    // - isMine normalizer -
     function normMine(v) {
         if (v === true  || v === 1)  return true;
         if (v === false || v === 0)  return false;
@@ -413,7 +420,7 @@ Page {
         return false;
     }
 
-    // ─── Xây lại bubblePos + grouped + latestTs cho toàn bộ model
+    // - Xây lại bubblePos + grouped + latestTs cho toàn bộ model
     function rebuildGroups() {
         var size = msgModel.size();
         if (size === 0) return;
@@ -465,7 +472,7 @@ Page {
         }
     }
 
-    // ─── Helper: lấy set msgId hiện có trong model (chỉ id thật, bỏ local_)
+    // - Helper: lấy set msgId hiện có trong model (chỉ id thật, bỏ local_)
     function buildExistingIds() {
         var ids = {};
         for (var i = 0; i < msgModel.size(); i++) {
@@ -476,7 +483,7 @@ Page {
         return ids;
     }
 
-    // ─── Helper: xóa local placeholder có content khớp (tìm từ cuối lên)
+    // - Helper: xóa local placeholder có content khớp (tìm từ cuối lên)
     function removeLocalPlaceholder(content) {
         // Xóa placeholder text khớp content
         for (var k = msgModel.size() - 1; k >= 0; k--) {
@@ -757,7 +764,7 @@ Page {
             }
         },
 
-        // ── FilePicker for all file types (ảnh + tài liệu + video ...) ──
+        // - FilePicker for all file types (ảnh + tài liệu + video ...) -
         FilePicker {
             id: filePicker
             type: FileType.Other   // Cho phép mọi loại file

@@ -114,9 +114,12 @@ ZaloService::ZaloService(QObject *parent)
             "  dName    TEXT,"
             "  ts       TEXT,"
             "  isMine   INTEGER DEFAULT 0,"
-            "  isGroup  INTEGER DEFAULT 0"
+            "  isGroup  INTEGER DEFAULT 0,"
+            "  msgType  INTEGER DEFAULT 0"
             ");";
         sqlite3_exec(m_db, sql, 0, 0, 0);
+        // Migrate existing DBs that don't have msgType column yet
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN msgType INTEGER DEFAULT 0;", 0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
         qDebug() << "[Zalo] SQLite DB opened:" << dbPath;
     } else {
@@ -1245,7 +1248,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (nUrl.isEmpty()) nUrl = hUrl;
                 if (nUrl.isEmpty()) nUrl = oUrl;
                 if (!nUrl.isEmpty()) {
-                    rawContent = QString("{"normalUrl":"%1","hdUrl":"%2","oriUrl":"%3"}")
+                    rawContent = QString("{\"normalUrl\":\"%1\",\"hdUrl\":\"%2\",\"oriUrl\":\"%3\"}")
                                  .arg(nUrl).arg(hUrl).arg(oUrl);
                 }
             }
@@ -3112,8 +3115,8 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
 
     const char *sql =
         "INSERT OR REPLACE INTO messages "
-        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup) "
-        "VALUES (?,?,?,?,?,?,?,?);";
+        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType) "
+        "VALUES (?,?,?,?,?,?,?,?,?)";
     sqlite3_stmt *stmt = 0;
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
     sqlite3_bind_text(stmt, 1, msgId.toUtf8().constData(),                      -1, SQLITE_TRANSIENT);
@@ -3124,6 +3127,7 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     sqlite3_bind_text(stmt, 6, msg["ts"].toString().toUtf8().constData(),       -1, SQLITE_TRANSIENT);
     sqlite3_bind_int (stmt, 7, msg["isMine"].toBool() ? 1 : 0);
     sqlite3_bind_int (stmt, 8, msg["isGroup"].toBool() ? 1 : 0);
+    sqlite3_bind_int (stmt, 9, msg["msgType"].toInt());
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
 }
@@ -3134,7 +3138,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     if (!m_db || threadId.isEmpty()) return result;
 
     const char *sql =
-        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup "
+        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType "
         "FROM messages WHERE threadId=? "
         "ORDER BY CAST(ts AS INTEGER) ASC LIMIT 200;";
     sqlite3_stmt *stmt = 0;
@@ -3149,6 +3153,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
         m["ts"]       = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 4));
         m["isMine"]   = (sqlite3_column_int(stmt, 5) == 1);
         m["isGroup"]  = (sqlite3_column_int(stmt, 6) == 1);
+        m["msgType"]  = sqlite3_column_int(stmt, 7);
         result.append(m);
     }
     sqlite3_finalize(stmt);
