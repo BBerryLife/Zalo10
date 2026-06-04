@@ -1,5 +1,5 @@
 1
-628
+630
 AboutSheet.qml
 ChatList.qml
 ChatView.qml
@@ -589,7 +589,9 @@ images/grey_pellet.png
 images/ic_add_comment.png
 images/ic_add_contact.png
 images/ic_attach.png
+images/ic_back_white.png
 images/ic_bbm.png
+images/ic_close_white.png
 images/ic_contact.png
 images/ic_copy.png
 images/ic_copy_chat.png

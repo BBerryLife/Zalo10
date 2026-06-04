@@ -2139,8 +2139,22 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
 
     QString clientId = QString::number(QDateTime::currentMSecsSinceEpoch());
     QString boundary = "----ZaloBoundary" + clientId;
+    QString filename = path.section('/', -1);
 
-    // Build multipart body
+    // Build params JSON — cùng pattern với sendMessage
+    QVariantMap photoParams;
+    photoParams["clientId"] = clientId;
+    photoParams["ttl"]      = 0;
+    if (isGroup) {
+        photoParams["grid"]       = threadId;
+        photoParams["visibility"] = 0;
+    } else {
+        photoParams["toid"] = threadId;
+        photoParams["imei"] = m_imei;
+    }
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(photoParams)));
+
+    // Build multipart body — field name "fileContent" theo zca-js
     QByteArray bnd = ("--" + boundary).toUtf8();
     QByteArray body;
     body += bnd + "\r\nContent-Disposition: form-data; name=\"clientId\"\r\n\r\n" + clientId.toUtf8() + "\r\n";
@@ -2152,32 +2166,22 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
         body += bnd + "\r\nContent-Disposition: form-data; name=\"toid\"\r\n\r\n" + threadId.toUtf8() + "\r\n";
         body += bnd + "\r\nContent-Disposition: form-data; name=\"imei\"\r\n\r\n" + m_imei.toUtf8() + "\r\n";
     }
-
-    // File part — dùng field name "fileContent" (zca-js UploadMultiFile.ts)
-    QString filename = path.section('/', -1);
     body += "--" + boundary.toUtf8() + "\r\n";
     body += "Content-Disposition: form-data; name=\"fileContent\"; filename=\"" + filename.toUtf8() + "\"\r\n";
     body += "Content-Type: " + mime.toUtf8() + "\r\n\r\n";
     body += fileData + "\r\n";
     body += "--" + boundary.toUtf8() + "--\r\n";
 
-    // Params: dùng aesEncryptBase64(secretKey) như sendMessage — KHÔNG dùng buildEncryptedParams
-    // buildEncryptedParams dành cho login flow (dùng AES_FIXED_KEY), photo upload cần secretKey
-    QVariantMap photoParams;
-    if (isGroup) {
-        photoParams["grid"]       = threadId;
-        photoParams["visibility"] = 0;
-    } else {
-        photoParams["toid"]       = threadId;
-        photoParams["imei"]       = m_imei;
-    }
-    photoParams["clientId"] = clientId;
-    photoParams["ttl"]      = 0;
-
-    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(photoParams)));
-
+    // Zalo web API photo upload:
+    // File upload service URL: tt-files-wpa (thay thế tt-chatN-wpa trong chatServiceUrl)
+    // DM:    POST /api/message/photo  (tt-files-wpa)
+    // Group: POST /api/group/photo    (tt-group-wpa)
+    QString fileServiceUrl = m_chatServiceUrl;
+    // Replace "tt-chatN-wpa" → "tt-files-wpa" để có đúng upload endpoint
+    QRegExp rxChat("tt-chat\\d+-wpa");
+    fileServiceUrl.replace(rxChat, "tt-files-wpa");
     QString base = isGroup ? m_groupServiceUrl + "/api/group/photo"
-                           : m_chatServiceUrl  + "/api/message/photo";
+                           : fileServiceUrl    + "/api/message/photo";
     QString urlStr = base
                    + "?zpw_ver=" + QString::number(API_VERSION)
                    + "&zpw_type=" + QString::number(API_TYPE)

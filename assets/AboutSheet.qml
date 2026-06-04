@@ -10,11 +10,34 @@ Sheet {
         id: aboutNav
         
         Page {
-            titleBar: TitleBar {
-                title: "About"
-                dismissAction: ActionItem {
-                    title: "Close"
-                    onTriggered: { aboutSheetRoot.close() }
+                        titleBar: TitleBar {
+                scrollBehavior: TitleBarScrollBehavior.Sticky
+                kind: TitleBarKind.FreeForm
+                kindProperties: FreeFormTitleBarKindProperties {
+                    content: Container {
+                        background: Color.create("#2575fc")
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        verticalAlignment:   VerticalAlignment.Fill
+                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                        leftPadding: ui.du(1)
+
+                        ImageButton {
+                            verticalAlignment: VerticalAlignment.Center
+                            preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
+                            defaultImageSource: "asset:///images/ic_close_white.png"
+                            pressedImageSource: "asset:///images/ic_close_white.png"
+                            rightMargin: ui.du(0.5)
+                            onClicked: { aboutSheetRoot.close() }
+                        }
+
+                        Label {
+                            text: "About"
+                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
+                            topMargin: 0; bottomMargin: 0
+                        }
+                    }
                 }
             }
             

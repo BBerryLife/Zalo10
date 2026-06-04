@@ -13,12 +13,24 @@ Page {
     property string bgAvatarUrl:  ""
 
     titleBar: TitleBar {
-        title: profilePage.contactName
-        kind: TitleBarKind.Default
-        appearance: TitleBarAppearance.Default
-        dismissAction: ActionItem {
-            title: "Back"
-            onTriggered: { navigationPane.pop() }
+        scrollBehavior: TitleBarScrollBehavior.Sticky
+        kind: TitleBarKind.FreeForm
+        kindProperties: FreeFormTitleBarKindProperties {
+            content: Container {
+                background: Color.create("#2575fc")
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment:   VerticalAlignment.Fill
+                layout: DockLayout {}
+                leftPadding: ui.du(2.5)
+
+                Label {
+                    text: profilePage.contactName.length > 0 ? profilePage.contactName : "Profile"
+                    verticalAlignment: VerticalAlignment.Center
+                    horizontalAlignment: HorizontalAlignment.Left
+                    textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
+                    topMargin: 0; bottomMargin: 0
+                }
+            }
         }
     }
 

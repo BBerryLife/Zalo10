@@ -96,18 +96,28 @@ Page {
         }
     }
 
-    // Chờ cả threadId lẫn selfName được set trước khi load
-    // main.qml assign threadId trước selfName nên cần cả 2 handler
-    onThreadIdChanged: { chatViewPage.tryInit() }
+    // BB10: threadId được set từ main.qml TRƯỚC khi page được push vào stack.
+    // onThreadIdChanged không fire vì property được set trước khi object attached.
+    // Dùng onCreationCompleted để init sau khi object hoàn toàn sẵn sàng.
+    onCreationCompleted: {
+        msgModel.clear();
+        chatViewPage.initialized = false;
+        // Dùng Qt.callLater equivalent — delay nhỏ để đảm bảo tất cả properties đã set
+        initTimer.start();
+    }
+
+    // Fallback: nếu threadId thay đổi sau khi tạo (unlikely nhưng safe)
+    onThreadIdChanged: {
+        if (chatViewPage.initialized) {
+            chatViewPage.initialized = false;
+            msgModel.clear();
+        }
+        chatViewPage.tryInit();
+    }
     onSelfNameChanged: { chatViewPage.tryInit() }
 
     function tryInit() {
-        // Chỉ init khi cả threadId và selfName đã có giá trị thực
         if (chatViewPage.threadId === "") return;
-        if (chatViewPage.selfName === "" || chatViewPage.selfName === "Me") {
-            // selfName chưa set từ server, chờ thêm — nhưng nếu threadId đã set
-            // thì vẫn init với selfName mặc định nếu đã chờ đủ lâu
-        }
         chatViewPage.doInit();
     }
 
@@ -118,8 +128,7 @@ Page {
         if (chatViewPage.initialized) return;
         chatViewPage.initialized = true;
 
-        // Đảm bảo model sạch trước khi load
-        msgModel.clear();
+        // Model đã được clear trong onThreadIdChanged — không cần clear lại ở đây
 
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
 
@@ -302,9 +311,12 @@ Page {
 
 
         // ── Emoji Picker Panel ────────────────────────────────────
+        // Chiều cao cố định ~250dp giống BBM keyboard replacement panel
         EmojiPanel {
             id: emojiPanel
             horizontalAlignment: HorizontalAlignment.Fill
+            preferredHeight: ui.du(26)
+            minHeight: ui.du(22)
             visible: false
             onEmojiPicked: {
                 inputField.text = inputField.text + charStr
@@ -467,6 +479,14 @@ Page {
     }
 
     attachedObjects: [
+        // Timer để delay init nhỏ sau onCreationCompleted (BB10 quirk)
+        Timer {
+            id: initTimer
+            interval: 50
+            repeat: false
+            onTriggered: { chatViewPage.tryInit() }
+        },
+
         Sheet {
             id: callSheet
             peekEnabled: false

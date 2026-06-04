@@ -628,7 +628,9 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_add_comment.png) \
         $$quote($$BASEDIR/assets/images/ic_add_contact.png) \
         $$quote($$BASEDIR/assets/images/ic_attach.png) \
+        $$quote($$BASEDIR/assets/images/ic_back_white.png) \
         $$quote($$BASEDIR/assets/images/ic_bbm.png) \
+        $$quote($$BASEDIR/assets/images/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/ic_contact.png) \
         $$quote($$BASEDIR/assets/images/ic_copy.png) \
         $$quote($$BASEDIR/assets/images/ic_copy_chat.png) \
