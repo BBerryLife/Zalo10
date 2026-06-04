@@ -96,46 +96,16 @@ Page {
         }
     }
 
-    // BB10 Cascades: createObject() tạo object mới mỗi lần.
-    // Properties được assign THEO THỨ TỰ từ JS: threadId → threadName → isGroup → avatarUrl → selfName
-    // onCreationCompleted chạy TRƯỚC khi JS assign properties → không dùng được.
-    // GIẢI PHÁP: dùng cả onThreadIdChanged lẫn onSelfNameChanged.
-    // - Object mới: threadId set → selfName set → cả 2 đều fire → doInit() chạy khi đủ điều kiện.
-    // - Mỗi object chỉ init 1 lần nhờ guard `initialized`.
-
-    onThreadIdChanged: {
-        chatViewPage.initialized = false;
-        msgModel.clear();
-        // Nếu selfName đã được set rồi (trường hợp selfName assign trước threadId)
-        if (chatViewPage.selfName !== "") {
-            chatViewPage.tryInit();
-        }
-        // Nếu selfName chưa có, onSelfNameChanged sẽ trigger sau
-    }
-
-    onSelfNameChanged: {
-        if (!chatViewPage.initialized) {
-            chatViewPage.tryInit();
-        }
-    }
-
-    function tryInit() {
-        if (chatViewPage.threadId === "") return;
-        if (chatViewPage.selfName === "") return;  // Đợi selfName thật
-        chatViewPage.doInit();
-    }
-
-
-
-    function doInit() {
-        if (chatViewPage.threadId === "") return;
-        if (chatViewPage.selfName === "") return;
+    // Gọi từ JS sau khi assign đủ threadId + selfName + isGroup
+    function startChat() {
         if (chatViewPage.initialized) return;
+        if (chatViewPage.threadId === "") return;
+        if (chatViewPage.selfName === "") chatViewPage.selfName = "Me";
         chatViewPage.initialized = true;
 
+        msgModel.clear();
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
 
-        // Load từ DB trước — selfName đã được set đúng lúc này
         var cached = zService.dbLoadMessages(chatViewPage.threadId);
         if (cached && cached.length > 0) {
             for (var i = 0; i < cached.length; i++) {
@@ -147,8 +117,12 @@ Page {
             msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.None);
         }
 
-        // Fetch từ server
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
+    }
+
+    onThreadIdChanged: {
+        chatViewPage.initialized = false;
+        msgModel.clear();
     }
 
     // - CONTENT -

@@ -155,24 +155,30 @@ TabbedPane {
                                         layout: DockLayout {}
                                         preferredHeight: ui.du(12.0)
                                         
-                                        // PFP - to bằng chiều cao hàng để chạm divider
-                                        ImageView {
-                                            imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/blank.png"
-                                            preferredWidth: ui.du(12.0)
+                                        // PFP + spark badge
+                                        Container {
+                                            preferredWidth:  ui.du(12.0)
                                             preferredHeight: ui.du(12.0)
                                             horizontalAlignment: HorizontalAlignment.Left
                                             verticalAlignment: VerticalAlignment.Center
-                                            scalingMethod: ScalingMethod.AspectFill
-                                        }
+                                            layout: DockLayout {}
 
-                                        // Spark badge khi có tin nhắn mới chưa đọc
-                                        ImageView {
-                                            visible: ListItemData.hasUnread === true
-                                            imageSource: "asset:///images/cs_spark_small.png"
-                                            preferredWidth:  ui.du(3.5)
-                                            preferredHeight: ui.du(3.5)
-                                            horizontalAlignment: HorizontalAlignment.Left
-                                            verticalAlignment:   VerticalAlignment.Top
+                                            ImageView {
+                                                imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/blank.png"
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment:   VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFill
+                                            }
+
+                                            // Spark overlay góc trên-phải của avatar
+                                            ImageView {
+                                                visible: ListItemData.hasUnread === true
+                                                imageSource: "asset:///images/cs_spark_small.png"
+                                                preferredWidth:  ui.du(3.5)
+                                                preferredHeight: ui.du(3.5)
+                                                horizontalAlignment: HorizontalAlignment.Right
+                                                verticalAlignment:   VerticalAlignment.Top
+                                            }
                                         }
                                         
                                         // Text container
@@ -233,12 +239,13 @@ TabbedPane {
                             var item = dataModel.data(indexPath)
                             var page = chatsDef.createObject()
                             if (!page) return
-                            page.threadId = item.threadId || item.uid || ""
+                            page.threadId   = item.threadId || item.uid || ""
                             page.threadName = item.name || "Chat"
-                            page.isGroup = false
-                            page.avatarUrl = item.localAvatar || item.avatar || ""
-                            page.selfName = root.selfName
-                            // Clear unread badge khi mở chat
+                            page.isGroup    = false
+                            page.avatarUrl  = item.localAvatar || item.avatar || ""
+                            page.selfName   = root.selfName
+                            page.startChat()
+                            // Clear unread badge
                             var idx = indexPath[0]
                             var d = friendModel.value(idx)
                             if (d) { d.hasUnread = false; friendModel.replace(idx, d) }
@@ -510,14 +517,14 @@ TabbedPane {
                             var item = dataModel.data(indexPath)
                             var page = groupsDef.createObject()
                             if (!page) return
-                            page.threadId = item.threadId || ""
+                            page.threadId   = item.threadId || ""
                             page.threadName = item.name || "Group"
-                            page.isGroup = true
+                            page.isGroup    = true
                             var av = item.localAvatar || item.avatar || ""
-                            // Groups: nếu không có avatar dùng blank thay vì chữ cái đầu
                             if (av.length === 0) av = "asset:///images/blank.png"
-                            page.avatarUrl = av
-                            page.selfName = root.selfName
+                            page.avatarUrl  = av
+                            page.selfName   = root.selfName
+                            page.startChat()
                             groupsNav.push(page)
                         }
                     }

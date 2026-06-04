@@ -75,13 +75,9 @@ NavigationPane {
 
                 dataModel: ArrayDataModel { id: contactModel }
 
-                function itemType(data, indexPath) {
-                    return "gridItem";
-                }
-
                 listItemComponents: [
                     ListItemComponent {
-                        type: "gridItem"
+                        type: ""
                         Container {
                             id: gridCell
                             preferredWidth:  ui.du(20)

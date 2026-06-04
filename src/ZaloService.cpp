@@ -2042,13 +2042,26 @@ void ZaloService::onFetchMsgDone()
         QString uidFrom  = m["uidFrom"].toString();
         bool    isMine   = (uidFrom == m_uid);
         out["msgId"]    = msgId;
-        out["content"]  = m["content"].toString();
         out["senderId"] = uidFrom;
         out["dName"]    = m["dName"].toString();
         out["ts"]       = m["ts"].toString();
         out["isGroup"]  = isGroup;
         out["isMine"]   = isMine;
         out["msgType"]  = m["msgType"].toInt();
+        // msgType=2 (photo): content="" nhưng URLs nằm trong fields riêng — build JSON giống WS
+        int mt = m["msgType"].toInt();
+        QString rawContent = m["content"].toString();
+        if (mt == 2 && rawContent.isEmpty()) {
+            QString nUrl = m["normalUrl"].toString();
+            QString hUrl = m["hdUrl"].toString();
+            QString oUrl = m["oriUrl"].toString();
+            if (nUrl.isEmpty()) nUrl = hUrl;
+            if (nUrl.isEmpty()) nUrl = oUrl;
+            if (!nUrl.isEmpty())
+                rawContent = QString("{\"normalUrl\":\"%1\",\"hdUrl\":\"%2\",\"oriUrl\":\"%3\"}")
+                             .arg(nUrl).arg(hUrl).arg(oUrl);
+        }
+        out["content"]  = rawContent;
         msgs.append(out);
         // Debug từng tin để xác minh isMine
         if (i < 5)
