@@ -25,7 +25,7 @@ Sheet {
                             verticalAlignment: VerticalAlignment.Center
                             preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
                             defaultImageSource: "asset:///images/ic_close_white.png"
-                            pressedImageSource: "asset:///images/ic_close_white.png"
+                            pressedImageSource: "asset:///images/ic_close_white.p ng"
                             rightMargin: ui.du(0.5)
                             onClicked: { aboutSheetRoot.close() }
                         }

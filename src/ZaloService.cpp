@@ -1227,13 +1227,29 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
 
             QVariantMap out;
             out["msgId"]    = msgId;
-            out["content"]  = m["content"].toString();
             out["senderId"] = uidFrom;
             out["dName"]    = m["dName"].toString();
             out["ts"]       = m["ts"].toString();
             out["isGroup"]  = isGroup;
             out["isMine"]   = isSelf;
             out["msgType"]  = m["msgType"].toInt();
+
+            // msgType=2 (photo): WS content="" nhưng URLs nằm trong các field riêng
+            // Build content JSON từ normalUrl/hdUrl/oriUrl để ChatView có thể download thumbnail
+            int mt = m["msgType"].toInt();
+            QString rawContent = m["content"].toString();
+            if (mt == 2 && rawContent.isEmpty()) {
+                QString nUrl = m["normalUrl"].toString();
+                QString hUrl = m["hdUrl"].toString();
+                QString oUrl = m["oriUrl"].toString();
+                if (nUrl.isEmpty()) nUrl = hUrl;
+                if (nUrl.isEmpty()) nUrl = oUrl;
+                if (!nUrl.isEmpty()) {
+                    rawContent = QString("{"normalUrl":"%1","hdUrl":"%2","oriUrl":"%3"}")
+                                 .arg(nUrl).arg(hUrl).arg(oUrl);
+                }
+            }
+            out["content"] = rawContent;
 
             qDebug() << "[Zalo WS] new msg from" << uidFrom
                      << "thread" << threadId << out["content"].toString().left(30);
@@ -2154,23 +2170,14 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     }
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(photoParams)));
 
-    // Build multipart body — field name "fileContent" theo zca-js
-    QByteArray bnd = ("--" + boundary).toUtf8();
+    // Multipart body: CHỈ chứa file — params đã nằm trong query string
+    // Zalo API: body = 1 part duy nhất là file, tên field = "fileContent"
     QByteArray body;
-    body += bnd + "\r\nContent-Disposition: form-data; name=\"clientId\"\r\n\r\n" + clientId.toUtf8() + "\r\n";
-    body += bnd + "\r\nContent-Disposition: form-data; name=\"ttl\"\r\n\r\n0\r\n";
-    if (isGroup) {
-        body += bnd + "\r\nContent-Disposition: form-data; name=\"grid\"\r\n\r\n" + threadId.toUtf8() + "\r\n";
-        body += bnd + "\r\nContent-Disposition: form-data; name=\"visibility\"\r\n\r\n0\r\n";
-    } else {
-        body += bnd + "\r\nContent-Disposition: form-data; name=\"toid\"\r\n\r\n" + threadId.toUtf8() + "\r\n";
-        body += bnd + "\r\nContent-Disposition: form-data; name=\"imei\"\r\n\r\n" + m_imei.toUtf8() + "\r\n";
-    }
-    body += "--" + boundary.toUtf8() + "\r\n";
-    body += "Content-Disposition: form-data; name=\"fileContent\"; filename=\"" + filename.toUtf8() + "\"\r\n";
-    body += "Content-Type: " + mime.toUtf8() + "\r\n\r\n";
+    body += ("--" + boundary + "\r\n").toUtf8();
+    body += ("Content-Disposition: form-data; name=\"fileContent\"; filename=\"" + filename + "\"\r\n").toUtf8();
+    body += ("Content-Type: " + mime + "\r\n\r\n").toUtf8();
     body += fileData + "\r\n";
-    body += "--" + boundary.toUtf8() + "--\r\n";
+    body += ("--" + boundary + "--\r\n").toUtf8();
 
     // Zalo web API photo upload:
     // File upload service URL: tt-files-wpa (thay thế tt-chatN-wpa trong chatServiceUrl)
@@ -2194,6 +2201,8 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     qDebug() << "[Zalo] sendPhoto POST" << urlStr.left(100) << "size:" << fileData.size();
     QNetworkReply *reply = m_manager->post(req, body);
     reply->setProperty("threadId", threadId);
+    reply->setProperty("localPath", "file://" + path);
+    reply->setProperty("isGroup",   isGroup);
     connect(reply, SIGNAL(finished()), this, SLOT(onSendPhotoDone()));
 }
 
@@ -2203,9 +2212,47 @@ void ZaloService::onSendPhotoDone()
     if (!reply) return;
     bool ok  = (reply->error() == QNetworkReply::NoError);
     QString tid = reply->property("threadId").toString();
+    QString localPath = reply->property("localPath").toString();
     QByteArray raw = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] sendPhoto response:" << raw.left(300);
+
+    if (ok) {
+        // Parse và decrypt response để lấy msgId + image URLs
+        QVariantMap outer = jsonToMap(raw);
+        if (outer["error_code"].toInt() == 0) {
+            QString encData = outer["data"].toString();
+            QString dec = aesDecryptBase64(m_secretKey, encData);
+            qDebug() << "[Zalo] sendPhoto decrypted:" << dec.left(200);
+
+            QVariantMap data = jsonToMap(dec.toUtf8());
+            // msgId trong JSON là số nguyên lớn → QVariant(double) → .toString() cho scientific notation
+            // Phải dùng toLongLong rồi format lại thành string decimal
+            qint64 msgIdInt = data["msgId"].toLongLong();
+            QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt) : data["msgId"].toString();
+            QString normalUrl = data["normalUrl"].toString();
+            QString thumbUrl  = data["thumbUrl"].toString();
+            if (thumbUrl.isEmpty()) thumbUrl = data["hdUrl"].toString();
+            if (thumbUrl.isEmpty()) thumbUrl = normalUrl;
+
+            if (!msgId.isEmpty()) {
+                // Tạo message map giống WS newMessage để update local placeholder
+                QVariantMap out;
+                out["msgId"]     = msgId;
+                out["content"]   = dec; // raw JSON content với normalUrl/thumbUrl
+                out["msgType"]   = 2;
+                out["isMine"]    = true;
+                out["isGroup"]   = tid.startsWith("-") || reply->property("isGroup").toBool();
+                out["senderId"]  = m_uid;
+                out["dName"]     = m_displayName;
+                out["ts"]        = QString::number(QDateTime::currentMSecsSinceEpoch());
+                out["localImage"] = localPath; // path ảnh gốc đã có sẵn
+                dbSaveMessage(out, tid);
+                emit newMessage(tid, out);
+            }
+        }
+    }
+
     emit messageSent(ok, tid);
 }
 

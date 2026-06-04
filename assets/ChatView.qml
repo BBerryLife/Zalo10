@@ -96,28 +96,30 @@ Page {
         }
     }
 
-    // BB10: threadId được set từ main.qml TRƯỚC khi page được push vào stack.
-    // onThreadIdChanged không fire vì property được set trước khi object attached.
-    // Dùng onCreationCompleted để init sau khi object hoàn toàn sẵn sàng.
-    onCreationCompleted: {
-        msgModel.clear();
-        chatViewPage.initialized = false;
-        // Dùng Qt.callLater equivalent — delay nhỏ để đảm bảo tất cả properties đã set
-        initTimer.start();
-    }
+    // BB10 Cascades: createObject() tạo object mới mỗi lần.
+    // Properties được assign THEO THỨ TỰ từ JS: threadId → threadName → isGroup → avatarUrl → selfName
+    // onCreationCompleted chạy TRƯỚC khi JS assign properties → không dùng được.
+    // GIẢI PHÁP: dùng cả onThreadIdChanged lẫn onSelfNameChanged.
+    // - Object mới: threadId set → selfName set → cả 2 đều fire → doInit() chạy khi đủ điều kiện.
+    // - Mỗi object chỉ init 1 lần nhờ guard `initialized`.
 
-    // Fallback: nếu threadId thay đổi sau khi tạo (unlikely nhưng safe)
     onThreadIdChanged: {
-        if (chatViewPage.initialized) {
-            chatViewPage.initialized = false;
-            msgModel.clear();
-        }
+        chatViewPage.initialized = false;
+        msgModel.clear();
         chatViewPage.tryInit();
     }
-    onSelfNameChanged: { chatViewPage.tryInit() }
+
+    onSelfNameChanged: {
+        // selfName thay đổi nghĩa là props vừa được assign
+        if (!chatViewPage.initialized) {
+            chatViewPage.tryInit();
+        }
+    }
 
     function tryInit() {
+        // Cần cả threadId lẫn selfName trước khi init
         if (chatViewPage.threadId === "") return;
+        if (chatViewPage.selfName === "") return;
         chatViewPage.doInit();
     }
 
@@ -315,8 +317,8 @@ Page {
         EmojiPanel {
             id: emojiPanel
             horizontalAlignment: HorizontalAlignment.Fill
-            preferredHeight: ui.du(26)
-            minHeight: ui.du(22)
+            preferredHeight: ui.du(19)
+            minHeight: ui.du(16)
             visible: false
             onEmojiPicked: {
                 inputField.text = inputField.text + charStr
@@ -396,6 +398,7 @@ Page {
     function doSend() {
         var txt = inputField.text.trim();
         if (txt.length === 0) return;
+        if (!chatViewPage.threadId || chatViewPage.threadId === "") return;
         chatViewPage.pendingMsg = txt;
         sendAction.enabled = false;
         inputField.text = "";
@@ -415,10 +418,17 @@ Page {
         var size = msgModel.size();
         if (size === 0) return;
 
+        // Pass 1: collect all items into JS array (avoid re-entrancy from replace during iteration)
+        var items = [];
         for (var i = 0; i < size; i++) {
-            var cur  = msgModel.value(i);
-            var prev = (i > 0)          ? msgModel.value(i - 1) : null;
-            var next = (i < size - 1)   ? msgModel.value(i + 1) : null;
+            items.push(msgModel.value(i));
+        }
+
+        // Pass 2: compute grouping on JS array
+        for (var i = 0; i < size; i++) {
+            var cur  = items[i];
+            var prev = (i > 0)        ? items[i - 1] : null;
+            var next = (i < size - 1) ? items[i + 1] : null;
 
             var curMine  = chatViewPage.normMine(cur.isMine);
             var prevMine = prev ? chatViewPage.normMine(prev.isMine) : !curMine;
@@ -436,22 +446,22 @@ Page {
             cur.bubblePos = pos;
             cur.grouped   = samePrev;
             cur.selfName  = chatViewPage.selfName;
-            // Đảm bảo isMine không bị mất sau replace — normalize về bool
             cur.isMine    = curMine;
 
-            // Timestamp hiển thị ở tin CUỐI nhóm — cập nhật ngược lên các tin trước
             if (!sameNext) {
                 cur.latestTs = cur.ts;
                 var k = i - 1;
                 while (k >= 0) {
-                    var prev2 = msgModel.value(k);
-                    if (chatViewPage.normMine(prev2.isMine) !== curMine) break;
-                    prev2.latestTs = cur.ts;
-                    msgModel.replace(k, prev2);
+                    if (chatViewPage.normMine(items[k].isMine) !== curMine) break;
+                    items[k].latestTs = cur.ts;
                     k--;
                 }
             }
-            msgModel.replace(i, cur);
+        }
+
+        // Pass 3: apply back to model in one batch
+        for (var i = 0; i < size; i++) {
+            msgModel.replace(i, items[i]);
         }
     }
 
@@ -468,6 +478,7 @@ Page {
 
     // ─── Helper: xóa local placeholder có content khớp (tìm từ cuối lên)
     function removeLocalPlaceholder(content) {
+        // Xóa placeholder text khớp content
         for (var k = msgModel.size() - 1; k >= 0; k--) {
             var item = msgModel.value(k);
             if (item.msgId && item.msgId.indexOf("local_") === 0
@@ -478,15 +489,18 @@ Page {
         }
     }
 
-    attachedObjects: [
-        // Timer để delay init nhỏ sau onCreationCompleted (BB10 quirk)
-        Timer {
-            id: initTimer
-            interval: 50
-            repeat: false
-            onTriggered: { chatViewPage.tryInit() }
-        },
+    // Xóa placeholder ảnh (local_img_*) — content="" nên cần match theo msgType
+    function removeLocalImagePlaceholder() {
+        for (var k = msgModel.size() - 1; k >= 0; k--) {
+            var item = msgModel.value(k);
+            if (item.msgId && item.msgId.indexOf("local_img_") === 0) {
+                msgModel.removeAt(k);
+                return;
+            }
+        }
+    }
 
+    attachedObjects: [
         Sheet {
             id: callSheet
             peekEnabled: false
@@ -706,7 +720,12 @@ Page {
 
                 // Nếu là tin của mình → xóa local placeholder trùng content
                 if (chatViewPage.normMine(msg.isMine)) {
-                    chatViewPage.removeLocalPlaceholder(msg.content);
+                    if (msg.msgType === 2 || msg.msgType === "2") {
+                        // Ảnh: placeholder có content="" nên dùng hàm riêng
+                        chatViewPage.removeLocalImagePlaceholder();
+                    } else {
+                        chatViewPage.removeLocalPlaceholder(msg.content);
+                    }
                 }
 
                 msgModel.append(msg);

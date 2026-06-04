@@ -112,6 +112,16 @@ Page {
                                     scalingMethod: ScalingMethod.AspectFill
                                 }
                                 
+                                // Spark badge khi có tin nhắn mới chưa đọc
+                                ImageView {
+                                    visible: ListItemData.hasUnread === true
+                                    imageSource: "asset:///images/cs_spark_small.png"
+                                    preferredWidth:  ui.du(3.5)
+                                    preferredHeight: ui.du(3.5)
+                                    horizontalAlignment: HorizontalAlignment.Right
+                                    verticalAlignment:   VerticalAlignment.Top
+                                }
+
                                 // Fallback: chữ cái đầu khi không có avatar
                                 Container {
                                     visible: {
@@ -154,10 +164,21 @@ Page {
                                 }
                                 
                                 Label {
-                                    text: (ListItemData.lastMessage || ListItemData.lastMsg || "No messages yet")
+                                    text: {
+                                        var lm = ListItemData.lastMessage || ListItemData.lastMsg || "";
+                                        if (lm.length === 0) return "No messages yet";
+                                        var prefix = "";
+                                        if (ListItemData.lastMsgIsMine === true || ListItemData.lastMsgIsMine === "true") {
+                                            prefix = "Me: ";
+                                        } else if (ListItemData.lastSenderName && ListItemData.lastSenderName.length > 0) {
+                                            prefix = ListItemData.lastSenderName.split(" ")[0] + ": ";
+                                        }
+                                        return prefix + lm;
+                                    }
                                     textStyle {
                                         base: SystemDefaults.TextStyles.SubtitleText
-                                        color: Color.DarkGray
+                                        color: (ListItemData.hasUnread === true) ? Color.create("#2575fc") : Color.DarkGray
+                                        fontWeight: (ListItemData.hasUnread === true) ? FontWeight.Bold : FontWeight.Normal
                                     }
                                     multiline: false
                                 }
@@ -203,6 +224,8 @@ Page {
                     for (var i = 0; i < threads.length; i++) {
                         var item = threads[i];
                         item.localAvatar = "";
+                        item.hasUnread   = false;
+                        item.lastMessage = item.lastMessage || item.lastMsg || "";
                         threadModel.append(item);
                     }
                     emptyLabel.visible = false;
@@ -210,7 +233,7 @@ Page {
                     emptyLabel.visible = true;
                 }
             }
-            
+
             onAvatarReady: {
                 for (var i = 0; i < threadModel.size(); i++) {
                     var d = threadModel.value(i);
@@ -220,6 +243,41 @@ Page {
                         break;
                     }
                 }
+            }
+
+            // Helper: update thread lastMessage + move to top
+            onNewMessage: {
+                // Find thread in model
+                var tid = threadId;
+                var snippet = "";
+                if (message.msgType === 2 || message.msgType === "2") {
+                    snippet = "[Photo]";
+                } else {
+                    snippet = (message.content || "").substring(0, 60);
+                }
+                var isMine = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
+                var senderName = message.dName || "";
+
+                for (var i = 0; i < threadModel.size(); i++) {
+                    var d = threadModel.value(i);
+                    if (d.threadId === tid || d.uid === tid) {
+                        d.lastMessage     = snippet;
+                        d.lastMsgIsMine   = isMine;
+                        d.lastSenderName  = senderName;
+                        d.hasUnread       = !isMine; // unread chỉ khi người khác gửi
+                        // Move to top: remove then insert at 0
+                        threadModel.removeAt(i);
+                        threadModel.insert(0, d);
+                        return;
+                    }
+                }
+            }
+
+            onMessageSent: {
+                // Tin tôi gửi thành công — update lastMessage (nếu có pendingMsg từ ChatView)
+                // Chỉ mark isMine, không set hasUnread
+                // threadId và content không available trực tiếp ở đây nên
+                // ta dùng signal từ main.qml nếu cần; bỏ qua để tránh phức tạp
             }
         }
     ]

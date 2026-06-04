@@ -11,6 +11,7 @@ Page {
     property string bgAvatarPath: ""
     property string avatarUrl:    ""  // fallback nếu chưa download
     property string bgAvatarUrl:  ""
+    property string selfName:     ""  // truyền từ ngoài vào để pass cho ChatView
 
     titleBar: TitleBar {
         scrollBehavior: TitleBarScrollBehavior.Sticky
@@ -54,6 +55,11 @@ Page {
                 chatPage.threadId   = profilePage.contactId
                 chatPage.threadName = profilePage.contactName
                 chatPage.isGroup    = false
+                // Truyền avatar để header ChatView hiện đúng ảnh
+                chatPage.avatarUrl  = profilePage.avatarPath.length > 0
+                                        ? profilePage.avatarPath
+                                        : profilePage.avatarUrl
+                chatPage.selfName   = profilePage.selfName
                 navigationPane.push(chatPage)
             }
         }

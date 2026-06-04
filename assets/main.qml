@@ -279,6 +279,9 @@ TabbedPane {
                         onLoginSuccess: {
                             if (typeof displayName !== "undefined" && displayName.length > 0)
                                 root.selfName = displayName;
+                            // Propagate selfName to ContactsTab
+                            if (contactsTab.content)
+                                contactsTab.content.selfName = root.selfName;
                             zService.fetchFriends()
                             chatsLoading.visible = true
                         }
@@ -303,7 +306,9 @@ TabbedPane {
         ]
 
         onCreationCompleted: {
-            contactsTab.content = contactsTabDef.createObject()
+            var ct = contactsTabDef.createObject()
+            if (ct) ct.selfName = root.selfName
+            contactsTab.content = ct
         }
     }
     

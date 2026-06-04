@@ -8,6 +8,7 @@ NavigationPane {
 
     Page {
         id: contactsPage
+        property string selfName: ""   // set từ main.qml sau khi login
 
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
@@ -70,6 +71,7 @@ NavigationPane {
 
                 property variant profileDef: contactsProfileDef
                 property variant navPane: contactsNav
+                property string  selfNameProp: contactsPage.selfName
 
                 dataModel: ArrayDataModel { id: contactModel }
 
@@ -126,6 +128,7 @@ NavigationPane {
                                     page.bgAvatarPath   = item.localBgAvatar || ""
                                     page.avatarUrl      = item.avatar || ""
                                     page.bgAvatarUrl    = item.bgavatar || ""
+                                    page.selfName       = lv.selfNameProp
                                     page.navigationPane = lv.navPane  // set explicit ref
                                     lv.navPane.push(page)
                                 }
