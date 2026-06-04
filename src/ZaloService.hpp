@@ -47,6 +47,7 @@ public:
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup);
+    Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url);
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
     // Gọi khi mở / đóng ChatView để biết thread đang xem
@@ -101,7 +102,10 @@ private slots:
     void onFetchMsgDone();
     void onSendMsgDone();
     void onSendPhotoDone();
+    void onSendFileDone();
+    void onRefreshSessionKeyDone();
     void onImageMsgDownloaded();
+
     void onQRExpired();
     void onListenTimer();
     void onListenDone();
@@ -178,6 +182,7 @@ private:
     QByteArray  m_wsBuffer;         // buffer cho incomplete frames
     void connectWebSocket();
     void disconnectWebSocket();
+    void refreshSessionKey();
     void sendWsHandshake(const QUrl &url);
     bool parseWsHandshakeResponse(const QByteArray &data, int &headerEnd);
     void handleWsFrame(int opcode, const QByteArray &payload);

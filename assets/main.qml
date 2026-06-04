@@ -370,10 +370,8 @@ TabbedPane {
                 ]
                 
                 onCreationCompleted: {
-                    if (zService.loggedIn) {
-                        zService.fetchConversations();
-                        groupsLoading.visible = true;
-                    }
+                    // KHÔNG check zService.loggedIn ở đây — lúc này secretKey chưa refresh xong
+                    // Việc fetch sẽ được trigger bởi onLoginSuccess signal sau khi refresh hoàn tất
                 }
                 
                 content: Container {
@@ -578,10 +576,7 @@ TabbedPane {
                 ]
                 
                 onCreationCompleted: {
-                    if (zService.loggedIn) {
-                        zService.fetchInvites()
-                        invitesLoading.visible = true
-                    }
+                    // KHÔNG check zService.loggedIn — chờ onLoginSuccess signal
                 }
                 
                 content: Container {
@@ -746,11 +741,10 @@ TabbedPane {
                 splashDialog.close();
                 if (!zService.loadSession()) {
                     loginSheet.open();
-                } else {
-                    zService.fetchConversations();
-                    zService.fetchFriends();
-                    zService.fetchInvites();
                 }
+                // Nếu loadSession() == true: KHÔNG fetch ở đây.
+                // refreshSessionKey() đang chạy async → sẽ emit loginSuccess khi xong
+                // → các onLoginSuccess handler trong QML tự fetch đúng lúc với key mới.
             }
         },
         

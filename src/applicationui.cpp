@@ -31,6 +31,16 @@ ApplicationUI::ApplicationUI() : QObject()
 
     ZaloService *zService = new ZaloService(this);
 
+    // Áp dụng dark theme đã lưu TRƯỚC khi tạo QML scene
+    {
+        QSettings s("BerryLife", "Zalo10");
+        bool dark = s.value("darkTheme", false).toBool();
+        if (dark) {
+            Application::instance()->themeSupport()->setVisualStyle(VisualStyle::Dark);
+            qDebug() << "[App] Startup: applying saved Dark theme";
+        }
+    }
+
     QmlDocument *qml = QmlDocument::create("asset:///main.qml").parent(this);
     qml->setContextProperty("app",      this);
     qml->setContextProperty("zService", zService);
@@ -56,11 +66,11 @@ void ApplicationUI::minimizeApp()
 
 void ApplicationUI::setDarkTheme(bool dark)
 {
-    QSettings settings("Berrylife", "Zalo10");
+    // Dùng cùng một QSettings group/key nhất quán
+    QSettings settings("BerryLife", "Zalo10");
     settings.setValue("darkTheme", dark);
     settings.sync();
-    // Apply immediately — takes effect on next app launch for full theme
-    // For runtime: toggle VisualStyle now so system controls update
+    // Áp dụng ngay cho runtime (controls sẽ update)
     Application::instance()->themeSupport()->setVisualStyle(
         dark ? VisualStyle::Dark : VisualStyle::Bright);
     qDebug() << "[App] setDarkTheme:" << dark;
@@ -68,7 +78,7 @@ void ApplicationUI::setDarkTheme(bool dark)
 
 bool ApplicationUI::getDarkTheme()
 {
-    QSettings settings("Berrylife", "Zalo10");
+    QSettings settings("BerryLife", "Zalo10");
     return settings.value("darkTheme", false).toBool();
 }
 

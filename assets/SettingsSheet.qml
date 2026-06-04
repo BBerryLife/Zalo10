@@ -14,6 +14,11 @@ Sheet {
             }
         }
 
+        onCreationCompleted: {
+            // Load saved value mỗi khi sheet được tạo/hiện
+            darkToggle.checked = app.getDarkTheme();
+        }
+
         ScrollView {
             Container {
                 horizontalAlignment: HorizontalAlignment.Fill
@@ -32,21 +37,21 @@ Sheet {
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         verticalAlignment: VerticalAlignment.Center
                     }
-                    ToggleButton { id: darkToggle; checked: false }
+                    ToggleButton {
+                        id: darkToggle
+                        // checked được set trong onCreationCompleted, không dùng binding tĩnh
+                        onCheckedChanged: {
+                            // Lưu ngay khi toggle — gọi setDarkTheme áp dụng + lưu cả hai
+                            app.setDarkTheme(checked);
+                        }
+                    }
                 }
 
                 Label {
-                    text: "Theme change requires app restart."
+                    text: "Theme change requires app restart to take full effect."
                     multiline: true
                     textStyle.color: Color.Gray
                     topMargin: 6
-                }
-
-                Button {
-                    text: "Restart to Apply Theme"
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topMargin: 10
-                    onClicked: { app.minimizeApp() }
                 }
 
                 Divider { topMargin: 30; bottomMargin: 20 }

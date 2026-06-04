@@ -260,12 +260,14 @@ Page {
                                     multiline: true
                                     topMargin: 0; bottomMargin: 0
                                 }
-                                // ── Image message ──
+                                // ── Image message — full bubble width ──
                                 Container {
                                     visible: parent.isImage
-                                    topMargin: 4; bottomMargin: 4
-                                    preferredWidth:  ui.du(30)
-                                    preferredHeight: ui.du(22)
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    topMargin: 2; bottomMargin: 2
+                                    // Giới hạn chiều cao tối đa, rộng fill theo bubble
+                                    preferredHeight: ui.du(30)
+                                    minHeight:       ui.du(12)
                                     background: Color.create("#e0e0e0")
                                     layout: DockLayout {}
                                     ImageView {
@@ -716,33 +718,66 @@ Page {
             }
         },
 
-        // ── FilePicker for image/file attach ─────────────────────
+        // ── FilePicker for all file types (ảnh + tài liệu + video ...) ──
         FilePicker {
             id: filePicker
-            type: FileType.Picture
-            title: "Select Image"
-            directories: ["/accounts/1000/shared/camera", "/accounts/1000/shared/photos"]
+            type: FileType.Other   // Cho phép mọi loại file
+            title: "Select File"
+            // Bao gồm tất cả thư mục phổ biến
+            directories: [
+                "/accounts/1000/shared/camera",
+                "/accounts/1000/shared/photos",
+                "/accounts/1000/shared/documents",
+                "/accounts/1000/shared/downloads",
+                "/accounts/1000/shared/videos",
+                "/accounts/1000/shared/voice"
+            ]
             onFileSelected: {
                 var path = selectedFiles[0];
                 chatViewPage.pendingAttachPath = path;
-                // Show local preview placeholder immediately
-                var m = {
-                    msgId:      "local_img_" + new Date().getTime(),
-                    content:    "",
-                    msgType:    2,
-                    localImage: "file://" + path,
-                    isMine:     true,
-                    isGroup:    chatViewPage.isGroup,
-                    senderId:   "self",
-                    dName:      chatViewPage.selfName,
-                    ts:         String(new Date().getTime()),
-                    selfName:   chatViewPage.selfName
-                };
-                msgModel.append(m);
-                chatViewPage.rebuildGroups();
-                msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
-                // Send
-                zService.sendPhoto(chatViewPage.threadId, path, chatViewPage.isGroup);
+
+                // Xác định là ảnh hay file thường
+                var ext = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
+                var isImg = (ext === "jpg" || ext === "jpeg" || ext === "png"
+                             || ext === "gif" || ext === "webp" || ext === "bmp");
+
+                if (isImg) {
+                    // Hiện preview ngay lập tức
+                    var m = {
+                        msgId:      "local_img_" + new Date().getTime(),
+                        content:    "",
+                        msgType:    2,
+                        localImage: "file://" + path,
+                        isMine:     true,
+                        isGroup:    chatViewPage.isGroup,
+                        senderId:   "self",
+                        dName:      chatViewPage.selfName,
+                        ts:         String(new Date().getTime()),
+                        selfName:   chatViewPage.selfName
+                    };
+                    msgModel.append(m);
+                    chatViewPage.rebuildGroups();
+                    msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                    zService.sendPhoto(chatViewPage.threadId, path, chatViewPage.isGroup);
+                } else {
+                    // File thường — placeholder text
+                    var fname = path.substring(path.lastIndexOf('/') + 1);
+                    var mf = {
+                        msgId:    "local_file_" + new Date().getTime(),
+                        content:  "[File: " + fname + "]",
+                        msgType:  0,
+                        isMine:   true,
+                        isGroup:  chatViewPage.isGroup,
+                        senderId: "self",
+                        dName:    chatViewPage.selfName,
+                        ts:       String(new Date().getTime()),
+                        selfName: chatViewPage.selfName
+                    };
+                    msgModel.append(mf);
+                    chatViewPage.rebuildGroups();
+                    msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                    zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
+                }
             }
         }
     ]
