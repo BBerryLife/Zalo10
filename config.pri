@@ -137,6 +137,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ca_bbid.png) \
         $$quote($$BASEDIR/assets/images/ca_video_chat_active.png) \
         $$quote($$BASEDIR/assets/images/cs_spark_small.png) \
+        $$quote($$BASEDIR/assets/images/default_caller.png) \
+        $$quote($$BASEDIR/assets/images/default_caller1.png) \
         $$quote($$BASEDIR/assets/images/delivered.png) \
         $$quote($$BASEDIR/assets/images/desktop.ini) \
         $$quote($$BASEDIR/assets/images/edit.png) \

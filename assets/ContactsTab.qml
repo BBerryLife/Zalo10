@@ -68,8 +68,6 @@ NavigationPane {
                 layout: GridListLayout {
                     columnCount: 4
                     headerMode: ListHeaderMode.None
-                    cellWidth:  ui.du(20)
-                    cellHeight: ui.du(20)
                 }
                 
                 property variant profileDef: contactsProfileDef

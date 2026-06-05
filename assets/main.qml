@@ -599,8 +599,26 @@ TabbedPane {
                         onNewMessage: {
                             if (message.isGroup === true || message.isGroup === "true") {
                                 var isMineG = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
+                                var tidG = threadId;
+                                var snippetG = (message.msgType === 2 || message.msgType === "2")
+                                    ? "[Photo]" : (message.content || "").substring(0, 60);
+                                var senderG = message.dName || "";
+                                // Tăng unread nếu không phải tab Groups đang mở
                                 if (!isMineG && root.activeTab !== groupsTab) {
                                     root.groupsUnreadCount = root.groupsUnreadCount + 1;
+                                }
+                                // Cập nhật lastMessage và move to top
+                                for (var gi = 0; gi < groupModel.size(); gi++) {
+                                    var gd = groupModel.value(gi);
+                                    if (gd.threadId === tidG) {
+                                        gd.lastMessage    = snippetG;
+                                        gd.lastMsgIsMine  = isMineG;
+                                        gd.lastSenderName = senderG;
+                                        gd.hasUnread      = !isMineG;
+                                        groupModel.removeAt(gi);
+                                        groupModel.insert(0, gd);
+                                        break;
+                                    }
                                 }
                             }
                         }

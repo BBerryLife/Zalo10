@@ -445,8 +445,16 @@ Page {
             var prevMine = prev ? chatViewPage.normMine(prev.isMine) : !curMine;
             var nextMine = next ? chatViewPage.normMine(next.isMine) : !curMine;
 
-            var samePrev = (prev !== null) && (prevMine === curMine);
-            var sameNext = (next !== null) && (nextMine === curMine);
+            // FIX6: trong group, phân biệt theo senderId — không chỉ mine/not-mine
+            // Nếu cả hai đều là !isMine nhưng senderId khác nhau → KHÔNG gộp
+            var curSender  = cur.senderId  || "";
+            var prevSender = prev ? (prev.senderId  || "") : "";
+            var nextSender = next ? (next.senderId  || "") : "";
+
+            var samePrev = (prev !== null) && (prevMine === curMine)
+                           && (!chatViewPage.isGroup || curMine || curSender === prevSender);
+            var sameNext = (next !== null) && (nextMine === curMine)
+                           && (!chatViewPage.isGroup || curMine || curSender === nextSender);
 
             var pos;
             if      ( samePrev &&  sameNext) pos = "middle";
@@ -755,8 +763,17 @@ Page {
                 // Nếu là tin của mình → xóa local placeholder trùng content
                 if (chatViewPage.normMine(msg.isMine)) {
                     if (msg.msgType === 2 || msg.msgType === "2") {
-                        // Ảnh: placeholder có content="" nên dùng hàm riêng
-                        chatViewPage.removeLocalImagePlaceholder();
+                        // FIX5: Giữ lại localImage từ placeholder để hiển thị ngay, không cần download
+                        var savedLocalImage = "";
+                        for (var pi = msgModel.size() - 1; pi >= 0; pi--) {
+                            var pitem = msgModel.value(pi);
+                            if (pitem.msgId && pitem.msgId.indexOf("local_img_") === 0) {
+                                savedLocalImage = pitem.localImage || "";
+                                msgModel.removeAt(pi);
+                                break;
+                            }
+                        }
+                        if (savedLocalImage.length > 0) msg.localImage = savedLocalImage;
                     } else {
                         chatViewPage.removeLocalPlaceholder(msg.content);
                     }

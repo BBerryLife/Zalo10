@@ -222,6 +222,7 @@ private:
     bool    m_activeThreadIsGroup;
     QString m_lastPollMsgId; // msgId cuối cùng đã biết, tránh emit trùng
     QMap<QString, QString> m_threadLastMsgId; // per-thread last msgId để fetch chính xác
+    QMap<QString, QString> m_groupNames;        // groupId -> group name for notifications
     QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
     QQueue<QString> m_pendingDmThreadIds; // Queue các DM thread đang chờ WS cmd=510 response
 
