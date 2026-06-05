@@ -10,6 +10,27 @@ TabbedPane {
     // Self display name 2014 populated on loginSuccess
     property string selfName: "Me"
     
+    // Unread tracking — count cho title badge
+    property int chatsUnreadCount: 0
+    property int groupsUnreadCount: 0
+
+    onChatsUnreadCountChanged: {
+        chatsTab.title = chatsUnreadCount > 0
+            ? "Chats (" + chatsUnreadCount + ")"
+            : "Chats";
+    }
+    onGroupsUnreadCountChanged: {
+        groupsTab.title = groupsUnreadCount > 0
+            ? "Groups (" + groupsUnreadCount + ")"
+            : "Groups";
+    }
+
+    // Clear count khi user mở tab đó
+    onActiveTabChanged: {
+        if (activeTab === chatsTab)  root.chatsUnreadCount  = 0;
+        if (activeTab === groupsTab) root.groupsUnreadCount = 0;
+    }
+    
     // ========== MENU TRƯỢT (TRÁI - HỆ THỐNG) ==========
     Menu.definition: MenuDefinition {
         actions: [
@@ -170,15 +191,7 @@ TabbedPane {
                                                 scalingMethod: ScalingMethod.AspectFill
                                             }
 
-                                            // Spark overlay góc trên-phải của avatar
-                                            ImageView {
-                                                visible: ListItemData.hasUnread === true
-                                                imageSource: "asset:///images/cs_spark_small.png"
-                                                preferredWidth:  ui.du(3.5)
-                                                preferredHeight: ui.du(3.5)
-                                                horizontalAlignment: HorizontalAlignment.Right
-                                                verticalAlignment:   VerticalAlignment.Top
-                                            }
+                                            // Spark on avatar removed — unread shown via tab title badge instead
                                         }
                                         
                                         // Text container
@@ -326,6 +339,10 @@ TabbedPane {
                                 ? "[Photo]" : (message.content || "").substring(0, 60);
                             var isMine = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
                             var senderName = message.dName || "";
+                            // Tăng unread count nếu tab Chats không active
+                            if (!isMine && root.activeTab !== chatsTab) {
+                                root.chatsUnreadCount = root.chatsUnreadCount + 1;
+                            }
                             for (var i = 0; i < friendModel.size(); i++) {
                                 var d = friendModel.value(i);
                                 if ((d.threadId || d.uid || "") === tid) {
@@ -578,6 +595,14 @@ TabbedPane {
                         onLoginSuccess: {
                             zService.fetchConversations()
                             groupsLoading.visible = true
+                        }
+                        onNewMessage: {
+                            if (message.isGroup === true || message.isGroup === "true") {
+                                var isMineG = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
+                                if (!isMineG && root.activeTab !== groupsTab) {
+                                    root.groupsUnreadCount = root.groupsUnreadCount + 1;
+                                }
+                            }
                         }
                     }
                 ]

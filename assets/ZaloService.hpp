@@ -18,6 +18,10 @@
 #include <QSslSocket>
 #include <QStringList>
 #include <QQueue>
+#include <bb/platform/Notification>
+#include <bb/platform/NotificationDefaultApplicationSettings>
+#include <bb/system/InvokeRequest>
+#include <bb/system/InvokeManager>
 #include <sqlite3.h>
 
 class ZaloService : public QObject
@@ -229,6 +233,7 @@ private:
     QMap<QString, QString> m_avatarCache;
     QSet<QString> m_pendingAvatars; // Ngăn tải trùng lặp
     QMap<QString, QSet<QString> > m_pendingAvatarWaiters; // url -> set of threadIds đang chờ
+    bb::system::InvokeManager *m_notifyInvokeManager;
 
     // Re-emit friendsReady sau khi avatar load xong
     sqlite3 *m_db;

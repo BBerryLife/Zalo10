@@ -5,11 +5,12 @@ import QtQuick 1.0
 NavigationPane {
     id: contactsNav
     peekEnabled: false
-
+    
     Page {
         id: contactsPage
-        property string selfName: ""   // set từ main.qml sau khi login
-
+        property bool populated: false
+        property string selfName: ""
+        
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
             kindProperties: FreeFormTitleBarKindProperties {
@@ -32,49 +33,50 @@ NavigationPane {
                 }
             }
         }
-
+        
         actions: [
             ActionItem {
                 title: "Refresh"
                 imageSource: "asset:///images/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
+                    contactsPage.populated = false
                     contactModel.clear()
                     zService.fetchFriends()
                     contactsLoading.visible = true
                 }
-            },
-            ActionItem {
-                title: "Add Contact"
-                imageSource: "asset:///images/ic_add_friend.png"
-                ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {
-                    // TODO: mở màn hình tìm kiếm bạn bè
-                }
             }
         ]
-
+        
+        onCreationCompleted: {
+            if (zService.loggedIn) {
+                zService.fetchFriends()
+                contactsLoading.visible = true
+            }
+        }
+        
         Container {
             layout: DockLayout {}
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
-
+            
             ListView {
-                id: contactListView
+                id: contactsGrid
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment:   VerticalAlignment.Fill
-
+                
                 layout: GridListLayout {
                     columnCount: 4
                     cellAspectRatio: 1.0
+                    headerMode: ListHeaderMode.None
                 }
-
+                
                 property variant profileDef: contactsProfileDef
-                property variant navPane: contactsNav
+                property variant navPane:    contactsNav
                 property string  selfNameProp: contactsPage.selfName
-
+                
                 dataModel: ArrayDataModel { id: contactModel }
-
+                
                 listItemComponents: [
                     ListItemComponent {
                         type: ""
@@ -85,19 +87,16 @@ NavigationPane {
                             horizontalAlignment: HorizontalAlignment.Fill
                             verticalAlignment:   VerticalAlignment.Fill
                             layout: DockLayout {}
-
+                            
                             ImageView {
-                                // Chỉ dùng file:// — không dùng https:// thô
-                                imageSource: {
-                                    var p = ListItemData.localAvatar || "";
-                                    return (p.indexOf("file://") === 0)
-                                        ? p : "asset:///images/blank.png";
-                                }
+                                imageSource: (ListItemData.localAvatar && ListItemData.localAvatar.length > 0)
+                                ? ListItemData.localAvatar
+                                : "asset:///images/blank.png"
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 verticalAlignment:   VerticalAlignment.Fill
                                 scalingMethod: ScalingMethod.AspectFill
                             }
-
+                            
                             Container {
                                 preferredHeight: ui.du(5)
                                 background: Color.create("#99000000")
@@ -106,8 +105,8 @@ NavigationPane {
                                 layout: DockLayout {}
                                 Label {
                                     text: {
-                                        var n = ListItemData.name || "?";
-                                        return n.length > 9 ? n.substring(0, 8) + "…" : n;
+                                        var n = ListItemData.name || ListItemData.displayName || "?"
+                                        return n.length > 9 ? n.substring(0, 8) + "…" : n
                                     }
                                     textStyle { fontSize: FontSize.XXSmall; color: Color.White }
                                     horizontalAlignment: HorizontalAlignment.Center
@@ -115,7 +114,7 @@ NavigationPane {
                                     multiline: false
                                 }
                             }
-
+                            
                             onTouch: {
                                 if (event.isUp()) {
                                     var item = ListItemData
@@ -123,13 +122,13 @@ NavigationPane {
                                     var page = lv.profileDef.createObject()
                                     if (!page) return
                                     page.contactId      = item.threadId || item.uid || ""
-                                    page.contactName    = item.name || "?"
+                                    page.contactName    = item.name || item.displayName || "?"
                                     page.avatarPath     = item.localAvatar || ""
                                     page.bgAvatarPath   = item.localBgAvatar || ""
                                     page.avatarUrl      = item.avatar || ""
                                     page.bgAvatarUrl    = item.bgavatar || ""
                                     page.selfName       = lv.selfNameProp
-                                    page.navigationPane = lv.navPane  // set explicit ref
+                                    page.navigationPane = lv.navPane
                                     lv.navPane.push(page)
                                 }
                             }
@@ -137,16 +136,26 @@ NavigationPane {
                     }
                 ]
             }
-
+            
             ActivityIndicator {
                 id: contactsLoading
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment:   VerticalAlignment.Center
-                preferredWidth: ui.du(12); preferredHeight: ui.du(12)
-                running: visible; visible: false
+                preferredWidth: ui.du(12)
+                preferredHeight: ui.du(12)
+                running: visible
+                visible: false
+            }
+            
+            Label {
+                id: contactsEmpty
+                text: "No contacts found"
+                visible: false
+                horizontalAlignment: HorizontalAlignment.Center
+                verticalAlignment:   VerticalAlignment.Center
             }
         }
-
+        
         attachedObjects: [
             ComponentDefinition {
                 id: contactsProfileDef
@@ -154,38 +163,49 @@ NavigationPane {
             },
             Connections {
                 target: zService
-
+                
                 onFriendsReady: {
                     contactsLoading.visible = false
-                    if (friends.length === 0) return
-
-                    // Rebuild model
+                    if (contactsPage.populated && contactModel.size() > 0)
+                        return
+                    contactsPage.populated = true
                     contactModel.clear()
-                    for (var i = 0; i < friends.length; i++)
-                        contactModel.append(friends[i])
-
-                    // Trigger download avatar cho những item chưa có localAvatar
-                    for (var j = 0; j < friends.length; j++) {
-                        var f = friends[j]
+                    for (var i = 0; i < friends.length; i++) {
+                        var f = friends[i]
+                        contactModel.append(f)
                         var tid = f.threadId || f.uid || ""
-                        var url = f.avatar || ""
-                        if (tid !== "" && url !== "" && (f.localAvatar || "") === "")
-                            zService.downloadAvatar(tid, url)
+                        if (tid.length > 0) {
+                            if ((f.avatar || "").length > 0 && (!f.localAvatar || f.localAvatar.length === 0))
+                                zService.downloadAvatar(tid, f.avatar)
+                            if ((f.bgavatar || "").length > 0 && (!f.localBgAvatar || f.localBgAvatar.length === 0))
+                                zService.downloadAvatar("bg_" + tid, f.bgavatar)
+                        }
                     }
+                    contactsEmpty.visible = (friends.length === 0)
                 }
-
+                
                 onAvatarReady: {
                     for (var i = 0; i < contactModel.size(); i++) {
                         var d = contactModel.value(i)
-                        if ((d.threadId || d.uid || "") === threadId) {
-                            d.localAvatar = localPath
-                            contactModel.replace(i, d)
-                            break
+                        var tid = d.threadId || d.uid || ""
+                        if (threadId.indexOf("bg_") === 0) {
+                            if (("bg_" + tid) === threadId) {
+                                d.localBgAvatar = localPath
+                                contactModel.replace(i, d)
+                                break
+                            }
+                        } else {
+                            if (tid === threadId) {
+                                d.localAvatar = localPath
+                                contactModel.replace(i, d)
+                                break
+                            }
                         }
                     }
                 }
-
+                
                 onLoginSuccess: {
+                    contactsPage.populated = false
                     contactModel.clear()
                     zService.fetchFriends()
                     contactsLoading.visible = true

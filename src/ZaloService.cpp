@@ -1,4 +1,8 @@
 #include "ZaloService.hpp"
+#include <bb/platform/Notification>
+#include <bb/platform/NotificationDefaultApplicationSettings>
+#include <bb/system/InvokeRequest>
+#include <bb/system/InvokeManager>
 
 #include <QNetworkRequest>
 #include <QNetworkReply>
@@ -1258,6 +1262,15 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                      << "thread" << threadId << out["content"].toString().left(30);
             dbSaveMessage(out, threadId);
             emit newMessage(threadId, out);
+            // Hub notification nếu tin đến và không phải của mình, app đang ở nền
+            if (!isSelf && threadId != m_activeThreadId) {
+                QString notifTitle = out["dName"].toString();
+                if (notifTitle.isEmpty()) notifTitle = "Zalo";
+                int mt = out["msgType"].toInt();
+                QString notifBody = (mt == 2) ? "[Photo]" : out["content"].toString().left(80);
+                if (notifBody.isEmpty()) notifBody = "[Message]";
+                sendHubNotification(notifTitle, notifBody, threadId);
+            }
             // Cập nhật lastPollMsgId nếu đây là thread đang mở
             if (threadId == m_activeThreadId && !msgId.isEmpty()) {
                 qint64 newNum = msgId.toLongLong();
@@ -1360,6 +1373,25 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
 
         // Nếu emitThread rỗng và không có msgs → bỏ qua
         if (emitThread.isEmpty()) return;
+
+        // FIX: validate msgs belong to emitThread (guard against stale queue responses)
+        if (!rawMsgs.isEmpty()) {
+            bool anyMatch = false;
+            for (int vi = 0; vi < rawMsgs.size(); ++vi) {
+                QVariantMap vm = rawMsgs[vi].toMap();
+                QString vFrom = vm["uidFrom"].toString();
+                QString vTo   = vm["idTo"].toString();
+                if (vFrom == emitThread || vTo == emitThread
+                    || (vFrom == m_uid && vTo == emitThread)
+                    || (vTo == m_uid && vFrom == emitThread)) {
+                    anyMatch = true; break;
+                }
+            }
+            if (!anyMatch) {
+                qDebug() << "[Zalo WS] cmd=510 stale response, discarding (emitThread=" << emitThread << ")";
+                return;
+            }
+        }
 
         QVariantList msgs;
         qint64 maxMsgNum = -1;
@@ -2263,6 +2295,7 @@ void ZaloService::onSendPhotoDone()
                 out["dName"]     = m_displayName;
                 out["ts"]        = QString::number(QDateTime::currentMSecsSinceEpoch());
                 out["localImage"] = localPath; // path ảnh gốc đã có sẵn
+                m_seenMsgIds.insert(msgId); // block WS cmd=501 overwriting localImage
                 dbSaveMessage(out, tid);
                 emit newMessage(tid, out);
             }
@@ -2515,12 +2548,29 @@ void ZaloService::setActiveThread(const QString &threadId, bool isGroup)
     qDebug() << "[Zalo] setActiveThread:" << threadId << "isGroup:" << isGroup << "changed:" << changed;
 }
 
+void ZaloService::sendHubNotification(const QString &title, const QString &body, const QString &threadId)
+{
+    bb::platform::Notification *notif = new bb::platform::Notification(this);
+    notif->setTitle(title);
+    notif->setBody(body);
+
+    bb::system::InvokeRequest req;
+    req.setTarget("com.BerryLife.Zalo10.testDev");
+    req.setAction("bb.action.OPEN");
+    req.setData(threadId.toUtf8());
+    notif->setInvokeRequest(req);
+
+    notif->notify();
+    qDebug() << "[Zalo] Hub notification sent:" << title << body.left(40);
+}
+
 void ZaloService::clearActiveThread()
 {
     qDebug() << "[Zalo] clearActiveThread (was:" << m_activeThreadId << ")";
     m_activeThreadId.clear();
     m_lastPollMsgId.clear();
     m_seenMsgIds.clear();
+    m_pendingDmThreadIds.clear(); // FIX: clear stale queue to avoid cross-thread msgs
 }
 
 void ZaloService::onPollMsgDone()

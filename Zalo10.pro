@@ -9,7 +9,7 @@ VERSION = 1.0.0
 QT += network script
 
 # BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
-LIBS += -lbbcascades -lbbsystem -lbb
+LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform
 LIBS += -lQtNetwork -lQtScript
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3

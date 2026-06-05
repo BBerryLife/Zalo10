@@ -15,6 +15,7 @@ Page {
     property bool   initialized: false
     property bool   emojiPanelOpen: false
     property string pendingAttachPath: ""  // path selected by FilePicker
+    property variant dbIsMineCache: ({})     // msgId -> isMine từ DB, làm nguồn tin cậy
 
     // - TITLE BAR -
     titleBar: TitleBar {
@@ -108,11 +109,23 @@ Page {
 
         var cached = zService.dbLoadMessages(chatViewPage.threadId);
         if (cached && cached.length > 0) {
+            // FIX1: Reset cache mỗi lần mở conversation mới
+            var newCache = {};
             for (var i = 0; i < cached.length; i++) {
                 var c = cached[i];
-                c.selfName = chatViewPage.selfName;
+                // FIX1: Always stamp selfName so label shows correctly
+                c.selfName = chatViewPage.selfName || "Me";
+                // FIX1: Normalize isMine to boolean NOW before append
+                if (c.isMine === "true" || c.isMine === 1 || c.isMine === true) {
+                    c.isMine = true;
+                } else {
+                    c.isMine = false;
+                }
+                // FIX1: Lưu isMine vào cache — DB là nguồn chính xác nhất
+                if (c.msgId) newCache[c.msgId] = c.isMine;
                 msgModel.append(c);
             }
+            chatViewPage.dbIsMineCache = newCache;
             chatViewPage.rebuildGroups();
             msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.None);
         }
@@ -123,6 +136,7 @@ Page {
     onThreadIdChanged: {
         chatViewPage.initialized = false;
         msgModel.clear();
+        chatViewPage.dbIsMineCache = {};  // FIX1: reset cache for new thread
     }
 
     // - CONTENT -
@@ -240,10 +254,14 @@ Page {
                                     text: {
                                         if (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
                                             return ListItemData.content;
-                                        // msgType=2 nhưng content rỗng (tin ảnh cũ chưa migrate) → hiện [Photo]
+                                        // msgType=2: image — show [Photo]
                                         if (ListItemData.msgType === 2 || ListItemData.msgType === "2")
                                             return "[Photo]";
-                                        return "[Sticker]";
+                                        // msgType=6: sticker
+                                        if (ListItemData.msgType === 6 || ListItemData.msgType === "6")
+                                            return "[Sticker]";
+                                        // Default: show content or placeholder
+                                        return "[Photo]";
                                     }
                                     textStyle {
                                         base:  SystemDefaults.TextStyles.BodyText
@@ -426,7 +444,8 @@ Page {
 
             cur.bubblePos = pos;
             cur.grouped   = samePrev;
-            cur.selfName  = chatViewPage.selfName;
+            // FIX1: do NOT overwrite selfName here — it was set at append time
+            // cur.selfName is already correct per-item
             cur.isMine    = curMine;
 
             if (!sameNext) {
@@ -643,7 +662,17 @@ Page {
                     }
 
                     var nm = msg;
-                    nm.selfName = chatViewPage.selfName;
+                    nm.selfName = chatViewPage.selfName || "Me";
+                    // FIX1: normalize isMine — trust DB cache if available (server uid may be stale)
+                    var rawMine = (nm.isMine === true || nm.isMine === 1 || nm.isMine === "true" || nm.isMine === "1");
+                    var cachedMine = chatViewPage.dbIsMineCache[nm.msgId];
+                    nm.isMine = (cachedMine !== undefined) ? cachedMine : rawMine;
+                    // Update cache with confirmed value
+                    if (nm.msgId) {
+                        var upd = chatViewPage.dbIsMineCache;
+                        upd[nm.msgId] = nm.isMine;
+                        chatViewPage.dbIsMineCache = upd;
+                    }
                     msgModel.append(nm);
                     added = true;
 
@@ -697,7 +726,17 @@ Page {
                 }
 
                 var msg = message;
-                msg.selfName = chatViewPage.selfName;
+                msg.selfName = chatViewPage.selfName || "Me";
+                // FIX1: normalize isMine — trust DB cache if available
+                var newMsgRaw = (msg.isMine === true || msg.isMine === 1 || msg.isMine === "true" || msg.isMine === "1");
+                var newMsgCached = chatViewPage.dbIsMineCache[msg.msgId];
+                msg.isMine = (newMsgCached !== undefined) ? newMsgCached : newMsgRaw;
+                // Update cache
+                if (msg.msgId) {
+                    var updC = chatViewPage.dbIsMineCache;
+                    updC[msg.msgId] = msg.isMine;
+                    chatViewPage.dbIsMineCache = updC;
+                }
 
                 // Nếu là tin của mình → xóa local placeholder trùng content
                 if (chatViewPage.normMine(msg.isMine)) {
@@ -714,12 +753,15 @@ Page {
                 msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
 
                 // Nếu tin là ảnh, trigger download thumbnail để hiển thị
+                // Nếu localImage đã có (ảnh mình vừa gửi) thì KHÔNG download lại
                 if (msg.msgType === 2 || msg.msgType === "2") {
-                    var c = msg.content;
-                    if (typeof c === "string" && c.charAt(0) === "{") {
-                        var thumbMatch = c.match(/"(?:thumb|normalUrl)"\s*:\s*"([^"]+)"/);
-                        if (thumbMatch && thumbMatch[1])
-                            zService.downloadImageMessage(msg.msgId, thumbMatch[1]);
+                    if (!msg.localImage || msg.localImage.length === 0) {
+                        var c = msg.content;
+                        if (typeof c === "string" && c.charAt(0) === "{") {
+                            var thumbMatch = c.match(/"(?:thumb|normalUrl)"\s*:\s*"([^"]+)"/);
+                            if (thumbMatch && thumbMatch[1])
+                                zService.downloadImageMessage(msg.msgId, thumbMatch[1]);
+                        }
                     }
                 }
             }
