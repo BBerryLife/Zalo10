@@ -1956,8 +1956,10 @@ void ZaloService::onFetchInvitesDone()
             qDebug() << "[Zalo] fetchInvites item[" << i << "] recommItemType=" << itemType
                      << "dataInfo keys=" << item["dataInfo"].toMap().keys();
 
-        // Only take type=2 (ReceivedFriendRequest), skip type=1 (PYMK)
-        if (itemType != 2) continue;
+        // Zalo API thực tế (kiểm tra từ log): type=1 = ReceivedFriendRequest, type=2 = PYMK
+        // zca-js docs nói ngược lại nhưng log thực tế chỉ có 1 item type=1 (đúng là friend request)
+        // và 3 item type=2 (là PYMK "People You May Know") → chỉ lấy type=1
+        if (itemType != 1) continue;
 
         QVariantMap info = item["dataInfo"].toMap();
         if (info.isEmpty()) continue;
@@ -3042,9 +3044,8 @@ bool ZaloService::loadSession()
     qDebug() << "[Zalo] loadSession: cookies restored, refreshing secretKey...";
     refreshSessionKey();
 
-    // Kết nối WebSocket sớm — sẽ reconnect nếu cần sau khi key mới
-    if (!m_zpwWsUrls.isEmpty())
-        connectWebSocket();
+    // KHÔNG kết nối WebSocket ở đây — chờ refreshSessionKey thành công
+    // trong onRefreshSessionKeyDone() sẽ gọi connectWebSocket() sau khi có key mới.
     return true;
 }
 
@@ -3172,14 +3173,16 @@ void ZaloService::onRefreshSessionKeyDone()
             }
         }
     } else {
-        qDebug() << "[Zalo] refreshSessionKey: error_code=" << ec << "- session expired, forcing re-login";
-        // Clear saved session so next loadSession() returns false
+        qDebug() << "[Zalo] refreshSessionKey: error_code=" << ec << "- secretKey expired, need re-login";
+        // Chỉ xóa secretKey (đã hết hạn), GIỮ LẠI cookies và uid vì vẫn còn dùng được.
+        // User sẽ quét QR lại để lấy secretKey mới — cookies + uid sẽ được tái sử dụng.
         QSettings s("BerryLife", "Zalo10");
-        s.remove("uid");
         s.remove("secretKey");
-        s.remove("cookies");
         s.sync();
+        m_secretKey.clear();
         m_loggedIn = false;
+        // Ngắt WS để tránh nhận/gửi traffic với key cũ
+        disconnectWebSocket();
         emit sessionExpired();
         return;
     }
