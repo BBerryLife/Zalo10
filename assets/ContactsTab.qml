@@ -67,8 +67,9 @@ NavigationPane {
                 
                 layout: GridListLayout {
                     columnCount: 4
-                    cellAspectRatio: 1.0
                     headerMode: ListHeaderMode.None
+                    cellWidth:  ui.du(20)
+                    cellHeight: ui.du(20)
                 }
                 
                 property variant profileDef: contactsProfileDef
@@ -82,8 +83,6 @@ NavigationPane {
                         type: ""
                         Container {
                             id: gridCell
-                            preferredWidth:  ui.du(20)
-                            preferredHeight: ui.du(20)
                             horizontalAlignment: HorizontalAlignment.Fill
                             verticalAlignment:   VerticalAlignment.Fill
                             layout: DockLayout {}

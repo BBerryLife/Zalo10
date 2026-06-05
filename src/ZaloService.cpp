@@ -1262,14 +1262,14 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                      << "thread" << threadId << out["content"].toString().left(30);
             dbSaveMessage(out, threadId);
             emit newMessage(threadId, out);
-            // Hub notification nếu tin đến và không phải của mình, app đang ở nền
+            // Hub notification: title="Zalo10", body="Tên: nội dung"
             if (!isSelf && threadId != m_activeThreadId) {
-                QString notifTitle = out["dName"].toString();
-                if (notifTitle.isEmpty()) notifTitle = "Zalo";
+                QString senderName = out["dName"].toString();
+                if (senderName.isEmpty()) senderName = "Unknown";
                 int mt = out["msgType"].toInt();
-                QString notifBody = (mt == 2) ? "[Photo]" : out["content"].toString().left(80);
-                if (notifBody.isEmpty()) notifBody = "[Message]";
-                sendHubNotification(notifTitle, notifBody, threadId);
+                QString msgPreview = (mt == 2) ? "[Photo]" : out["content"].toString().left(80);
+                if (msgPreview.isEmpty()) msgPreview = "[Message]";
+                sendHubNotification("Zalo10", senderName + ": " + msgPreview, threadId);
             }
             // Cập nhật lastPollMsgId nếu đây là thread đang mở
             if (threadId == m_activeThreadId && !msgId.isEmpty()) {
@@ -1399,19 +1399,35 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
 
         for (int i = 0; i < rawMsgs.size(); ++i) {
             QVariantMap m = rawMsgs[i].toMap();
-            QString msgId   = m["msgId"].toString();
-            QString uidFrom = m["uidFrom"].toString();
-            bool isMine     = (uidFrom == m_uid);
+            QString msgId      = m["msgId"].toString();
+            QString rawUidFrom = m["uidFrom"].toString();
+            // Zalo WS: uidFrom=="0" = tin của mình (giống cmd=501), KHÔNG phải so sánh m_uid
+            bool isMine = (rawUidFrom == "0" || rawUidFrom == m_uid);
+            QString uidFrom = (rawUidFrom == "0") ? m_uid : rawUidFrom;
 
             QVariantMap out;
             out["msgId"]    = msgId;
-            out["content"]  = m["content"].toString();
             out["senderId"] = uidFrom;
             out["dName"]    = m["dName"].toString();
             out["ts"]       = m["ts"].toString();
             out["isGroup"]  = false;
             out["isMine"]   = isMine;
             out["msgType"]  = m["msgType"].toInt();
+
+            // msgType=2 (photo): uidFrom="0" → own msg, build content JSON từ URL fields
+            int mtH = m["msgType"].toInt();
+            QString rawContentH = m["content"].toString();
+            if (mtH == 2 && rawContentH.isEmpty()) {
+                QString nUrl = m["normalUrl"].toString();
+                QString hUrl = m["hdUrl"].toString();
+                QString oUrl = m["oriUrl"].toString();
+                if (nUrl.isEmpty()) nUrl = hUrl;
+                if (nUrl.isEmpty()) nUrl = oUrl;
+                if (!nUrl.isEmpty())
+                    rawContentH = QString("{\"normalUrl\":\"%1\",\"hdUrl\":\"%2\",\"oriUrl\":\"%3\"}")
+                                 .arg(nUrl).arg(hUrl).arg(oUrl);
+            }
+            out["content"] = rawContentH;
             msgs.append(out);
 
             if (!msgId.isEmpty()) {
@@ -1911,12 +1927,14 @@ void ZaloService::onFetchInvitesDone()
     }
 
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-    qDebug() << "[Zalo] fetchInvites decrypted (first300):" << dec.left(300);
+    // Dump TOÀN BỘ response để debug đúng key
+    qDebug() << "[Zalo] fetchInvites decrypted FULL:" << dec.left(800);
     QVariantMap outer = jsonToMap(dec.toUtf8());
     qDebug() << "[Zalo] fetchInvites outer keys:" << outer.keys();
 
-    // getinvitation response layout:
-    //   { invites: [...] }  hoặc  { data: { invites: [...] } }  hoặc  { data: [...] }
+    // zca-js getinvitation: response = { data: { invites: [...] } } hoặc { invites: [...] }
+    // Một số version dùng key "invites", một số dùng "received", "requests", "items", "list"
+    // Nếu vẫn không thấy, thử duyệt tất cả key để tìm array đầu tiên
     QVariantList rawList;
     // Thử trực tiếp ở root của decrypted
     if (!outer["invites"].toList().isEmpty())
@@ -1929,6 +1947,8 @@ void ZaloService::onFetchInvitesDone()
         rawList = outer["items"].toList();
     else if (!outer["list"].toList().isEmpty())
         rawList = outer["list"].toList();
+    else if (!outer["friends"].toList().isEmpty())
+        rawList = outer["friends"].toList();
     // Thử trong data wrapper
     else if (outer.contains("data")) {
         QVariant dataV = outer["data"];
@@ -1936,11 +1956,33 @@ void ZaloService::onFetchInvitesDone()
             rawList = dataV.toList();
         } else if (dataV.type() == QVariant::Map) {
             QVariantMap d = dataV.toMap();
+            qDebug() << "[Zalo] fetchInvites data sub-keys:" << d.keys();
             if (!d["invites"].toList().isEmpty())       rawList = d["invites"].toList();
             else if (!d["received"].toList().isEmpty()) rawList = d["received"].toList();
             else if (!d["requests"].toList().isEmpty()) rawList = d["requests"].toList();
             else if (!d["items"].toList().isEmpty())    rawList = d["items"].toList();
             else if (!d["list"].toList().isEmpty())     rawList = d["list"].toList();
+            else if (!d["friends"].toList().isEmpty())  rawList = d["friends"].toList();
+            // Last resort: tìm key nào trả về List không rỗng
+            if (rawList.isEmpty()) {
+                for (QVariantMap::const_iterator it = d.constBegin(); it != d.constEnd(); ++it) {
+                    if (it.value().type() == QVariant::List && !it.value().toList().isEmpty()) {
+                        qDebug() << "[Zalo] fetchInvites found array under data key:" << it.key();
+                        rawList = it.value().toList();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    // Last resort trên outer: tìm key nào là List không rỗng
+    if (rawList.isEmpty()) {
+        for (QVariantMap::const_iterator it = outer.constBegin(); it != outer.constEnd(); ++it) {
+            if (it.value().type() == QVariant::List && !it.value().toList().isEmpty()) {
+                qDebug() << "[Zalo] fetchInvites found array under outer key:" << it.key();
+                rawList = it.value().toList();
+                break;
+            }
         }
     }
 
@@ -1950,9 +1992,19 @@ void ZaloService::onFetchInvitesDone()
     for (int i = 0; i < rawList.size(); ++i) {
         QVariantMap info = rawList[i].toMap();
 
-        // Bỏ qua PYMK (type=1 hoặc recommItemType=1) nếu có
-        if (info.contains("type") && info["type"].toInt() == 1) continue;
+        // Debug: dump mỗi item để xác định cấu trúc đúng
+        if (i < 5)
+            qDebug() << "[Zalo] fetchInvites item[" << i << "] keys:" << info.keys()
+                     << "type=" << info["type"].toString()
+                     << "uid=" << info["uid"].toString()
+                     << "fromUid=" << info["fromUid"].toString()
+                     << "inviteType=" << info["inviteType"].toString();
+
+        // Bỏ qua PYMK: type=1, recommItemType=1, hoặc inviteType="suggest"
         if (info.contains("recommItemType") && info["recommItemType"].toInt() == 1) continue;
+        // type: 0=received invitation, 1=PYMK suggestion — chỉ skip type==1 RÕ RÀNG
+        if (info.contains("type") && info["type"].toInt() == 1) continue;
+        if (info.contains("inviteType") && info["inviteType"].toString() == "suggest") continue;
 
         // Lấy uid từ nhiều field khác nhau tùy API version
         QString uid = info["uid"].toString();
@@ -1960,6 +2012,7 @@ void ZaloService::onFetchInvitesDone()
         if (uid.isEmpty()) uid = info["fid"].toString();
         if (uid.isEmpty()) uid = info["fromUid"].toString();
         if (uid.isEmpty()) uid = info["zaloId"].toString();
+        if (uid.isEmpty()) uid = info["srcUid"].toString();
         if (uid.isEmpty()) continue;
 
         QString name = info["zaloName"].toString();
@@ -2541,9 +2594,10 @@ void ZaloService::setActiveThread(const QString &threadId, bool isGroup)
     m_activeThreadId      = threadId;
     m_activeThreadIsGroup = isGroup;
     if (changed) {
-        // Thread mới → reset poll state
+        // Thread mới → reset poll state và clear stale DM request queue
         m_lastPollMsgId.clear();
         m_seenMsgIds.clear();
+        m_pendingDmThreadIds.clear(); // FIX: tránh 510 response cũ leak vào thread mới
     }
     qDebug() << "[Zalo] setActiveThread:" << threadId << "isGroup:" << isGroup << "changed:" << changed;
 }

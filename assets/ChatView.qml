@@ -109,21 +109,33 @@ Page {
 
         var cached = zService.dbLoadMessages(chatViewPage.threadId);
         if (cached && cached.length > 0) {
-            // FIX1: Reset cache mỗi lần mở conversation mới
+            // Reset cache mỗi lần mở conversation mới
             var newCache = {};
             for (var i = 0; i < cached.length; i++) {
                 var c = cached[i];
-                // FIX1: Always stamp selfName so label shows correctly
+                // Always stamp selfName so label shows correctly
                 c.selfName = chatViewPage.selfName || "Me";
-                // FIX1: Normalize isMine to boolean NOW before append
+                // Normalize isMine to boolean NOW before append
                 if (c.isMine === "true" || c.isMine === 1 || c.isMine === true) {
                     c.isMine = true;
                 } else {
                     c.isMine = false;
                 }
-                // FIX1: Lưu isMine vào cache — DB là nguồn chính xác nhất
+                // Lưu isMine vào cache — DB là nguồn chính xác nhất
                 if (c.msgId) newCache[c.msgId] = c.isMine;
                 msgModel.append(c);
+
+                // FIX5: Ảnh reload từ DB không có localImage → trigger download thumbnail
+                var isPhoto = (c.msgType === 2 || c.msgType === "2");
+                var hasLocal = (c.localImage && c.localImage.length > 0);
+                if (isPhoto && !hasLocal && c.msgId) {
+                    var ct = c.content || "";
+                    if (ct.length > 1 && ct.charAt(0) === "{") {
+                        var m1 = ct.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
+                        if (m1 && m1[1])
+                            zService.downloadImageMessage(c.msgId, m1[1]);
+                    }
+                }
             }
             chatViewPage.dbIsMineCache = newCache;
             chatViewPage.rebuildGroups();
@@ -676,13 +688,15 @@ Page {
                     msgModel.append(nm);
                     added = true;
 
-                    // Trigger thumbnail download for image messages
+                    // Trigger thumbnail download cho tin ảnh chưa có localImage
                     if (nm.msgType === 2 || nm.msgType === "2") {
-                        var c = nm.content;
-                        if (typeof c === "string" && c.charAt(0) === "{") {
-                            var m2 = c.match(/"(?:thumb|normalUrl)"\s*:\s*"([^"]+)"/);
-                            if (m2 && m2[1])
-                                zService.downloadImageMessage(nm.msgId, m2[1]);
+                        if (!nm.localImage || nm.localImage.length === 0) {
+                            var c = nm.content;
+                            if (typeof c === "string" && c.charAt(0) === "{") {
+                                var m2 = c.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
+                                if (m2 && m2[1])
+                                    zService.downloadImageMessage(nm.msgId, m2[1]);
+                            }
                         }
                     }
                 }
@@ -758,7 +772,7 @@ Page {
                     if (!msg.localImage || msg.localImage.length === 0) {
                         var c = msg.content;
                         if (typeof c === "string" && c.charAt(0) === "{") {
-                            var thumbMatch = c.match(/"(?:thumb|normalUrl)"\s*:\s*"([^"]+)"/);
+                            var thumbMatch = c.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
                             if (thumbMatch && thumbMatch[1])
                                 zService.downloadImageMessage(msg.msgId, thumbMatch[1]);
                         }
