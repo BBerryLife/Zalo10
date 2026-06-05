@@ -60,6 +60,7 @@ public:
 signals:
     void loggedInChanged();
     void loginFailed(const QString &message);
+    void sessionExpired();          // cookies/secretKey no longer valid → must re-login
     void loginSuccess(const QString &uid, const QString &displayName);
     void qrCodeReady(const QString &imagePath, const QString &qrCode);
     void qrScanned(const QString &displayName);

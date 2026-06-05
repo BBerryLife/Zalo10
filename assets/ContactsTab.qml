@@ -5,11 +5,15 @@ import QtQuick 1.0
 NavigationPane {
     id: contactsNav
     peekEnabled: false
-    
+
+    // Exposed so main.qml can set it via contactsTabContent.selfName = ...
+    property string selfName: ""
+    onSelfNameChanged: contactsPage.selfName = selfName
+
     Page {
         id: contactsPage
         property bool populated: false
-        property string selfName: ""
+        property string selfName: contactsNav.selfName
         
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm

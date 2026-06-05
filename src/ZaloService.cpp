@@ -1894,8 +1894,8 @@ void ZaloService::fetchInvites()
 {
     if (!m_loggedIn) return;
 
-    // zca-js: /api/friend/getinvitation → 404 trên Zalo hiện tại
-    // Dùng /api/friend/recommendsv2/list: recommItemType=2 = received friend request
+    // zca-js: /api/friend/recommendsv2/list — recommItemType=2 = ReceivedFriendRequest
+    // (per getFriendRecommendations.js in zca-js source)
     QString base = m_friendServiceUrl.isEmpty() ? m_profileServiceUrl : m_friendServiceUrl;
     QVariantMap innerParams;
     innerParams["imei"] = m_imei;
@@ -1929,12 +1929,14 @@ void ZaloService::onFetchInvitesDone()
     }
 
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-    // Dump TOÀN BỘ response để debug đúng key
     qDebug() << "[Zalo] fetchInvites decrypted FULL:" << dec.left(800);
     QVariantMap outer = jsonToMap(dec.toUtf8());
     qDebug() << "[Zalo] fetchInvites outer keys:" << outer.keys();
 
-    // recommendsv2/list response: { recommItems: [{ recommItemType: 1=PYMK, 2=ReceivedRequest, dataInfo:{...} }] }
+    // recommendsv2/list response (per zca-js getFriendRecommendations.d.ts):
+    // { recommItems: [{ recommItemType: 1=PYMK, 2=ReceivedFriendRequest,
+    //                   dataInfo: { userId, zaloName, displayName, avatar,
+    //                               recommInfo: { message } } }] }
     QVariantList recommItems = outer["recommItems"].toList();
     if (recommItems.isEmpty() && outer.contains("data")) {
         QVariant dataV = outer["data"];
@@ -1954,44 +1956,47 @@ void ZaloService::onFetchInvitesDone()
             qDebug() << "[Zalo] fetchInvites item[" << i << "] recommItemType=" << itemType
                      << "dataInfo keys=" << item["dataInfo"].toMap().keys();
 
-        // Chỉ lấy type=2 (ReceivedFriendRequest), bỏ type=1 (PYMK)
+        // Only take type=2 (ReceivedFriendRequest), skip type=1 (PYMK)
         if (itemType != 2) continue;
 
         QVariantMap info = item["dataInfo"].toMap();
-        if (info.isEmpty()) info = item;
+        if (info.isEmpty()) continue;
 
-        // Lấy uid từ nhiều field khác nhau tùy API version
-        QString uid = info["uid"].toString();
-        if (uid.isEmpty()) uid = info["userId"].toString();
+        // userId is the correct field per zca-js type definition
+        QString uid = info["userId"].toString();
+        if (uid.isEmpty()) uid = info["uid"].toString();
         if (uid.isEmpty()) uid = info["fid"].toString();
-        if (uid.isEmpty()) uid = info["fromUid"].toString();
-        if (uid.isEmpty()) uid = info["zaloId"].toString();
-        if (uid.isEmpty()) uid = info["srcUid"].toString();
         if (uid.isEmpty()) continue;
 
+        // zaloName or displayName
         QString name = info["zaloName"].toString();
-        if (name.isEmpty()) name = info["dName"].toString();
         if (name.isEmpty()) name = info["displayName"].toString();
         if (name.isEmpty()) name = info["fullName"].toString();
-        if (name.isEmpty()) name = info["fromDname"].toString();
-        if (name.isEmpty()) name = info["userName"].toString();
 
+        // avatar field
         QString avatarUrl = info["avatar"].toString();
-        if (avatarUrl.isEmpty()) avatarUrl = info["fromAvatar"].toString();
-        if (avatarUrl.isEmpty()) avatarUrl = info["avatarUrl"].toString();
 
-        QString msg = info["msg"].toString();
-        if (msg.isEmpty()) msg = info["message"].toString();
-        if (msg.isEmpty()) msg = info["hello"].toString();
+        // message from recommInfo.message per type definition
+        QString msg;
+        QVariant recommInfoV = info["recommInfo"];
+        if (recommInfoV.type() == QVariant::Map) {
+            QVariantMap recommInfo = recommInfoV.toMap();
+            msg = recommInfo["message"].toString();
+            if (msg.isEmpty()) msg = recommInfo["customText"].toString();
+        }
+        // Fallback fields — reject anything that looks like a serialized JSON object
+        if (msg.isEmpty()) msg = info["msg"].toString();
+        if (msg.trimmed().startsWith("{") || msg.trimmed().startsWith("["))
+            msg = QString();
 
         QVariantMap inv;
         inv["uid"]    = uid;
         inv["name"]   = name.isEmpty() ? uid : name;
         inv["avatar"] = avatarUrl;
-        inv["msg"]    = msg.isEmpty() ? "Muon ket ban voi ban" : msg;
+        inv["msg"]    = msg.isEmpty() ? "Wants to be your friend" : msg;
         invites.append(inv);
     }
-    qDebug() << "[Zalo] fetchInvites found" << invites.size() << "received requests";
+    qDebug() << "[Zalo] fetchInvites found" << invites.size() << "pending requests";
     emit invitesReady(invites);
 }
 
@@ -3025,9 +3030,9 @@ bool ZaloService::loadSession()
         return false;
     }
 
-    m_loggedIn = true;
-    emit loggedInChanged();
-    m_listenTimer->start(8000);
+    // QUAN TRỌNG: KHÔNG set m_loggedIn=true ở đây — giữ false cho đến khi
+    // refreshSessionKey lấy được secretKey mới. Nếu set true sớm, QML sẽ
+    // emit loginSuccess ngay và fetch với key cũ → lỗi 600.
     qDebug() << "[Zalo] loadSession: restored session uid=" << m_uid
              << "cookies=" << m_cookies.size();
 
@@ -3167,7 +3172,16 @@ void ZaloService::onRefreshSessionKeyDone()
             }
         }
     } else {
-        qDebug() << "[Zalo] refreshSessionKey: error_code=" << ec << "- using existing key";
+        qDebug() << "[Zalo] refreshSessionKey: error_code=" << ec << "- session expired, forcing re-login";
+        // Clear saved session so next loadSession() returns false
+        QSettings s("BerryLife", "Zalo10");
+        s.remove("uid");
+        s.remove("secretKey");
+        s.remove("cookies");
+        s.sync();
+        m_loggedIn = false;
+        emit sessionExpired();
+        return;
     }
 
     if (!m_loggedIn) {

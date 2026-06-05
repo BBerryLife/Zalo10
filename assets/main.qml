@@ -328,8 +328,7 @@ TabbedPane {
                             if (typeof displayName !== "undefined" && displayName.length > 0)
                                 root.selfName = displayName;
                             // Propagate selfName to ContactsTab
-                            if (contactsTab.content)
-                                contactsTab.content.selfName = root.selfName;
+                            contactsTabContent.selfName = root.selfName;
                             zService.fetchFriends()
                             chatsLoading.visible = true
                         }
@@ -372,18 +371,8 @@ TabbedPane {
         title: "Contacts"
         description: "Friends"
         imageSource: "asset:///images/ic_contact.png"
-
-        attachedObjects: [
-            ComponentDefinition {
-                id: contactsTabDef
-                source: "asset:///ContactsTab.qml"
-            }
-        ]
-
-        onCreationCompleted: {
-            var ct = contactsTabDef.createObject()
-            if (ct) ct.selfName = root.selfName
-            contactsTab.content = ct
+        ContactsTab {
+            id: contactsTabContent
         }
     }
     
@@ -740,7 +729,7 @@ TabbedPane {
                                             }
                                             
                                             Label {
-                                                text: ListItemData.msg || "Muốn kết bạn với bạn"
+                                                text: ListItemData.msg || "Wants to be your friend"
                                                 textStyle {
                                                     base: SystemDefaults.TextStyles.SubtitleText
                                                     color: Color.DarkGray
@@ -750,7 +739,7 @@ TabbedPane {
                                             
                                             // Nút Accept nhỏ gọn
                                             Button {
-                                                text: "Chấp nhận"
+                                                text: "Accept"
                                                 topMargin: ui.du(0.8)
                                                 preferredHeight: ui.du(5)
                                                 onClicked: {
@@ -869,6 +858,12 @@ TabbedPane {
             }
         },
         SettingsSheet { id: settingsSheet },
+        Connections {
+            target: zService
+            onSessionExpired: {
+                loginSheet.open()
+            }
+        },
         AboutSheet { id: aboutSheet }
     ]
 }

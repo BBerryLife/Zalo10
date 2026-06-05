@@ -6,9 +6,8 @@ Page {
     id: loginView
     signal loginSuccessful()
 
-    // Native TitleBar với màu gradient #70cbff
     titleBar: TitleBar {
-        title: "Đăng nhập Zalo10"
+        title: "Sign in to Zalo10"
         kind: TitleBarKind.Default
         appearance: TitleBarAppearance.Branded
     }
@@ -21,12 +20,11 @@ Page {
         layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment:   VerticalAlignment.Fill
-        // Background mặc định hệ thống
 
         Container { preferredHeight: ui.du(3) }
 
         Label {
-            text: "Quét mã QR bằng ứng dụng Zalo trên điện thoại"
+            text: "Scan the QR code with the Zalo app on your phone"
             multiline: true
             horizontalAlignment: HorizontalAlignment.Center
             textStyle {
@@ -37,7 +35,6 @@ Page {
 
         Container { preferredHeight: ui.du(2) }
 
-        // - Khung QR lớn hơn -
         Container {
             horizontalAlignment: HorizontalAlignment.Center
             layout: DockLayout {}
@@ -78,7 +75,7 @@ Page {
                     verticalAlignment:   VerticalAlignment.Fill
                     layout: DockLayout {}
                     Label {
-                        text: "QR hết hạn"
+                        text: "QR Expired"
                         horizontalAlignment: HorizontalAlignment.Center
                         verticalAlignment:   VerticalAlignment.Center
                         textStyle { base: SystemDefaults.TextStyles.TitleText; color: Color.White }
@@ -91,7 +88,7 @@ Page {
 
         Label {
             id: statusLabel
-            text: "Đang tải mã QR..."
+            text: "Loading QR code..."
             horizontalAlignment: HorizontalAlignment.Center
             textStyle {
                 base:      SystemDefaults.TextStyles.BodyText
@@ -103,7 +100,7 @@ Page {
 
         Button {
             id: retryBtn
-            text: "Làm mới QR"
+            text: "Refresh QR"
             visible: false
             horizontalAlignment: HorizontalAlignment.Center
             onClicked: {
@@ -111,7 +108,7 @@ Page {
                 retryBtn.visible  = false;
                 qrImage.visible   = false;
                 qrLoading.visible = true;
-                statusLabel.text  = "Đang tải mã QR...";
+                statusLabel.text  = "Loading QR code...";
                 zService.retryQRLogin();
             }
         }
@@ -125,15 +122,15 @@ Page {
                 expiredOverlay.visible = false;
                 retryBtn.visible   = false;
                 if (imagePath.indexOf("data:") === 0) {
-                    statusLabel.text = "Mã: " + qrCode.substring(0, 16) + "...";
+                    statusLabel.text = "Code: " + qrCode.substring(0, 16) + "...";
                 } else {
                     qrImage.imageSource = imagePath;
                     qrImage.visible     = true;
-                    statusLabel.text    = "Quét bằng Zalo trên điện thoại";
+                    statusLabel.text    = "Scan with Zalo on your phone";
                 }
             }
             onQrScanned: {
-                statusLabel.text  = "Đã quét! Đang xác nhận...";
+                statusLabel.text  = "Scanned! Confirming...";
                 qrImage.visible   = false;
                 qrLoading.visible = true;
             }
@@ -141,11 +138,11 @@ Page {
                 qrLoading.visible  = false;
                 expiredOverlay.visible = true;
                 retryBtn.visible   = true;
-                statusLabel.text   = "Mã QR đã hết hạn";
+                statusLabel.text   = "QR code has expired";
             }
             onLoginSuccess: { loginView.loginSuccessful(); }
             onLoginFailed:  {
-                statusLabel.text = "Lỗi: " + message;
+                statusLabel.text = "Error: " + message;
                 retryBtn.visible = true;
                 qrLoading.visible = false;
             }
