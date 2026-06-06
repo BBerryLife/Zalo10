@@ -54,7 +54,10 @@ public:
     Q_INVOKABLE void setActiveThread(const QString &threadId, bool isGroup);
     Q_INVOKABLE void clearActiveThread();
     Q_INVOKABLE void blockUser(const QString &userId);
+    Q_INVOKABLE void unblockUser(const QString &userId);
+    Q_INVOKABLE bool isBlocked(const QString &userId) const { return m_blockedUsers.contains(userId); }
     Q_INVOKABLE void setMute(const QString &threadId, bool isGroup, bool mute);
+    Q_INVOKABLE bool isMutedThread(const QString &threadId) const { return m_mutedThreads.contains(threadId); }
     Q_INVOKABLE void clearHistory(const QString &threadId, bool isGroup);
     Q_INVOKABLE void leaveGroup(const QString &groupId);
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId);
@@ -82,6 +85,7 @@ signals:
     // msgId, localFilePath — for image messages downloaded for display
     void imageMsgReady(const QString &msgId, const QString &localPath);
     void blockUserDone(const QString &userId, bool success);
+    void unblockUserDone(const QString &userId, bool success);
     void muteDone(const QString &threadId, bool muted, bool success);
     void clearHistoryDone(const QString &threadId, bool success);
     void leaveGroupDone(const QString &groupId, bool success);
@@ -115,6 +119,7 @@ private slots:
     void onRefreshSessionKeyDone();
     void onImageMsgDownloaded();
     void onBlockUserDone();
+    void onUnblockUserDone();
     void onSetMuteDone();
     void onClearHistoryDone();
     void onLeaveGroupDone();
@@ -220,6 +225,9 @@ private:
     QString m_groupPollServiceUrl; // zpwServiceMap.group_poll[0]
     QString m_friendServiceUrl;    // zpwServiceMap.friend[0]
     QString m_fileServiceUrl;      // zpwServiceMap.file[0]
+
+    QSet<QString> m_mutedThreads;  // threadIds currently muted
+    QSet<QString> m_blockedUsers;  // userIds currently blocked
     QString m_externalToken;
     QStringList m_zpwWsUrls; // zpw_ws[] — lưu session, copy sang m_wsUrls khi connect
 

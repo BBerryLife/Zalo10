@@ -17,6 +17,7 @@ Page {
     property string pendingAttachPath: ""
     property variant dbIsMineCache: ({})
     property bool   isMuted: false
+    property bool   isBlocked: false
 
     // - TITLE BAR -
     titleBar: TitleBar {
@@ -104,6 +105,10 @@ Page {
         if (chatViewPage.threadId === "") return;
         if (chatViewPage.selfName === "") chatViewPage.selfName = "Me";
         chatViewPage.initialized = true;
+
+        // Init block/mute state from C++ in-memory sets
+        chatViewPage.isBlocked = zService.isBlocked(chatViewPage.threadId);
+        chatViewPage.isMuted   = zService.isMutedThread(chatViewPage.threadId);
 
         msgModel.clear();
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
@@ -415,11 +420,16 @@ Page {
             }
         },
         ActionItem {
-            title: "Block user"
+            title: chatViewPage.isBlocked ? "Unblock user" : "Block user"
             imageSource: "asset:///images/ic_block_contact.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: !chatViewPage.isGroup
-            onTriggered: { blockDialog.show() }
+            onTriggered: {
+                if (chatViewPage.isBlocked)
+                    zService.unblockUser(chatViewPage.threadId);
+                else
+                    blockDialog.show();
+            }
         },
         ActionItem {
             title: "Clear history"
@@ -843,6 +853,16 @@ Page {
             onMuteDone: {
                 if (threadId !== chatViewPage.threadId) return;
                 if (success) chatViewPage.isMuted = muted;
+            }
+
+            onBlockUserDone: {
+                if (userId !== chatViewPage.threadId) return;
+                if (success) chatViewPage.isBlocked = true;
+            }
+
+            onUnblockUserDone: {
+                if (userId !== chatViewPage.threadId) return;
+                if (success) chatViewPage.isBlocked = false;
             }
 
             onClearHistoryDone: {

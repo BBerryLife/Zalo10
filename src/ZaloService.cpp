@@ -77,9 +77,19 @@ static QByteArray mapToJson(const QVariantMap &map)
         case QVariant::String:   obj.setProperty(it.key(), v.toString()); break;
         case QVariant::Int:
         case QVariant::LongLong: obj.setProperty(it.key(), (double)v.toLongLong()); break;
+        case QVariant::UInt:
+        case QVariant::ULongLong: obj.setProperty(it.key(), (double)v.toULongLong()); break;
         case QVariant::Bool:     obj.setProperty(it.key(), (bool)v.toBool()); break;
         case QVariant::Double:   obj.setProperty(it.key(), (double)v.toDouble()); break;
-        default:                 obj.setProperty(it.key(), v.toString()); break;
+        case QVariant::List: {
+            QVariantList lst = v.toList();
+            QScriptValue arr = eng.newArray(lst.size());
+            for (int i = 0; i < lst.size(); ++i)
+                arr.setProperty(i, lst[i].toString());
+            obj.setProperty(it.key(), arr);
+            break;
+        }
+        default: obj.setProperty(it.key(), v.toString()); break;
         }
     }
     QScriptValue jsonStringify = eng.evaluate("JSON.stringify");
@@ -1271,7 +1281,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                      << "thread" << threadId << out["content"].toString().left(30);
             dbSaveMessage(out, threadId);
             emit newMessage(threadId, out);
-            if (!isSelf && threadId != m_activeThreadId) {
+            if (!isSelf && threadId != m_activeThreadId && !m_mutedThreads.contains(threadId)) {
                 QString senderName = out["dName"].toString();
                 if (senderName.isEmpty()) senderName = "Unknown";
                 int mt = out["msgType"].toInt();
@@ -2106,7 +2116,48 @@ void ZaloService::onBlockUserDone()
         QVariantMap outer = jsonToMap(raw);
         ok = (outer["error_code"].toInt() == 0);
     }
+    if (ok) m_blockedUsers.insert(uid);
     emit blockUserDone(uid, ok);
+}
+
+void ZaloService::unblockUser(const QString &userId)
+{
+    if (!m_loggedIn || userId.isEmpty()) return;
+
+    QVariantMap params;
+    params["fid"]  = userId;
+    params["imei"] = m_imei;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_friendServiceUrl + "/api/friend/unblock"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] unblockUser uid=" << userId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("userId", userId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onUnblockUserDone()));
+}
+
+void ZaloService::onUnblockUserDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString uid = reply->property("userId").toString();
+    QByteArray raw = reply->readAll();
+    bool ok = (reply->error() == QNetworkReply::NoError);
+    reply->deleteLater();
+    qDebug() << "[Zalo] unblockUser response:" << raw.left(200);
+    if (ok) {
+        QVariantMap outer = jsonToMap(raw);
+        ok = (outer["error_code"].toInt() == 0);
+    }
+    if (ok) m_blockedUsers.remove(uid);
+    emit unblockUserDone(uid, ok);
 }
 
 // ─── setMute ──────────────────────────────────────────────────────────────
@@ -2155,6 +2206,10 @@ void ZaloService::onSetMuteDone()
     if (ok) {
         QVariantMap outer = jsonToMap(raw);
         ok = (outer["error_code"].toInt() == 0);
+    }
+    if (ok) {
+        if (muting) m_mutedThreads.insert(tid);
+        else        m_mutedThreads.remove(tid);
     }
     emit muteDone(tid, muting, ok);
 }
@@ -2217,6 +2272,16 @@ void ZaloService::onClearHistoryDone()
     if (ok) {
         QVariantMap outer = jsonToMap(raw);
         ok = (outer["error_code"].toInt() == 0);
+    }
+    if (ok && m_db && !tid.isEmpty()) {
+        const char *sql = "DELETE FROM messages WHERE threadId=?";
+        sqlite3_stmt *stmt = 0;
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, tid.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+        qDebug() << "[Zalo] clearHistory deleted local DB for thread:" << tid;
     }
     emit clearHistoryDone(tid, ok);
 }
@@ -3328,6 +3393,7 @@ void ZaloService::saveSession()
     s.setValue("profileUrl", m_profileServiceUrl);
     s.setValue("grpPollUrl", m_groupPollServiceUrl);
     s.setValue("friendUrl",  m_friendServiceUrl);
+    s.setValue("fileUrl",    m_fileServiceUrl);
     s.setValue("zpwWsUrls",  m_zpwWsUrls);
 
     QVariantMap cookieMap;
@@ -3355,11 +3421,12 @@ bool ZaloService::loadSession()
     m_secretKey        = s.value("secretKey").toString();
     m_imei             = s.value("imei").toString();
     m_userAgent        = s.value("userAgent", QString::fromLatin1(USER_AGENT)).toString();
-    m_chatServiceUrl   = s.value("chatUrl").toString();
-    m_groupServiceUrl  = s.value("groupUrl").toString();
-    m_profileServiceUrl= s.value("profileUrl").toString();
+    m_chatServiceUrl      = s.value("chatUrl").toString();
+    m_groupServiceUrl     = s.value("groupUrl").toString();
+    m_profileServiceUrl   = s.value("profileUrl").toString();
     m_groupPollServiceUrl = s.value("grpPollUrl").toString();
     m_friendServiceUrl    = s.value("friendUrl").toString();
+    m_fileServiceUrl      = s.value("fileUrl").toString();
     m_zpwWsUrls           = s.value("zpwWsUrls").toStringList();
 
     QString cookieJson = s.value("cookies").toString();
