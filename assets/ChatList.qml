@@ -33,11 +33,8 @@ Page {
     }
     
     onCreationCompleted: {
-        if (!fetchStarted && zService.loggedIn) {
-            fetchStarted = true;
-            zService.fetchConversations();
-            loadingBar.visible = true;
-        }
+        // Fetch được trigger bởi onLoginSuccess signal từ C++ — không fetch ở đây
+        // để tránh double-fetch và tránh gọi với secretKey chưa ready
     }
     
     // - ACTION BAR DƯỚI ĐÁY CHUẨN BB10 -

@@ -851,9 +851,8 @@ TabbedPane {
             LoginView {
                 onLoginSuccessful: { 
                     loginSheet.close();
-                    zService.fetchConversations();
-                    zService.fetchFriends();
-                    zService.fetchInvites();
+                    // Không fetch ở đây — C++ sẽ emit loginSuccess sau khi
+                    // login xong, và các Connections bên trên sẽ tự fetch.
                 }
             }
         },
@@ -861,6 +860,10 @@ TabbedPane {
         Connections {
             target: zService
             onSessionExpired: {
+                loginSheet.open()
+            }
+            onLoginFailed: {
+                // Auto-renew thất bại (cookies hết hạn hoàn toàn) → bắt quét QR lại
                 loginSheet.open()
             }
         },

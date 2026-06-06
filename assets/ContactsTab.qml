@@ -53,10 +53,7 @@ NavigationPane {
         ]
         
         onCreationCompleted: {
-            if (zService.loggedIn) {
-                zService.fetchFriends()
-                contactsLoading.visible = true
-            }
+            // Fetch được trigger bởi onLoginSuccess signal từ C++ — không fetch ở đây
         }
         
         Container {

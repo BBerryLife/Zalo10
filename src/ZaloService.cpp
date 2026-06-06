@@ -578,8 +578,16 @@ void ZaloService::onStep6Done()
 
 void ZaloService::step7_checkSession()
 {
-    qDebug() << "[Zalo] Step7: checkSession";
-    QNetworkReply *reply = m_manager->get(buildRequest("https://id.zalo.me/account/checksession?continue=https%3A%2F%2Fchat.zalo.me%2Findex.html", "https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F"));
+    qDebug() << "[Zalo] Step7: checkSession cookies:" << m_cookies.keys();
+    // checksession cần sec-fetch-site=same-origin (request từ id.zalo.me đến id.zalo.me)
+    QNetworkRequest req = buildRequest(
+        "https://id.zalo.me/account/checksession?continue=https%3A%2F%2Fchat.zalo.me%2Findex.html",
+        "https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F");
+    req.setRawHeader("sec-fetch-dest", "document");
+    req.setRawHeader("sec-fetch-mode", "navigate");
+    req.setRawHeader("sec-fetch-site", "same-origin");
+    req.setRawHeader("upgrade-insecure-requests", "1");
+    QNetworkReply *reply = m_manager->get(req);
     connect(reply, SIGNAL(finished()), this, SLOT(onStep7Done()));
 }
 
@@ -598,7 +606,20 @@ void ZaloService::onStep7Done()
         }
         qDebug() << "[Zalo] Step7 Dang Redirect de hung Cookie:" << redirectUrl.toString();
 
-        QNetworkReply *redirReply = m_manager->get(buildRequest(redirectUrl.toString(), "https://id.zalo.me/"));
+        // Gửi cookies cho đúng domain của redirect URL (quan trọng với syncsession/pushsession)
+        QString redirStr = redirectUrl.toString();
+        QString redirReferer = redirStr.contains("jr.zaloapp.com") ? "https://id.zalo.me/"
+                             : redirStr.contains("jr.chat.zalo.me") ? "https://jr.zaloapp.com/"
+                             : "https://id.zalo.me/";
+        QNetworkRequest redirReq = buildRequest(redirStr, redirReferer);
+        // Với cross-domain redirect (jr.*), set sec-fetch-site = cross-site
+        if (!redirStr.contains("id.zalo.me") && !redirStr.contains("chat.zalo.me")) {
+            redirReq.setRawHeader("sec-fetch-site", "cross-site");
+            redirReq.setRawHeader("sec-fetch-dest", "document");
+            redirReq.setRawHeader("sec-fetch-mode", "navigate");
+            redirReq.setRawHeader("upgrade-insecure-requests", "1");
+        }
+        QNetworkReply *redirReply = m_manager->get(redirReq);
         connect(redirReply, SIGNAL(finished()), this, SLOT(onStep7Done()));
         reply->deleteLater();
         return;
@@ -2958,16 +2979,16 @@ QString ZaloService::buildCookieHeader() const
 
 void ZaloService::parseCookiesFromReply(QNetworkReply *reply)
 {
-    foreach (const QByteArray &h, reply->rawHeaderList()) {
-        if (h.toLower() == "set-cookie") {
-            QList<QByteArray> lines = reply->rawHeader(h).split('\n');
-            foreach (const QByteArray &lineBytes, lines) {
-                QString line = QString::fromUtf8(lineBytes);
-                QString kv   = line.split(";").first().trimmed();
-                int eq = kv.indexOf('=');
-                if (eq > 0) {
-                    m_cookies[kv.left(eq).trimmed()] = kv.mid(eq + 1).trimmed();
-                }
+    // Qt4: rawHeader("Set-Cookie") chỉ trả header ĐẦU TIÊN khi có nhiều Set-Cookie.
+    // Phải dùng rawHeaderPairs() để lấy TẤT CẢ Set-Cookie headers.
+    typedef QPair<QByteArray, QByteArray> HeaderPair;
+    foreach (const HeaderPair &hp, reply->rawHeaderPairs()) {
+        if (hp.first.toLower() == "set-cookie") {
+            QString line = QString::fromUtf8(hp.second);
+            QString kv   = line.split(";").first().trimmed();
+            int eq = kv.indexOf('=');
+            if (eq > 0) {
+                m_cookies[kv.left(eq).trimmed()] = kv.mid(eq + 1).trimmed();
             }
         }
     }
@@ -3032,15 +3053,17 @@ bool ZaloService::loadSession()
         return false;
     }
 
-    // QUAN TRỌNG: KHÔNG set m_loggedIn=true ở đây — giữ false cho đến khi
-    // refreshSessionKey lấy được secretKey mới. Nếu set true sớm, QML sẽ
-    // emit loginSuccess ngay và fetch với key cũ → lỗi 600.
     qDebug() << "[Zalo] loadSession: restored session uid=" << m_uid
              << "cookies=" << m_cookies.size();
 
-    // QUAN TRỌNG: KHÔNG set m_loggedIn=true ở đây.
-    // m_loggedIn sẽ được set = true trong onRefreshSessionKeyDone SAU KHI có secretKey mới.
-    // Mục đích: ngăn onCreationCompleted trong QML gọi fetchConversations với key cũ → lỗi 600.
+    // BẮT BUỘC set false trước khi refresh — nếu app đã login từ lần trước,
+    // m_loggedIn có thể vẫn là true. Nếu không reset, QML onCreationCompleted
+    // thấy loggedIn=true và gọi fetch ngay với secretKey cũ → lỗi 600.
+    if (m_loggedIn) {
+        m_loggedIn = false;
+        emit loggedInChanged();
+    }
+
     qDebug() << "[Zalo] loadSession: cookies restored, refreshing secretKey...";
     refreshSessionKey();
 
@@ -3124,22 +3147,29 @@ void ZaloService::onRefreshSessionKeyDone()
         qDebug() << "[Zalo] refreshSessionKey decrypted (first100):" << decrypted.left(100);
     }
 
+    // outer ec=0 chỉ có nghĩa server nhận request — còn phải kiểm tra inner ec sau decrypt
+    bool refreshOk = false;
     if (ec == 0 && !decrypted.isEmpty()) {
         QScriptEngine eng;
         eng.globalObject().setProperty("__dec", decrypted);
-        eng.evaluate("var __info=null;"
+        eng.evaluate("var __info=null; var __innerEc=0;"
                      "try{"
                      "  var tmp=JSON.parse(__dec);"
+                     "  __innerEc = (tmp.error_code !== undefined) ? tmp.error_code : 0;"
                      "  if(tmp&&tmp.data){__info=tmp.data;}else{__info=tmp;}"
                      "}catch(e){__info=null;}");
         QScriptValue info = eng.globalObject().property("__info");
+        int innerEc = eng.globalObject().property("__innerEc").toInt32();
 
-        if (info.isObject() && !info.isNull()) {
+        if (innerEc != 0) {
+            qDebug() << "[Zalo] refreshSessionKey: inner error_code=" << innerEc << "- session expired";
+        } else if (info.isObject() && !info.isNull()) {
             QString newKey = info.property("zpw_enk").toString();
             if (!newKey.isEmpty()) {
                 m_secretKey   = newKey;
                 m_displayName = info.property("display_name").toString();
                 qDebug() << "[Zalo] refreshSessionKey: new secretKey, first20:" << m_secretKey.left(20);
+                refreshOk = true;
 
                 // Update service URLs
                 QScriptValue svcMap = info.property("zpw_service_map_v3");
@@ -3172,18 +3202,13 @@ void ZaloService::onRefreshSessionKeyDone()
                 saveSession();
             }
         }
-    } else {
-        qDebug() << "[Zalo] refreshSessionKey: error_code=" << ec << "- secretKey expired, need re-login";
-        // Chỉ xóa secretKey (đã hết hạn), GIỮ LẠI cookies và uid vì vẫn còn dùng được.
-        // User sẽ quét QR lại để lấy secretKey mới — cookies + uid sẽ được tái sử dụng.
-        QSettings s("BerryLife", "Zalo10");
-        s.remove("secretKey");
-        s.sync();
+    }
+
+    if (!refreshOk) {
+        qDebug() << "[Zalo] refreshSessionKey: secretKey expired - tự động renew qua step7/step8";
         m_secretKey.clear();
-        m_loggedIn = false;
-        // Ngắt WS để tránh nhận/gửi traffic với key cũ
         disconnectWebSocket();
-        emit sessionExpired();
+        step7_checkSession();
         return;
     }
 
