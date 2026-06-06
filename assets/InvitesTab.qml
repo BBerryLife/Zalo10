@@ -45,7 +45,14 @@ NavigationPane {
                 title: "Accept All"
                 imageSource: "asset:///images/ai_add_task.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {}
+                onTriggered: {
+                    for (var i = 0; i < inviteModel.size(); i++) {
+                        var uid = inviteModel.value(i).uid || "";
+                        if (uid.length > 0) zService.acceptFriendRequest(uid);
+                    }
+                    inviteModel.clear();
+                    invEmpty.visible = true;
+                }
             }
         ]
 

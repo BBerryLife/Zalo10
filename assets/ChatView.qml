@@ -410,9 +410,25 @@ Page {
         var txt = inputField.text.trim();
         if (txt.length === 0) return;
         if (!chatViewPage.threadId || chatViewPage.threadId === "") return;
-        chatViewPage.pendingMsg = txt;
         sendAction.enabled = false;
         inputField.text = "";
+
+        // Optimistic placeholder added BEFORE HTTP send to avoid race with WS cmd=501
+        var placeholder = {
+            msgId:    "local_" + new Date().getTime(),
+            content:  txt,
+            isMine:   true,
+            isGroup:  chatViewPage.isGroup,
+            senderId: "self",
+            dName:    chatViewPage.selfName,
+            ts:       String(new Date().getTime()),
+            selfName: chatViewPage.selfName
+        };
+        msgModel.append(placeholder);
+        chatViewPage.rebuildGroups();
+        msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+
+        chatViewPage.pendingMsg = txt;
         zService.sendMessage(chatViewPage.threadId, txt, chatViewPage.isGroup);
     }
 
@@ -717,50 +733,30 @@ Page {
 
             onMessageSent: {
                 if (threadId !== chatViewPage.threadId) return;
-                sendAction.enabled = (inputField.text.trim().length > 0);
-
-                if (success && chatViewPage.pendingMsg !== "") {
-                    // Thêm local placeholder — KHÔNG lưu DB
-                    // Sẽ bị xóa khi tin thật từ server về qua onMessagesReady/onNewMessage
-                    var m = {
-                        msgId:    "local_" + new Date().getTime(),
-                        content:  chatViewPage.pendingMsg,
-                        isMine:   true,
-                        isGroup:  chatViewPage.isGroup,
-                        senderId: "self",
-                        dName:    chatViewPage.selfName,
-                        ts:       String(new Date().getTime()),
-                        selfName: chatViewPage.selfName
-                    };
-                    msgModel.append(m);
-                    chatViewPage.rebuildGroups();
-                    msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
-                    chatViewPage.pendingMsg = "";
+                if (!success) {
+                    // Send failed — remove placeholder and restore input
+                    chatViewPage.removeLocalPlaceholder(chatViewPage.pendingMsg);
+                    inputField.text = chatViewPage.pendingMsg;
+                    sendAction.enabled = true;
                 }
+                chatViewPage.pendingMsg = "";
             }
 
             onNewMessage: {
                 if (threadId !== chatViewPage.threadId) return;
 
-                // Bỏ qua nếu msgId đã có
-                for (var i = 0; i < msgModel.size(); i++) {
-                    if (msgModel.value(i).msgId === message.msgId) return;
-                }
-
                 var msg = message;
                 msg.selfName = chatViewPage.selfName || "Me";
-                // FIX1: normalize isMine — trust DB cache if available
                 var newMsgRaw = (msg.isMine === true || msg.isMine === 1 || msg.isMine === "true" || msg.isMine === "1");
                 var newMsgCached = chatViewPage.dbIsMineCache[msg.msgId];
                 msg.isMine = (newMsgCached !== undefined) ? newMsgCached : newMsgRaw;
-                // Update cache
                 if (msg.msgId) {
                     var updC = chatViewPage.dbIsMineCache;
                     updC[msg.msgId] = msg.isMine;
                     chatViewPage.dbIsMineCache = updC;
                 }
 
-                // Nếu là tin của mình → xóa local placeholder trùng content
+                // Remove local placeholder BEFORE duplicate check to avoid race condition
                 if (chatViewPage.normMine(msg.isMine)) {
                     if (msg.msgType === 2 || msg.msgType === "2") {
                         // FIX5: Giữ lại localImage từ placeholder để hiển thị ngay, không cần download
@@ -779,12 +775,16 @@ Page {
                     }
                 }
 
+                // Duplicate check after placeholder removal
+                for (var di = 0; di < msgModel.size(); di++) {
+                    if (msgModel.value(di).msgId === msg.msgId) return;
+                }
+
                 msgModel.append(msg);
                 chatViewPage.rebuildGroups();
                 msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
 
-                // Nếu tin là ảnh, trigger download thumbnail để hiển thị
-                // Nếu localImage đã có (ảnh mình vừa gửi) thì KHÔNG download lại
+                // Trigger thumbnail download for image messages
                 if (msg.msgType === 2 || msg.msgType === "2") {
                     if (!msg.localImage || msg.localImage.length === 0) {
                         var c = msg.content;
