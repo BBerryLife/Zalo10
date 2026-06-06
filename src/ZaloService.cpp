@@ -2063,7 +2063,160 @@ void ZaloService::onRejectFriendDone()
     emit friendRequestResponded(fid, false, ok);
 }
 
-void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
+// ─── blockUser ────────────────────────────────────────────────────────────
+// zca-js: POST friend[0]/api/friend/block  body=params=AES({fid, imei})
+void ZaloService::blockUser(const QString &userId)
+{
+    if (!m_loggedIn || userId.isEmpty()) return;
+
+    QVariantMap params;
+    params["fid"]  = userId;
+    params["imei"] = m_imei;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_friendServiceUrl + "/api/friend/block"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] blockUser uid=" << userId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("userId", userId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onBlockUserDone()));
+}
+
+void ZaloService::onBlockUserDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString uid = reply->property("userId").toString();
+    QByteArray raw = reply->readAll();
+    bool ok = (reply->error() == QNetworkReply::NoError);
+    reply->deleteLater();
+    qDebug() << "[Zalo] blockUser response:" << raw.left(200);
+    if (ok) {
+        QVariantMap outer = jsonToMap(raw);
+        ok = (outer["error_code"].toInt() == 0);
+    }
+    emit blockUserDone(uid, ok);
+}
+
+// ─── setMute ──────────────────────────────────────────────────────────────
+// zca-js: POST profile[0]/api/social/profile/setmute
+//   body=params=AES({toid, duration, action, startTime, muteType, imei})
+//   muteType: 1=DM, 2=Group  action: 1=mute, 3=unmute  duration: -1=forever
+void ZaloService::setMute(const QString &threadId, bool isGroup, bool mute)
+{
+    if (!m_loggedIn || threadId.isEmpty()) return;
+
+    QVariantMap params;
+    params["toid"]      = threadId;
+    params["duration"]  = -1;
+    params["action"]    = mute ? 1 : 3;
+    params["startTime"] = static_cast<qint64>(QDateTime::currentMSecsSinceEpoch() / 1000);
+    params["muteType"]  = isGroup ? 2 : 1;
+    params["imei"]      = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_profileServiceUrl + "/api/social/profile/setmute"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] setMute toid=" << threadId << "mute=" << mute;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("threadId", threadId);
+    reply->setProperty("muting", mute);
+    connect(reply, SIGNAL(finished()), this, SLOT(onSetMuteDone()));
+}
+
+void ZaloService::onSetMuteDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString tid  = reply->property("threadId").toString();
+    bool muting  = reply->property("muting").toBool();
+    QByteArray raw = reply->readAll();
+    bool ok = (reply->error() == QNetworkReply::NoError);
+    reply->deleteLater();
+    qDebug() << "[Zalo] setMute response:" << raw.left(200);
+    if (ok) {
+        QVariantMap outer = jsonToMap(raw);
+        ok = (outer["error_code"].toInt() == 0);
+    }
+    emit muteDone(tid, muting, ok);
+}
+
+// ─── clearHistory ─────────────────────────────────────────────────────────
+// zca-js deleteChat.ts: POST chat[0]/api/message/deleteconver (DM)
+//                    or group[0]/api/group/deleteconver (Group)
+//   body=params=AES({toid/grid, cliMsgId, conver:{ownerId,cliMsgId,globalMsgId}, onlyMe:1, imei})
+// We use empty conver (no last-message info) which clears from beginning.
+void ZaloService::clearHistory(const QString &threadId, bool isGroup)
+{
+    if (!m_loggedIn || threadId.isEmpty()) return;
+
+    QString ts = QString::number(QDateTime::currentMSecsSinceEpoch());
+
+    QVariantMap conver;
+    conver["ownerId"]     = "";
+    conver["cliMsgId"]    = "0";
+    conver["globalMsgId"] = "0";
+
+    QVariantMap params;
+    if (isGroup) {
+        params["grid"] = threadId;
+    } else {
+        params["toid"] = threadId;
+    }
+    params["cliMsgId"] = ts;
+    params["conver"]   = conver;
+    params["onlyMe"]   = 1;
+    params["imei"]     = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString endpoint  = isGroup ? "/api/group/deleteconver" : "/api/message/deleteconver";
+    QString baseUrl   = isGroup ? m_groupServiceUrl : m_chatServiceUrl;
+    QString urlStr    = baseUrl + endpoint
+                      + "?zpw_ver=" + QString::number(API_VERSION)
+                      + "&zpw_type=" + QString::number(API_TYPE)
+                      + "&nretry=0";
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] clearHistory toid=" << threadId << "isGroup=" << isGroup;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("threadId", threadId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onClearHistoryDone()));
+}
+
+void ZaloService::onClearHistoryDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString tid = reply->property("threadId").toString();
+    QByteArray raw = reply->readAll();
+    bool ok = (reply->error() == QNetworkReply::NoError);
+    reply->deleteLater();
+    qDebug() << "[Zalo] clearHistory response:" << raw.left(200);
+    if (ok) {
+        QVariantMap outer = jsonToMap(raw);
+        ok = (outer["error_code"].toInt() == 0);
+    }
+    emit clearHistoryDone(tid, ok);
+}
+
+
 {
     if (!m_loggedIn) return;
 

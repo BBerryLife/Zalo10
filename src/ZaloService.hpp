@@ -53,6 +53,9 @@ public:
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
     Q_INVOKABLE void setActiveThread(const QString &threadId, bool isGroup);
     Q_INVOKABLE void clearActiveThread();
+    Q_INVOKABLE void blockUser(const QString &userId);
+    Q_INVOKABLE void setMute(const QString &threadId, bool isGroup, bool mute);
+    Q_INVOKABLE void clearHistory(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
@@ -77,6 +80,9 @@ signals:
     void avatarReady(const QString &threadId, const QString &localPath);
     // msgId, localFilePath — for image messages downloaded for display
     void imageMsgReady(const QString &msgId, const QString &localPath);
+    void blockUserDone(const QString &userId, bool success);
+    void muteDone(const QString &threadId, bool muted, bool success);
+    void clearHistoryDone(const QString &threadId, bool success);
 
 private slots:
     void onStep1Done();
@@ -105,6 +111,9 @@ private slots:
     void onSendFileDone();
     void onRefreshSessionKeyDone();
     void onImageMsgDownloaded();
+    void onBlockUserDone();
+    void onSetMuteDone();
+    void onClearHistoryDone();
 
     void onQRExpired();
     void onListenTimer();

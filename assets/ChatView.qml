@@ -14,8 +14,9 @@ Page {
     property string pendingMsg:  ""
     property bool   initialized: false
     property bool   emojiPanelOpen: false
-    property string pendingAttachPath: ""  // path selected by FilePicker
-    property variant dbIsMineCache: ({})     // msgId -> isMine từ DB, làm nguồn tin cậy
+    property string pendingAttachPath: ""
+    property variant dbIsMineCache: ({})
+    property bool   isMuted: false
 
     // - TITLE BAR -
     titleBar: TitleBar {
@@ -403,6 +404,28 @@ Page {
             ActionBar.placement: ActionBarPlacement.OnBar
             enabled: false
             onTriggered: { doSend() }
+        },
+        ActionItem {
+            id: muteAction
+            title: chatViewPage.isMuted ? "Unmute" : "Mute notifications"
+            imageSource: "asset:///images/ic_notifications_off.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            onTriggered: {
+                zService.setMute(chatViewPage.threadId, chatViewPage.isGroup, !chatViewPage.isMuted);
+            }
+        },
+        ActionItem {
+            title: "Block user"
+            imageSource: "asset:///images/ic_block_contact.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            enabled: !chatViewPage.isGroup
+            onTriggered: { blockDialog.show() }
+        },
+        ActionItem {
+            title: "Clear history"
+            imageSource: "asset:///images/clear_chat.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            onTriggered: { clearHistoryDialog.show() }
         }
     ]
 
@@ -809,6 +832,16 @@ Page {
                     }
                 }
             }
+
+            onMuteDone: {
+                if (threadId !== chatViewPage.threadId) return;
+                if (success) chatViewPage.isMuted = muted;
+            }
+
+            onClearHistoryDone: {
+                if (threadId !== chatViewPage.threadId) return;
+                if (success) msgModel.clear();
+            }
         },
 
         // - FilePicker for all file types (ảnh + tài liệu + video ...) -
@@ -871,6 +904,30 @@ Page {
                     msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
                     zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
                 }
+            }
+        },
+
+        SystemDialog {
+            id: blockDialog
+            title: "Block user"
+            body: "Block " + chatViewPage.threadName + "? They won't be able to message you."
+            confirmButton.label: "Block"
+            cancelButton.label: "Cancel"
+            onFinished: {
+                if (result === SystemUiResult.ConfirmButtonSelection)
+                    zService.blockUser(chatViewPage.threadId);
+            }
+        },
+
+        SystemDialog {
+            id: clearHistoryDialog
+            title: "Clear history"
+            body: "Delete all messages in this conversation? This only removes them for you."
+            confirmButton.label: "Clear"
+            cancelButton.label: "Cancel"
+            onFinished: {
+                if (result === SystemUiResult.ConfirmButtonSelection)
+                    zService.clearHistory(chatViewPage.threadId, chatViewPage.isGroup);
             }
         }
     ]
