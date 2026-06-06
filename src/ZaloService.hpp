@@ -43,6 +43,8 @@ public:
     Q_INVOKABLE void fetchConversations();
     Q_INVOKABLE void fetchFriends();
     Q_INVOKABLE void fetchInvites();
+    Q_INVOKABLE void acceptFriendRequest(const QString &friendId);
+    Q_INVOKABLE void rejectFriendRequest(const QString &friendId);
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
@@ -68,6 +70,7 @@ signals:
     void conversationsReady(const QVariantList &threads); // groups
     void friendsReady(const QVariantList &friends);       // 1-1 friends
     void invitesReady(const QVariantList &invites);       // friend requests
+    void friendRequestResponded(const QString &friendId, bool accepted, bool success);
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
     // Phát khi poll nhận được tin nhắn mới trong thread đang mở
@@ -100,6 +103,8 @@ private slots:
     void onFetchConvoDone();
     void onFetchFriendsDone();
     void onFetchInvitesDone();
+    void onAcceptFriendDone();
+    void onRejectFriendDone();
     void onGroupDetailsDone();
     void onFetchMsgDone();
     void onSendMsgDone();

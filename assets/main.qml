@@ -695,39 +695,45 @@ TabbedPane {
                             ListItemComponent {
                                 type: "item"
                                 CustomListItem {
+                                    id: inviteRoot
                                     dividerVisible: true
+
+                                    // uid lưu ở root để các node con đọc được
+                                    property string friendUid: ListItemData.uid || ""
+
                                     Container {
-                                        layout: DockLayout {}
-                                        preferredHeight: ui.du(14.0)
-                                        
+                                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                        horizontalAlignment: HorizontalAlignment.Fill
+                                        topPadding: ui.du(1.5)
+                                        bottomPadding: ui.du(1.5)
+                                        leftPadding: ui.du(2)
+                                        rightPadding: ui.du(2)
+
                                         // Avatar
                                         ImageView {
                                             imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/blank.png"
-                                            preferredWidth: ui.du(10.0)
-                                            preferredHeight: ui.du(10.0)
-                                            horizontalAlignment: HorizontalAlignment.Left
-                                            verticalAlignment: VerticalAlignment.Center
+                                            preferredWidth: ui.du(9)
+                                            preferredHeight: ui.du(9)
                                             scalingMethod: ScalingMethod.AspectFill
-                                            leftMargin: ui.du(2)
+                                            verticalAlignment: VerticalAlignment.Center
+                                            rightMargin: ui.du(2)
                                         }
-                                        
-                                        // Tên + tin nhắn
+
+                                        // Tên + subtitle + nút
                                         Container {
-                                            leftPadding: ui.du(14.0)
-                                            rightPadding: ui.du(2.0)
                                             verticalAlignment: VerticalAlignment.Center
                                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                                            horizontalAlignment: HorizontalAlignment.Fill
                                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                                            
+
                                             Label {
                                                 text: ListItemData.name || "Unknown User"
                                                 textStyle {
-                                                    base: SystemDefaults.TextStyles.TitleText
+                                                    base: SystemDefaults.TextStyles.PrimaryText
                                                     fontWeight: FontWeight.Bold
                                                 }
+                                                bottomMargin: ui.du(0.3)
                                             }
-                                            
+
                                             Label {
                                                 text: ListItemData.msg || "Wants to be your friend"
                                                 textStyle {
@@ -735,15 +741,29 @@ TabbedPane {
                                                     color: Color.DarkGray
                                                 }
                                                 multiline: false
+                                                bottomMargin: ui.du(1)
                                             }
-                                            
-                                            // Nút Accept nhỏ gọn
-                                            Button {
-                                                text: "Accept"
-                                                topMargin: ui.du(0.8)
-                                                preferredHeight: ui.du(5)
-                                                onClicked: {
-                                                    // TODO: gọi zService.acceptFriendRequest(ListItemData.uid)
+
+                                            // Hàng nút Accept + Decline
+                                            Container {
+                                                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                                Button {
+                                                    text: "Accept"
+                                                    preferredHeight: ui.du(5.5)
+                                                    preferredWidth: ui.du(18)
+                                                    rightMargin: ui.du(1.5)
+                                                    onClicked: {
+                                                        // inviteRoot là root node → ListItem.view hợp lệ tại đây
+                                                        inviteRoot.ListItem.view.acceptRequest(inviteRoot.friendUid)
+                                                    }
+                                                }
+                                                Button {
+                                                    text: "Decline"
+                                                    preferredHeight: ui.du(5.5)
+                                                    preferredWidth: ui.du(18)
+                                                    onClicked: {
+                                                        inviteRoot.ListItem.view.declineRequest(inviteRoot.friendUid)
+                                                    }
                                                 }
                                             }
                                         }
@@ -751,6 +771,14 @@ TabbedPane {
                                 }
                             }
                         ]
+
+                        function acceptRequest(uid) {
+                            zService.acceptFriendRequest(uid)
+                        }
+                        function declineRequest(uid) {
+                            zService.rejectFriendRequest(uid)
+                        }
+
                     }
                     
                     ActivityIndicator {
@@ -788,6 +816,18 @@ TabbedPane {
                                     zService.downloadAvatar(tid, url)
                             }
                             invEmpty.visible = (invites.length === 0)
+                        }
+                        onFriendRequestResponded: {
+                            // Xóa item khỏi list sau khi accept hoặc decline thành công
+                            if (success) {
+                                for (var i = 0; i < inviteModel.size(); i++) {
+                                    if ((inviteModel.value(i).uid || "") === friendId) {
+                                        inviteModel.removeAt(i);
+                                        break;
+                                    }
+                                }
+                                invEmpty.visible = (inviteModel.size() === 0);
+                            }
                         }
                         onAvatarReady: {
                             for (var i = 0; i < inviteModel.size(); i++) {

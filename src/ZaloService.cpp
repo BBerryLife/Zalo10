@@ -2030,6 +2030,89 @@ void ZaloService::onFetchInvitesDone()
     emit invitesReady(invites);
 }
 
+// ─── acceptFriendRequest ──────────────────────────────────────────────────
+// zca-js: POST /api/friend/accept  body=params=AES({fid, language})
+void ZaloService::acceptFriendRequest(const QString &friendId)
+{
+    if (!m_loggedIn || friendId.isEmpty()) return;
+
+    QVariantMap params;
+    params["fid"]      = friendId;
+    params["language"] = m_language;
+    QString encParams  = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_friendServiceUrl + "/api/friend/accept"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] acceptFriendRequest fid=" << friendId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("friendId", friendId);
+    reply->setProperty("accepted", true);
+    connect(reply, SIGNAL(finished()), this, SLOT(onAcceptFriendDone()));
+}
+
+// ─── rejectFriendRequest ──────────────────────────────────────────────────
+// zca-js: POST /api/friend/reject  body=params=AES({fid})
+void ZaloService::rejectFriendRequest(const QString &friendId)
+{
+    if (!m_loggedIn || friendId.isEmpty()) return;
+
+    QVariantMap params;
+    params["fid"] = friendId;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_friendServiceUrl + "/api/friend/reject"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] rejectFriendRequest fid=" << friendId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("friendId", friendId);
+    reply->setProperty("accepted", false);
+    connect(reply, SIGNAL(finished()), this, SLOT(onRejectFriendDone()));
+}
+
+void ZaloService::onAcceptFriendDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString fid = reply->property("friendId").toString();
+    QByteArray raw = reply->readAll();
+    bool ok = (reply->error() == QNetworkReply::NoError);
+    reply->deleteLater();
+    qDebug() << "[Zalo] acceptFriendRequest response:" << raw.left(200);
+    if (ok) {
+        QVariantMap outer = jsonToMap(raw);
+        ok = (outer["error_code"].toInt() == 0);
+    }
+    emit friendRequestResponded(fid, true, ok);
+}
+
+void ZaloService::onRejectFriendDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString fid = reply->property("friendId").toString();
+    QByteArray raw = reply->readAll();
+    bool ok = (reply->error() == QNetworkReply::NoError);
+    reply->deleteLater();
+    qDebug() << "[Zalo] rejectFriendRequest response:" << raw.left(200);
+    if (ok) {
+        QVariantMap outer = jsonToMap(raw);
+        ok = (outer["error_code"].toInt() == 0);
+    }
+    emit friendRequestResponded(fid, false, ok);
+}
+
 void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
 {
     if (!m_loggedIn) return;
