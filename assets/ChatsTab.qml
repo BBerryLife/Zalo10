@@ -259,6 +259,20 @@ NavigationPane {
     property string selfName: ""
     signal onUnreadMessage()
 
-    // formatTime delegated from root
-    property variant formatTime: null
+    function formatTime(timestamp) {
+        if (!timestamp || timestamp === "") return "";
+        var date = new Date(timestamp * 1);
+        var now  = new Date();
+        if (date.toDateString() === now.toDateString()) {
+            var h = date.getHours(), m = date.getMinutes();
+            var ampm = h >= 12 ? "PM" : "AM";
+            h = h % 12 || 12;
+            return h + ":" + (m < 10 ? "0" : "") + m + " " + ampm;
+        }
+        if ((now - date) < 7 * 24 * 60 * 60 * 1000) {
+            return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][date.getDay()];
+        }
+        var mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][date.getMonth()];
+        return mon + " " + date.getDate();
+    }
 }

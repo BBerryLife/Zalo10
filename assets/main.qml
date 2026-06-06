@@ -76,7 +76,6 @@ TabbedPane {
         imageSource: "asset:///images/ic_bbm.png"
         ChatsTab {
             id: chatsTabContent
-            formatTime: root.formatTime
             onOnUnreadMessage: {
                 if (root.activeTab !== chatsTab)
                     root.chatsUnreadCount++;
@@ -103,7 +102,6 @@ TabbedPane {
         imageSource: "asset:///images/ic_groups_white.png"
         GroupsTab {
             id: groupsTabContent
-            formatTime: root.formatTime
             onOnUnreadMessage: {
                 if (root.activeTab !== groupsTab)
                     root.groupsUnreadCount++;
