@@ -17,7 +17,7 @@
 using namespace bb::cascades;
 using namespace bb::system;
 
-ApplicationUI::ApplicationUI() : QObject()
+ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
 {
     m_pInvokeManager = new InvokeManager(this);
     m_pTranslator    = new QTranslator(this);
@@ -30,6 +30,12 @@ ApplicationUI::ApplicationUI() : QObject()
     onSystemLanguageChanged();
 
     ZaloService *zService = new ZaloService(this);
+    m_zService = zService;
+
+    // Hook manualExit để save session trước khi app bị đóng hoàn toàn
+    // Giúp timestamp được cập nhật đúng → loadSession biết session còn mới hay không
+    QObject::connect(Application::instance(), SIGNAL(manualExit()),
+                     this, SLOT(onManualExit()));
 
     // Áp dụng dark theme đã lưu TRƯỚC khi tạo QML scene
     {
@@ -88,4 +94,14 @@ void ApplicationUI::onSystemLanguageChanged()
     QString locale = QLocale().name();
     if (m_pTranslator->load(QString("Zalo10_%1").arg(locale), "app/native/qm"))
         QCoreApplication::instance()->installTranslator(m_pTranslator);
+}
+
+void ApplicationUI::onManualExit()
+{
+    // User đóng app (swipe-close) — save session để timestamp được cập nhật
+    if (m_zService && m_zService->loggedIn()) {
+        qDebug() << "[App] manualExit: saving session before close";
+        m_zService->saveSession();
+    }
+    bb::cascades::Application::instance()->quit();
 }

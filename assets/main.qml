@@ -863,9 +863,15 @@ TabbedPane {
                 loginSheet.open()
             }
             onLoginFailed: {
-                // Auto-renew thất bại (cookies hết hạn hoàn toàn) → bắt quét QR lại
+                // Lỗi từ QR login flow → mở loginSheet để user quét lại
+                // (auto-renew fail đã emit sessionExpired thay vì loginFailed)
                 loginSheet.open()
             }
+        },
+        SystemToast {
+            id: sessionToast
+            body: "Phiên đăng nhập đã hết hạn. Vào Settings → Logout để đăng nhập lại."
+            position: SystemUiPosition.MiddleCenter
         },
         AboutSheet { id: aboutSheet }
     ]

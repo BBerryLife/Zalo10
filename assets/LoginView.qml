@@ -13,7 +13,10 @@ Page {
     }
 
     onCreationCompleted: {
-        zService.startQRLogin();
+        // Nếu QR đã sẵn sàng (do startQROnly từ sessionExpired), không start lại
+        if (!zService.qrReady) {
+            zService.startQRLogin();
+        }
     }
 
     content: Container {

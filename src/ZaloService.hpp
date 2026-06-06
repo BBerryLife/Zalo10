@@ -198,6 +198,7 @@ private:
     QString m_language;
     bool m_loggedIn;
     bool m_qrCancelled;
+    bool m_isAutoRenew;  // true khi step7/step8 được gọi từ refreshSessionKey (không phải QR flow)
 
     // Bộ nhớ lưu trữ tạm thời thông tin tài khoản
     QMap<QString, QString> m_cookies;
@@ -242,6 +243,7 @@ private:
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;
     static const char *USER_AGENT;
+    QString generateRandomUserAgent();
     static const char *AES_FIXED_KEY;
 };
 

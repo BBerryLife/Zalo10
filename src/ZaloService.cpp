@@ -138,16 +138,18 @@ ZaloService::~ZaloService() {
 
 void ZaloService::startQRLogin()
 {
-    m_qrCancelled = false;
-    m_loggedIn    = false;
+    m_qrCancelled  = false;
+    m_isAutoRenew  = false;
+    m_loggedIn     = false;
     m_pendingFriendAvatarCount = 0;
     m_loadedFriendAvatarCount  = 0;
     m_cookies.clear();
     m_uid.clear();
     m_displayName.clear();
     m_secretKey.clear();
-    m_imei = generateIMEI();
-    qDebug() << "[Zalo] startQRLogin IMEI:" << m_imei;
+    m_userAgent = generateRandomUserAgent();   // UA ngẫu nhiên mỗi lần đăng nhập mới
+    m_imei = generateIMEI();                   // IMEI dựa trên UA mới → unique per login
+    qDebug() << "[Zalo] startQRLogin IMEI:" << m_imei << "UA:" << m_userAgent;
     step1_loadLoginPage();
 }
 
@@ -676,7 +678,8 @@ void ZaloService::onStep8Done()
     if (!reply) return;
     if (reply->error() != QNetworkReply::NoError) {
         qDebug() << "[Zalo Error] Step8 network error:" << reply->errorString();
-        emit loginFailed(reply->errorString());
+        if (m_isAutoRenew) emit sessionExpired();
+        else               emit loginFailed(reply->errorString());
         reply->deleteLater();
         return;
     }
@@ -697,7 +700,8 @@ void ZaloService::onStep8Done()
 
     if (!outerObj.isValid() || outerObj.isNull()) {
         qDebug() << "[Zalo Error] Step8: outer JSON parse failed";
-        emit loginFailed("Step8 parse failed");
+        if (m_isAutoRenew) emit sessionExpired();
+        else               emit loginFailed("Step8 parse failed");
         return;
     }
 
@@ -718,7 +722,8 @@ void ZaloService::onStep8Done()
 
     if (decrypted.isEmpty()) {
         qDebug() << "[Zalo Error] Step8: decrypt returned empty";
-        emit loginFailed("Step8 decrypt failed");
+        if (m_isAutoRenew) emit sessionExpired();
+        else               emit loginFailed("Step8 decrypt failed");
         return;
     }
 
@@ -736,7 +741,8 @@ void ZaloService::onStep8Done()
     QScriptValue info = eng.globalObject().property("__info");
     if (!info.isValid() || info.isNull() || info.isUndefined() || !info.isObject()) {
         qDebug() << "[Zalo Error] Step8: info object invalid";
-        emit loginFailed("Step8: invalid info object");
+        if (m_isAutoRenew) emit sessionExpired();
+        else               emit loginFailed("Step8: invalid info object");
         return;
     }
 
@@ -752,7 +758,8 @@ void ZaloService::onStep8Done()
 
     if (m_secretKey.isEmpty() || m_uid.isEmpty()) {
         qDebug() << "[Zalo Error] Step8: missing zpw_enk or uid";
-        emit loginFailed("Step8: missing key/uid");
+        if (m_isAutoRenew) emit sessionExpired();
+        else               emit loginFailed("Step8: missing key/uid");
         return;
     }
 
@@ -2916,6 +2923,33 @@ QString ZaloService::generateUUIDv4()
     return QUuid::createUuid().toString().remove('{').remove('}').toLower();
 }
 
+// Sinh User-Agent ngẫu nhiên giả lập các phiên bản Chrome/Windows khác nhau.
+// Mỗi user QR login sẽ có UA riêng → Zalo không nhận ra các session là cùng một "thiết bị".
+QString ZaloService::generateRandomUserAgent()
+{
+    // Chrome major versions phổ biến hiện tại
+    static const int chromeMajors[] = { 118, 119, 120, 121, 122, 123, 124, 125 };
+    static const int majorCount = 8;
+
+    // Windows versions
+    static const char* winVersions[] = {
+        "Windows NT 10.0; Win64; x64",
+        "Windows NT 10.0; WOW64",
+        "Windows NT 6.1; Win64; x64",
+        "Windows NT 6.3; Win64; x64"
+    };
+    static const int winCount = 4;
+
+    int major    = chromeMajors[qrand() % majorCount];
+    int minor    = qrand() % 10;
+    int build    = 4000 + qrand() % 2000;
+    int patch    = qrand() % 150;
+    QString win  = QString::fromLatin1(winVersions[qrand() % winCount]);
+
+    return QString("Mozilla/5.0 (%1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%2.%3.%4.%5 Safari/537.36")
+           .arg(win).arg(major).arg(minor).arg(build).arg(patch);
+}
+
 QString ZaloService::buildRawUrl(const QString &base, const QVariantMap &params)
 {
     QString safeBase = base.trimmed().isEmpty() ? "https://wpa.chat.zalo.me" : base;
@@ -3000,6 +3034,7 @@ void ZaloService::saveSession()
     s.setValue("uid",        m_uid);
     s.setValue("secretKey",  m_secretKey);
     s.setValue("imei",       m_imei);
+    s.setValue("userAgent",  m_userAgent);
     s.setValue("chatUrl",    m_chatServiceUrl);
     s.setValue("groupUrl",   m_groupServiceUrl);
     s.setValue("profileUrl", m_profileServiceUrl);
@@ -3031,6 +3066,7 @@ bool ZaloService::loadSession()
     m_uid              = uid;
     m_secretKey        = s.value("secretKey").toString();
     m_imei             = s.value("imei").toString();
+    m_userAgent        = s.value("userAgent", QString::fromLatin1(USER_AGENT)).toString();
     m_chatServiceUrl   = s.value("chatUrl").toString();
     m_groupServiceUrl  = s.value("groupUrl").toString();
     m_profileServiceUrl= s.value("profileUrl").toString();
@@ -3208,6 +3244,7 @@ void ZaloService::onRefreshSessionKeyDone()
         qDebug() << "[Zalo] refreshSessionKey: secretKey expired - tự động renew qua step7/step8";
         m_secretKey.clear();
         disconnectWebSocket();
+        m_isAutoRenew = true;  // đánh dấu: step7/step8 này là auto-renew, KHÔNG hiện QR nếu thất bại
         step7_checkSession();
         return;
     }

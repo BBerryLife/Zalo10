@@ -9,6 +9,7 @@
 
 namespace bb { namespace cascades { class LocaleHandler; class AbstractPane; } }
 class QTranslator;
+class ZaloService;
 
 class ApplicationUI : public QObject
 {
@@ -19,20 +20,20 @@ public:
     virtual ~ApplicationUI() {}
 
 public slots:
-    // Dùng InvokeManager để mở email composer — học từ dự án cũ
     void invokeEmail(const QString &to, const QString &subject);
     void minimizeApp();
-    // Lưu dark theme preference — áp dụng ngay và save vào QSettings
     Q_INVOKABLE void setDarkTheme(bool dark);
     Q_INVOKABLE bool getDarkTheme();
 
 private slots:
     void onSystemLanguageChanged();
+    void onManualExit(); // save session khi user swipe-close app
 
 private:
     QTranslator*                  m_pTranslator;
     bb::cascades::LocaleHandler*  m_pLocaleHandler;
     bb::system::InvokeManager*    m_pInvokeManager;
+    ZaloService*                  m_zService; // để save session khi manualExit
 };
 
 #endif

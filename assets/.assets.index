@@ -1,5 +1,5 @@
 1
-633
+632
 AboutSheet.qml
 ChatList.qml
 ChatView.qml
@@ -632,4 +632,3 @@ LoginView.qml
 main.qml
 ProfileView.qml
 SettingsSheet.qml
-ZaloService.hpp
