@@ -37,9 +37,6 @@ static QVariantMap jsonToMap(const QByteArray &raw)
 {
     QByteArray trimmed = raw.trimmed();
     if (trimmed.isEmpty() || trimmed.startsWith("<")) return QVariantMap();
-    // QScriptEngine trong Qt4/BB10 crash với JSON lớn chứa nested objects sâu
-    // Giới hạn size an toàn: nếu quá lớn thì truncate không giúp được,
-    // nhưng check isValid() + isError() trước khi toVariant() ngăn crash
     QScriptEngine eng;
     eng.evaluate("var __safeJSON = function(s){try{return JSON.parse(s);}catch(e){return null;}}");
     QScriptValue fn = eng.globalObject().property("__safeJSON");
@@ -581,7 +578,6 @@ void ZaloService::onStep6Done()
 void ZaloService::step7_checkSession()
 {
     qDebug() << "[Zalo] Step7: checkSession cookies:" << m_cookies.keys();
-    // checksession cần sec-fetch-site=same-origin (request từ id.zalo.me đến id.zalo.me)
     QNetworkRequest req = buildRequest(
         "https://id.zalo.me/account/checksession?continue=https%3A%2F%2Fchat.zalo.me%2Findex.html",
         "https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F");
@@ -608,7 +604,6 @@ void ZaloService::onStep7Done()
         }
         qDebug() << "[Zalo] Step7 Dang Redirect de hung Cookie:" << redirectUrl.toString();
 
-        // Gửi cookies cho đúng domain của redirect URL (quan trọng với syncsession/pushsession)
         QString redirStr = redirectUrl.toString();
         QString redirReferer = redirStr.contains("jr.zaloapp.com") ? "https://id.zalo.me/"
                              : redirStr.contains("jr.chat.zalo.me") ? "https://jr.zaloapp.com/"
@@ -691,8 +686,6 @@ void ZaloService::onStep8Done()
     qDebug() << "[Zalo] Step8 raw response:" << raw.left(300);
     qDebug() << "[Zalo] Step8 cookies count:" << m_cookies.size();
 
-    // Lấy encrypted data string từ outer JSON (chỉ cần trường "data" và "error_code")
-    // KHÔNG parse toàn bộ thành QVariantMap để tránh crash Qt4 với JSON lớn
     QScriptEngine outerEng;
     outerEng.globalObject().setProperty("__raw", QString::fromUtf8(raw));
     outerEng.evaluate("var __o = null; try { __o = JSON.parse(__raw); } catch(e) { __o = null; }");
@@ -727,8 +720,6 @@ void ZaloService::onStep8Done()
         return;
     }
 
-    // Parse decrypted JSON và extract fields LANGTRỰC TIẾP từ QScriptValue
-    // — KHÔNG dùng .toVariant().toMap() trên object lớn vì crash Qt4 BB10
     QScriptEngine eng;
     eng.globalObject().setProperty("__dec", decrypted);
     eng.evaluate("var __info = null;"
@@ -746,7 +737,6 @@ void ZaloService::onStep8Done()
         return;
     }
 
-    // Extract scalar fields TRỰC TIẾP — an toàn, không crash
     m_secretKey   = info.property("zpw_enk").toString();
     m_uid         = info.property("uid").toString();
     m_displayName = info.property("display_name").toString();
@@ -808,7 +798,6 @@ void ZaloService::onStep8Done()
     step9_getServerInfo();
 }
 
-
 void ZaloService::step9_getServerInfo()
 {
     qDebug() << "[Zalo] Step9: getServerInfo";
@@ -833,7 +822,6 @@ void ZaloService::onStep9Done()
     saveSession();
     emit loginSuccess(m_uid, m_displayName);
     m_listenTimer->start(8000);
-    // Kết nối WebSocket để nhận tin nhắn real-time
     connectWebSocket();
 }
 
@@ -848,17 +836,14 @@ void ZaloService::onStep9Done()
 //   cmd=521 subCmd=0: group message (groupMsgs[], encrypt=AES-GCM)
 //   cmd=510 subCmd=1: request/response old DM messages
 //   cmd=511 subCmd=1: request/response old Group messages
-// ─────────────────────────────────────────────────────────────────────────
 
 // ─── WS helpers ──────────────────────────────────────────────────────────────
 // Gửi WS binary frame theo format zca-js sendWs():
 //   [version(1B), cmd_lo(1B), cmd_hi(1B), subCmd(1B), JSON data...]
-// Client→Server frame phải được mask (RFC 6455)
 void ZaloService::sendWsRequest(int cmd, int subCmd, const QString &jsonData)
 {
     if (!m_webSocket || !m_wsConnected) return;
     static int reqId = 0;
-    // Thêm req_id vào JSON — insert trước "}" cuối
     QString json = jsonData.trimmed();
     if (json.endsWith("}")) {
         json.chop(1);
@@ -927,7 +912,6 @@ void ZaloService::connectWebSocket()
     else
         m_webSocket->connectToHost(url.host(), port);
 
-    // Lưu URL để dùng khi gửi handshake
     m_webSocket->setProperty("wsUrl", url.toString());
 }
 
@@ -1000,7 +984,6 @@ void ZaloService::sendWsHandshake(const QUrl &url)
 void ZaloService::onWsSslErrors(const QList<QSslError> &errors)
 {
     Q_UNUSED(errors);
-    // Bỏ qua SSL errors (self-signed / hostname mismatch) giống các request khác
     m_webSocket->ignoreSslErrors();
 }
 
@@ -1104,10 +1087,8 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
     QByteArray data = payload.mid(4);
     Q_UNUSED(version);
 
-    // cmd=1 subCmd=1: server gửi cipherKey → lưu và gửi ping đầu tiên
     if (cmd == 1 && subCmd == 1) {
         QVariantMap parsed = jsonToMap(data);
-        // Server gửi key dạng base64 — decode thành raw bytes ngay khi nhận
         QString keyB64 = parsed["key"].toString();
         m_wsCipherKey = QByteArray::fromBase64(keyB64.toUtf8());
         qDebug() << "[Zalo WS] Handshake OK, cipherKey len:" << m_wsCipherKey.size();
@@ -1116,7 +1097,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
         sendWsPing();
         // Bắt đầu ping timer 25s
         if (m_listenTimer) m_listenTimer->start(25000);
-        // Nếu có DM thread đang chờ → gửi cmd=510 ngay
         if (!m_pendingDmThreadIds.isEmpty()) {
             QString req510 = QString("{\"first\":true,\"lastId\":null,\"toid\":\"%1\",\"preIds\":[]}")
                              .arg(m_pendingDmThreadIds.head());
@@ -1202,7 +1182,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 qDebug() << "[Zalo WS] decrypt returned empty for encType=" << encType;
             }
         } else {
-            // Fallback AES-CBC (encType=1): thử m_secretKey trước (zpw_enk), sau đó wsCipherKey
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             if (dec.isEmpty() || dec.trimmed() == "{}")
                 dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
@@ -1236,7 +1215,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
         for (int i = 0; i < msgs.size(); ++i) {
             QVariantMap m = msgs[i].toMap();
 
-            // Zalo server dùng "0" để encode uid của mình trong WS push
             QString rawUidFrom = m["uidFrom"].toString();
             QString rawIdTo    = m["idTo"].toString();
             bool isSelf = (rawUidFrom == "0"); // "0" = tin của mình
@@ -1269,8 +1247,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             out["isMine"]   = isSelf;
             out["msgType"]  = m["msgType"].toInt();
 
-            // msgType=2 (photo): WS content="" nhưng URLs nằm trong các field riêng
-            // Build content JSON từ normalUrl/hdUrl/oriUrl để ChatView có thể download thumbnail
             int mt = m["msgType"].toInt();
             QString rawContent = m["content"].toString();
             if (mt == 2 && rawContent.isEmpty()) {
@@ -1290,7 +1266,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                      << "thread" << threadId << out["content"].toString().left(30);
             dbSaveMessage(out, threadId);
             emit newMessage(threadId, out);
-            // Hub notification: title=GroupName (group) hoặc "Zalo10" (DM), body="Tên: nội dung"
             if (!isSelf && threadId != m_activeThreadId) {
                 QString senderName = out["dName"].toString();
                 if (senderName.isEmpty()) senderName = "Unknown";
@@ -1301,7 +1276,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 QString notifTitle = isGrp ? m_groupNames.value(threadId, "Zalo10") : "Zalo10";
                 sendHubNotification(notifTitle, senderName + ": " + msgPreview, threadId);
             }
-            // Cập nhật lastPollMsgId nếu đây là thread đang mở
             if (threadId == m_activeThreadId && !msgId.isEmpty()) {
                 qint64 newNum = msgId.toLongLong();
                 qint64 curNum = m_lastPollMsgId.toLongLong();
@@ -1374,7 +1348,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 qDebug() << "[Zalo WS] decrypt returned empty for encType=" << encType;
             }
         } else {
-            // encType=1: thử m_secretKey trước (zpw_enk), sau đó wsCipherKey
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             if (dec.isEmpty() || dec.trimmed() == "{}")
                 dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
@@ -1388,20 +1361,15 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                  << "d.keys=" << d.keys() << "activeThread:" << m_activeThreadId;
 
         // ── Xác định emitThread ────────────────────────────────────────────
-        // Nguyên tắc: response cmd=510 luôn tương ứng với request cuối ta gửi.
-        // Queue FIFO: head = thread đang được phục vụ → pop ra luôn,
-        // KHÔNG cố infer từ nội dung msgs (sẽ fail khi msgs rỗng hoặc uidTo="0").
         QString emitThread;
         if (!m_pendingDmThreadIds.isEmpty()) {
             emitThread = m_pendingDmThreadIds.dequeue();
         } else {
-            // Fallback: không có request đang chờ → dùng activeThread
             emitThread = m_activeThreadId;
         }
         qDebug() << "[Zalo WS] old_messages: emitThread=" << emitThread
                  << "msgs=" << rawMsgs.size();
 
-        // Nếu emitThread rỗng và không có msgs → bỏ qua
         if (emitThread.isEmpty()) return;
 
         // FIX: validate msgs belong to emitThread (guard against stale queue responses)
@@ -1431,7 +1399,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QVariantMap m = rawMsgs[i].toMap();
             QString msgId      = m["msgId"].toString();
             QString rawUidFrom = m["uidFrom"].toString();
-            // Zalo WS: uidFrom=="0" = tin của mình (giống cmd=501), KHÔNG phải so sánh m_uid
             bool isMine = (rawUidFrom == "0" || rawUidFrom == m_uid);
             QString uidFrom = (rawUidFrom == "0") ? m_uid : rawUidFrom;
 
@@ -1471,7 +1438,6 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
 
         for (int i = 0; i < msgs.size(); ++i)
             dbSaveMessage(msgs[i].toMap(), emitThread);
-        // Lưu per-thread lastId để fetch sau chính xác
         if (!newestMsgId.isEmpty())
             m_threadLastMsgId[emitThread] = newestMsgId;
 
@@ -1537,7 +1503,6 @@ void ZaloService::fetchConversations(){
     QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
     connect(reply, SIGNAL(finished()), this, SLOT(onFetchConvoDone()));
 
-    // ĐÃ BỎ LỆNH fetchFriends() Ở ĐÂY ĐỂ TRÁNH LỖI RATE LIMIT (429)
 }
 
 void ZaloService::onFetchConvoDone()
@@ -1698,7 +1663,6 @@ void ZaloService::onGroupDetailsDone()
 
 void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
 {
-    // Base URL = bỏ query string (?key=...&time=...) - dùng làm cache key ổn định
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
 
     // Check cache theo cả full URL và base URL
@@ -1711,14 +1675,12 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
         return;
     }
 
-    // Nếu đang tải thì đăng ký thêm threadId vào waitlist, không tải lại
     // Check cả full URL và base URL
     if (m_pendingAvatars.contains(url) || m_pendingAvatars.contains(baseUrl)) {
         QString pendingKey = m_pendingAvatars.contains(url) ? url : baseUrl;
         m_pendingAvatarWaiters[pendingKey].insert(threadId);
         return;
     }
-    // Dùng baseUrl làm pending key để các request cùng path nhưng khác key/time không download lại
     m_pendingAvatars.insert(baseUrl);
     m_pendingAvatarWaiters[baseUrl].clear();
     m_pendingAvatarWaiters[baseUrl].insert(threadId);
@@ -1748,8 +1710,6 @@ void ZaloService::onAvatarDownloaded()
     QByteArray data    = reply->readAll();
     reply->deleteLater();
 
-    // TẢI XONG THÌ GỠ KHỎI HÀNG CHỜ
-    // Dùng baseUrl (không có query string) vì đó là key ta dùng khi insert
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
     QSet<QString> waiters = m_pendingAvatarWaiters.take(baseUrl);
     if (waiters.isEmpty()) waiters = m_pendingAvatarWaiters.take(url);
@@ -1772,14 +1732,11 @@ void ZaloService::onAvatarDownloaded()
     }
     QString localPath = "file://" + fname;
     m_avatarCache[url] = localPath;
-    // Lưu thêm theo base path (không có query string) để hit cache khi URL thay đổi key/time
     int qmark = url.indexOf('?');
     if (qmark > 0) m_avatarCache[url.left(qmark)] = localPath;
     qDebug() << "[Zalo] avatar saved:" << threadId << "->" << fname;
-    // Emit cho tất cả caller đang chờ cùng URL này
     foreach (const QString &wid, waiters)
         emit avatarReady(wid, localPath);
-    // Đảm bảo emit ít nhất 1 lần với threadId gốc
     if (!waiters.contains(threadId))
         emit avatarReady(threadId, localPath);
 
@@ -1876,8 +1833,6 @@ void ZaloService::onFetchFriendsDone()
         if (name.isEmpty()) name = f["username"].toString();
         QString avatarUrl   = f["avatar"].toString();
         QString bgAvatarUrl = f["bgavatar"].toString();
-        // URL có query string ?key=...&time=... thay đổi mỗi lần fetch
-        // Dùng base path (bỏ query) để lookup cache
         QString avatarBase   = avatarUrl.contains('?')   ? avatarUrl.left(avatarUrl.indexOf('?'))   : avatarUrl;
         QString bgAvatarBase = bgAvatarUrl.contains('?') ? bgAvatarUrl.left(bgAvatarUrl.indexOf('?')) : bgAvatarUrl;
         QString localAvatar   = m_avatarCache.value(avatarBase,   m_avatarCache.value(avatarUrl,   ""));
@@ -1901,8 +1856,6 @@ void ZaloService::onFetchFriendsDone()
 
     if (!threads.isEmpty()) {
         emit friendsReady(threads);
-        // Lưu lại để re-emit sau khi tất cả avatar đã download xong
-        // Chỉ overwrite nếu chưa có pending hoặc lần này nhiều avatar hơn
         int needDownload = 0;
         for (int i = 0; i < threads.size(); ++i) {
             QVariantMap t = threads[i].toMap();
@@ -1984,9 +1937,6 @@ void ZaloService::onFetchInvitesDone()
             qDebug() << "[Zalo] fetchInvites item[" << i << "] recommItemType=" << itemType
                      << "dataInfo keys=" << item["dataInfo"].toMap().keys();
 
-        // Zalo API thực tế (kiểm tra từ log): type=1 = ReceivedFriendRequest, type=2 = PYMK
-        // zca-js docs nói ngược lại nhưng log thực tế chỉ có 1 item type=1 (đúng là friend request)
-        // và 3 item type=2 (là PYMK "People You May Know") → chỉ lấy type=1
         if (itemType != 1) continue;
 
         QVariantMap info = item["dataInfo"].toMap();
@@ -2137,16 +2087,12 @@ void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
     } else {
         // DM: dùng WebSocket cmd=510 requestOldMessages (theo zca-js listen.js)
         // HTTP /api/message/getmsglist không tồn tại → 404
-        // Server sẽ trả lời bằng WS cmd=510 subCmd=1 → onWsReadyRead → handleWsMessage
         m_pendingDmThreadIds.enqueue(threadId);
         if (!m_wsConnected || !m_webSocket) {
-            // WS chưa sẵn sàng — connect, khi handshake xong sẽ tự gửi cmd=510
             qDebug() << "[Zalo] fetchMessages DM: WS not ready, connecting for" << threadId;
             if (!m_zpwWsUrls.isEmpty()) connectWebSocket();
             return;
         }
-        // PHẢI có toid = uid người kia (zca-js requestOldMessages: {first,lastId,toid,preIds})
-        // Dùng per-thread lastId: nếu chưa có thì "0" (server trả tất cả), không dùng null
         QString lastId = m_threadLastMsgId.value(threadId, "0");
         QString req510 = QString("{\"first\":true,\"lastId\":\"%1\",\"toid\":\"%2\",\"preIds\":[]}")
                          .arg(lastId).arg(threadId);
@@ -2205,7 +2151,6 @@ void ZaloService::onFetchMsgDone()
         out["isGroup"]  = isGroup;
         out["isMine"]   = isMine;
         out["msgType"]  = m["msgType"].toInt();
-        // msgType=2 (photo): content="" nhưng URLs nằm trong fields riêng — build JSON giống WS
         int mt = m["msgType"].toInt();
         QString rawContent = m["content"].toString();
         if (mt == 2 && rawContent.isEmpty()) {
@@ -2220,7 +2165,6 @@ void ZaloService::onFetchMsgDone()
         }
         out["content"]  = rawContent;
         msgs.append(out);
-        // Debug từng tin để xác minh isMine
         if (i < 5)
             qDebug() << "[Zalo] msg[" << i << "] msgId=" << msgId
                      << "uidFrom=" << uidFrom << "isMine=" << isMine
@@ -2234,8 +2178,6 @@ void ZaloService::onFetchMsgDone()
     if (!newestMsgId.isEmpty())
         m_lastPollMsgId = newestMsgId;
 
-    // Chỉ seed seenMsgIds bằng tin CỦA MÌNH để onPollMsgDone không re-emit chúng
-    // Tin của người khác KHÔNG seed → poll sẽ emit đúng
     m_seenMsgIds.clear();
     for (int i = 0; i < msgs.size(); ++i) {
         QVariantMap mm = msgs[i].toMap();
@@ -2343,7 +2285,6 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     }
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(photoParams)));
 
-    // Multipart body: CHỈ chứa file — params đã nằm trong query string
     // Zalo API: body = 1 part duy nhất là file, tên field = "fileContent"
     QByteArray body;
     body += ("--" + boundary + "\r\n").toUtf8();
@@ -2357,7 +2298,6 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     // DM:    POST /api/message/photo  (tt-files-wpa)
     // Group: POST /api/group/photo    (tt-group-wpa)
     QString fileServiceUrl = m_chatServiceUrl;
-    // Replace "tt-chatN-wpa" → "tt-files-wpa" để có đúng upload endpoint
     QRegExp rxChat("tt-chat\\d+-wpa");
     fileServiceUrl.replace(rxChat, "tt-files-wpa");
     QString base = isGroup ? m_groupServiceUrl + "/api/group/photo"
@@ -2391,7 +2331,6 @@ void ZaloService::onSendPhotoDone()
     qDebug() << "[Zalo] sendPhoto response:" << raw.left(300);
 
     if (ok) {
-        // Parse và decrypt response để lấy msgId + image URLs
         QVariantMap outer = jsonToMap(raw);
         if (outer["error_code"].toInt() == 0) {
             QString encData = outer["data"].toString();
@@ -2399,8 +2338,6 @@ void ZaloService::onSendPhotoDone()
             qDebug() << "[Zalo] sendPhoto decrypted:" << dec.left(200);
 
             QVariantMap data = jsonToMap(dec.toUtf8());
-            // msgId trong JSON là số nguyên lớn → QVariant(double) → .toString() cho scientific notation
-            // Phải dùng toLongLong rồi format lại thành string decimal
             qint64 msgIdInt = data["msgId"].toLongLong();
             QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt) : data["msgId"].toString();
             QString normalUrl = data["normalUrl"].toString();
@@ -2409,7 +2346,6 @@ void ZaloService::onSendPhotoDone()
             if (thumbUrl.isEmpty()) thumbUrl = normalUrl;
 
             if (!msgId.isEmpty()) {
-                // Tạo message map giống WS newMessage để update local placeholder
                 QVariantMap out;
                 out["msgId"]     = msgId;
                 out["content"]   = dec; // raw JSON content với normalUrl/thumbUrl
@@ -2431,7 +2367,6 @@ void ZaloService::onSendPhotoDone()
 }
 
 // ─── sendFile: gửi file thường (non-image) ────────────────────────────────
-// Zalo file upload: POST /api/message/forward với multipart + params (zca-js UploadFile.ts)
 void ZaloService::sendFile(const QString &threadId, const QString &localFilePath, bool isGroup)
 {
     if (!m_loggedIn) return;
@@ -2486,7 +2421,6 @@ void ZaloService::sendFile(const QString &threadId, const QString &localFilePath
     body += fileData + "\r\n";
     body += "--" + boundary.toUtf8() + "--\r\n";
 
-    // Params: aesEncryptBase64(secretKey) — nhất quán với sendMessage và sendPhoto
     QVariantMap fileParams;
     if (isGroup) {
         fileParams["grid"]       = threadId;
@@ -2602,8 +2536,6 @@ void ZaloService::onListenTimer()
         sendWsPing();
         qDebug() << "[Zalo WS] ping sent";
 
-        // DM: nếu đang mở 1-1 thread, gửi cmd=510 poll incremental để bắt tin mới
-        // (WS cmd=501 là push real-time, nhưng có thể miss nếu WS vừa reconnect)
         if (!m_activeThreadIsGroup && !m_activeThreadId.isEmpty()) {
             QString req510 = QString("{\"first\":false,\"lastId\":\"%1\",\"toid\":\"%2\",\"preIds\":[]}")
                              .arg(m_lastPollMsgId.isEmpty() ? "0" : m_lastPollMsgId)
@@ -2613,11 +2545,9 @@ void ZaloService::onListenTimer()
                      << "lastId=" << m_lastPollMsgId;
         }
     } else {
-        // WS mất kết nối → thử reconnect
         if (!m_wsReconnectTimer->isActive())
             m_wsReconnectTimer->start(2000);
     }
-    // Group: poll HTTP để cập nhật lastMessage trên danh sách chat
     if (!m_activeThreadIsGroup || m_activeThreadId.isEmpty()) return;
     QVariantMap params;
     params["zpw_ver"]  = QString::number(API_VERSION);
@@ -2639,7 +2569,6 @@ void ZaloService::onListenDone()
 
     qDebug() << "[Zalo] listenTimer: poll OK";
 
-    // Group thread đang mở: poll HTTP để lấy tin nhắn mới
     // DM: WS cmd=501 real-time, không cần poll HTTP
     if (!m_activeThreadId.isEmpty() && m_activeThreadIsGroup) {
         QVariantMap innerParams;
@@ -2708,7 +2637,6 @@ void ZaloService::onPollMsgDone()
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    // Thread đã bị đóng trước khi reply về
     if (tid != m_activeThreadId) return;
 
     QVariantMap root = jsonToMap(raw);
@@ -2732,12 +2660,9 @@ void ZaloService::onPollMsgDone()
         QString msgId = m["msgId"].toString();
         if (msgId.isEmpty()) continue;
 
-        // Dedup: chỉ tin của mình được seed vào seenMsgIds
-        // Tin người khác không được seed → sẽ emit đúng
         if (m_seenMsgIds.contains(msgId)) continue;
         m_seenMsgIds.insert(msgId);
 
-        // Cập nhật lastPollMsgId với số lớn nhất
         qint64 newNum = msgId.toLongLong();
         qint64 curNum = m_lastPollMsgId.toLongLong();
         if (newNum > curNum) m_lastPollMsgId = msgId;
@@ -2855,16 +2780,13 @@ QString ZaloService::aesEncryptBase64_256(const QString &keyStr, const QString &
     return out.toBase64();
 }
 
-
 // AES-GCM decrypt cho WS event data (zca-js decodeEventData, encryptType=2/3)
 // Layout: iv[0:16] + aad[16:32] + ciphertext[32:N-16] + tag[N-16:N]
 // encryptType=2: base64(urlencoded(data)) → inflate(plaintext)
 // encryptType=3: base64(data)            → plaintext trực tiếp (no inflate)
-// keyRaw: raw bytes của AES key (16 hoặc 32 bytes) — KHÔNG phải base64
 static QByteArray aesGcmDecrypt(const QByteArray &keyRaw, const QByteArray &cipherBytes)
 {
     if (cipherBytes.size() < 48) return QByteArray(); // iv(16)+aad(16)+tag(16) minimum
-    // keyRaw đã là raw bytes — nếu size không đúng thì thử decode base64 một lần
     QByteArray key = keyRaw;
     if (key.size() != 16 && key.size() != 24 && key.size() != 32) {
         key = QByteArray::fromBase64(keyRaw);
@@ -3006,11 +2928,8 @@ QString ZaloService::generateUUIDv4()
     return QUuid::createUuid().toString().remove('{').remove('}').toLower();
 }
 
-// Sinh User-Agent ngẫu nhiên giả lập các phiên bản Chrome/Windows khác nhau.
-// Mỗi user QR login sẽ có UA riêng → Zalo không nhận ra các session là cùng một "thiết bị".
 QString ZaloService::generateRandomUserAgent()
 {
-    // Chrome major versions phổ biến hiện tại
     static const int chromeMajors[] = { 118, 119, 120, 121, 122, 123, 124, 125 };
     static const int majorCount = 8;
 
@@ -3096,8 +3015,6 @@ QString ZaloService::buildCookieHeader() const
 
 void ZaloService::parseCookiesFromReply(QNetworkReply *reply)
 {
-    // Qt4: rawHeader("Set-Cookie") chỉ trả header ĐẦU TIÊN khi có nhiều Set-Cookie.
-    // Phải dùng rawHeaderPairs() để lấy TẤT CẢ Set-Cookie headers.
     typedef QPair<QByteArray, QByteArray> HeaderPair;
     foreach (const HeaderPair &hp, reply->rawHeaderPairs()) {
         if (hp.first.toLower() == "set-cookie") {
@@ -3175,9 +3092,6 @@ bool ZaloService::loadSession()
     qDebug() << "[Zalo] loadSession: restored session uid=" << m_uid
              << "cookies=" << m_cookies.size();
 
-    // BẮT BUỘC set false trước khi refresh — nếu app đã login từ lần trước,
-    // m_loggedIn có thể vẫn là true. Nếu không reset, QML onCreationCompleted
-    // thấy loggedIn=true và gọi fetch ngay với secretKey cũ → lỗi 600.
     if (m_loggedIn) {
         m_loggedIn = false;
         emit loggedInChanged();
@@ -3186,15 +3100,10 @@ bool ZaloService::loadSession()
     qDebug() << "[Zalo] loadSession: cookies restored, refreshing secretKey...";
     refreshSessionKey();
 
-    // KHÔNG kết nối WebSocket ở đây — chờ refreshSessionKey thành công
-    // trong onRefreshSessionKeyDone() sẽ gọi connectWebSocket() sau khi có key mới.
     return true;
 }
 
 // ─── refreshSessionKey ────────────────────────────────────────────────────
-// Gọi lại getLoginInfo bằng cookie đã lưu để lấy secretKey mới.
-// secretKey (zpw_enk) hết hạn sau vài giờ/ngày → lỗi 600 khi fetch.
-// Sau khi refresh thành công → emit loginSuccess → QML tự fetchConversations + fetchFriends.
 void ZaloService::refreshSessionKey()
 {
     qDebug() << "[Zalo] refreshSessionKey: calling getLoginInfo with saved cookies";
@@ -3266,7 +3175,6 @@ void ZaloService::onRefreshSessionKeyDone()
         qDebug() << "[Zalo] refreshSessionKey decrypted (first100):" << decrypted.left(100);
     }
 
-    // outer ec=0 chỉ có nghĩa server nhận request — còn phải kiểm tra inner ec sau decrypt
     bool refreshOk = false;
     if (ec == 0 && !decrypted.isEmpty()) {
         QScriptEngine eng;

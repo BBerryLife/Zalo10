@@ -31,7 +31,6 @@ public:
 
     bool loggedIn() const { return m_loggedIn; }
 
-    // Các hàm tương tác công khai từ QML Cascades
     Q_INVOKABLE void startQRLogin();
     Q_INVOKABLE void retryQRLogin();
     Q_INVOKABLE void cancelQRLogin();
@@ -52,7 +51,6 @@ public:
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url);
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
-    // Gọi khi mở / đóng ChatView để biết thread đang xem
     Q_INVOKABLE void setActiveThread(const QString &threadId, bool isGroup);
     Q_INVOKABLE void clearActiveThread();
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId);
@@ -73,9 +71,7 @@ signals:
     void friendRequestResponded(const QString &friendId, bool accepted, bool success);
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
-    // Phát khi poll nhận được tin nhắn mới trong thread đang mở
     void newMessage(const QString &threadId, const QVariantMap &message);
-    // Phát khi lastMessage của một thread thay đổi (để cập nhật danh sách)
     void threadLastMessageChanged(const QString &threadId, const QString &lastMsg, const QString &lastTime);
     // threadId, localFilePath (file:///tmp/...)
     void avatarReady(const QString &threadId, const QString &localPath);
@@ -83,7 +79,6 @@ signals:
     void imageMsgReady(const QString &msgId, const QString &localPath);
 
 private slots:
-    // Slot xử lý luồng đăng nhập bằng QR Code
     void onStep1Done();
     void onStep2Done();
     void onStep3Done();
@@ -95,11 +90,9 @@ private slots:
     void onStep8Done();
     void onStep9Done();
 
-    // Slot xử lý luồng đăng nhập trực tiếp qua Cookie cũ
     void onCookieStep1Done();
     void onCookieStep2Done();
 
-    // Slot xử lý dữ liệu tin nhắn và hội thoại
     void onFetchConvoDone();
     void onFetchFriendsDone();
     void onFetchInvitesDone();
@@ -128,7 +121,6 @@ private slots:
     void onWsReconnectTimer();
 
 private:
-    // Cấu trúc đóng gói tham số mã hóa phục vụ API login
     struct EncryptedParams {
         QString enc_ver;
         QString zcid;
@@ -137,7 +129,6 @@ private:
         QString encryptedData;
     };
 
-    // Khởi chạy các bước xử lý nội bộ
     void step1_loadLoginPage();
     void step2_getLoginInfo();
     void step3_verifyClient();
@@ -151,7 +142,6 @@ private:
     void cookieStep1_getZaloLoginInfo();
     void cookieStep2_getServerInfo(const QString &encryptKey);
 
-    // Tiện ích xử lý chuỗi và mạng
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);
     QString generateIMEI();
@@ -162,7 +152,6 @@ private:
     void parseCookiesFromReply(QNetworkReply *reply);
     QByteArray buildFormBody(const QList<QPair<QString, QString> > &fields);
 
-    // Công cụ mã hóa nội bộ (AES CBC 128 & MD5)
     QString aesEncryptHex(const QString &keyHex32, const QString &plainText);
     QString aesEncryptBase64(const QString &keyStr, const QString &plainText);
     QString aesEncryptBase64_256(const QString &keyStr, const QString &plainText); // AES-256 cho login params
@@ -172,7 +161,6 @@ private:
     QString md5Hex(const QByteArray &input);
     QString randomHexString(int len);
 
-    // Quản lý kết nối và định thời
     QNetworkAccessManager *m_manager;
     QTimer *m_qrExpireTimer;
     QTimer *m_listenTimer;
@@ -198,14 +186,12 @@ private:
     void sendWsPing();                                            // cmd=2 subCmd=1 keepalive
     void sendWsRequest(int cmd, int subCmd, const QString &jsonData); // generic WS send
 
-    // Trạng thái phiên làm việc
     QString m_userAgent;
     QString m_language;
     bool m_loggedIn;
     bool m_qrCancelled;
     bool m_isAutoRenew;  // true khi step7/step8 được gọi từ refreshSessionKey (không phải QR flow)
 
-    // Bộ nhớ lưu trữ tạm thời thông tin tài khoản
     QMap<QString, QString> m_cookies;
     QString m_uid;
     QString m_displayName;
@@ -215,7 +201,6 @@ private:
     QString m_qrCode;
     QString m_pendingEncryptKey;
 
-    // URL định tuyến các cụm Server phân phối luồng dữ liệu chat của Zalo
     QString m_chatServiceUrl;
     QString m_groupServiceUrl;
     QString m_profileServiceUrl;   // zpwServiceMap.profile[0]
@@ -224,7 +209,6 @@ private:
     QString m_externalToken;
     QStringList m_zpwWsUrls; // zpw_ws[] — lưu session, copy sang m_wsUrls khi connect
 
-    // Thread đang mở trong ChatView (để poll tin nhắn mới)
     QString m_activeThreadId;
     bool    m_activeThreadIsGroup;
     QString m_lastPollMsgId; // msgId cuối cùng đã biết, tránh emit trùng
@@ -244,7 +228,6 @@ private:
     int m_pendingFriendAvatarCount;
     int m_loadedFriendAvatarCount;
 
-    // Định nghĩa hằng số môi trường Zalo Web
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;
     static const char *USER_AGENT;
@@ -253,4 +236,3 @@ private:
 };
 
 #endif // ZALOSERVICE_HPP
-// NOTE: m_pendingDmThreadId added below m_seenMsgIds
