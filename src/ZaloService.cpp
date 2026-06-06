@@ -108,19 +108,21 @@ ZaloService::ZaloService(QObject *parent)
     if (sqlite3_open(dbPath.toUtf8().constData(), &m_db) == SQLITE_OK) {
         const char *sql =
             "CREATE TABLE IF NOT EXISTS messages ("
-            "  msgId    TEXT PRIMARY KEY,"
-            "  threadId TEXT NOT NULL,"
-            "  content  TEXT,"
-            "  senderId TEXT,"
-            "  dName    TEXT,"
-            "  ts       TEXT,"
-            "  isMine   INTEGER DEFAULT 0,"
-            "  isGroup  INTEGER DEFAULT 0,"
-            "  msgType  INTEGER DEFAULT 0"
+            "  msgId      TEXT PRIMARY KEY,"
+            "  threadId   TEXT NOT NULL,"
+            "  content    TEXT,"
+            "  senderId   TEXT,"
+            "  dName      TEXT,"
+            "  ts         TEXT,"
+            "  isMine     INTEGER DEFAULT 0,"
+            "  isGroup    INTEGER DEFAULT 0,"
+            "  msgType    INTEGER DEFAULT 0,"
+            "  localImage TEXT DEFAULT ''"
             ");";
         sqlite3_exec(m_db, sql, 0, 0, 0);
-        // Migrate existing DBs that don't have msgType column yet
-        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN msgType INTEGER DEFAULT 0;", 0, 0, 0);
+        // Migrations for existing DBs
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN msgType    INTEGER DEFAULT 0;",  0, 0, 0);
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN localImage TEXT    DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
         qDebug() << "[Zalo] SQLite DB opened:" << dbPath;
     } else {
@@ -759,6 +761,7 @@ void ZaloService::onStep8Done()
     m_profileServiceUrl.clear();
     m_groupPollServiceUrl.clear();
     m_friendServiceUrl.clear();
+    m_fileServiceUrl.clear();
 
     QScriptValue svcMap = info.property("zpw_service_map_v3");
     if (svcMap.isObject()) {
@@ -767,12 +770,14 @@ void ZaloService::onStep8Done()
         QScriptValue profArr   = svcMap.property("profile");
         QScriptValue pollArr   = svcMap.property("group_poll");
         QScriptValue friendArr = svcMap.property("friend");
+        QScriptValue fileArr   = svcMap.property("file");
 
         if (chatArr.isArray())   m_chatServiceUrl      = chatArr.property(0).toString();
         if (groupArr.isArray())  m_groupServiceUrl     = groupArr.property(0).toString();
         if (profArr.isArray())   m_profileServiceUrl   = profArr.property(0).toString();
         if (pollArr.isArray())   m_groupPollServiceUrl = pollArr.property(0).toString();
         if (friendArr.isArray()) m_friendServiceUrl    = friendArr.property(0).toString();
+        if (fileArr.isArray())   m_fileServiceUrl      = fileArr.property(0).toString();
     }
 
     // Extract WebSocket URLs
@@ -2263,7 +2268,8 @@ void ZaloService::onLeaveGroupDone()
     emit leaveGroupDone(gid, ok);
 }
 
-
+void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
+{
     if (!m_loggedIn) return;
 
     if (isGroup) {
@@ -2444,11 +2450,12 @@ void ZaloService::onSendMsgDone()
 }
 
 // ─── Send Photo ──────────────────────────────────────────────────────────────
+// Two-step: 1) upload to file[0]/api/{message|group}/photo_original/upload
+//           2) send message via {chat|group}/api/{message|group}/photo
 void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup)
 {
     if (!m_loggedIn) return;
 
-    // Read file
     QString path = localFilePath;
     if (path.startsWith("file://")) path = path.mid(7);
     QFile file(path);
@@ -2460,59 +2467,54 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     QByteArray fileData = file.readAll();
     file.close();
 
-    // Detect MIME type from extension
-    QString ext = path.section('.', -1).toLower();
-    QString mime = "image/jpeg";
-    if (ext == "png")  mime = "image/png";
-    if (ext == "gif")  mime = "image/gif";
-    if (ext == "webp") mime = "image/webp";
-
-    QString clientId = QString::number(QDateTime::currentMSecsSinceEpoch());
-    QString boundary = "----ZaloBoundary" + clientId;
+    QString ext      = path.section('.', -1).toLower();
+    QString mime     = (ext == "png") ? "image/png" : (ext == "webp") ? "image/webp" : "image/jpeg";
     QString filename = path.section('/', -1);
+    qint64  ts       = QDateTime::currentMSecsSinceEpoch();
+    QString boundary = "----ZaloBoundary" + QString::number(ts);
 
-    // Build params JSON — cùng pattern với sendMessage
-    QVariantMap photoParams;
-    photoParams["clientId"] = clientId;
-    photoParams["ttl"]      = 0;
-    if (isGroup) {
-        photoParams["grid"]       = threadId;
-        photoParams["visibility"] = 0;
-    } else {
-        photoParams["toid"] = threadId;
-        photoParams["imei"] = m_imei;
+    // Params in query string (AES-encrypted) per zca-js uploadAttachment.ts
+    QVariantMap p;
+    if (isGroup) p["grid"] = threadId;
+    else         p["toid"] = threadId;
+    p["totalChunk"] = 1;
+    p["fileName"]   = filename;
+    p["clientId"]   = (qint64)ts;
+    p["totalSize"]  = (int)fileData.size();
+    p["imei"]       = m_imei;
+    p["isE2EE"]     = 0;
+    p["jxl"]        = 0;
+    p["chunkId"]    = 1;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(p)));
+
+    // file service URL: m_fileServiceUrl (file[0]), fallback to regex on chatServiceUrl
+    QString fileBase = m_fileServiceUrl;
+    if (fileBase.isEmpty()) {
+        fileBase = m_chatServiceUrl;
+        QRegExp rx("tt-chat\\d+-wpa");
+        fileBase.replace(rx, "tt-files-wpa");
     }
-    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(photoParams)));
+    QString upEndpoint = isGroup ? "group" : "message";
+    QString urlStr = fileBase + "/api/" + upEndpoint + "/photo_original/upload"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&nretry=0"
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
 
-    // Zalo API: body = 1 part duy nhất là file, tên field = "fileContent"
     QByteArray body;
     body += ("--" + boundary + "\r\n").toUtf8();
-    body += ("Content-Disposition: form-data; name=\"fileContent\"; filename=\"" + filename + "\"\r\n").toUtf8();
+    body += ("Content-Disposition: form-data; name=\"chunkContent\"; filename=\"" + filename + "\"\r\n").toUtf8();
     body += ("Content-Type: " + mime + "\r\n\r\n").toUtf8();
     body += fileData + "\r\n";
     body += ("--" + boundary + "--\r\n").toUtf8();
-
-    // Zalo web API photo upload:
-    // File upload service URL: tt-files-wpa (thay thế tt-chatN-wpa trong chatServiceUrl)
-    // DM:    POST /api/message/photo  (tt-files-wpa)
-    // Group: POST /api/group/photo    (tt-group-wpa)
-    QString fileServiceUrl = m_chatServiceUrl;
-    QRegExp rxChat("tt-chat\\d+-wpa");
-    fileServiceUrl.replace(rxChat, "tt-files-wpa");
-    QString base = isGroup ? m_groupServiceUrl + "/api/group/photo"
-                           : fileServiceUrl    + "/api/message/photo";
-    QString urlStr = base
-                   + "?zpw_ver=" + QString::number(API_VERSION)
-                   + "&zpw_type=" + QString::number(API_TYPE)
-                   + "&params="   + QUrl::toPercentEncoding(encParams);
 
     QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   "multipart/form-data; boundary=" + boundary);
 
-    qDebug() << "[Zalo] sendPhoto POST" << urlStr.left(100) << "size:" << fileData.size();
+    qDebug() << "[Zalo] sendPhoto upload POST" << urlStr.left(120) << "size:" << fileData.size();
     QNetworkReply *reply = m_manager->post(req, body);
-    reply->setProperty("threadId", threadId);
+    reply->setProperty("threadId",  threadId);
     reply->setProperty("localPath", "file://" + path);
     reply->setProperty("isGroup",   isGroup);
     connect(reply, SIGNAL(finished()), this, SLOT(onSendPhotoDone()));
@@ -2522,46 +2524,123 @@ void ZaloService::onSendPhotoDone()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
-    bool ok  = (reply->error() == QNetworkReply::NoError);
-    QString tid = reply->property("threadId").toString();
+    bool ok         = (reply->error() == QNetworkReply::NoError);
+    QString tid     = reply->property("threadId").toString();
     QString localPath = reply->property("localPath").toString();
-    QByteArray raw = reply->readAll();
+    bool isGroup    = reply->property("isGroup").toBool();
+    QByteArray raw  = reply->readAll();
     reply->deleteLater();
-    qDebug() << "[Zalo] sendPhoto response:" << raw.left(300);
+    qDebug() << "[Zalo] sendPhoto upload response:" << raw.left(300);
+
+    if (!ok) { emit messageSent(false, tid); return; }
+
+    // Upload response is a JSON array: [{finished,normalUrl,thumbUrl,hdUrl,photoId,...}]
+    QString dec = QString::fromUtf8(raw).trimmed();
+    QVariantMap uploadData;
+    if (dec.startsWith("[")) {
+        QScriptEngine eng;
+        QScriptValue arr = eng.evaluate("(" + dec + ")");
+        if (arr.isArray() && arr.property("length").toInt32() > 0)
+            uploadData = arr.property(0).toVariant().toMap();
+    }
+    if (uploadData.isEmpty())
+        uploadData = jsonToMap(raw);
+
+    qDebug() << "[Zalo] sendPhoto upload keys:" << uploadData.keys();
+
+    QString normalUrl = uploadData["normalUrl"].toString();
+    QString thumbUrl  = uploadData["thumbUrl"].toString();
+    QString hdUrl     = uploadData["hdUrl"].toString();
+    QString photoId   = uploadData["photoId"].toString();
+    if (thumbUrl.isEmpty()) thumbUrl = hdUrl;
+    if (thumbUrl.isEmpty()) thumbUrl = normalUrl;
+
+    if (normalUrl.isEmpty()) {
+        qDebug() << "[Zalo] sendPhoto: upload OK but no normalUrl, raw:" << raw.left(200);
+        emit messageSent(false, tid);
+        return;
+    }
+
+    // Step 2: send photo message
+    qint64 ts2 = QDateTime::currentMSecsSinceEpoch();
+    QVariantMap mp;
+    mp["clientId"]  = (qint64)ts2;
+    mp["ttl"]       = 0;
+    mp["normalUrl"] = normalUrl;
+    mp["thumbUrl"]  = thumbUrl;
+    mp["hdUrl"]     = hdUrl.isEmpty() ? normalUrl : hdUrl;
+    mp["photoId"]   = photoId;
+    if (isGroup) {
+        mp["grid"]       = tid;
+        mp["visibility"] = 0;
+    } else {
+        mp["toid"] = tid;
+        mp["imei"] = m_imei;
+    }
+    QString encMsg = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(mp)));
+    QByteArray body2 = "params=" + QUrl::toPercentEncoding(encMsg);
+
+    QString msgUrl = (isGroup ? m_groupServiceUrl + "/api/group/photo"
+                              : m_chatServiceUrl  + "/api/message/photo")
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req2 = buildRequest(msgUrl, "https://chat.zalo.me/");
+    req2.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    QString contentJson = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
+                          .arg(normalUrl).arg(thumbUrl)
+                          .arg(hdUrl.isEmpty() ? normalUrl : hdUrl);
+
+    qDebug() << "[Zalo] sendPhoto send-msg POST" << msgUrl.left(100);
+    QNetworkReply *r2 = m_manager->post(req2, body2);
+    r2->setProperty("threadId",    tid);
+    r2->setProperty("localPath",   localPath);
+    r2->setProperty("isGroup",     isGroup);
+    r2->setProperty("contentJson", contentJson);
+    connect(r2, SIGNAL(finished()), this, SLOT(onSendPhotoMsgDone()));
+}
+
+void ZaloService::onSendPhotoMsgDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    bool ok             = (reply->error() == QNetworkReply::NoError);
+    QString tid         = reply->property("threadId").toString();
+    QString localPath   = reply->property("localPath").toString();
+    bool isGroup        = reply->property("isGroup").toBool();
+    QString contentJson = reply->property("contentJson").toString();
+    QByteArray raw      = reply->readAll();
+    reply->deleteLater();
+    qDebug() << "[Zalo] sendPhoto send-msg response:" << raw.left(300);
 
     if (ok) {
         QVariantMap outer = jsonToMap(raw);
         if (outer["error_code"].toInt() == 0) {
-            QString encData = outer["data"].toString();
-            QString dec = aesDecryptBase64(m_secretKey, encData);
-            qDebug() << "[Zalo] sendPhoto decrypted:" << dec.left(200);
-
+            QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             QVariantMap data = jsonToMap(dec.toUtf8());
             qint64 msgIdInt = data["msgId"].toLongLong();
-            QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt) : data["msgId"].toString();
-            QString normalUrl = data["normalUrl"].toString();
-            QString thumbUrl  = data["thumbUrl"].toString();
-            if (thumbUrl.isEmpty()) thumbUrl = data["hdUrl"].toString();
-            if (thumbUrl.isEmpty()) thumbUrl = normalUrl;
-
-            if (!msgId.isEmpty()) {
-                QVariantMap out;
-                out["msgId"]     = msgId;
-                out["content"]   = dec; // raw JSON content với normalUrl/thumbUrl
-                out["msgType"]   = 2;
-                out["isMine"]    = true;
-                out["isGroup"]   = tid.startsWith("-") || reply->property("isGroup").toBool();
-                out["senderId"]  = m_uid;
-                out["dName"]     = m_displayName;
-                out["ts"]        = QString::number(QDateTime::currentMSecsSinceEpoch());
-                out["localImage"] = localPath; // path ảnh gốc đã có sẵn
-                m_seenMsgIds.insert(msgId); // block WS cmd=501 overwriting localImage
-                dbSaveMessage(out, tid);
-                emit newMessage(tid, out);
-            }
+            QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt)
+                                            : QString::number(QDateTime::currentMSecsSinceEpoch());
+            QVariantMap out;
+            out["msgId"]      = msgId;
+            out["content"]    = contentJson;
+            out["msgType"]    = 2;
+            out["isMine"]     = true;
+            out["isGroup"]    = isGroup;
+            out["senderId"]   = m_uid;
+            out["dName"]      = m_displayName;
+            out["ts"]         = QString::number(QDateTime::currentMSecsSinceEpoch());
+            out["localImage"] = localPath;
+            m_seenMsgIds.insert(msgId);
+            dbSaveMessage(out, tid);
+            emit newMessage(tid, out);
+        } else {
+            ok = false;
+            qDebug() << "[Zalo] sendPhoto send-msg error_code:" << outer["error_code"].toInt()
+                     << outer["error_message"].toString();
         }
     }
-
     emit messageSent(ok, tid);
 }
 
@@ -2666,11 +2745,10 @@ void ZaloService::onSendFileDone()
 }
 
 // ─── Download image message thumbnail for display ───────────────────────────
-void ZaloService::downloadImageMessage(const QString &msgId, const QString &url)
+void ZaloService::downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId)
 {
     if (url.isEmpty() || msgId.isEmpty()) return;
 
-    // Cache check
     if (m_avatarCache.contains(url)) {
         emit imageMsgReady(msgId, m_avatarCache[url]);
         return;
@@ -2681,8 +2759,9 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url)
     QNetworkRequest req = buildRequest(url, "https://chat.zalo.me/");
     req.setRawHeader("Accept", "image/webp,image/apng,image/*,*/*;q=0.8");
     QNetworkReply *reply = m_manager->get(req);
-    reply->setProperty("msgId", msgId);
-    reply->setProperty("imgUrl", url);
+    reply->setProperty("msgId",    msgId);
+    reply->setProperty("imgUrl",   url);
+    reply->setProperty("threadId", threadId);
     connect(reply, SIGNAL(finished()), this, SLOT(onImageMsgDownloaded()));
 }
 
@@ -2690,8 +2769,9 @@ void ZaloService::onImageMsgDownloaded()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
-    QString msgId = reply->property("msgId").toString();
-    QString url   = reply->property("imgUrl").toString();
+    QString msgId   = reply->property("msgId").toString();
+    QString url     = reply->property("imgUrl").toString();
+    QString threadId = reply->property("threadId").toString();
     QByteArray data = reply->readAll();
     reply->deleteLater();
     m_pendingAvatars.remove(url);
@@ -2701,7 +2781,6 @@ void ZaloService::onImageMsgDownloaded()
         return;
     }
 
-    // Detect extension from content-type
     QString ext = "jpg";
     QByteArray ct = reply->rawHeader("Content-Type");
     if (ct.contains("png"))  ext = "png";
@@ -2710,12 +2789,22 @@ void ZaloService::onImageMsgDownloaded()
 
     QString tmpPath = QDir::tempPath() + "/zalo_img_" + md5Hex(url) + "." + ext;
     QFile f(tmpPath);
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(data);
-        f.close();
-    }
+    if (f.open(QIODevice::WriteOnly)) { f.write(data); f.close(); }
     QString filePath = "file://" + tmpPath;
     m_avatarCache[url] = filePath;
+
+    // Persist localImage in DB so it survives chat reopen
+    if (!msgId.isEmpty() && !threadId.isEmpty() && m_db) {
+        const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
+        sqlite3_stmt *stmt = 0;
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, filePath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+    }
+
     emit imageMsgReady(msgId, filePath);
 }
 
@@ -3455,19 +3544,20 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
 
     const char *sql =
         "INSERT OR REPLACE INTO messages "
-        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType) "
-        "VALUES (?,?,?,?,?,?,?,?,?)";
+        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)";
     sqlite3_stmt *stmt = 0;
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
-    sqlite3_bind_text(stmt, 1, msgId.toUtf8().constData(),                      -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, threadId.toUtf8().constData(),                   -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, msg["content"].toString().toUtf8().constData(),  -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 4, msg["senderId"].toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 5, msg["dName"].toString().toUtf8().constData(),    -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 6, msg["ts"].toString().toUtf8().constData(),       -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int (stmt, 7, msg["isMine"].toBool() ? 1 : 0);
-    sqlite3_bind_int (stmt, 8, msg["isGroup"].toBool() ? 1 : 0);
-    sqlite3_bind_int (stmt, 9, msg["msgType"].toInt());
+    sqlite3_bind_text(stmt, 1,  msgId.toUtf8().constData(),                       -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2,  threadId.toUtf8().constData(),                    -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3,  msg["content"].toString().toUtf8().constData(),   -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4,  msg["senderId"].toString().toUtf8().constData(),  -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5,  msg["dName"].toString().toUtf8().constData(),     -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6,  msg["ts"].toString().toUtf8().constData(),        -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int (stmt, 7,  msg["isMine"].toBool() ? 1 : 0);
+    sqlite3_bind_int (stmt, 8,  msg["isGroup"].toBool() ? 1 : 0);
+    sqlite3_bind_int (stmt, 9,  msg["msgType"].toInt());
+    sqlite3_bind_text(stmt, 10, msg["localImage"].toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
 }
@@ -3478,7 +3568,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     if (!m_db || threadId.isEmpty()) return result;
 
     const char *sql =
-        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType "
+        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage "
         "FROM messages WHERE threadId=? "
         "ORDER BY CAST(ts AS INTEGER) ASC LIMIT 200;";
     sqlite3_stmt *stmt = 0;
@@ -3486,14 +3576,15 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     sqlite3_bind_text(stmt, 1, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         QVariantMap m;
-        m["msgId"]    = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
-        m["content"]  = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
-        m["senderId"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 2));
-        m["dName"]    = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 3));
-        m["ts"]       = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 4));
-        m["isMine"]   = (sqlite3_column_int(stmt, 5) == 1);
-        m["isGroup"]  = (sqlite3_column_int(stmt, 6) == 1);
-        m["msgType"]  = sqlite3_column_int(stmt, 7);
+        m["msgId"]      = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
+        m["content"]    = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
+        m["senderId"]   = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 2));
+        m["dName"]      = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 3));
+        m["ts"]         = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 4));
+        m["isMine"]     = (sqlite3_column_int(stmt, 5) == 1);
+        m["isGroup"]    = (sqlite3_column_int(stmt, 6) == 1);
+        m["msgType"]    = sqlite3_column_int(stmt, 7);
+        m["localImage"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 8));
         result.append(m);
     }
     sqlite3_finalize(stmt);

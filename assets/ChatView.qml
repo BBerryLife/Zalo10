@@ -134,7 +134,7 @@ Page {
                     if (ct.length > 1 && ct.charAt(0) === "{") {
                         var m1 = ct.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
                         if (m1 && m1[1])
-                            zService.downloadImageMessage(c.msgId, m1[1]);
+                            zService.downloadImageMessage(c.msgId, m1[1], chatViewPage.threadId);
                     }
                 }
             }
@@ -749,7 +749,7 @@ Page {
                             if (typeof c === "string" && c.charAt(0) === "{") {
                                 var m2 = c.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
                                 if (m2 && m2[1])
-                                    zService.downloadImageMessage(nm.msgId, m2[1]);
+                                    zService.downloadImageMessage(nm.msgId, m2[1], chatViewPage.threadId);
                             }
                         }
                     }
@@ -821,7 +821,7 @@ Page {
                         if (typeof c === "string" && c.charAt(0) === "{") {
                             var thumbMatch = c.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
                             if (thumbMatch && thumbMatch[1])
-                                zService.downloadImageMessage(msg.msgId, thumbMatch[1]);
+                                zService.downloadImageMessage(msg.msgId, thumbMatch[1], chatViewPage.threadId);
                         }
                     }
                 }

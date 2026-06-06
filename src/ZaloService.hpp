@@ -49,7 +49,7 @@ public:
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
-    Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url);
+    Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId = QString());
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
     Q_INVOKABLE void setActiveThread(const QString &threadId, bool isGroup);
     Q_INVOKABLE void clearActiveThread();
@@ -110,6 +110,7 @@ private slots:
     void onFetchMsgDone();
     void onSendMsgDone();
     void onSendPhotoDone();
+    void onSendPhotoMsgDone();
     void onSendFileDone();
     void onRefreshSessionKeyDone();
     void onImageMsgDownloaded();
@@ -218,6 +219,7 @@ private:
     QString m_profileServiceUrl;   // zpwServiceMap.profile[0]
     QString m_groupPollServiceUrl; // zpwServiceMap.group_poll[0]
     QString m_friendServiceUrl;    // zpwServiceMap.friend[0]
+    QString m_fileServiceUrl;      // zpwServiceMap.file[0]
     QString m_externalToken;
     QStringList m_zpwWsUrls; // zpw_ws[] — lưu session, copy sang m_wsUrls khi connect
 
