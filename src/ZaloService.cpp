@@ -2216,8 +2216,54 @@ void ZaloService::onClearHistoryDone()
     emit clearHistoryDone(tid, ok);
 }
 
-
+// ─── leaveGroup ───────────────────────────────────────────────────────────
+// zca-js: POST group[0]/api/group/leave  body=params=AES({grids:[groupId], imei, silent:0, language})
+void ZaloService::leaveGroup(const QString &groupId)
 {
+    if (!m_loggedIn || groupId.isEmpty()) return;
+
+    QVariantList grids;
+    grids.append(groupId);
+
+    QVariantMap params;
+    params["grids"]    = grids;
+    params["imei"]     = m_imei;
+    params["silent"]   = 0;
+    params["language"] = m_language;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_groupServiceUrl + "/api/group/leave"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] leaveGroup grid=" << groupId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("groupId", groupId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onLeaveGroupDone()));
+}
+
+void ZaloService::onLeaveGroupDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString gid = reply->property("groupId").toString();
+    QByteArray raw = reply->readAll();
+    bool ok = (reply->error() == QNetworkReply::NoError);
+    reply->deleteLater();
+    qDebug() << "[Zalo] leaveGroup response:" << raw.left(200);
+    if (ok) {
+        QVariantMap outer = jsonToMap(raw);
+        ok = (outer["error_code"].toInt() == 0);
+    }
+    emit leaveGroupDone(gid, ok);
+}
+
+
     if (!m_loggedIn) return;
 
     if (isGroup) {

@@ -426,6 +426,13 @@ Page {
             imageSource: "asset:///images/clear_chat.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: { clearHistoryDialog.show() }
+        },
+        ActionItem {
+            title: "Leave group"
+            imageSource: "asset:///images/ic_chat_leave.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            enabled: chatViewPage.isGroup
+            onTriggered: { leaveGroupDialog.show() }
         }
     ]
 
@@ -842,6 +849,11 @@ Page {
                 if (threadId !== chatViewPage.threadId) return;
                 if (success) msgModel.clear();
             }
+
+            onLeaveGroupDone: {
+                if (groupId !== chatViewPage.threadId) return;
+                if (success) chatViewPage.parent.pop();
+            }
         },
 
         // - FilePicker for all file types (ảnh + tài liệu + video ...) -
@@ -928,6 +940,18 @@ Page {
             onFinished: {
                 if (result === SystemUiResult.ConfirmButtonSelection)
                     zService.clearHistory(chatViewPage.threadId, chatViewPage.isGroup);
+            }
+        },
+
+        SystemDialog {
+            id: leaveGroupDialog
+            title: "Leave group"
+            body: "Leave " + chatViewPage.threadName + "? You won't be able to receive messages from this group."
+            confirmButton.label: "Leave"
+            cancelButton.label: "Cancel"
+            onFinished: {
+                if (result === SystemUiResult.ConfirmButtonSelection)
+                    zService.leaveGroup(chatViewPage.threadId);
             }
         }
     ]

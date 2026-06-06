@@ -56,6 +56,7 @@ public:
     Q_INVOKABLE void blockUser(const QString &userId);
     Q_INVOKABLE void setMute(const QString &threadId, bool isGroup, bool mute);
     Q_INVOKABLE void clearHistory(const QString &threadId, bool isGroup);
+    Q_INVOKABLE void leaveGroup(const QString &groupId);
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
@@ -83,6 +84,7 @@ signals:
     void blockUserDone(const QString &userId, bool success);
     void muteDone(const QString &threadId, bool muted, bool success);
     void clearHistoryDone(const QString &threadId, bool success);
+    void leaveGroupDone(const QString &groupId, bool success);
 
 private slots:
     void onStep1Done();
@@ -114,6 +116,7 @@ private slots:
     void onBlockUserDone();
     void onSetMuteDone();
     void onClearHistoryDone();
+    void onLeaveGroupDone();
 
     void onQRExpired();
     void onListenTimer();
