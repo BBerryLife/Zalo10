@@ -45,10 +45,6 @@ Zalo10 is a Zalo messaging client built entirely with Cascades (Native C++/QML),
 |----------------|-------------|-----------------|
 | ![Emoji](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/2.png) | ![Send](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/3.png) | ![Requests](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/5.png) |
 
-| Dark Theme |
-|------------|
-| ![Dark](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/6.png) |
-
 ---
 
 ## 📋 Requirements
@@ -64,15 +60,6 @@ Zalo10 is a Zalo messaging client built entirely with Cascades (Native C++/QML),
 2. Download the `.bar` file to your computer
 3. Use **Sachesi**, **DBBT**, or **Bar Installer** to sideload the `.bar` file to your phone
 4. Open the app, scan the QR code from Zalo on your main phone, and enjoy!
-
----
-
-## 📥 Download
-
-| Source | Link |
-|--------|------|
-| **GitHub** | [Download Zalo10-1.0.0.1.bar](https://github.com/BBerryLife/BBerrylife.github.io/raw/main/Downloads/Zalo10-1_0_0_1-fix1.bar) |
-| **Google Drive (backup)** | [Download from Google Drive](https://drive.google.com/drive/folders/1iYQUIf5Q2f9xwzfEnnKPG64M0IEGWPwJ?usp=drive_link) |
 
 ---
 
