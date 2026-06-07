@@ -138,6 +138,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ca_bbid.png) \
         $$quote($$BASEDIR/assets/images/ca_video_chat_active.png) \
         $$quote($$BASEDIR/assets/images/clear_chat.png) \
+        $$quote($$BASEDIR/assets/images/cover.png) \
         $$quote($$BASEDIR/assets/images/cs_spark_small.png) \
         $$quote($$BASEDIR/assets/images/default_caller.png) \
         $$quote($$BASEDIR/assets/images/default_caller1.png) \
@@ -671,7 +672,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/sending.png) \
         $$quote($$BASEDIR/assets/images/sent.png) \
         $$quote($$BASEDIR/assets/images/splat.png) \
-        $$quote($$BASEDIR/assets/images/timelimited.png) \
+        $$quote($$BASEDIR/assets/images/timemess.png) \
         $$quote($$BASEDIR/assets/images/yellow_pellet.png) \
         $$quote($$BASEDIR/assets/main.qml)
 }

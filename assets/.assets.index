@@ -1,5 +1,5 @@
 1
-638
+639
 AboutSheet.qml
 ChatsTab.qml
 ChatView.qml
@@ -36,6 +36,7 @@ images/ca_bbid.png
 images/ca_video_chat_active.png
 images/clear_chat.png
 images/ConversationPaneSend.png
+images/cover.png
 images/cs_spark_small.png
 images/default_caller.png
 images/default_caller1.png
