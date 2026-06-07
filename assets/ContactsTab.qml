@@ -131,6 +131,8 @@ NavigationPane {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
             
+            ArrayDataModel { id: searchModel }
+            ArrayDataModel { id: contactModel }
             ListView {
                 id: contactsGrid
                 horizontalAlignment: HorizontalAlignment.Fill
@@ -146,8 +148,6 @@ NavigationPane {
                 property string  selfNameProp: contactsPage.selfName
                 
                 dataModel: contactsNav.searchVisible ? searchModel : contactModel
-                ArrayDataModel { id: searchModel }
-                ArrayDataModel { id: contactModel }
                 
                 listItemComponents: [
                     ListItemComponent {

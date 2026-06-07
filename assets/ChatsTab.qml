@@ -114,13 +114,13 @@ NavigationPane {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
 
+            ArrayDataModel { id: searchModel }
+            ArrayDataModel { id: friendModel }
             ListView {
                 id: friendList
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
                 dataModel: chatsNav.searchVisible ? searchModel : friendModel
-                ArrayDataModel { id: searchModel }
-                ArrayDataModel { id: friendModel }
 
                 function itemType(data, indexPath) { return "item"; }
 

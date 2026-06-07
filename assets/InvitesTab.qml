@@ -124,12 +124,12 @@ NavigationPane {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
 
+            ArrayDataModel { id: searchModel }
+            ArrayDataModel { id: inviteModel }
             ListView {
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
                 dataModel: invitesNav.searchVisible ? searchModel : inviteModel
-                ArrayDataModel { id: searchModel }
-                ArrayDataModel { id: inviteModel }
 
                 function itemType(data, indexPath) { return "item"; }
 

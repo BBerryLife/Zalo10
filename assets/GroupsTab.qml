@@ -148,13 +148,13 @@ NavigationPane {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
 
+            ArrayDataModel { id: searchModel }
+            ArrayDataModel { id: groupModel }
             ListView {
                 id: groupList
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
                 dataModel: groupsNav.searchVisible ? searchModel : groupModel
-                ArrayDataModel { id: searchModel }
-                ArrayDataModel { id: groupModel }
 
                 function itemType(data, indexPath) { return "item"; }
 
