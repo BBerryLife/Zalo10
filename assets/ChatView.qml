@@ -137,12 +137,9 @@ Page {
                 var isPhoto = (c.msgType === 2 || c.msgType === "2");
                 var hasLocal = (c.localImage && c.localImage.length > 0);
                 if (isPhoto && !hasLocal && c.msgId) {
-                    var ct = c.content || "";
-                    if (ct.length > 1 && ct.charAt(0) === "{") {
-                        var m1 = ct.match(/"(?:thumbUrl|normalUrl|hdUrl|thumb|href)"\s*:\s*"([^"]+)"/);
-                        if (m1 && m1[1])
-                            zService.downloadImageMessage(c.msgId, m1[1], chatViewPage.threadId);
-                    }
+                    var photoUrl1 = chatViewPage.extractPhotoUrl(c.content || "");
+                    if (photoUrl1.length > 0)
+                        zService.downloadImageMessage(c.msgId, photoUrl1, chatViewPage.threadId);
                 }
             }
             chatViewPage.dbIsMineCache = newCache;
@@ -503,6 +500,24 @@ Page {
         return false;
     }
 
+    // Extract best available photo URL from msgType=2 content string
+    // Tries thumbUrl, normalUrl, hdUrl, href, thumb in order — skips empty values
+    function extractPhotoUrl(content) {
+        if (typeof content !== "string" || content.length === 0) return "";
+        if (content.charAt(0) === "{") {
+            // Try each key individually so we skip empty-string values
+            var keys = ["thumbUrl", "normalUrl", "hdUrl", "href", "thumb", "oriUrl"];
+            for (var k = 0; k < keys.length; k++) {
+                var re = new RegExp("\"" + keys[k] + "\"\\s*:\\s*\"([^\"]+)\"");
+                var m = content.match(re);
+                if (m && m[1] && m[1].length > 0) return m[1];
+            }
+        }
+        // Fallback: content itself might be a bare URL
+        if (content.indexOf("http") === 0) return content;
+        return "";
+    }
+
     // - Xây lại bubblePos + grouped + latestTs cho toàn bộ model
     function rebuildGroups() {
         var size = msgModel.size();
@@ -778,12 +793,9 @@ Page {
                     // Trigger thumbnail download cho tin ảnh chưa có localImage
                     if (nm.msgType === 2 || nm.msgType === "2") {
                         if (!nm.localImage || nm.localImage.length === 0) {
-                            var c = nm.content;
-                            if (typeof c === "string" && c.charAt(0) === "{") {
-                                var m2 = c.match(/"(?:thumbUrl|normalUrl|hdUrl|thumb|href)"\s*:\s*"([^"]+)"/);
-                                if (m2 && m2[1])
-                                    zService.downloadImageMessage(nm.msgId, m2[1], chatViewPage.threadId);
-                            }
+                            var photoUrl2 = chatViewPage.extractPhotoUrl(nm.content || "");
+                            if (photoUrl2.length > 0)
+                                zService.downloadImageMessage(nm.msgId, photoUrl2, chatViewPage.threadId);
                         }
                     }
                 }
@@ -850,12 +862,9 @@ Page {
                 // Trigger thumbnail download for image messages
                 if (msg.msgType === 2 || msg.msgType === "2") {
                     if (!msg.localImage || msg.localImage.length === 0) {
-                        var c = msg.content;
-                        if (typeof c === "string" && c.charAt(0) === "{") {
-                            var thumbMatch = c.match(/"(?:thumbUrl|normalUrl|hdUrl|thumb|href)"\s*:\s*"([^"]+)"/);
-                            if (thumbMatch && thumbMatch[1])
-                                zService.downloadImageMessage(msg.msgId, thumbMatch[1], chatViewPage.threadId);
-                        }
+                        var photoUrl3 = chatViewPage.extractPhotoUrl(msg.content || "");
+                        if (photoUrl3.length > 0)
+                            zService.downloadImageMessage(msg.msgId, photoUrl3, chatViewPage.threadId);
                     }
                 }
             }

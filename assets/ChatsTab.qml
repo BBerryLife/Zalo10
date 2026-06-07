@@ -9,6 +9,9 @@ NavigationPane {
         zService.clearActiveThread();
     }
 
+    property bool searchVisible: false
+    property string searchText: ""
+
     Page {
         id: chatsPage
 
@@ -31,6 +34,22 @@ NavigationPane {
                         }
                         verticalAlignment: VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Left
+                        visible: !chatsNav.searchVisible
+                    }
+                    TextField {
+                        id: chatsSearchField
+                        visible: chatsNav.searchVisible
+                        hintText: "Search chats..."
+                        verticalAlignment: VerticalAlignment.Center
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        textStyle { color: Color.White }
+                        onTextChanging: {
+                            chatsNav.searchText = text;
+                            chatsNav.filterList();
+                        }
+                        onCreationCompleted: {
+                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        }
                     }
                 }
             }
@@ -193,6 +212,7 @@ NavigationPane {
                 onFriendsReady: {
                     chatsLoading.visible = false;
                     friendModel.clear();
+                    var arr = [];
                     for (var i = 0; i < friends.length; i++) {
                         var f = friends[i];
                         f.localAvatar    = "";
@@ -204,12 +224,14 @@ NavigationPane {
                             var ts = parseInt(f.lastTime);
                             if (!isNaN(ts)) f.lastTime = chatsNav.formatTime(ts);
                         }
+                        arr.push(f);
                         friendModel.append(f);
                         var url = f.avatar || "";
                         var tid = f.threadId || f.uid || "";
                         if (url.length > 0 && tid.length > 0)
                             zService.downloadAvatar(tid, url);
                     }
+                    chatsNav.allFriends = arr;
                     chatsEmpty.visible = (friends.length === 0);
                 }
 
@@ -272,6 +294,28 @@ NavigationPane {
     // Properties set by main.qml
     property string selfName: ""
     signal onUnreadMessage()
+
+    // Search support
+    property variant allFriends: []
+
+    function filterList() {
+        var q = chatsNav.searchText.toLowerCase().trim();
+        friendModel.clear();
+        for (var i = 0; i < chatsNav.allFriends.length; i++) {
+            var f = chatsNav.allFriends[i];
+            if (q.length === 0) {
+                friendModel.append(f);
+            } else {
+                var name = (f.name || f.displayName || "").toLowerCase();
+                if (name.indexOf(q) !== -1) friendModel.append(f);
+            }
+        }
+        chatsEmpty.visible = (friendModel.size() === 0);
+    }
+
+    onCreationCompleted: {
+        // Listen for 's' key to toggle search
+    }
 
     function formatTime(timestamp) {
         if (!timestamp || timestamp === "") return "";

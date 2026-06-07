@@ -8,6 +8,23 @@ NavigationPane {
     property string selfName: ""
     signal onUnreadMessage()
     property variant currentPage: null
+    property bool searchVisible: false
+    property string searchText: ""
+    property variant allGroups: []
+
+    function filterList() {
+        var q = groupsNav.searchText.toLowerCase().trim();
+        groupModel.clear();
+        for (var i = 0; i < groupsNav.allGroups.length; i++) {
+            var g = groupsNav.allGroups[i];
+            if (q.length === 0) {
+                groupModel.append(g);
+            } else {
+                var name = (g.name || "").toLowerCase();
+                if (name.indexOf(q) !== -1) groupModel.append(g);
+            }
+        }
+    }
 
     onCurrentPageChanged: {
         if (!currentPage) return;
@@ -58,6 +75,22 @@ NavigationPane {
                         }
                         verticalAlignment: VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Left
+                        visible: !groupsNav.searchVisible
+                    }
+                    TextField {
+                        id: groupsSearchField
+                        visible: groupsNav.searchVisible
+                        hintText: "Search groups..."
+                        verticalAlignment: VerticalAlignment.Center
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        textStyle { color: Color.White }
+                        onTextChanging: {
+                            groupsNav.searchText = text;
+                            groupsNav.filterList();
+                        }
+                        onCreationCompleted: {
+                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        }
                     }
                 }
             }
@@ -199,6 +232,7 @@ NavigationPane {
                 onConversationsReady: {
                     groupsLoading.visible = false;
                     groupModel.clear();
+                    var arr = [];
                     for (var i = 0; i < threads.length; i++) {
                         if (!threads[i].isGroup) continue;
                         var g = threads[i];
@@ -207,12 +241,14 @@ NavigationPane {
                             var ts = parseInt(g.lastTime);
                             if (!isNaN(ts)) g.lastTime = groupsNav.formatTime(ts);
                         }
+                        arr.push(g);
                         groupModel.append(g);
                         var url = g.avatar || "";
                         var tid = g.threadId || "";
                         if (url.length > 0 && tid.length > 0)
                             zService.downloadAvatar(tid, url);
                     }
+                    groupsNav.allGroups = arr;
                 }
 
                 onAvatarReady: {

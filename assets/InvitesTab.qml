@@ -5,6 +5,25 @@ NavigationPane {
     id: invitesNav
     peekEnabled: false
 
+    property bool searchVisible: false
+    property string searchText: ""
+    property variant allInvites: []
+
+    function filterList() {
+        var q = invitesNav.searchText.toLowerCase().trim();
+        inviteModel.clear();
+        for (var i = 0; i < invitesNav.allInvites.length; i++) {
+            var inv = invitesNav.allInvites[i];
+            if (q.length === 0) {
+                inviteModel.append(inv);
+            } else {
+                var name = (inv.name || "").toLowerCase();
+                if (name.indexOf(q) !== -1) inviteModel.append(inv);
+            }
+        }
+        invEmpty.visible = (inviteModel.size() === 0);
+    }
+
     Page {
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
@@ -25,6 +44,22 @@ NavigationPane {
                         }
                         verticalAlignment: VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Left
+                        visible: !invitesNav.searchVisible
+                    }
+                    TextField {
+                        id: invitesSearchField
+                        visible: invitesNav.searchVisible
+                        hintText: "Search requests..."
+                        verticalAlignment: VerticalAlignment.Center
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        textStyle { color: Color.White }
+                        onTextChanging: {
+                            invitesNav.searchText = text;
+                            invitesNav.filterList();
+                        }
+                        onCreationCompleted: {
+                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        }
                     }
                 }
             }
@@ -173,15 +208,18 @@ NavigationPane {
                 onInvitesReady: {
                     invitesLoading.visible = false;
                     inviteModel.clear();
+                    var arr = [];
                     for (var i = 0; i < invites.length; i++) {
                         var inv = invites[i];
                         inv.localAvatar = "";
+                        arr.push(inv);
                         inviteModel.append(inv);
                         var url = inv.avatar || "";
                         var tid = inv.uid || "";
                         if (url.length > 0 && tid.length > 0)
                             zService.downloadAvatar(tid, url);
                     }
+                    invitesNav.allInvites = arr;
                     invEmpty.visible = (invites.length === 0);
                 }
 

@@ -10,6 +10,25 @@ NavigationPane {
     property string selfName: ""
     onSelfNameChanged: contactsPage.selfName = selfName
 
+    property bool searchVisible: false
+    property string searchText: ""
+    property variant allContacts: []
+
+    function filterList() {
+        var q = contactsNav.searchText.toLowerCase().trim();
+        contactModel.clear();
+        for (var i = 0; i < contactsNav.allContacts.length; i++) {
+            var f = contactsNav.allContacts[i];
+            if (q.length === 0) {
+                contactModel.append(f);
+            } else {
+                var name = (f.name || f.displayName || "").toLowerCase();
+                if (name.indexOf(q) !== -1) contactModel.append(f);
+            }
+        }
+        contactsEmpty.visible = (contactModel.size() === 0);
+    }
+
     Page {
         id: contactsPage
         property bool populated: false
@@ -24,6 +43,7 @@ NavigationPane {
                     verticalAlignment:   VerticalAlignment.Fill
                     layout: DockLayout {}
                     leftPadding: ui.du(2.5)
+                    rightPadding: ui.du(2.5)
                     Label {
                         text: "Contacts"
                         textStyle {
@@ -33,6 +53,22 @@ NavigationPane {
                         }
                         verticalAlignment:   VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Left
+                        visible: !contactsNav.searchVisible
+                    }
+                    TextField {
+                        id: contactsSearchField
+                        visible: contactsNav.searchVisible
+                        hintText: "Search contacts..."
+                        verticalAlignment: VerticalAlignment.Center
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        textStyle { color: Color.White }
+                        onTextChanging: {
+                            contactsNav.searchText = text;
+                            contactsNav.filterList();
+                        }
+                        onCreationCompleted: {
+                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        }
                     }
                 }
             }
@@ -168,8 +204,10 @@ NavigationPane {
                         return
                     contactsPage.populated = true
                     contactModel.clear()
+                    var arr = []
                     for (var i = 0; i < friends.length; i++) {
                         var f = friends[i]
+                        arr.push(f)
                         contactModel.append(f)
                         var tid = f.threadId || f.uid || ""
                         if (tid.length > 0) {
@@ -179,6 +217,7 @@ NavigationPane {
                                 zService.downloadAvatar("bg_" + tid, f.bgavatar)
                         }
                     }
+                    contactsNav.allContacts = arr
                     contactsEmpty.visible = (friends.length === 0)
                 }
                 
