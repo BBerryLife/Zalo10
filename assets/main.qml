@@ -68,32 +68,7 @@ TabbedPane {
         splashTimer.start();
     }
 
-    // Toggle search bar on the active tab when 's' key is pressed
-    function toggleSearch() {
-        var nav = null;
-        if (root.activeTab === chatsTab)    nav = chatsTabContent;
-        else if (root.activeTab === contactsTab) nav = contactsTabContent;
-        else if (root.activeTab === groupsTab)   nav = groupsTabContent;
-        else if (root.activeTab === invitesTab)  nav = invitesTabContent;
-        if (!nav) return;
-        nav.searchVisible = !nav.searchVisible;
-        if (!nav.searchVisible) {
-            // Clear search when closing
-            nav.searchText = "";
-            nav.filterList();
-        }
-    }
 
-    keyListeners: [
-        KeyListener {
-            onKeyPressed: {
-                // Only trigger when at the root level (not inside a chat)
-                if (key.key === 115 || key.key === 83) { // 's' or 'S'
-                    root.toggleSearch();
-                }
-            }
-        }
-    ]
 
     // Chats tab
     Tab {

@@ -55,6 +55,19 @@ NavigationPane {
             }
         }
 
+        shortcuts: [
+            Shortcut {
+                key: "s"
+                onTriggered: {
+                    chatsNav.searchVisible = !chatsNav.searchVisible;
+                    if (!chatsNav.searchVisible) {
+                        chatsNav.searchText = "";
+                        chatsNav.filterList();
+                    }
+                }
+            }
+        ]
+
         actions: [
             ActionItem {
                 title: "Refresh"

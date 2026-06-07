@@ -96,6 +96,19 @@ NavigationPane {
             }
         }
 
+        shortcuts: [
+            Shortcut {
+                key: "s"
+                onTriggered: {
+                    groupsNav.searchVisible = !groupsNav.searchVisible;
+                    if (!groupsNav.searchVisible) {
+                        groupsNav.searchText = "";
+                        groupsNav.filterList();
+                    }
+                }
+            }
+        ]
+
         actions: [
             ActionItem {
                 title: "Refresh"

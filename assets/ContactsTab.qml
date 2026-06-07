@@ -74,6 +74,19 @@ NavigationPane {
             }
         }
         
+        shortcuts: [
+            Shortcut {
+                key: "s"
+                onTriggered: {
+                    contactsNav.searchVisible = !contactsNav.searchVisible;
+                    if (!contactsNav.searchVisible) {
+                        contactsNav.searchText = "";
+                        contactsNav.filterList();
+                    }
+                }
+            }
+        ]
+
         actions: [
             ActionItem {
                 title: "Refresh"

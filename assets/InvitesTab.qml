@@ -65,6 +65,19 @@ NavigationPane {
             }
         }
 
+        shortcuts: [
+            Shortcut {
+                key: "s"
+                onTriggered: {
+                    invitesNav.searchVisible = !invitesNav.searchVisible;
+                    if (!invitesNav.searchVisible) {
+                        invitesNav.searchText = "";
+                        invitesNav.filterList();
+                    }
+                }
+            }
+        ]
+
         actions: [
             ActionItem {
                 title: "Refresh"
