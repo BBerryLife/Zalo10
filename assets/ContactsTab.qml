@@ -115,6 +115,12 @@ NavigationPane {
                     zService.fetchFriends()
                     contactsLoading.visible = true
                 }
+            },
+            ActionItem {
+                title: "Add Contact"
+                imageSource: "asset:///images/ic_add_contact.png"
+                ActionBar.placement: ActionBarPlacement.InOverflow
+                onTriggered: {}
             }
         ]
         
