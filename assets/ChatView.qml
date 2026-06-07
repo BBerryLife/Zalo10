@@ -18,6 +18,7 @@ Page {
     property variant dbIsMineCache: ({})
     property bool   isMuted: false
     property bool   isBlocked: false
+    signal requestPop()
 
     // - TITLE BAR -
     titleBar: TitleBar {
@@ -900,7 +901,7 @@ Page {
 
             onLeaveGroupDone: {
                 if (groupId !== chatViewPage.threadId) return;
-                if (success) chatViewPage.parent.pop();
+                if (success) chatViewPage.requestPop();
             }
         },
 
