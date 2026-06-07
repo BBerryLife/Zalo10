@@ -97,6 +97,30 @@ static QByteArray mapToJson(const QVariantMap &map)
     return result.toString().toUtf8();
 }
 
+static QString normalizePhotoContent(const QVariantMap &m, const QString &rawContent)
+{
+    QString nUrl, hUrl, tUrl;
+    if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
+        QVariantMap cm = jsonToMap(rawContent.toUtf8());
+        nUrl = cm["normalUrl"].toString();
+        hUrl = cm["hdUrl"].toString();
+        tUrl = cm["thumbUrl"].toString();
+        if (nUrl.isEmpty()) nUrl = cm["href"].toString();
+        if (hUrl.isEmpty()) hUrl = cm["oriUrl"].toString();
+        if (tUrl.isEmpty()) tUrl = cm["thumb"].toString();
+    }
+    if (nUrl.isEmpty()) nUrl = m["normalUrl"].toString();
+    if (hUrl.isEmpty()) hUrl = m["hdUrl"].toString();
+    if (tUrl.isEmpty()) tUrl = m["thumbUrl"].toString();
+    if (nUrl.isEmpty()) nUrl = m["oriUrl"].toString();
+    if (nUrl.isEmpty()) nUrl = hUrl; if (nUrl.isEmpty()) nUrl = tUrl;
+    if (tUrl.isEmpty()) tUrl = nUrl; if (hUrl.isEmpty()) hUrl = nUrl;
+    if (nUrl.isEmpty()) return rawContent;
+    return QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
+           .arg(nUrl).arg(tUrl).arg(hUrl);
+}
+
+
 static QByteArray aesGcmDecrypt(const QByteArray &keyB64, const QByteArray &cipherBytes);
 
 ZaloService::ZaloService(QObject *parent)
@@ -1270,15 +1294,34 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
 
             int mt = m["msgType"].toInt();
             QString rawContent = m["content"].toString();
-            if (mt == 2 && rawContent.isEmpty()) {
-                QString nUrl = m["normalUrl"].toString();
-                QString hUrl = m["hdUrl"].toString();
-                QString oUrl = m["oriUrl"].toString();
+            if (mt == 2) {
+                // Normalize photo content to {"normalUrl":"...","thumbUrl":"...","hdUrl":"..."}
+                // WS may deliver via content JSON (href/thumb) or top-level fields
+                QString nUrl, hUrl, tUrl;
+                if (!rawContent.isEmpty() && rawContent.startsWith("{")) {
+                    QVariantMap cm = jsonToMap(rawContent.toUtf8());
+                    nUrl = cm["normalUrl"].toString();
+                    hUrl = cm["hdUrl"].toString();
+                    tUrl = cm["thumbUrl"].toString();
+                    // Zalo web format: href=original, thumb=thumbnail
+                    if (nUrl.isEmpty()) nUrl = cm["href"].toString();
+                    if (hUrl.isEmpty()) hUrl = cm["oriUrl"].toString();
+                    if (tUrl.isEmpty()) tUrl = cm["thumb"].toString();
+                }
+                // Also check top-level fields (some WS versions)
+                if (nUrl.isEmpty()) nUrl = m["normalUrl"].toString();
+                if (hUrl.isEmpty()) hUrl = m["hdUrl"].toString();
+                if (tUrl.isEmpty()) tUrl = m["thumbUrl"].toString();
+                if (nUrl.isEmpty()) nUrl = m["oriUrl"].toString();
+
                 if (nUrl.isEmpty()) nUrl = hUrl;
-                if (nUrl.isEmpty()) nUrl = oUrl;
+                if (nUrl.isEmpty()) nUrl = tUrl;
+                if (tUrl.isEmpty()) tUrl = nUrl;
+                if (hUrl.isEmpty()) hUrl = nUrl;
+
                 if (!nUrl.isEmpty()) {
-                    rawContent = QString("{\"normalUrl\":\"%1\",\"hdUrl\":\"%2\",\"oriUrl\":\"%3\"}")
-                                 .arg(nUrl).arg(hUrl).arg(oUrl);
+                    rawContent = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
+                                 .arg(nUrl).arg(tUrl).arg(hUrl);
                 }
             }
             out["content"] = rawContent;
@@ -1432,19 +1475,9 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             out["isMine"]   = isMine;
             out["msgType"]  = m["msgType"].toInt();
 
-            // msgType=2 (photo): uidFrom="0" → own msg, build content JSON từ URL fields
             int mtH = m["msgType"].toInt();
             QString rawContentH = m["content"].toString();
-            if (mtH == 2 && rawContentH.isEmpty()) {
-                QString nUrl = m["normalUrl"].toString();
-                QString hUrl = m["hdUrl"].toString();
-                QString oUrl = m["oriUrl"].toString();
-                if (nUrl.isEmpty()) nUrl = hUrl;
-                if (nUrl.isEmpty()) nUrl = oUrl;
-                if (!nUrl.isEmpty())
-                    rawContentH = QString("{\"normalUrl\":\"%1\",\"hdUrl\":\"%2\",\"oriUrl\":\"%3\"}")
-                                 .arg(nUrl).arg(hUrl).arg(oUrl);
-            }
+            if (mtH == 2) rawContentH = normalizePhotoContent(m, rawContentH);
             out["content"] = rawContentH;
             msgs.append(out);
 
@@ -2441,16 +2474,7 @@ void ZaloService::onFetchMsgDone()
         out["msgType"]  = m["msgType"].toInt();
         int mt = m["msgType"].toInt();
         QString rawContent = m["content"].toString();
-        if (mt == 2 && rawContent.isEmpty()) {
-            QString nUrl = m["normalUrl"].toString();
-            QString hUrl = m["hdUrl"].toString();
-            QString oUrl = m["oriUrl"].toString();
-            if (nUrl.isEmpty()) nUrl = hUrl;
-            if (nUrl.isEmpty()) nUrl = oUrl;
-            if (!nUrl.isEmpty())
-                rawContent = QString("{\"normalUrl\":\"%1\",\"hdUrl\":\"%2\",\"oriUrl\":\"%3\"}")
-                             .arg(nUrl).arg(hUrl).arg(oUrl);
-        }
+        if (mt == 2) rawContent = normalizePhotoContent(m, rawContent);
         out["content"]  = rawContent;
         msgs.append(out);
         if (i < 5)

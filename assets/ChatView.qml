@@ -139,7 +139,7 @@ Page {
                 if (isPhoto && !hasLocal && c.msgId) {
                     var ct = c.content || "";
                     if (ct.length > 1 && ct.charAt(0) === "{") {
-                        var m1 = ct.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
+                        var m1 = ct.match(/"(?:thumbUrl|normalUrl|hdUrl|thumb|href)"\s*:\s*"([^"]+)"/);
                         if (m1 && m1[1])
                             zService.downloadImageMessage(c.msgId, m1[1], chatViewPage.threadId);
                     }
@@ -260,7 +260,7 @@ Page {
                                         && ListItemData.content.length > 1
                                         && ListItemData.content.charAt(0) === "{"
                                         && (ListItemData.content.indexOf("thumb") >= 0
-                                            || ListItemData.content.indexOf("normalUrl") >= 0
+                                            || ListItemData.content.indexOf("normalUrl") >= 0 || ListItemData.content.indexOf("thumbUrl") >= 0 || ListItemData.content.indexOf("href") >= 0
                                             || ListItemData.content.indexOf("href") >= 0))
 
                                 // localImage takes priority; fall back to empty (download triggered separately)
@@ -780,7 +780,7 @@ Page {
                         if (!nm.localImage || nm.localImage.length === 0) {
                             var c = nm.content;
                             if (typeof c === "string" && c.charAt(0) === "{") {
-                                var m2 = c.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
+                                var m2 = c.match(/"(?:thumbUrl|normalUrl|hdUrl|thumb|href)"\s*:\s*"([^"]+)"/);
                                 if (m2 && m2[1])
                                     zService.downloadImageMessage(nm.msgId, m2[1], chatViewPage.threadId);
                             }
@@ -852,7 +852,7 @@ Page {
                     if (!msg.localImage || msg.localImage.length === 0) {
                         var c = msg.content;
                         if (typeof c === "string" && c.charAt(0) === "{") {
-                            var thumbMatch = c.match(/"(?:thumbUrl|normalUrl|hdUrl)"\s*:\s*"([^"]+)"/);
+                            var thumbMatch = c.match(/"(?:thumbUrl|normalUrl|hdUrl|thumb|href)"\s*:\s*"([^"]+)"/);
                             if (thumbMatch && thumbMatch[1])
                                 zService.downloadImageMessage(msg.msgId, thumbMatch[1], chatViewPage.threadId);
                         }
