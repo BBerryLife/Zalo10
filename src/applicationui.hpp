@@ -24,6 +24,7 @@ public slots:
     void minimizeApp();
     Q_INVOKABLE void setDarkTheme(bool dark);
     Q_INVOKABLE bool getDarkTheme();
+    Q_INVOKABLE QString appVersion();
 
 private slots:
     void onSystemLanguageChanged();

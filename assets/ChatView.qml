@@ -363,33 +363,46 @@ Page {
             }
         }
 
-        // - Input bar -
+        // - Input bar (BBM style: icons inside textbox, edge-to-edge) -
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
-            background: Color.create("#F8F8F8")
-            topPadding:    ui.du(1.2)
-            bottomPadding: ui.du(1.2)
-            leftPadding:   ui.du(1.2)
-            rightPadding:  ui.du(1.2)
+            background: Color.create("#F0F0F0")
+            topPadding:    ui.du(0.8)
+            bottomPadding: ui.du(0.8)
+            leftPadding:   0
+            rightPadding:  0
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-            ImageButton {
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(7); preferredHeight: ui.du(7)
-                rightMargin: ui.du(1)
-                defaultImageSource: "asset:///images/ic_attach.png"
-                pressedImageSource: "asset:///images/ic_attach.png"
-                onClicked: { filePicker.open() }
-            }
-
+            // Pill container — white, no border, stretches edge-to-edge
             Container {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
+                background: Color.White
+                topPadding:    ui.du(0.5)
+                bottomPadding: ui.du(0.5)
+                leftPadding:   ui.du(0.8)
+                rightPadding:  ui.du(0.8)
+                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
+                // Attach icon — left inside textbox
+                ImageButton {
+                    verticalAlignment: VerticalAlignment.Center
+                    preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
+                    rightMargin: ui.du(0.5)
+                    defaultImageSource: "asset:///images/ic_attach.png"
+                    pressedImageSource: "asset:///images/ic_attach.png"
+                    onClicked: { filePicker.open() }
+                }
+
+                // Text input
                 TextField {
                     id: inputField
+                    layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                    verticalAlignment: VerticalAlignment.Center
                     hintText: "Enter a message"
                     inputMode: TextFieldInputMode.Chat
-                    minHeight: ui.du(6)
+                    minHeight: ui.du(5.5)
+                    backgroundVisible: false
                     input {
                         flags: TextInputFlag.SpellCheck | TextInputFlag.WordSubstitution
                         submitKey: SubmitKey.Send
@@ -399,22 +412,33 @@ Page {
                         sendAction.enabled = (inputField.text.trim().length > 0)
                     }
                 }
-            }
 
-            ImageButton {
-                id: emoticonBtn
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(7); preferredHeight: ui.du(7)
-                leftMargin: ui.du(1)
-                defaultImageSource: emojiPanelOpen
-                    ? "asset:///images/emoji/darkkeyboard.png"
-                    : "asset:///images/ic_emoticon_enabled.png"
-                pressedImageSource: emojiPanelOpen
-                    ? "asset:///images/emoji/darkkeyboard.png"
-                    : "asset:///images/ic_emoticon_enabled.png"
-                onClicked: {
-                    emojiPanelOpen = !emojiPanelOpen;
-                    emojiPanel.visible = emojiPanelOpen;
+                // Timed message icon
+                ImageButton {
+                    verticalAlignment: VerticalAlignment.Center
+                    preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
+                    leftMargin: ui.du(0.5)
+                    defaultImageSource: "asset:///images/timemess.png"
+                    pressedImageSource: "asset:///images/timemess.png"
+                    onClicked: { /* timed message — future feature */ }
+                }
+
+                // Emoji icon
+                ImageButton {
+                    id: emoticonBtn
+                    verticalAlignment: VerticalAlignment.Center
+                    preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
+                    leftMargin: ui.du(0.3)
+                    defaultImageSource: emojiPanelOpen
+                        ? "asset:///images/emoji/darkkeyboard.png"
+                        : "asset:///images/ic_emoticon_enabled.png"
+                    pressedImageSource: emojiPanelOpen
+                        ? "asset:///images/emoji/darkkeyboard.png"
+                        : "asset:///images/ic_emoticon_enabled.png"
+                    onClicked: {
+                        emojiPanelOpen = !emojiPanelOpen;
+                        emojiPanel.visible = emojiPanelOpen;
+                    }
                 }
             }
         }
@@ -871,12 +895,12 @@ Page {
 
             onImageMsgReady: {
                 // Update the message in model with localImage path
+                // Use replace() — removeAt/insert loses property bindings in BB10 ArrayDataModel
                 for (var j = 0; j < msgModel.size(); j++) {
                     var d = msgModel.value(j);
                     if ((d.msgId || "") === msgId) {
                         d.localImage = localPath;
-                        msgModel.removeAt(j);
-                        msgModel.insert(j, d);
+                        msgModel.replace(j, d);
                         break;
                     }
                 }

@@ -186,6 +186,44 @@ TabbedPane {
             id: sessionToast
             body: "Phiên đăng nhập đã hết hạn. Vào Settings → Logout để đăng nhập lại."
             position: SystemUiPosition.MiddleCenter
+        },
+
+        // Active Frame — shown in BB10 multitasking tray when app is minimized
+        SceneCover {
+            id: appCover
+            content: Container {
+                layout: DockLayout {}
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment:   VerticalAlignment.Fill
+                background: Color.create("#2575fc")
+
+                ImageView {
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment:   VerticalAlignment.Fill
+                    scalingMethod: ScalingMethod.AspectFill
+                    imageSource: "asset:///images/cover.png"
+                }
+
+                Container {
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment:   VerticalAlignment.Bottom
+                    background: Color.create(0.0, 0.0, 0.0, 0.45)
+                    topPadding:    8
+                    bottomPadding: 8
+                    leftPadding:   12
+                    rightPadding:  12
+                    Label {
+                        text: "Zalo10"
+                        horizontalAlignment: HorizontalAlignment.Left
+                        textStyle {
+                            color:      Color.White
+                            fontWeight: FontWeight.Bold
+                            fontSize:   FontSize.Small
+                        }
+                        topMargin: 0; bottomMargin: 0
+                    }
+                }
+            }
         }
     ]
 }
