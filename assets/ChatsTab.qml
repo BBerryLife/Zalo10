@@ -251,6 +251,20 @@ NavigationPane {
                         }
                     }
                 }
+
+                onClearHistoryDone: {
+                    if (!success) return;
+                    for (var i = 0; i < friendModel.size(); i++) {
+                        var d = friendModel.value(i);
+                        if ((d.threadId || d.uid || "") === threadId) {
+                            d.lastMessage    = "";
+                            d.lastMsgIsMine  = false;
+                            d.lastSenderName = "";
+                            friendModel.replace(i, d);
+                            return;
+                        }
+                    }
+                }
             }
         ]
     }

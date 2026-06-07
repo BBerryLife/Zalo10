@@ -2626,7 +2626,18 @@ void ZaloService::onSendPhotoDone()
     }
     QString decStr = aesDecryptBase64(m_secretKey, outer["data"].toString());
     qDebug() << "[Zalo] sendPhoto upload decrypted:" << decStr.left(200);
-    QVariantMap uploadData = jsonToMap(decStr.toUtf8());
+
+    // Decrypted string is {"error_code":0,"data":{"normalUrl":...,"photoId":...}}
+    // Parse the outer wrapper, then get the inner data map
+    QVariantMap decOuter = jsonToMap(decStr.toUtf8());
+    QVariantMap uploadData;
+    QVariant dataVariant = decOuter["data"];
+    if (dataVariant.type() == QVariant::Map) {
+        uploadData = dataVariant.toMap();
+    } else {
+        // Fallback: try parsing data as JSON string
+        uploadData = jsonToMap(dataVariant.toString().toUtf8());
+    }
 
     qDebug() << "[Zalo] sendPhoto upload keys:" << uploadData.keys();
 

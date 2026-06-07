@@ -156,6 +156,7 @@ NavigationPane {
                     if (av.length === 0) av = "asset:///images/blank.png";
                     page.avatarUrl  = av;
                     page.selfName   = groupsNav.selfName;
+                    page.onRequestPop.connect(function() { groupsNav.pop(); });
                     page.startChat();
                     groupsNav.push(page);
                 }
@@ -233,6 +234,30 @@ NavigationPane {
                                 groupModel.insert(0, d);
                                 break;
                             }
+                        }
+                    }
+                }
+
+                onClearHistoryDone: {
+                    if (!success) return;
+                    for (var i = 0; i < groupModel.size(); i++) {
+                        var d = groupModel.value(i);
+                        if (d.threadId === threadId) {
+                            d.lastMessage    = "";
+                            d.lastMsgIsMine  = false;
+                            d.lastSenderName = "";
+                            groupModel.replace(i, d);
+                            return;
+                        }
+                    }
+                }
+
+                onLeaveGroupDone: {
+                    if (!success) return;
+                    for (var i = 0; i < groupModel.size(); i++) {
+                        if (groupModel.value(i).threadId === groupId) {
+                            groupModel.removeAt(i);
+                            return;
                         }
                     }
                 }
