@@ -3008,6 +3008,48 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
 {
     if (url.isEmpty() || msgId.isEmpty()) return;
 
+    // Handle base64-encoded inline image (previewThumb from Zalo WS real-time photo)
+    // These start with base64 data, not "http"
+    if (!url.startsWith("http")) {
+        if (m_avatarCache.contains(url)) {
+            emit imageMsgReady(msgId, m_avatarCache[url]);
+            return;
+        }
+        QByteArray imgData = QByteArray::fromBase64(url.toUtf8());
+        if (!imgData.isEmpty()) {
+            // Detect format from magic bytes
+            QString ext = "jpg";
+            if (imgData.startsWith("\x89PNG")) ext = "png";
+            else if (imgData.startsWith("GIF"))    ext = "gif";
+
+            QString tmpPath = QDir::tempPath() + "/msgimg_" +
+                              QString::number(qHash(url)) + "." + ext;
+            QFile f(tmpPath);
+            if (f.open(QIODevice::WriteOnly)) {
+                f.write(imgData);
+                f.close();
+                QString filePath = "file://" + tmpPath;
+                m_avatarCache[url] = filePath;
+                // Persist to DB
+                if (!msgId.isEmpty() && !threadId.isEmpty() && m_db) {
+                    const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
+                    sqlite3_stmt *stmt = 0;
+                    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+                        sqlite3_bind_text(stmt, 1, filePath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_text(stmt, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+                        sqlite3_step(stmt);
+                        sqlite3_finalize(stmt);
+                    }
+                }
+                qDebug() << "[Zalo] downloadImageMessage base64 decoded msgId" << msgId << "->" << tmpPath;
+                emit imageMsgReady(msgId, filePath);
+                return;
+            }
+        }
+        qDebug() << "[Zalo] downloadImageMessage: non-http url and base64 decode failed, msgId=" << msgId;
+        return;
+    }
+
     if (m_avatarCache.contains(url)) {
         emit imageMsgReady(msgId, m_avatarCache[url]);
         return;

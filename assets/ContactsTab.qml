@@ -12,18 +12,17 @@ NavigationPane {
 
     property bool searchVisible: false
     property string searchText: ""
-    property variant allContacts: []
 
     function filterList() {
         var q = contactsNav.searchText.toLowerCase().trim();
-        contactModel.clear();
-        for (var i = 0; i < contactsNav.allContacts.length; i++) {
-            var f = contactsNav.allContacts[i];
+        searchModel.clear();
+        for (var i = 0; i < contactModel.size(); i++) {
+            var f = contactModel.value(i);
             if (q.length === 0) {
-                contactModel.append(f);
+                searchModel.append(f);
             } else {
                 var name = (f.name || f.displayName || "").toLowerCase();
-                if (name.indexOf(q) !== -1) contactModel.append(f);
+                if (name.indexOf(q) !== -1) searchModel.append(f);
             }
         }
         contactsEmpty.visible = (contactModel.size() === 0);
@@ -146,7 +145,9 @@ NavigationPane {
                 property variant navPane:    contactsNav
                 property string  selfNameProp: contactsPage.selfName
                 
-                dataModel: ArrayDataModel { id: contactModel }
+                dataModel: contactsNav.searchVisible ? searchModel : contactModel
+                ArrayDataModel { id: searchModel }
+                ArrayDataModel { id: contactModel }
                 
                 listItemComponents: [
                     ListItemComponent {
@@ -239,10 +240,8 @@ NavigationPane {
                         return
                     contactsPage.populated = true
                     contactModel.clear()
-                    var arr = []
                     for (var i = 0; i < friends.length; i++) {
                         var f = friends[i]
-                        arr.push(f)
                         contactModel.append(f)
                         var tid = f.threadId || f.uid || ""
                         if (tid.length > 0) {
@@ -252,7 +251,6 @@ NavigationPane {
                                 zService.downloadAvatar("bg_" + tid, f.bgavatar)
                         }
                     }
-                    contactsNav.allContacts = arr
                     contactsEmpty.visible = (friends.length === 0)
                 }
                 
@@ -276,24 +274,23 @@ NavigationPane {
                             }
                         }
                     }
-                    // Also update allContacts cache so search shows avatars
-                    var all = contactsNav.allContacts.slice()
-                    for (var j = 0; j < all.length; j++) {
-                        var atid = all[j].threadId || all[j].uid || ""
-                        var upd = all[j]
-                        if (isBg) {
-                            if (("bg_" + atid) === threadId) {
-                                upd.localBgAvatar = localPath
-                                all.splice(j, 1, upd)
-                                contactsNav.allContacts = all
-                                break
-                            }
-                        } else {
-                            if (atid === threadId) {
-                                upd.localAvatar = localPath
-                                all.splice(j, 1, upd)
-                                contactsNav.allContacts = all
-                                break
+                    // Update searchModel too if search is active
+                    if (contactsNav.searchVisible) {
+                        for (var j = 0; j < searchModel.size(); j++) {
+                            var sd = searchModel.value(j)
+                            var stid = sd.threadId || sd.uid || ""
+                            if (isBg) {
+                                if (("bg_" + stid) === threadId) {
+                                    sd.localBgAvatar = localPath
+                                    searchModel.replace(j, sd)
+                                    break
+                                }
+                            } else {
+                                if (stid === threadId) {
+                                    sd.localAvatar = localPath
+                                    searchModel.replace(j, sd)
+                                    break
+                                }
                             }
                         }
                     }

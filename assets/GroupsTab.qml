@@ -10,18 +10,17 @@ NavigationPane {
     property variant currentPage: null
     property bool searchVisible: false
     property string searchText: ""
-    property variant allGroups: []
 
     function filterList() {
         var q = groupsNav.searchText.toLowerCase().trim();
-        groupModel.clear();
-        for (var i = 0; i < groupsNav.allGroups.length; i++) {
-            var g = groupsNav.allGroups[i];
+        searchModel.clear();
+        for (var i = 0; i < groupModel.size(); i++) {
+            var g = groupModel.value(i);
             if (q.length === 0) {
-                groupModel.append(g);
+                searchModel.append(g);
             } else {
                 var name = (g.name || "").toLowerCase();
-                if (name.indexOf(q) !== -1) groupModel.append(g);
+                if (name.indexOf(q) !== -1) searchModel.append(g);
             }
         }
     }
@@ -153,7 +152,9 @@ NavigationPane {
                 id: groupList
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
-                dataModel: ArrayDataModel { id: groupModel }
+                dataModel: groupsNav.searchVisible ? searchModel : groupModel
+                ArrayDataModel { id: searchModel }
+                ArrayDataModel { id: groupModel }
 
                 function itemType(data, indexPath) { return "item"; }
 
@@ -289,15 +290,15 @@ NavigationPane {
                             break;
                         }
                     }
-                    // Also update allGroups cache so search shows avatars
-                    var all = groupsNav.allGroups.slice();
-                    for (var j = 0; j < all.length; j++) {
-                        if (all[j].threadId === threadId) {
-                            var upd = all[j];
-                            upd.localAvatar = localPath;
-                            all.splice(j, 1, upd);
-                            groupsNav.allGroups = all;
-                            break;
+                    // searchModel mirrors groupModel - update it too if visible
+                    if (groupsNav.searchVisible) {
+                        for (var j = 0; j < searchModel.size(); j++) {
+                            var sd = searchModel.value(j);
+                            if (sd.threadId === threadId) {
+                                sd.localAvatar = localPath;
+                                searchModel.replace(j, sd);
+                                break;
+                            }
                         }
                     }
                 }

@@ -7,21 +7,20 @@ NavigationPane {
 
     property bool searchVisible: false
     property string searchText: ""
-    property variant allInvites: []
 
     function filterList() {
         var q = invitesNav.searchText.toLowerCase().trim();
-        inviteModel.clear();
-        for (var i = 0; i < invitesNav.allInvites.length; i++) {
-            var inv = invitesNav.allInvites[i];
+        searchModel.clear();
+        for (var i = 0; i < inviteModel.size(); i++) {
+            var inv = inviteModel.value(i);
             if (q.length === 0) {
-                inviteModel.append(inv);
+                searchModel.append(inv);
             } else {
-                var name = (inv.name || "").toLowerCase();
-                if (name.indexOf(q) !== -1) inviteModel.append(inv);
+                var name = (inv.name || inv.displayName || "").toLowerCase();
+                if (name.indexOf(q) !== -1) searchModel.append(inv);
             }
         }
-        invEmpty.visible = (inviteModel.size() === 0);
+        invEmpty.visible = (!invitesNav.searchVisible && inviteModel.size() === 0);
     }
 
     Page {
@@ -128,7 +127,9 @@ NavigationPane {
             ListView {
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
-                dataModel: ArrayDataModel { id: inviteModel }
+                dataModel: invitesNav.searchVisible ? searchModel : inviteModel
+                ArrayDataModel { id: searchModel }
+                ArrayDataModel { id: inviteModel }
 
                 function itemType(data, indexPath) { return "item"; }
 
@@ -274,15 +275,15 @@ NavigationPane {
                             break;
                         }
                     }
-                    // Also update allInvites cache so search shows avatars
-                    var all = invitesNav.allInvites.slice();
-                    for (var j = 0; j < all.length; j++) {
-                        if ((all[j].uid || "") === threadId) {
-                            var upd = all[j];
-                            upd.localAvatar = localPath;
-                            all.splice(j, 1, upd);
-                            invitesNav.allInvites = all;
-                            break;
+                    // searchModel mirrors inviteModel - update it too if visible
+                    if (invitesNav.searchVisible) {
+                        for (var j = 0; j < searchModel.size(); j++) {
+                            var sd = searchModel.value(j);
+                            if ((sd.uid || "") === threadId) {
+                                sd.localAvatar = localPath;
+                                searchModel.replace(j, sd);
+                                break;
+                            }
                         }
                     }
                 }

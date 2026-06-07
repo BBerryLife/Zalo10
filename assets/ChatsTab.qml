@@ -118,7 +118,9 @@ NavigationPane {
                 id: friendList
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
-                dataModel: ArrayDataModel { id: friendModel }
+                dataModel: chatsNav.searchVisible ? searchModel : friendModel
+                ArrayDataModel { id: searchModel }
+                ArrayDataModel { id: friendModel }
 
                 function itemType(data, indexPath) { return "item"; }
 
@@ -241,7 +243,6 @@ NavigationPane {
                 onFriendsReady: {
                     chatsLoading.visible = false;
                     friendModel.clear();
-                    var arr = [];
                     for (var i = 0; i < friends.length; i++) {
                         var f = friends[i];
                         f.localAvatar    = "";
@@ -253,14 +254,12 @@ NavigationPane {
                             var ts = parseInt(f.lastTime);
                             if (!isNaN(ts)) f.lastTime = chatsNav.formatTime(ts);
                         }
-                        arr.push(f);
                         friendModel.append(f);
                         var url = f.avatar || "";
                         var tid = f.threadId || f.uid || "";
                         if (url.length > 0 && tid.length > 0)
                             zService.downloadAvatar(tid, url);
                     }
-                    chatsNav.allFriends = arr;
                     chatsEmpty.visible = (friends.length === 0);
                 }
 
@@ -274,15 +273,15 @@ NavigationPane {
                             break;
                         }
                     }
-                    // Also update allFriends cache so search results show avatars
-                    var all = chatsNav.allFriends.slice();
-                    for (var j = 0; j < all.length; j++) {
-                        if ((all[j].threadId || all[j].uid || "") === threadId) {
-                            var updated = all[j];
-                            updated.localAvatar = localPath;
-                            all.splice(j, 1, updated);
-                            chatsNav.allFriends = all;
-                            break;
+                    // Update searchModel too if search is active
+                    if (chatsNav.searchVisible) {
+                        for (var j = 0; j < searchModel.size(); j++) {
+                            var sd = searchModel.value(j);
+                            if ((sd.threadId || sd.uid || "") === threadId) {
+                                sd.localAvatar = localPath;
+                                searchModel.replace(j, sd);
+                                break;
+                            }
                         }
                     }
                 }
@@ -337,18 +336,17 @@ NavigationPane {
     signal onUnreadMessage()
 
     // Search support
-    property variant allFriends: []
 
     function filterList() {
         var q = chatsNav.searchText.toLowerCase().trim();
-        friendModel.clear();
-        for (var i = 0; i < chatsNav.allFriends.length; i++) {
-            var f = chatsNav.allFriends[i];
+        searchModel.clear();
+        for (var i = 0; i < friendModel.size(); i++) {
+            var f = friendModel.value(i);
             if (q.length === 0) {
-                friendModel.append(f);
+                searchModel.append(f);
             } else {
                 var name = (f.name || f.displayName || "").toLowerCase();
-                if (name.indexOf(q) !== -1) friendModel.append(f);
+                if (name.indexOf(q) !== -1) searchModel.append(f);
             }
         }
         chatsEmpty.visible = (friendModel.size() === 0);
