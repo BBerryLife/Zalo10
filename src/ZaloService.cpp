@@ -134,6 +134,12 @@ ZaloService::ZaloService(QObject *parent)
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN msgType    INTEGER DEFAULT 0;",  0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN localImage TEXT    DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
+        // Track per-thread clear timestamps so re-fetched server msgs are filtered
+        sqlite3_exec(m_db,
+            "CREATE TABLE IF NOT EXISTS cleared_threads ("
+            "  threadId TEXT PRIMARY KEY,"
+            "  clearedAt TEXT NOT NULL"
+            ");", 0, 0, 0);
         qDebug() << "[Zalo] SQLite DB opened:" << dbPath;
     } else {
         qDebug() << "[Zalo] SQLite open FAILED";
@@ -2210,6 +2216,7 @@ void ZaloService::onSetMuteDone()
     if (ok) {
         if (muting) m_mutedThreads.insert(tid);
         else        m_mutedThreads.remove(tid);
+        saveSession();
     }
     emit muteDone(tid, muting, ok);
 }
@@ -2274,10 +2281,21 @@ void ZaloService::onClearHistoryDone()
         ok = (outer["error_code"].toInt() == 0);
     }
     if (ok && m_db && !tid.isEmpty()) {
-        const char *sql = "DELETE FROM messages WHERE threadId=?";
+        // Delete local messages
+        const char *sqlDel = "DELETE FROM messages WHERE threadId=?";
         sqlite3_stmt *stmt = 0;
-        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+        if (sqlite3_prepare_v2(m_db, sqlDel, -1, &stmt, 0) == SQLITE_OK) {
             sqlite3_bind_text(stmt, 1, tid.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+        // Record clear timestamp so future server re-fetches are ignored
+        QString clearedAt = QString::number(QDateTime::currentMSecsSinceEpoch());
+        const char *sqlClear =
+            "INSERT OR REPLACE INTO cleared_threads (threadId, clearedAt) VALUES (?,?)";
+        if (sqlite3_prepare_v2(m_db, sqlClear, -1, &stmt, 0) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, tid.toUtf8().constData(),       -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, clearedAt.toUtf8().constData(), -1, SQLITE_TRANSIENT);
             sqlite3_step(stmt);
             sqlite3_finalize(stmt);
         }
@@ -2599,17 +2617,16 @@ void ZaloService::onSendPhotoDone()
 
     if (!ok) { emit messageSent(false, tid); return; }
 
-    // Upload response is a JSON array: [{finished,normalUrl,thumbUrl,hdUrl,photoId,...}]
-    QString dec = QString::fromUtf8(raw).trimmed();
-    QVariantMap uploadData;
-    if (dec.startsWith("[")) {
-        QScriptEngine eng;
-        QScriptValue arr = eng.evaluate("(" + dec + ")");
-        if (arr.isArray() && arr.property("length").toInt32() > 0)
-            uploadData = arr.property(0).toVariant().toMap();
+    // Upload response: {"error_code":0,"data":"AES_ENCRYPTED"} — same pattern as other APIs
+    QVariantMap outer = jsonToMap(raw);
+    if (outer["error_code"].toInt() != 0) {
+        qDebug() << "[Zalo] sendPhoto upload error:" << outer["error_message"].toString();
+        emit messageSent(false, tid);
+        return;
     }
-    if (uploadData.isEmpty())
-        uploadData = jsonToMap(raw);
+    QString decStr = aesDecryptBase64(m_secretKey, outer["data"].toString());
+    qDebug() << "[Zalo] sendPhoto upload decrypted:" << decStr.left(200);
+    QVariantMap uploadData = jsonToMap(decStr.toUtf8());
 
     qDebug() << "[Zalo] sendPhoto upload keys:" << uploadData.keys();
 
@@ -3395,6 +3412,7 @@ void ZaloService::saveSession()
     s.setValue("friendUrl",  m_friendServiceUrl);
     s.setValue("fileUrl",    m_fileServiceUrl);
     s.setValue("zpwWsUrls",  m_zpwWsUrls);
+    s.setValue("mutedThreads", QStringList(m_mutedThreads.toList()));
 
     QVariantMap cookieMap;
     QMapIterator<QString, QString> it(m_cookies);
@@ -3428,6 +3446,7 @@ bool ZaloService::loadSession()
     m_friendServiceUrl    = s.value("friendUrl").toString();
     m_fileServiceUrl      = s.value("fileUrl").toString();
     m_zpwWsUrls           = s.value("zpwWsUrls").toStringList();
+    m_mutedThreads        = QSet<QString>::fromList(s.value("mutedThreads").toStringList());
 
     QString cookieJson = s.value("cookies").toString();
     if (!cookieJson.isEmpty()) {
@@ -3608,6 +3627,21 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     if (!m_db || threadId.isEmpty()) return;
     QString msgId = msg["msgId"].toString();
     if (msgId.isEmpty()) return;
+
+    // Skip messages older than the last clear timestamp for this thread
+    const char *sqlCheck = "SELECT clearedAt FROM cleared_threads WHERE threadId=?";
+    sqlite3_stmt *chk = 0;
+    if (sqlite3_prepare_v2(m_db, sqlCheck, -1, &chk, 0) == SQLITE_OK) {
+        sqlite3_bind_text(chk, 1, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(chk) == SQLITE_ROW) {
+            qint64 clearedAt = QString::fromUtf8((const char*)sqlite3_column_text(chk, 0)).toLongLong();
+            qint64 msgTs     = msg["ts"].toString().toLongLong();
+            sqlite3_finalize(chk);
+            if (msgTs <= clearedAt) return; // message predates or equals clear time
+        } else {
+            sqlite3_finalize(chk);
+        }
+    }
 
     const char *sql =
         "INSERT OR REPLACE INTO messages "

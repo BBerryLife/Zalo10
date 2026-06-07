@@ -109,6 +109,7 @@ Page {
         // Init block/mute state from C++ in-memory sets
         chatViewPage.isBlocked = zService.isBlocked(chatViewPage.threadId);
         chatViewPage.isMuted   = zService.isMutedThread(chatViewPage.threadId);
+        blockedBanner.visible  = chatViewPage.isBlocked;
 
         msgModel.clear();
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
@@ -342,6 +343,27 @@ Page {
             }
         }
 
+
+        // - Blocked banner -
+        Container {
+            id: blockedBanner
+            visible: false
+            horizontalAlignment: HorizontalAlignment.Fill
+            background: Color.create("#c0392b")
+            topPadding: ui.du(1.2)
+            bottomPadding: ui.du(1.2)
+            leftPadding: ui.du(2)
+            rightPadding: ui.du(2)
+            Label {
+                text: "You have blocked this person. They cannot send you messages."
+                textStyle {
+                    color: Color.White
+                    fontSize: FontSize.Small
+                }
+                multiline: true
+                horizontalAlignment: HorizontalAlignment.Fill
+            }
+        }
 
         // - Input bar -
         Container {
@@ -857,12 +879,18 @@ Page {
 
             onBlockUserDone: {
                 if (userId !== chatViewPage.threadId) return;
-                if (success) chatViewPage.isBlocked = true;
+                if (success) {
+                    chatViewPage.isBlocked = true;
+                    blockedBanner.visible  = true;
+                }
             }
 
             onUnblockUserDone: {
                 if (userId !== chatViewPage.threadId) return;
-                if (success) chatViewPage.isBlocked = false;
+                if (success) {
+                    chatViewPage.isBlocked = false;
+                    blockedBanner.visible  = false;
+                }
             }
 
             onClearHistoryDone: {
