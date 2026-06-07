@@ -100,6 +100,8 @@ static QByteArray mapToJson(const QVariantMap &map)
 static QString normalizePhotoContent(const QVariantMap &m, const QString &rawContent)
 {
     QString nUrl, hUrl, tUrl;
+
+    // 1. Try content JSON field first
     if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
         QVariantMap cm = jsonToMap(rawContent.toUtf8());
         nUrl = cm["normalUrl"].toString();
@@ -109,10 +111,51 @@ static QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
         if (hUrl.isEmpty()) hUrl = cm["oriUrl"].toString();
         if (tUrl.isEmpty()) tUrl = cm["thumb"].toString();
     }
+
+    // 2. Try top-level fields on message map
     if (nUrl.isEmpty()) nUrl = m["normalUrl"].toString();
     if (hUrl.isEmpty()) hUrl = m["hdUrl"].toString();
     if (tUrl.isEmpty()) tUrl = m["thumbUrl"].toString();
     if (nUrl.isEmpty()) nUrl = m["oriUrl"].toString();
+    if (tUrl.isEmpty()) tUrl = m["thumb"].toString();
+
+    // 3. Try paramsExt JSON string (Zalo WS real-time photo delivery)
+    if (nUrl.isEmpty()) {
+        QString pe = m["paramsExt"].toString();
+        if (!pe.isEmpty() && pe.trimmed().startsWith("{")) {
+            QVariantMap pm = jsonToMap(pe.toUtf8());
+            if (nUrl.isEmpty()) nUrl = pm["normalUrl"].toString();
+            if (hUrl.isEmpty()) hUrl = pm["hdUrl"].toString();
+            if (tUrl.isEmpty()) tUrl = pm["thumbUrl"].toString();
+            if (nUrl.isEmpty()) nUrl = pm["href"].toString();
+            if (nUrl.isEmpty()) nUrl = pm["oriUrl"].toString();
+            if (tUrl.isEmpty()) tUrl = pm["thumb"].toString();
+        }
+    }
+
+    // 4. Try attach sub-object
+    if (nUrl.isEmpty()) {
+        QVariantMap att = m["attach"].toMap();
+        if (att.isEmpty()) {
+            QString attStr = m["attach"].toString();
+            if (!attStr.isEmpty() && attStr.startsWith("{"))
+                att = jsonToMap(attStr.toUtf8());
+        }
+        if (!att.isEmpty()) {
+            if (nUrl.isEmpty()) nUrl = att["normalUrl"].toString();
+            if (hUrl.isEmpty()) hUrl = att["hdUrl"].toString();
+            if (tUrl.isEmpty()) tUrl = att["thumbUrl"].toString();
+            if (nUrl.isEmpty()) nUrl = att["href"].toString();
+            if (tUrl.isEmpty()) tUrl = att["thumb"].toString();
+        }
+    }
+
+    // 5. previewThumb as last resort (may be CDN URL or base64)
+    if (nUrl.isEmpty()) {
+        QString pt = m["previewThumb"].toString();
+        if (!pt.isEmpty()) { nUrl = pt; tUrl = pt; }
+    }
+
     if (nUrl.isEmpty()) nUrl = hUrl; if (nUrl.isEmpty()) nUrl = tUrl;
     if (tUrl.isEmpty()) tUrl = nUrl; if (hUrl.isEmpty()) hUrl = nUrl;
     if (nUrl.isEmpty()) return rawContent;
@@ -1300,13 +1343,27 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (mt == 0) mt = m["msgtype"].toInt();
             }
             QString rawContent = m["content"].toString();
-            // Debug: always print keys so we can see the real structure
-            if (mt == 2 || rawContent.isEmpty()) {
+            // Debug: dump paramsExt and previewThumb to find photo data
+            if (rawContent.isEmpty()) {
+                QString paramsExtStr = m["paramsExt"].toString();
+                QString previewThumb = m["previewThumb"].toString();
                 qDebug() << "[Zalo WS] msg keys=" << m.keys()
                          << "msgType=" << m["msgType"].toInt()
                          << "type=" << m["type"].toInt()
                          << "mt=" << m["mt"].toInt()
-                         << "content(30)=" << rawContent.left(30);
+                         << "paramsExt(100)=" << paramsExtStr.left(100)
+                         << "previewThumb(60)=" << previewThumb.left(60);
+            }
+
+            // Zalo WS real-time photo: msgType may be 0 but photo URLs are in paramsExt/previewThumb
+            if (mt == 2 || rawContent.isEmpty()) {
+                QString normalized = normalizePhotoContent(m, rawContent);
+                if (normalized != rawContent && !normalized.isEmpty()) {
+                    rawContent = normalized;
+                    mt = 2;
+                    out["msgType"] = 2;
+                    qDebug() << "[Zalo WS] photo detected via paramsExt/previewThumb: content=" << rawContent.left(80);
+                }
             }
             if (mt == 2) {
                 // Normalize photo content to {"normalUrl":"...","thumbUrl":"...","hdUrl":"..."}
@@ -1529,8 +1586,20 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             out["msgType"]  = m["msgType"].toInt();
 
             int mtH = m["msgType"].toInt();
+            if (mtH == 0) {
+                mtH = m["type"].toInt();
+                if (mtH == 0) mtH = m["mt"].toInt();
+            }
             QString rawContentH = m["content"].toString();
-            if (mtH == 2) rawContentH = normalizePhotoContent(m, rawContentH);
+            // Normalize photo: also handles paramsExt/previewThumb (msgType may be 0)
+            if (mtH == 2 || rawContentH.isEmpty()) {
+                QString normalized = normalizePhotoContent(m, rawContentH);
+                if (normalized != rawContentH && !normalized.isEmpty()) {
+                    rawContentH = normalized;
+                    mtH = 2;
+                    out["msgType"] = 2;
+                }
+            }
             out["content"] = rawContentH;
             msgs.append(out);
 
