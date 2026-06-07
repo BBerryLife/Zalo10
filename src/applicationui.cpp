@@ -58,27 +58,15 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
 
-    // Wire Active Frame (SceneCover) — find it in root's attached objects
-    // Cascades automatically picks up SceneCover from the scene's attachedObjects,
-    // but we explicitly set Application::cover for reliability.
-    QObject *coverObj = root->findChild<QObject*>("appCover");
-    if (!coverObj) {
-        // SceneCover may not have objectName set; iterate attachedObjects
-        QVariantList attached = root->property("attachedObjects").toList();
-        foreach (const QVariant &v, attached) {
-            QObject *o = v.value<QObject*>();
-            if (o && QString(o->metaObject()->className()).contains("SceneCover")) {
-                coverObj = o;
-                break;
-            }
-        }
-    }
-    if (coverObj) {
-        Application::instance()->setCover(
-            qobject_cast<bb::cascades::AbstractCover*>(coverObj));
+    // Active Frame: load cover.qml as a separate QmlDocument (SmartList10 pattern)
+    QmlDocument *coverQml = QmlDocument::create("asset:///cover.qml").parent(this);
+    coverQml->setContextProperty("app", this);
+    SceneCover *cover = coverQml->createRootObject<SceneCover>();
+    if (cover) {
+        Application::instance()->setCover(cover);
         qDebug() << "[App] Active Frame (SceneCover) set successfully";
     } else {
-        qDebug() << "[App] SceneCover not found — Active Frame not set";
+        qDebug() << "[App] cover.qml failed to create SceneCover";
     }
 }
 
@@ -135,26 +123,38 @@ void ApplicationUI::onManualExit()
 
 QString ApplicationUI::appVersion()
 {
-    // On BB10, the app package root is accessible at "app/"
-    // bar-descriptor.xml sits at the package root alongside "app/native/"
+    // On BB10, bar-descriptor.xml lives at the package root ("app/")
+    // alongside "app/native/" where the binary runs.
     QStringList candidates;
-    candidates << "app/bar-descriptor.xml"         // packaged .bar install path
-               << "../bar-descriptor.xml"           // relative from app/native/
-               << "bar-descriptor.xml";             // fallback CWD
+    candidates << "app/bar-descriptor.xml"
+               << "../bar-descriptor.xml"
+               << "bar-descriptor.xml";
 
     foreach (const QString &path, candidates) {
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) continue;
+
+        QString versionNumber;
+        QString buildId;
+
         QXmlStreamReader xml(&f);
         while (!xml.atEnd()) {
             xml.readNext();
-            if (xml.isStartElement() && xml.name() == QLatin1String("versionNumber")) {
-                QString v = xml.readElementText().trimmed();
-                f.close();
-                if (!v.isEmpty()) return v;
+            if (!xml.isStartElement()) continue;
+            if (xml.name() == QLatin1String("versionNumber")) {
+                versionNumber = xml.readElementText().trimmed();
+            } else if (xml.name() == QLatin1String("buildId")) {
+                buildId = xml.readElementText().trimmed();
             }
         }
         f.close();
+
+        if (!versionNumber.isEmpty()) {
+            // Build full version string: e.g. "1.1.0.1"
+            if (!buildId.isEmpty())
+                return versionNumber + "." + buildId;
+            return versionNumber;
+        }
     }
     return "1.0.0";
 }

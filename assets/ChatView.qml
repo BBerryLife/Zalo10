@@ -251,33 +251,31 @@ Page {
                             // BB10 QtQuick 1.0: property bindings MUST be single expressions,
                             // không được dùng block { var x; return x } trong property declaration.
                             Container {
-                                // isImage: msgType==2 OR content starts with '{' and has image keys
-                                property bool isImage: (ListItemData.msgType === 2 || ListItemData.msgType === "2")
-                                    || (typeof ListItemData.content === "string"
-                                        && ListItemData.content.length > 1
-                                        && ListItemData.content.charAt(0) === "{"
-                                        && (ListItemData.content.indexOf("thumb") >= 0
-                                            || ListItemData.content.indexOf("normalUrl") >= 0 || ListItemData.content.indexOf("thumbUrl") >= 0 || ListItemData.content.indexOf("href") >= 0
-                                            || ListItemData.content.indexOf("href") >= 0))
-
-                                // localImage takes priority; fall back to empty (download triggered separately)
-                                property string imageUrl: ListItemData.localImage || ""
-
+                                id: msgContentRoot
+                                // BB10: avoid parent.xxx bindings — non-NOTIFYable, only evaluated once.
+                                // Read ListItemData directly in every binding so replace() triggers re-eval.
                                 topMargin: 0; bottomMargin: 0
 
                                 // - Text message -
                                 Label {
-                                    visible: !parent.isImage
+                                    visible: {
+                                        var mt = ListItemData.msgType;
+                                        var isImg = (mt === 2 || mt === "2")
+                                            || (typeof ListItemData.content === "string"
+                                                && ListItemData.content.length > 1
+                                                && ListItemData.content.charAt(0) === "{"
+                                                && (ListItemData.content.indexOf("thumb") >= 0
+                                                    || ListItemData.content.indexOf("normalUrl") >= 0
+                                                    || ListItemData.content.indexOf("thumbUrl") >= 0
+                                                    || ListItemData.content.indexOf("href") >= 0));
+                                        return !isImg;
+                                    }
                                     text: {
                                         if (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
                                             return ListItemData.content;
-                                        // msgType=2: image — show [Photo]
-                                        if (ListItemData.msgType === 2 || ListItemData.msgType === "2")
-                                            return "[Photo]";
-                                        // msgType=6: sticker
-                                        if (ListItemData.msgType === 6 || ListItemData.msgType === "6")
-                                            return "[Sticker]";
-                                        // Default: show content or placeholder
+                                        var mt = ListItemData.msgType;
+                                        if (mt === 2 || mt === "2") return "[Photo]";
+                                        if (mt === 6 || mt === "6") return "[Sticker]";
                                         return "[Photo]";
                                     }
                                     textStyle {
@@ -289,10 +287,19 @@ Page {
                                 }
                                 // - Image message — full bubble width -
                                 Container {
-                                    visible: parent.isImage
+                                    visible: {
+                                        var mt = ListItemData.msgType;
+                                        return (mt === 2 || mt === "2")
+                                            || (typeof ListItemData.content === "string"
+                                                && ListItemData.content.length > 1
+                                                && ListItemData.content.charAt(0) === "{"
+                                                && (ListItemData.content.indexOf("thumb") >= 0
+                                                    || ListItemData.content.indexOf("normalUrl") >= 0
+                                                    || ListItemData.content.indexOf("thumbUrl") >= 0
+                                                    || ListItemData.content.indexOf("href") >= 0));
+                                    }
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     topMargin: 2; bottomMargin: 2
-                                    // Giới hạn chiều cao tối đa, rộng fill theo bubble
                                     preferredHeight: ui.du(30)
                                     minHeight:       ui.du(12)
                                     background: Color.create("#e0e0e0")
@@ -301,11 +308,12 @@ Page {
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment:   VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
-                                        imageSource: parent.parent.imageUrl
-                                        visible: parent.parent.imageUrl.length > 0
+                                        // Read ListItemData.localImage directly — no parent chain
+                                        imageSource: ListItemData.localImage || ""
+                                        visible: (ListItemData.localImage || "").length > 0
                                     }
                                     Label {
-                                        visible: parent.parent.imageUrl.length === 0
+                                        visible: (ListItemData.localImage || "").length === 0
                                         text: "[Photo]"
                                         horizontalAlignment: HorizontalAlignment.Center
                                         verticalAlignment:   VerticalAlignment.Center
@@ -363,45 +371,45 @@ Page {
             }
         }
 
-        // - Input bar (BBM style: icons inside textbox, edge-to-edge) -
+        // - Input bar (BBM style: full-width, no border, large icons) -
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
-            background: Color.create("#F0F0F0")
-            topPadding:    ui.du(0.8)
-            bottomPadding: ui.du(0.8)
+            background: Color.create("#E8E8E8")
+            topPadding:    ui.du(1.0)
+            bottomPadding: ui.du(1.0)
             leftPadding:   0
             rightPadding:  0
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-            // Pill container — white, no border, stretches edge-to-edge
+            // Single white bar — no border, edge-to-edge, tall like BBM compose bar
             Container {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
                 background: Color.White
-                topPadding:    ui.du(0.5)
-                bottomPadding: ui.du(0.5)
-                leftPadding:   ui.du(0.8)
-                rightPadding:  ui.du(0.8)
+                topPadding:    ui.du(0.6)
+                bottomPadding: ui.du(0.6)
+                leftPadding:   ui.du(1.0)
+                rightPadding:  ui.du(1.0)
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-                // Attach icon — left inside textbox
+                // Attach icon
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
-                    preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
-                    rightMargin: ui.du(0.5)
+                    preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
+                    rightMargin: ui.du(0.8)
                     defaultImageSource: "asset:///images/ic_attach.png"
                     pressedImageSource: "asset:///images/ic_attach.png"
                     onClicked: { filePicker.open() }
                 }
 
-                // Text input
+                // Text input — no background, no border
                 TextField {
                     id: inputField
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                     verticalAlignment: VerticalAlignment.Center
                     hintText: "Enter a message"
                     inputMode: TextFieldInputMode.Chat
-                    minHeight: ui.du(5.5)
+                    minHeight: ui.du(7)
                     backgroundVisible: false
                     input {
                         flags: TextInputFlag.SpellCheck | TextInputFlag.WordSubstitution
@@ -416,19 +424,19 @@ Page {
                 // Timed message icon
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
-                    preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
-                    leftMargin: ui.du(0.5)
+                    preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
+                    leftMargin: ui.du(0.6)
                     defaultImageSource: "asset:///images/timemess.png"
                     pressedImageSource: "asset:///images/timemess.png"
-                    onClicked: { /* timed message — future feature */ }
+                    onClicked: { /* timed message — future */ }
                 }
 
                 // Emoji icon
                 ImageButton {
                     id: emoticonBtn
                     verticalAlignment: VerticalAlignment.Center
-                    preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
-                    leftMargin: ui.du(0.3)
+                    preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
+                    leftMargin: ui.du(0.4)
                     defaultImageSource: emojiPanelOpen
                         ? "asset:///images/emoji/darkkeyboard.png"
                         : "asset:///images/ic_emoticon_enabled.png"
