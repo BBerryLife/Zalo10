@@ -24,10 +24,6 @@ NavigationPane {
     }
 
     Page {
-        attachedObjects: [
-            ArrayDataModel { id: inviteModel },
-            ArrayDataModel { id: searchModel }
-        ]
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
             kindProperties: FreeFormTitleBarKindProperties {
@@ -234,6 +230,8 @@ NavigationPane {
         }
 
         attachedObjects: [
+            ArrayDataModel { id: inviteModel },
+            ArrayDataModel { id: searchModel },
             Connections {
                 target: zService
 

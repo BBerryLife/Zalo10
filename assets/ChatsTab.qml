@@ -14,10 +14,6 @@ NavigationPane {
 
     Page {
         id: chatsPage
-        attachedObjects: [
-            ArrayDataModel { id: friendModel },
-            ArrayDataModel { id: searchModel }
-        ]
 
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
@@ -235,6 +231,8 @@ NavigationPane {
         }
 
         attachedObjects: [
+            ArrayDataModel { id: friendModel },
+            ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: chatsDef
                 source: "asset:///ChatView.qml"

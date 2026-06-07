@@ -30,10 +30,6 @@ NavigationPane {
 
     Page {
         id: contactsPage
-        attachedObjects: [
-            ArrayDataModel { id: contactModel },
-            ArrayDataModel { id: searchModel }
-        ]
         property bool populated: false
         property string selfName: contactsNav.selfName
         
@@ -229,6 +225,8 @@ NavigationPane {
         }
         
         attachedObjects: [
+            ArrayDataModel { id: contactModel },
+            ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: contactsProfileDef
                 source: "asset:///ProfileView.qml"

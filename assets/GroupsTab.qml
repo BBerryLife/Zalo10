@@ -54,10 +54,6 @@ NavigationPane {
 
     Page {
         id: groupsPage
-        attachedObjects: [
-            ArrayDataModel { id: groupModel },
-            ArrayDataModel { id: searchModel }
-        ]
 
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
@@ -246,6 +242,8 @@ NavigationPane {
         }
 
         attachedObjects: [
+            ArrayDataModel { id: groupModel },
+            ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: groupsDef
                 source: "asset:///ChatView.qml"
