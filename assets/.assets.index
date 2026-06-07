@@ -1,11 +1,12 @@
 1
-632
+638
 AboutSheet.qml
-ChatList.qml
+ChatsTab.qml
 ChatView.qml
 ContactsTab.qml
 EmojiButton.qml
 EmojiPanel.qml
+GroupsTab.qml
 images/action_delete.png
 images/ai_add_task.png
 images/barcode.png
@@ -33,6 +34,7 @@ images/Bubble/outgoing/top.png
 images/Bubble/outgoing/top.png.amd
 images/ca_bbid.png
 images/ca_video_chat_active.png
+images/clear_chat.png
 images/ConversationPaneSend.png
 images/cs_spark_small.png
 images/default_caller.png
@@ -593,6 +595,8 @@ images/ic_add_contact.png
 images/ic_attach.png
 images/ic_back_white.png
 images/ic_bbm.png
+images/ic_block_contact.png
+images/ic_chat_leave.png
 images/ic_close_white.png
 images/ic_contact.png
 images/ic_copy.png
@@ -609,6 +613,7 @@ images/ic_keyboard_enabled.png
 images/ic_like.png
 images/ic_mail.png
 images/ic_microphone.png
+images/ic_notifications_off.png
 images/ic_quote_message.png
 images/ic_save.png
 images/ic_save_image.png
@@ -628,6 +633,7 @@ images/sent.png
 images/splat.png
 images/timelimited.png
 images/yellow_pellet.png
+InvitesTab.qml
 LoginView.qml
 main.qml
 ProfileView.qml

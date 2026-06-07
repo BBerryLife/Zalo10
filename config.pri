@@ -37,11 +37,13 @@ simulator {
 config_pri_assets {
     OTHER_FILES += \
         $$quote($$BASEDIR/assets/AboutSheet.qml) \
-        $$quote($$BASEDIR/assets/ChatList.qml) \
         $$quote($$BASEDIR/assets/ChatView.qml) \
+        $$quote($$BASEDIR/assets/ChatsTab.qml) \
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
         $$quote($$BASEDIR/assets/EmojiButton.qml) \
         $$quote($$BASEDIR/assets/EmojiPanel.qml) \
+        $$quote($$BASEDIR/assets/GroupsTab.qml) \
+        $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
@@ -135,6 +137,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/blank.png) \
         $$quote($$BASEDIR/assets/images/ca_bbid.png) \
         $$quote($$BASEDIR/assets/images/ca_video_chat_active.png) \
+        $$quote($$BASEDIR/assets/images/clear_chat.png) \
         $$quote($$BASEDIR/assets/images/cs_spark_small.png) \
         $$quote($$BASEDIR/assets/images/default_caller.png) \
         $$quote($$BASEDIR/assets/images/default_caller1.png) \
@@ -632,6 +635,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_attach.png) \
         $$quote($$BASEDIR/assets/images/ic_back_white.png) \
         $$quote($$BASEDIR/assets/images/ic_bbm.png) \
+        $$quote($$BASEDIR/assets/images/ic_block_contact.png) \
+        $$quote($$BASEDIR/assets/images/ic_chat_leave.png) \
         $$quote($$BASEDIR/assets/images/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/ic_contact.png) \
         $$quote($$BASEDIR/assets/images/ic_copy.png) \
@@ -648,6 +653,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_like.png) \
         $$quote($$BASEDIR/assets/images/ic_mail.png) \
         $$quote($$BASEDIR/assets/images/ic_microphone.png) \
+        $$quote($$BASEDIR/assets/images/ic_notifications_off.png) \
         $$quote($$BASEDIR/assets/images/ic_quote_message.png) \
         $$quote($$BASEDIR/assets/images/ic_save.png) \
         $$quote($$BASEDIR/assets/images/ic_save_image.png) \
