@@ -2655,28 +2655,48 @@ void ZaloService::onSendPhotoDone()
     }
 
     // Step 2: send photo message
+    // zca-js: file[0]/api/{message|group}/photo_original/send
+    // params: photoId, clientId, desc, width, height, toid|grid,
+    //         rawUrl=normalUrl, hdUrl, thumbUrl, hdSize=totalSize,
+    //         oriUrl (group only), normalUrl (DM only),
+    //         zsource=-1, ttl=0, jcp
     qint64 ts2 = QDateTime::currentMSecsSinceEpoch();
     QVariantMap mp;
-    mp["clientId"]  = (qint64)ts2;
-    mp["ttl"]       = 0;
-    mp["normalUrl"] = normalUrl;
-    mp["thumbUrl"]  = thumbUrl;
-    mp["hdUrl"]     = hdUrl.isEmpty() ? normalUrl : hdUrl;
     mp["photoId"]   = photoId;
+    mp["clientId"]  = QString::number(ts2);
+    mp["desc"]      = "";
+    mp["width"]     = 0;
+    mp["height"]    = 0;
+    mp["rawUrl"]    = normalUrl;
+    mp["hdUrl"]     = hdUrl.isEmpty() ? normalUrl : hdUrl;
+    mp["thumbUrl"]  = thumbUrl;
+    mp["hdSize"]    = uploadData.value("totalSize", "0").toString();
+    mp["zsource"]   = -1;
+    mp["ttl"]       = 0;
+    mp["jcp"]       = "{\"convertible\":\"jxl\"}";
     if (isGroup) {
-        mp["grid"]       = tid;
-        mp["visibility"] = 0;
+        mp["grid"]     = tid;
+        mp["oriUrl"]   = normalUrl;
     } else {
-        mp["toid"] = tid;
-        mp["imei"] = m_imei;
+        mp["toid"]      = tid;
+        mp["normalUrl"] = normalUrl;
     }
+
     QString encMsg = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(mp)));
     QByteArray body2 = "params=" + QUrl::toPercentEncoding(encMsg);
 
-    QString msgUrl = (isGroup ? m_groupServiceUrl + "/api/group/photo"
-                              : m_chatServiceUrl  + "/api/message/photo")
+    // Use file service URL (same base as upload)
+    QString fileBase2 = m_fileServiceUrl;
+    if (fileBase2.isEmpty()) {
+        fileBase2 = m_chatServiceUrl;
+        QRegExp rx2("tt-chat\\d+-wpa");
+        fileBase2.replace(rx2, "tt-files-wpa");
+    }
+    QString sendEndpoint = isGroup ? "group" : "message";
+    QString msgUrl = fileBase2 + "/api/" + sendEndpoint + "/photo_original/send"
                    + "?zpw_ver=" + QString::number(API_VERSION)
-                   + "&zpw_type=" + QString::number(API_TYPE);
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&nretry=0";
 
     QNetworkRequest req2 = buildRequest(msgUrl, "https://chat.zalo.me/");
     req2.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");

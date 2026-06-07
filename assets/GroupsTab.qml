@@ -7,6 +7,13 @@ NavigationPane {
 
     property string selfName: ""
     signal onUnreadMessage()
+    property variant currentPage: null
+
+    onCurrentPageChanged: {
+        if (!currentPage) return;
+        // Watch for leave group request from ChatView
+        popWatcher.target = currentPage;
+    }
 
     function formatTime(timestamp) {
         if (!timestamp || timestamp === "") return "";
@@ -156,9 +163,9 @@ NavigationPane {
                     if (av.length === 0) av = "asset:///images/blank.png";
                     page.avatarUrl  = av;
                     page.selfName   = groupsNav.selfName;
-                    page.onRequestPop.connect(function() { groupsNav.pop(); });
                     page.startChat();
                     groupsNav.push(page);
+                    groupsNav.currentPage = page;
                 }
             }
 
@@ -177,6 +184,14 @@ NavigationPane {
             ComponentDefinition {
                 id: groupsDef
                 source: "asset:///ChatView.qml"
+            },
+            Connections {
+                id: popWatcher
+                target: null
+                onPopRequestedChanged: {
+                    if (target && target.popRequested)
+                        groupsNav.pop();
+                }
             },
             Connections {
                 target: zService
