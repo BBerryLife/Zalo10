@@ -55,19 +55,36 @@ NavigationPane {
                         horizontalAlignment: HorizontalAlignment.Left
                         visible: !contactsNav.searchVisible
                     }
-                    TextField {
-                        id: contactsSearchField
+                    Container {
                         visible: contactsNav.searchVisible
-                        hintText: "Search contacts..."
-                        verticalAlignment: VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Fill
-                        textStyle { color: Color.White }
-                        onTextChanging: {
-                            contactsNav.searchText = text;
-                            contactsNav.filterList();
+                        verticalAlignment: VerticalAlignment.Center
+                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                        TextField {
+                            id: contactsSearchField
+                            hintText: "Search contacts..."
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White }
+                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            onTextChanging: {
+                                contactsNav.searchText = text;
+                                contactsNav.filterList();
+                            }
+                            onCreationCompleted: {
+                                inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                            }
                         }
-                        onCreationCompleted: {
-                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        Button {
+                            text: "Cancel"
+                            preferredWidth: ui.du(14)
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White; fontSize: FontSize.Small }
+                            onClicked: {
+                                contactsSearchField.text = "";
+                                contactsNav.searchText = "";
+                                contactsNav.searchVisible = false;
+                                contactsNav.filterList();
+                            }
                         }
                     }
                 }
@@ -235,10 +252,12 @@ NavigationPane {
                 }
                 
                 onAvatarReady: {
+                    var isBg = (threadId.indexOf("bg_") === 0)
+                    // Update visible model
                     for (var i = 0; i < contactModel.size(); i++) {
                         var d = contactModel.value(i)
                         var tid = d.threadId || d.uid || ""
-                        if (threadId.indexOf("bg_") === 0) {
+                        if (isBg) {
                             if (("bg_" + tid) === threadId) {
                                 d.localBgAvatar = localPath
                                 contactModel.replace(i, d)
@@ -248,6 +267,24 @@ NavigationPane {
                             if (tid === threadId) {
                                 d.localAvatar = localPath
                                 contactModel.replace(i, d)
+                                break
+                            }
+                        }
+                    }
+                    // Also update allContacts cache so search shows avatars
+                    var all = contactsNav.allContacts
+                    for (var j = 0; j < all.length; j++) {
+                        var atid = all[j].threadId || all[j].uid || ""
+                        if (isBg) {
+                            if (("bg_" + atid) === threadId) {
+                                all[j].localBgAvatar = localPath
+                                contactsNav.allContacts = all
+                                break
+                            }
+                        } else {
+                            if (atid === threadId) {
+                                all[j].localAvatar = localPath
+                                contactsNav.allContacts = all
                                 break
                             }
                         }

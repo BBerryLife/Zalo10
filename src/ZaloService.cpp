@@ -1296,23 +1296,57 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QString rawContent = m["content"].toString();
             if (mt == 2) {
                 // Normalize photo content to {"normalUrl":"...","thumbUrl":"...","hdUrl":"..."}
-                // WS may deliver via content JSON (href/thumb) or top-level fields
+                // WS may deliver via content JSON (href/thumb), top-level, or in "attach" sub-object
                 QString nUrl, hUrl, tUrl;
-                if (!rawContent.isEmpty() && rawContent.startsWith("{")) {
+                if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
                     QVariantMap cm = jsonToMap(rawContent.toUtf8());
                     nUrl = cm["normalUrl"].toString();
                     hUrl = cm["hdUrl"].toString();
                     tUrl = cm["thumbUrl"].toString();
-                    // Zalo web format: href=original, thumb=thumbnail
                     if (nUrl.isEmpty()) nUrl = cm["href"].toString();
                     if (hUrl.isEmpty()) hUrl = cm["oriUrl"].toString();
                     if (tUrl.isEmpty()) tUrl = cm["thumb"].toString();
                 }
-                // Also check top-level fields (some WS versions)
+                // Check top-level fields
                 if (nUrl.isEmpty()) nUrl = m["normalUrl"].toString();
                 if (hUrl.isEmpty()) hUrl = m["hdUrl"].toString();
                 if (tUrl.isEmpty()) tUrl = m["thumbUrl"].toString();
                 if (nUrl.isEmpty()) nUrl = m["oriUrl"].toString();
+                if (tUrl.isEmpty()) tUrl = m["thumb"].toString();
+                // Check "attach" sub-object (Zalo WS real-time delivery)
+                if (nUrl.isEmpty()) {
+                    QVariantMap att = m["attach"].toMap();
+                    if (att.isEmpty()) {
+                        // attach may be a JSON string
+                        QString attStr = m["attach"].toString();
+                        if (!attStr.isEmpty() && attStr.startsWith("{"))
+                            att = jsonToMap(attStr.toUtf8());
+                    }
+                    if (!att.isEmpty()) {
+                        if (nUrl.isEmpty()) nUrl = att["normalUrl"].toString();
+                        if (hUrl.isEmpty()) hUrl = att["hdUrl"].toString();
+                        if (tUrl.isEmpty()) tUrl = att["thumbUrl"].toString();
+                        if (nUrl.isEmpty()) nUrl = att["href"].toString();
+                        if (nUrl.isEmpty()) nUrl = att["normalUrl"].toString();
+                        if (tUrl.isEmpty()) tUrl = att["thumb"].toString();
+                    }
+                }
+                // Check "params" sub-object
+                if (nUrl.isEmpty()) {
+                    QVariantMap prm = m["params"].toMap();
+                    if (prm.isEmpty()) {
+                        QString prmStr = m["params"].toString();
+                        if (!prmStr.isEmpty() && prmStr.startsWith("{"))
+                            prm = jsonToMap(prmStr.toUtf8());
+                    }
+                    if (!prm.isEmpty()) {
+                        if (nUrl.isEmpty()) nUrl = prm["normalUrl"].toString();
+                        if (hUrl.isEmpty()) hUrl = prm["hdUrl"].toString();
+                        if (tUrl.isEmpty()) tUrl = prm["thumbUrl"].toString();
+                        if (nUrl.isEmpty()) nUrl = prm["href"].toString();
+                        if (tUrl.isEmpty()) tUrl = prm["thumb"].toString();
+                    }
+                }
 
                 if (nUrl.isEmpty()) nUrl = hUrl;
                 if (nUrl.isEmpty()) nUrl = tUrl;
@@ -1323,11 +1357,16 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     rawContent = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
                                  .arg(nUrl).arg(tUrl).arg(hUrl);
                 }
+                // Debug: print all keys so we can diagnose when URLs still missing
+                if (nUrl.isEmpty()) {
+                    qDebug() << "[Zalo WS] photo msgType=2 but no URL found. m.keys=" << m.keys()
+                             << "content=" << rawContent.left(100);
+                }
             }
             out["content"] = rawContent;
 
             qDebug() << "[Zalo WS] new msg from" << uidFrom
-                     << "thread" << threadId << out["content"].toString().left(30);
+                     << "thread" << threadId << "content=" << out["content"].toString().left(60);
             dbSaveMessage(out, threadId);
             emit newMessage(threadId, out);
             if (!isSelf && threadId != m_activeThreadId && !m_mutedThreads.contains(threadId)) {

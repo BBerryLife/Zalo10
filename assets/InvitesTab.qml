@@ -46,19 +46,36 @@ NavigationPane {
                         horizontalAlignment: HorizontalAlignment.Left
                         visible: !invitesNav.searchVisible
                     }
-                    TextField {
-                        id: invitesSearchField
+                    Container {
                         visible: invitesNav.searchVisible
-                        hintText: "Search requests..."
-                        verticalAlignment: VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Fill
-                        textStyle { color: Color.White }
-                        onTextChanging: {
-                            invitesNav.searchText = text;
-                            invitesNav.filterList();
+                        verticalAlignment: VerticalAlignment.Center
+                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                        TextField {
+                            id: invitesSearchField
+                            hintText: "Search requests..."
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White }
+                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            onTextChanging: {
+                                invitesNav.searchText = text;
+                                invitesNav.filterList();
+                            }
+                            onCreationCompleted: {
+                                inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                            }
                         }
-                        onCreationCompleted: {
-                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        Button {
+                            text: "Cancel"
+                            preferredWidth: ui.du(14)
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White; fontSize: FontSize.Small }
+                            onClicked: {
+                                invitesSearchField.text = "";
+                                invitesNav.searchText = "";
+                                invitesNav.searchVisible = false;
+                                invitesNav.filterList();
+                            }
                         }
                     }
                 }
@@ -255,6 +272,15 @@ NavigationPane {
                             d.localAvatar = localPath;
                             inviteModel.removeAt(i);
                             inviteModel.insert(i, d);
+                            break;
+                        }
+                    }
+                    // Also update allInvites cache so search shows avatars
+                    var all = invitesNav.allInvites;
+                    for (var j = 0; j < all.length; j++) {
+                        if ((all[j].uid || "") === threadId) {
+                            all[j].localAvatar = localPath;
+                            invitesNav.allInvites = all;
                             break;
                         }
                     }

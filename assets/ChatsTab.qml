@@ -36,19 +36,36 @@ NavigationPane {
                         horizontalAlignment: HorizontalAlignment.Left
                         visible: !chatsNav.searchVisible
                     }
-                    TextField {
-                        id: chatsSearchField
+                    Container {
                         visible: chatsNav.searchVisible
-                        hintText: "Search chats..."
-                        verticalAlignment: VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Fill
-                        textStyle { color: Color.White }
-                        onTextChanging: {
-                            chatsNav.searchText = text;
-                            chatsNav.filterList();
+                        verticalAlignment: VerticalAlignment.Center
+                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                        TextField {
+                            id: chatsSearchField
+                            hintText: "Search chats..."
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White }
+                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            onTextChanging: {
+                                chatsNav.searchText = text;
+                                chatsNav.filterList();
+                            }
+                            onCreationCompleted: {
+                                inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                            }
                         }
-                        onCreationCompleted: {
-                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        Button {
+                            text: "Cancel"
+                            preferredWidth: ui.du(14)
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White; fontSize: FontSize.Small }
+                            onClicked: {
+                                chatsSearchField.text = "";
+                                chatsNav.searchText = "";
+                                chatsNav.searchVisible = false;
+                                chatsNav.filterList();
+                            }
                         }
                     }
                 }
@@ -249,11 +266,21 @@ NavigationPane {
                 }
 
                 onAvatarReady: {
+                    // Update visible model
                     for (var i = 0; i < friendModel.size(); i++) {
                         var d = friendModel.value(i);
                         if ((d.threadId || d.uid || "") === threadId) {
                             d.localAvatar = localPath;
                             friendModel.replace(i, d);
+                            break;
+                        }
+                    }
+                    // Also update allFriends cache so search results show avatars
+                    var all = chatsNav.allFriends;
+                    for (var j = 0; j < all.length; j++) {
+                        if ((all[j].threadId || all[j].uid || "") === threadId) {
+                            all[j].localAvatar = localPath;
+                            chatsNav.allFriends = all;
                             break;
                         }
                     }

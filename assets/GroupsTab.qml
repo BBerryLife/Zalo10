@@ -77,19 +77,36 @@ NavigationPane {
                         horizontalAlignment: HorizontalAlignment.Left
                         visible: !groupsNav.searchVisible
                     }
-                    TextField {
-                        id: groupsSearchField
+                    Container {
                         visible: groupsNav.searchVisible
-                        hintText: "Search groups..."
-                        verticalAlignment: VerticalAlignment.Center
                         horizontalAlignment: HorizontalAlignment.Fill
-                        textStyle { color: Color.White }
-                        onTextChanging: {
-                            groupsNav.searchText = text;
-                            groupsNav.filterList();
+                        verticalAlignment: VerticalAlignment.Center
+                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                        TextField {
+                            id: groupsSearchField
+                            hintText: "Search groups..."
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White }
+                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            onTextChanging: {
+                                groupsNav.searchText = text;
+                                groupsNav.filterList();
+                            }
+                            onCreationCompleted: {
+                                inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                            }
                         }
-                        onCreationCompleted: {
-                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        Button {
+                            text: "Cancel"
+                            preferredWidth: ui.du(14)
+                            verticalAlignment: VerticalAlignment.Center
+                            textStyle { color: Color.White; fontSize: FontSize.Small }
+                            onClicked: {
+                                groupsSearchField.text = "";
+                                groupsNav.searchText = "";
+                                groupsNav.searchVisible = false;
+                                groupsNav.filterList();
+                            }
                         }
                     }
                 }
@@ -270,6 +287,15 @@ NavigationPane {
                         if (d.threadId === threadId) {
                             d.localAvatar = localPath;
                             groupModel.replace(i, d);
+                            break;
+                        }
+                    }
+                    // Also update allGroups cache so search shows avatars
+                    var all = groupsNav.allGroups;
+                    for (var j = 0; j < all.length; j++) {
+                        if (all[j].threadId === threadId) {
+                            all[j].localAvatar = localPath;
+                            groupsNav.allGroups = all;
                             break;
                         }
                     }
