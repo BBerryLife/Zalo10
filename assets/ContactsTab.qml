@@ -30,6 +30,10 @@ NavigationPane {
 
     Page {
         id: contactsPage
+        attachedObjects: [
+            ArrayDataModel { id: contactModel },
+            ArrayDataModel { id: searchModel }
+        ]
         property bool populated: false
         property string selfName: contactsNav.selfName
         
@@ -131,8 +135,6 @@ NavigationPane {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
             
-            ArrayDataModel { id: searchModel }
-            ArrayDataModel { id: contactModel }
             ListView {
                 id: contactsGrid
                 horizontalAlignment: HorizontalAlignment.Fill

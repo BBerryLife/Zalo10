@@ -54,6 +54,10 @@ NavigationPane {
 
     Page {
         id: groupsPage
+        attachedObjects: [
+            ArrayDataModel { id: groupModel },
+            ArrayDataModel { id: searchModel }
+        ]
 
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
@@ -148,8 +152,6 @@ NavigationPane {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
 
-            ArrayDataModel { id: searchModel }
-            ArrayDataModel { id: groupModel }
             ListView {
                 id: groupList
                 horizontalAlignment: HorizontalAlignment.Fill

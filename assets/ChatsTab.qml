@@ -14,6 +14,10 @@ NavigationPane {
 
     Page {
         id: chatsPage
+        attachedObjects: [
+            ArrayDataModel { id: friendModel },
+            ArrayDataModel { id: searchModel }
+        ]
 
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
@@ -114,8 +118,6 @@ NavigationPane {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
 
-            ArrayDataModel { id: searchModel }
-            ArrayDataModel { id: friendModel }
             ListView {
                 id: friendList
                 horizontalAlignment: HorizontalAlignment.Fill

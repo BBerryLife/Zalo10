@@ -24,6 +24,10 @@ NavigationPane {
     }
 
     Page {
+        attachedObjects: [
+            ArrayDataModel { id: inviteModel },
+            ArrayDataModel { id: searchModel }
+        ]
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
             kindProperties: FreeFormTitleBarKindProperties {
@@ -124,8 +128,6 @@ NavigationPane {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
 
-            ArrayDataModel { id: searchModel }
-            ArrayDataModel { id: inviteModel }
             ListView {
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
