@@ -69,7 +69,6 @@ NavigationPane {
                             text: "Cancel"
                             preferredWidth: ui.du(14)
                             verticalAlignment: VerticalAlignment.Center
-                            textStyle { color: Color.White; fontSize: FontSize.Small }
                             onClicked: {
                                 invitesSearchField.text = "";
                                 invitesNav.searchText = "";
