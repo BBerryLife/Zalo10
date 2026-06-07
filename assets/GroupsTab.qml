@@ -290,10 +290,12 @@ NavigationPane {
                         }
                     }
                     // Also update allGroups cache so search shows avatars
-                    var all = groupsNav.allGroups;
+                    var all = groupsNav.allGroups.slice();
                     for (var j = 0; j < all.length; j++) {
                         if (all[j].threadId === threadId) {
-                            all[j].localAvatar = localPath;
+                            var upd = all[j];
+                            upd.localAvatar = localPath;
+                            all.splice(j, 1, upd);
                             groupsNav.allGroups = all;
                             break;
                         }

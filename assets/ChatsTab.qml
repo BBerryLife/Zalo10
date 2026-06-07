@@ -275,10 +275,12 @@ NavigationPane {
                         }
                     }
                     // Also update allFriends cache so search results show avatars
-                    var all = chatsNav.allFriends;
+                    var all = chatsNav.allFriends.slice();
                     for (var j = 0; j < all.length; j++) {
                         if ((all[j].threadId || all[j].uid || "") === threadId) {
-                            all[j].localAvatar = localPath;
+                            var updated = all[j];
+                            updated.localAvatar = localPath;
+                            all.splice(j, 1, updated);
                             chatsNav.allFriends = all;
                             break;
                         }

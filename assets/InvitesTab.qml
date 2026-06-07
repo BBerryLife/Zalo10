@@ -275,10 +275,12 @@ NavigationPane {
                         }
                     }
                     // Also update allInvites cache so search shows avatars
-                    var all = invitesNav.allInvites;
+                    var all = invitesNav.allInvites.slice();
                     for (var j = 0; j < all.length; j++) {
                         if ((all[j].uid || "") === threadId) {
-                            all[j].localAvatar = localPath;
+                            var upd = all[j];
+                            upd.localAvatar = localPath;
+                            all.splice(j, 1, upd);
                             invitesNav.allInvites = all;
                             break;
                         }

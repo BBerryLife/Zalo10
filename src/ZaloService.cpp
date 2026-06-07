@@ -1293,7 +1293,21 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             out["msgType"]  = m["msgType"].toInt();
 
             int mt = m["msgType"].toInt();
+            // Also try alternate field names Zalo WS uses
+            if (mt == 0) {
+                mt = m["type"].toInt();
+                if (mt == 0) mt = m["mt"].toInt();
+                if (mt == 0) mt = m["msgtype"].toInt();
+            }
             QString rawContent = m["content"].toString();
+            // Debug: always print keys so we can see the real structure
+            if (mt == 2 || rawContent.isEmpty()) {
+                qDebug() << "[Zalo WS] msg keys=" << m.keys()
+                         << "msgType=" << m["msgType"].toInt()
+                         << "type=" << m["type"].toInt()
+                         << "mt=" << m["mt"].toInt()
+                         << "content(30)=" << rawContent.left(30);
+            }
             if (mt == 2) {
                 // Normalize photo content to {"normalUrl":"...","thumbUrl":"...","hdUrl":"..."}
                 // WS may deliver via content JSON (href/thumb), top-level, or in "attach" sub-object

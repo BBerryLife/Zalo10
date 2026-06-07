@@ -277,18 +277,21 @@ NavigationPane {
                         }
                     }
                     // Also update allContacts cache so search shows avatars
-                    var all = contactsNav.allContacts
+                    var all = contactsNav.allContacts.slice()
                     for (var j = 0; j < all.length; j++) {
                         var atid = all[j].threadId || all[j].uid || ""
+                        var upd = all[j]
                         if (isBg) {
                             if (("bg_" + atid) === threadId) {
-                                all[j].localBgAvatar = localPath
+                                upd.localBgAvatar = localPath
+                                all.splice(j, 1, upd)
                                 contactsNav.allContacts = all
                                 break
                             }
                         } else {
                             if (atid === threadId) {
-                                all[j].localAvatar = localPath
+                                upd.localAvatar = localPath
+                                all.splice(j, 1, upd)
                                 contactsNav.allContacts = all
                                 break
                             }
