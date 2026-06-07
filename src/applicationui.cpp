@@ -4,6 +4,8 @@
 #include <bb/cascades/Application>
 #include <bb/cascades/QmlDocument>
 #include <bb/cascades/AbstractPane>
+#include <bb/cascades/AbstractCover>
+#include <bb/cascades/SceneCover>
 #include <bb/cascades/LocaleHandler>
 #include <bb/cascades/ThemeSupport>
 #include <bb/system/InvokeManager>
@@ -13,6 +15,8 @@
 #include <QLocale>
 #include <QSettings>
 #include <QDebug>
+#include <QFile>
+#include <QXmlStreamReader>
 
 using namespace bb::cascades;
 using namespace bb::system;
@@ -53,6 +57,29 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
 
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
+
+    // Wire Active Frame (SceneCover) — find it in root's attached objects
+    // Cascades automatically picks up SceneCover from the scene's attachedObjects,
+    // but we explicitly set Application::cover for reliability.
+    QObject *coverObj = root->findChild<QObject*>("appCover");
+    if (!coverObj) {
+        // SceneCover may not have objectName set; iterate attachedObjects
+        QVariantList attached = root->property("attachedObjects").toList();
+        foreach (const QVariant &v, attached) {
+            QObject *o = v.value<QObject*>();
+            if (o && QString(o->metaObject()->className()).contains("SceneCover")) {
+                coverObj = o;
+                break;
+            }
+        }
+    }
+    if (coverObj) {
+        Application::instance()->setCover(
+            qobject_cast<bb::cascades::AbstractCover*>(coverObj));
+        qDebug() << "[App] Active Frame (SceneCover) set successfully";
+    } else {
+        qDebug() << "[App] SceneCover not found — Active Frame not set";
+    }
 }
 
 void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
@@ -104,4 +131,30 @@ void ApplicationUI::onManualExit()
         m_zService->saveSession();
     }
     bb::cascades::Application::instance()->quit();
+}
+
+QString ApplicationUI::appVersion()
+{
+    // On BB10, the app package root is accessible at "app/"
+    // bar-descriptor.xml sits at the package root alongside "app/native/"
+    QStringList candidates;
+    candidates << "app/bar-descriptor.xml"         // packaged .bar install path
+               << "../bar-descriptor.xml"           // relative from app/native/
+               << "bar-descriptor.xml";             // fallback CWD
+
+    foreach (const QString &path, candidates) {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) continue;
+        QXmlStreamReader xml(&f);
+        while (!xml.atEnd()) {
+            xml.readNext();
+            if (xml.isStartElement() && xml.name() == QLatin1String("versionNumber")) {
+                QString v = xml.readElementText().trimmed();
+                f.close();
+                if (!v.isEmpty()) return v;
+            }
+        }
+        f.close();
+    }
+    return "1.0.0";
 }

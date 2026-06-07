@@ -25,7 +25,7 @@ Sheet {
                             verticalAlignment: VerticalAlignment.Center
                             preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
                             defaultImageSource: "asset:///images/ic_close_white.png"
-                            pressedImageSource: "asset:///images/ic_close_white.p ng"
+                            pressedImageSource: "asset:///images/ic_close_white.png"
                             rightMargin: ui.du(0.5)
                             onClicked: { aboutSheetRoot.close() }
                         }
@@ -81,7 +81,7 @@ Sheet {
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                             verticalAlignment: VerticalAlignment.Center
                             Label { text: "Zalo10"; textStyle.base: SystemDefaults.TextStyles.BigText }
-                            Label { text: "Version 1.0.0"; textStyle.color: Color.Gray; topMargin: 4 }
+                            Label { text: "Version: " + app.appVersion(); textStyle.color: Color.Gray; topMargin: 4 }
                             Label { text: "Developed by BerryLife© 2026"; textStyle.color: Color.Gray; topMargin: 4 }
                         }
                         
