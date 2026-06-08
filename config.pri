@@ -40,7 +40,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ChatView.qml) \
         $$quote($$BASEDIR/assets/ChatsTab.qml) \
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
-        $$quote($$BASEDIR/assets/DonateTab.qml) \
         $$quote($$BASEDIR/assets/EmojiButton.qml) \
         $$quote($$BASEDIR/assets/EmojiPanel.qml) \
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
@@ -135,6 +134,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/File Types/Thumbs.db) \
         $$quote($$BASEDIR/assets/images/action_delete.png) \
         $$quote($$BASEDIR/assets/images/ai_add_task.png) \
+        $$quote($$BASEDIR/assets/images/attach_icon.png) \
         $$quote($$BASEDIR/assets/images/barcode.png) \
         $$quote($$BASEDIR/assets/images/berrylife.png) \
         $$quote($$BASEDIR/assets/images/blank.png) \
@@ -675,6 +675,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/sending.png) \
         $$quote($$BASEDIR/assets/images/sent.png) \
         $$quote($$BASEDIR/assets/images/splat.png) \
+        $$quote($$BASEDIR/assets/images/timemess.png) \
         $$quote($$BASEDIR/assets/images/yellow_pellet.png) \
         $$quote($$BASEDIR/assets/main.qml)
 }
