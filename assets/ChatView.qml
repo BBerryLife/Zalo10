@@ -252,32 +252,26 @@ Page {
                             // không được dùng block { var x; return x } trong property declaration.
                             Container {
                                 id: msgContentRoot
-                                // BB10: avoid parent.xxx bindings — non-NOTIFYable, only evaluated once.
-                                // Read ListItemData directly in every binding so replace() triggers re-eval.
+                                // BB10 QtQuick 1.0: only SIMPLE expressions re-evaluate on replace().
+                                // No block { var x; return x } syntax — use inline ternary only.
                                 topMargin: 0; bottomMargin: 0
 
-                                // - Text message -
+                                // - Text message: visible when NOT a photo -
                                 Label {
-                                    visible: {
-                                        var mt = ListItemData.msgType;
-                                        var isImg = (mt === 2 || mt === "2")
-                                            || (typeof ListItemData.content === "string"
-                                                && ListItemData.content.length > 1
-                                                && ListItemData.content.charAt(0) === "{"
-                                                && (ListItemData.content.indexOf("thumb") >= 0
-                                                    || ListItemData.content.indexOf("normalUrl") >= 0
-                                                    || ListItemData.content.indexOf("thumbUrl") >= 0
-                                                    || ListItemData.content.indexOf("href") >= 0));
-                                        return !isImg;
-                                    }
-                                    text: {
-                                        if (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
-                                            return ListItemData.content;
-                                        var mt = ListItemData.msgType;
-                                        if (mt === 2 || mt === "2") return "[Photo]";
-                                        if (mt === 6 || mt === "6") return "[Sticker]";
-                                        return "[Photo]";
-                                    }
+                                    visible: (ListItemData.msgType !== 2 && ListItemData.msgType !== "2")
+                                             && !(typeof ListItemData.content === "string"
+                                                  && ListItemData.content.length > 1
+                                                  && ListItemData.content.charAt(0) === "{"
+                                                  && (ListItemData.content.indexOf("normalUrl") >= 0
+                                                      || ListItemData.content.indexOf("thumbUrl") >= 0
+                                                      || ListItemData.content.indexOf("thumb") >= 0
+                                                      || ListItemData.content.indexOf("href") >= 0))
+                                    text: (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
+                                          ? ListItemData.content
+                                          : ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
+                                             ? "[Photo]"
+                                             : ((ListItemData.msgType === 6 || ListItemData.msgType === "6")
+                                                ? "[Sticker]" : "[Photo]"))
                                     textStyle {
                                         base:  SystemDefaults.TextStyles.BodyText
                                         color: Color.create("#111111")
@@ -287,17 +281,14 @@ Page {
                                 }
                                 // - Image message — full bubble width -
                                 Container {
-                                    visible: {
-                                        var mt = ListItemData.msgType;
-                                        return (mt === 2 || mt === "2")
-                                            || (typeof ListItemData.content === "string"
-                                                && ListItemData.content.length > 1
-                                                && ListItemData.content.charAt(0) === "{"
-                                                && (ListItemData.content.indexOf("thumb") >= 0
-                                                    || ListItemData.content.indexOf("normalUrl") >= 0
-                                                    || ListItemData.content.indexOf("thumbUrl") >= 0
-                                                    || ListItemData.content.indexOf("href") >= 0));
-                                    }
+                                    visible: (ListItemData.msgType === 2 || ListItemData.msgType === "2")
+                                             || (typeof ListItemData.content === "string"
+                                                 && ListItemData.content.length > 1
+                                                 && ListItemData.content.charAt(0) === "{"
+                                                 && (ListItemData.content.indexOf("normalUrl") >= 0
+                                                     || ListItemData.content.indexOf("thumbUrl") >= 0
+                                                     || ListItemData.content.indexOf("thumb") >= 0
+                                                     || ListItemData.content.indexOf("href") >= 0))
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     topMargin: 2; bottomMargin: 2
                                     preferredHeight: ui.du(30)
@@ -308,12 +299,11 @@ Page {
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment:   VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
-                                        // Read ListItemData.localImage directly — no parent chain
-                                        imageSource: ListItemData.localImage || ""
-                                        visible: (ListItemData.localImage || "").length > 0
+                                        imageSource: ListItemData.localImage ? ListItemData.localImage : ""
+                                        visible:     ListItemData.localImage ? (ListItemData.localImage.length > 0) : false
                                     }
                                     Label {
-                                        visible: (ListItemData.localImage || "").length === 0
+                                        visible: ListItemData.localImage ? (ListItemData.localImage.length === 0) : true
                                         text: "[Photo]"
                                         horizontalAlignment: HorizontalAlignment.Center
                                         verticalAlignment:   VerticalAlignment.Center
@@ -402,7 +392,8 @@ Page {
                     onClicked: { filePicker.open() }
                 }
 
-                // Text input — no background, no border
+                // Text input — backgroundVisible:false removes fill but BB10 keeps
+                // a hairline bottom border; nesting inside a plain Container hides it.
                 TextField {
                     id: inputField
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -411,6 +402,7 @@ Page {
                     inputMode: TextFieldInputMode.Chat
                     minHeight: ui.du(7)
                     backgroundVisible: false
+                    clearButtonVisible: false
                     input {
                         flags: TextInputFlag.SpellCheck | TextInputFlag.WordSubstitution
                         submitKey: SubmitKey.Send
@@ -421,14 +413,13 @@ Page {
                     }
                 }
 
-                // Timed message icon
+                // Timed message icon — natural size (no preferredWidth/Height so image is not cropped)
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
-                    preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
                     leftMargin: ui.du(0.6)
                     defaultImageSource: "asset:///images/timemess.png"
                     pressedImageSource: "asset:///images/timemess.png"
-                    onClicked: { /* timed message — future */ }
+                    onClicked: { timedMsgDialog.show() }
                 }
 
                 // Emoji icon
@@ -1043,6 +1034,14 @@ Page {
                 if (result === SystemUiResult.ConfirmButtonSelection)
                     zService.leaveGroup(chatViewPage.threadId);
             }
+        },
+
+        SystemDialog {
+            id: timedMsgDialog
+            title: "Timed Messages"
+            body: "This feature is still under development."
+            confirmButton.label: "OK"
+            cancelButton.visible: false
         }
     ]
 }

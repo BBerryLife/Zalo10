@@ -123,38 +123,13 @@ void ApplicationUI::onManualExit()
 
 QString ApplicationUI::appVersion()
 {
-    // On BB10, bar-descriptor.xml lives at the package root ("app/")
-    // alongside "app/native/" where the binary runs.
-    QStringList candidates;
-    candidates << "app/bar-descriptor.xml"
-               << "../bar-descriptor.xml"
-               << "bar-descriptor.xml";
-
-    foreach (const QString &path, candidates) {
-        QFile f(path);
-        if (!f.open(QIODevice::ReadOnly)) continue;
-
-        QString versionNumber;
-        QString buildId;
-
-        QXmlStreamReader xml(&f);
-        while (!xml.atEnd()) {
-            xml.readNext();
-            if (!xml.isStartElement()) continue;
-            if (xml.name() == QLatin1String("versionNumber")) {
-                versionNumber = xml.readElementText().trimmed();
-            } else if (xml.name() == QLatin1String("buildId")) {
-                buildId = xml.readElementText().trimmed();
-            }
-        }
-        f.close();
-
-        if (!versionNumber.isEmpty()) {
-            // Build full version string: e.g. "1.1.0.1"
-            if (!buildId.isEmpty())
-                return versionNumber + "." + buildId;
-            return versionNumber;
-        }
-    }
-    return "1.0.0";
+    // Version is injected at compile time via DEFINES in Zalo10.pro.
+    // Keep APP_VERSION and APP_BUILD in sync with bar-descriptor.xml.
+#if defined(APP_VERSION) && defined(APP_BUILD)
+    return QString(APP_VERSION) + "." + QString(APP_BUILD);
+#elif defined(APP_VERSION)
+    return QString(APP_VERSION);
+#else
+    return "1.1.0.1";
+#endif
 }
