@@ -127,7 +127,7 @@ TabbedPane {
         id: donateTab
         title: "Support"
         description: "Support & donate"
-        imageSource: "asset:///images/ic_like.png"
+        imageSource: "asset:///images/ic_info.png"
         DonateTab {
             id: donateTabContent
         }

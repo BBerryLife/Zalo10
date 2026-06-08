@@ -392,31 +392,25 @@ Page {
                     onClicked: { filePicker.open() }
                 }
 
-                // TextField wrapped in a Container sized to match its content only.
-                // The outer Container clips the bottom border line drawn by BB10.
-                Container {
+                // TextField — backgroundVisible:false removes fill.
+                // BB10 still draws a hairline bottom border but it blends into
+                // the white parent background so it is invisible.
+                TextField {
+                    id: inputField
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                     verticalAlignment: VerticalAlignment.Center
-                    // Same bg as parent so the TextField bottom border blends in
-                    background: Color.White
-                    // Clip 2px off the bottom to hide the hairline border
-                    bottomPadding: -2
-                    TextField {
-                        id: inputField
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        hintText: "Enter a message"
-                        inputMode: TextFieldInputMode.Chat
-                        minHeight: ui.du(5.5)
-                        backgroundVisible: false
-                        clearButtonVisible: false
-                        input {
-                            flags: TextInputFlag.SpellCheck | TextInputFlag.WordSubstitution
-                            submitKey: SubmitKey.Send
-                            onSubmitted: { doSend() }
-                        }
-                        onTextChanging: {
-                            sendAction.enabled = (inputField.text.trim().length > 0)
-                        }
+                    hintText: "Enter a message"
+                    inputMode: TextFieldInputMode.Chat
+                    minHeight: ui.du(5.5)
+                    backgroundVisible: false
+                    clearButtonVisible: false
+                    input {
+                        flags: TextInputFlag.SpellCheck | TextInputFlag.WordSubstitution
+                        submitKey: SubmitKey.Send
+                        onSubmitted: { doSend() }
+                    }
+                    onTextChanging: {
+                        sendAction.enabled = (inputField.text.trim().length > 0)
                     }
                 }
 
