@@ -634,6 +634,10 @@ images/read.png
 images/sending.png
 images/sent.png
 images/splat.png
+<<<<<<< HEAD
+=======
+images/timemess.png
+>>>>>>> f2a9ec3d5884a43a1851e8b0d830a6e5c641a197
 images/yellow_pellet.png
 InvitesTab.qml
 LoginView.qml
