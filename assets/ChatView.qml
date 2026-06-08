@@ -1041,7 +1041,8 @@ Page {
             title: "Timed Messages"
             body: "This feature is still under development."
             confirmButton.label: "OK"
-            cancelButton.visible: false
+            cancelButton.label: ""
+            cancelButton.enabled: false
         }
     ]
 }
