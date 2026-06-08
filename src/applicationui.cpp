@@ -123,12 +123,15 @@ void ApplicationUI::onManualExit()
 
 QString ApplicationUI::appVersion()
 {
-    // Version is injected at compile time via DEFINES in Zalo10.pro.
-    // Keep APP_VERSION and APP_BUILD in sync with bar-descriptor.xml.
-#if defined(APP_VERSION) && defined(APP_BUILD)
-    return QString(APP_VERSION) + "." + QString(APP_BUILD);
-#elif defined(APP_VERSION)
-    return QString(APP_VERSION);
+    // Version built from integer DEFINES (APP_VER_MAJOR/MINOR/PATCH/BUILD) set in Zalo10.pro.
+    // Integer defines have no escaping issues on Windows qmake + qcc.
+    // Keep in sync with bar-descriptor.xml <versionNumber> and <buildId>.
+#if defined(APP_VER_MAJOR) && defined(APP_VER_MINOR) && defined(APP_VER_PATCH) && defined(APP_VER_BUILD)
+    return QString("%1.%2.%3.%4")
+           .arg(APP_VER_MAJOR)
+           .arg(APP_VER_MINOR)
+           .arg(APP_VER_PATCH)
+           .arg(APP_VER_BUILD);
 #else
     return "1.1.0.1";
 #endif

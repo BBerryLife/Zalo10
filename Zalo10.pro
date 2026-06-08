@@ -2,12 +2,12 @@ APP_NAME = Zalo10
 
 CONFIG += qt warn_on cascades10
 
-PKGNAME = com.example.zalo10
+PKGNAME = com.berrylife.zalo10
 VERSION = 1.1.0
 
-# Inject version + build into C++ at compile time
-# Read from bar-descriptor.xml values (keep in sync manually)
-DEFINES += APP_VERSION=\\"1.1.0\\" APP_BUILD=\\"1\\"
+# Inject version as integer components — avoids all string/dot escaping issues on Windows qmake
+# Keep in sync with bar-descriptor.xml: <versionNumber>1.1.0</versionNumber> <buildId>1</buildId>
+DEFINES += APP_VER_MAJOR=1 APP_VER_MINOR=1 APP_VER_PATCH=0 APP_VER_BUILD=1
 
 # Qt modules — tất cả có sẵn trong BB10 NDK 10.3
 QT += network script
