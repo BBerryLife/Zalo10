@@ -122,17 +122,6 @@ TabbedPane {
         }
     }
 
-    // Donate / Support tab
-    Tab {
-        id: donateTab
-        title: "Support"
-        description: "Support & donate"
-        imageSource: "asset:///images/ic_info.png"
-        DonateTab {
-            id: donateTabContent
-        }
-    }
-
     attachedObjects: [
         Dialog {
             id: splashDialog

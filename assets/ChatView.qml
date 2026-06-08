@@ -299,11 +299,12 @@ Page {
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment:   VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
-                                        imageSource: ListItemData.localImage ? ListItemData.localImage : ""
-                                        visible:     ListItemData.localImage ? (ListItemData.localImage.length > 0) : false
+                                        // Direct property access (no ternary condition) so BB10 tracks it
+                                        imageSource: ListItemData.localImage
+                                        visible:     ListItemData.localImage !== "" && ListItemData.localImage !== undefined
                                     }
                                     Label {
-                                        visible: ListItemData.localImage ? (ListItemData.localImage.length === 0) : true
+                                        visible: ListItemData.localImage === "" || ListItemData.localImage === undefined
                                         text: "[Photo]"
                                         horizontalAlignment: HorizontalAlignment.Center
                                         verticalAlignment:   VerticalAlignment.Center
@@ -362,35 +363,33 @@ Page {
         }
 
         // - Input bar (BBM style) -
-        // No outer background — white inner container flush with screen edges
-        // avoids any top/bottom grey border line.
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             background: Color.White
-            topPadding:    ui.du(0.8)
-            bottomPadding: ui.du(0.8)
-            leftPadding:   ui.du(0.8)
-            rightPadding:  ui.du(0.8)
+            topPadding:    ui.du(1.2)
+            bottomPadding: ui.du(1.2)
+            leftPadding:   ui.du(1.0)
+            rightPadding:  ui.du(1.0)
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
             // Attach icon
             ImageButton {
                 verticalAlignment: VerticalAlignment.Center
-                preferredWidth:  ui.du(7); preferredHeight: ui.du(7)
-                rightMargin: ui.du(0.6)
+                preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
+                rightMargin: ui.du(0.8)
                 defaultImageSource: "asset:///images/ic_attach.png"
                 pressedImageSource: "asset:///images/ic_attach.png"
                 onClicked: { filePicker.open() }
             }
 
-            // TextField — white background matches container so border is invisible
+            // TextField
             TextField {
                 id: inputField
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
                 hintText: "Enter a message"
                 inputMode: TextFieldInputMode.Chat
-                minHeight: ui.du(6)
+                minHeight: ui.du(7)
                 backgroundVisible: false
                 clearButtonVisible: false
                 input {
@@ -403,11 +402,11 @@ Page {
                 }
             }
 
-            // Timed message icon
+            // Timed message icon — preferredWidth wider than height to match 116x96 ratio
             ImageButton {
                 verticalAlignment: VerticalAlignment.Center
-                preferredWidth:  ui.du(7); preferredHeight: ui.du(7)
-                leftMargin: ui.du(0.5)
+                preferredWidth:  ui.du(9.7); preferredHeight: ui.du(8)
+                leftMargin: ui.du(0.6)
                 defaultImageSource: "asset:///images/timemess.png"
                 pressedImageSource: "asset:///images/timemess.png"
                 onClicked: { timedMsgDialog.show() }
@@ -417,8 +416,8 @@ Page {
             ImageButton {
                 id: emoticonBtn
                 verticalAlignment: VerticalAlignment.Center
-                preferredWidth:  ui.du(7); preferredHeight: ui.du(7)
-                leftMargin: ui.du(0.4)
+                preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
+                leftMargin: ui.du(0.5)
                 defaultImageSource: emojiPanelOpen
                     ? "asset:///images/emoji/darkkeyboard.png"
                     : "asset:///images/ic_emoticon_enabled.png"
