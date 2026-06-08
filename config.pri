@@ -40,13 +40,16 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ChatView.qml) \
         $$quote($$BASEDIR/assets/ChatsTab.qml) \
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
+        $$quote($$BASEDIR/assets/DonateTab.qml) \
         $$quote($$BASEDIR/assets/EmojiButton.qml) \
         $$quote($$BASEDIR/assets/EmojiPanel.qml) \
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
+        $$quote($$BASEDIR/assets/SceneCover.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
+        $$quote($$BASEDIR/assets/cover.qml) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom_flipped.png) \
@@ -672,7 +675,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/sending.png) \
         $$quote($$BASEDIR/assets/images/sent.png) \
         $$quote($$BASEDIR/assets/images/splat.png) \
-        $$quote($$BASEDIR/assets/images/timemess.png) \
         $$quote($$BASEDIR/assets/images/yellow_pellet.png) \
         $$quote($$BASEDIR/assets/main.qml)
 }

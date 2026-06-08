@@ -1,9 +1,11 @@
 1
-639
+641
 AboutSheet.qml
 ChatsTab.qml
 ChatView.qml
 ContactsTab.qml
+cover.qml
+DonateTab.qml
 EmojiButton.qml
 EmojiPanel.qml
 GroupsTab.qml
@@ -632,10 +634,10 @@ images/read.png
 images/sending.png
 images/sent.png
 images/splat.png
-images/timelimited.png
 images/yellow_pellet.png
 InvitesTab.qml
 LoginView.qml
 main.qml
 ProfileView.qml
+SceneCover.qml
 SettingsSheet.qml
