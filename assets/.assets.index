@@ -1,5 +1,5 @@
 1
-641
+644
 AboutSheet.qml
 ChatsTab.qml
 ChatView.qml
@@ -10,6 +10,7 @@ EmojiPanel.qml
 GroupsTab.qml
 images/action_delete.png
 images/ai_add_task.png
+images/attach_icon.png
 images/barcode.png
 images/berrylife.png
 images/blank.png
@@ -606,6 +607,7 @@ images/ic_copy_chat.png
 images/ic_create_event.png
 images/ic_create_group_disabled.png
 images/ic_emoticon_enabled.png
+images/ic_emoticon_enabled_white.png
 images/ic_facebook.png
 images/ic_forward_message.png
 images/ic_groups_white.png
@@ -634,6 +636,7 @@ images/sending.png
 images/sent.png
 images/splat.png
 images/timemess.png
+images/timemesswhite.png
 images/yellow_pellet.png
 InvitesTab.qml
 LoginView.qml

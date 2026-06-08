@@ -648,6 +648,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_create_event.png) \
         $$quote($$BASEDIR/assets/images/ic_create_group_disabled.png) \
         $$quote($$BASEDIR/assets/images/ic_emoticon_enabled.png) \
+        $$quote($$BASEDIR/assets/images/ic_emoticon_enabled_white.png) \
         $$quote($$BASEDIR/assets/images/ic_facebook.png) \
         $$quote($$BASEDIR/assets/images/ic_forward_message.png) \
         $$quote($$BASEDIR/assets/images/ic_groups_white.png) \
@@ -676,6 +677,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/sent.png) \
         $$quote($$BASEDIR/assets/images/splat.png) \
         $$quote($$BASEDIR/assets/images/timemess.png) \
+        $$quote($$BASEDIR/assets/images/timemesswhite.png) \
         $$quote($$BASEDIR/assets/images/yellow_pellet.png) \
         $$quote($$BASEDIR/assets/main.qml)
 }
