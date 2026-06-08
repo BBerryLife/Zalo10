@@ -361,62 +361,70 @@ Page {
             }
         }
 
-        // - Input bar (BBM style: full-width, no border, large icons) -
+        // - Input bar (BBM style) -
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             background: Color.create("#E8E8E8")
-            topPadding:    ui.du(1.0)
-            bottomPadding: ui.du(1.0)
+            topPadding:    ui.du(0.6)
+            bottomPadding: ui.du(0.6)
             leftPadding:   0
             rightPadding:  0
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-            // Single white bar — no border, edge-to-edge, tall like BBM compose bar
             Container {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
+                // Clip the white background so TextField border is hidden behind parent edge
                 background: Color.White
-                topPadding:    ui.du(0.6)
-                bottomPadding: ui.du(0.6)
-                leftPadding:   ui.du(1.0)
-                rightPadding:  ui.du(1.0)
+                topPadding:    ui.du(0.3)
+                bottomPadding: ui.du(0.3)
+                leftPadding:   ui.du(0.8)
+                rightPadding:  ui.du(0.8)
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
                 // Attach icon
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
-                    preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
-                    rightMargin: ui.du(0.8)
+                    preferredWidth:  ui.du(6.5); preferredHeight: ui.du(6.5)
+                    rightMargin: ui.du(0.5)
                     defaultImageSource: "asset:///images/ic_attach.png"
                     pressedImageSource: "asset:///images/ic_attach.png"
                     onClicked: { filePicker.open() }
                 }
 
-                // Text input — backgroundVisible:false removes fill but BB10 keeps
-                // a hairline bottom border; nesting inside a plain Container hides it.
-                TextField {
-                    id: inputField
+                // TextField wrapped in a Container sized to match its content only.
+                // The outer Container clips the bottom border line drawn by BB10.
+                Container {
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                     verticalAlignment: VerticalAlignment.Center
-                    hintText: "Enter a message"
-                    inputMode: TextFieldInputMode.Chat
-                    minHeight: ui.du(7)
-                    backgroundVisible: false
-                    clearButtonVisible: false
-                    input {
-                        flags: TextInputFlag.SpellCheck | TextInputFlag.WordSubstitution
-                        submitKey: SubmitKey.Send
-                        onSubmitted: { doSend() }
-                    }
-                    onTextChanging: {
-                        sendAction.enabled = (inputField.text.trim().length > 0)
+                    // Same bg as parent so the TextField bottom border blends in
+                    background: Color.White
+                    // Clip 2px off the bottom to hide the hairline border
+                    bottomPadding: -2
+                    TextField {
+                        id: inputField
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        hintText: "Enter a message"
+                        inputMode: TextFieldInputMode.Chat
+                        minHeight: ui.du(5.5)
+                        backgroundVisible: false
+                        clearButtonVisible: false
+                        input {
+                            flags: TextInputFlag.SpellCheck | TextInputFlag.WordSubstitution
+                            submitKey: SubmitKey.Send
+                            onSubmitted: { doSend() }
+                        }
+                        onTextChanging: {
+                            sendAction.enabled = (inputField.text.trim().length > 0)
+                        }
                     }
                 }
 
-                // Timed message icon — natural size (no preferredWidth/Height so image is not cropped)
+                // Timed message icon — fixed to same size as other icons
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
-                    leftMargin: ui.du(0.6)
+                    preferredWidth:  ui.du(6.5); preferredHeight: ui.du(6.5)
+                    leftMargin: ui.du(0.4)
                     defaultImageSource: "asset:///images/timemess.png"
                     pressedImageSource: "asset:///images/timemess.png"
                     onClicked: { timedMsgDialog.show() }
@@ -426,8 +434,8 @@ Page {
                 ImageButton {
                     id: emoticonBtn
                     verticalAlignment: VerticalAlignment.Center
-                    preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
-                    leftMargin: ui.du(0.4)
+                    preferredWidth:  ui.du(6.5); preferredHeight: ui.du(6.5)
+                    leftMargin: ui.du(0.3)
                     defaultImageSource: emojiPanelOpen
                         ? "asset:///images/emoji/darkkeyboard.png"
                         : "asset:///images/ic_emoticon_enabled.png"
@@ -893,16 +901,23 @@ Page {
             }
 
             onImageMsgReady: {
-                // Update the message in model with localImage path
-                // Use replace() — removeAt/insert loses property bindings in BB10 ArrayDataModel
+                // Update localImage in model via replace() so pure-expression bindings re-evaluate
+                var found = false;
                 for (var j = 0; j < msgModel.size(); j++) {
                     var d = msgModel.value(j);
                     if ((d.msgId || "") === msgId) {
                         d.localImage = localPath;
                         msgModel.replace(j, d);
+                        found = true;
+                        console.log("[QML] onImageMsgReady: replaced idx=" + j
+                                    + " msgId=" + msgId + " path=" + localPath
+                                    + " verify=" + msgModel.value(j).localImage);
                         break;
                     }
                 }
+                if (!found)
+                    console.log("[QML] onImageMsgReady: msgId NOT found in model: " + msgId
+                                + " modelSize=" + msgModel.size());
             }
 
             onMuteDone: {
