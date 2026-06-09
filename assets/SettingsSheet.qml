@@ -71,7 +71,7 @@ Sheet {
                 }
 
                 Label {
-                    text: "Theme change requires app restart to take full effect."
+                    text: "Enabling dark mode at night reduces eye strain and saves battery on OLED displays."
                     multiline: true
                     textStyle.color: Color.Gray
                     topMargin: 6

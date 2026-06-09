@@ -21,6 +21,7 @@ Page {
     property bool   popRequested: false
     property variant pendingImageUpdates: ([])
     property bool   pageVisible: false
+    property bool   isDark: app.getDarkTheme()
 
     // - TITLE BAR -
     titleBar: TitleBar {
@@ -211,11 +212,12 @@ Page {
         layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment:   VerticalAlignment.Fill
-        background: Color.create("#d6d6d6")
+        background: chatViewPage.isDark ? Color.create("#1a1a1a") : Color.create("#d6d6d6")
 
         // - Message list -
         ListView {
             id: msgList
+            property bool isDark: chatViewPage.isDark
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: ArrayDataModel { id: msgModel }
@@ -230,6 +232,8 @@ Page {
                         horizontalAlignment: HorizontalAlignment.Fill
                         topPadding:    ListItemData.grouped === true ? 0 : 6
                         bottomPadding: 0
+
+                        property bool isDark: ListItem.view.isDark
 
                         // Dùng LeftToRight + spaceQuota để force bubble fill đúng width
                         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
@@ -249,7 +253,7 @@ Page {
                         // - Bubble chiếm phần còn lại -
                         Container {
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            background: Color.White
+                            background: rowRoot.isDark ? Color.create("#2a2a2a") : Color.White
                             topPadding:    rowRoot.grouped ? 6 : 10
                             bottomPadding: 10
                             leftPadding:   14
@@ -271,7 +275,7 @@ Page {
                                         fontSize:   FontSize.Small
                                         fontWeight: FontWeight.Bold
                                         color: rowRoot.mine
-                                            ? Color.create("#555555")
+                                            ? (rowRoot.isDark ? Color.create("#aaaaaa") : Color.create("#555555"))
                                             : Color.create("#0073BC")
                                     }
                                     topMargin: 0; bottomMargin: 0
@@ -292,7 +296,7 @@ Page {
                                         return dow + " " + h12 + ":" + (m2 < 10 ? "0" : "") + m2 + " " + ap;
                                     }
                                     horizontalAlignment: HorizontalAlignment.Right
-                                    textStyle { fontSize: FontSize.XSmall; color: Color.create("#777777") }
+                                    textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.create("#888888") : Color.create("#777777") }
                                     topMargin: 0; bottomMargin: 0
                                 }
                             }
@@ -324,7 +328,7 @@ Page {
                                                 ? "[Sticker]" : "[Photo]"))
                                     textStyle {
                                         base:  SystemDefaults.TextStyles.BodyText
-                                        color: Color.create("#111111")
+                                        color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
                                     }
                                     multiline: true
                                     topMargin: 0; bottomMargin: 0
@@ -343,7 +347,7 @@ Page {
                                     topMargin: 2; bottomMargin: 2
                                     preferredHeight: ui.du(30)
                                     minHeight:       ui.du(12)
-                                    background: Color.create("#e0e0e0")
+                                    background: rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
                                     layout: DockLayout {}
                                     ImageView {
                                         horizontalAlignment: HorizontalAlignment.Fill
@@ -385,6 +389,7 @@ Page {
             preferredHeight: ui.du(19)
             minHeight: ui.du(16)
             visible: false
+            isDark: chatViewPage.isDark
             onEmojiPicked: {
                 inputField.text = inputField.text + charStr
             }
@@ -415,7 +420,7 @@ Page {
         // - Input bar (BBM style) -
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
-            background: Color.White
+            background: chatViewPage.isDark ? Color.create("#272727") : Color.White
             topPadding:    ui.du(1.2)
             bottomPadding: ui.du(1.2)
             leftPadding:   ui.du(1.0)
@@ -427,8 +432,8 @@ Page {
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
                 rightMargin: ui.du(0.8)
-                defaultImageSource: "asset:///images/ic_attach.png"
-                pressedImageSource: "asset:///images/ic_attach.png"
+                defaultImageSource: chatViewPage.isDark ? "asset:///images/attach_icon.png" : "asset:///images/ic_attach.png"
+                pressedImageSource: chatViewPage.isDark ? "asset:///images/attach_icon.png" : "asset:///images/ic_attach.png"
                 onClicked: { filePicker.open() }
             }
 
@@ -457,8 +462,8 @@ Page {
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth:  ui.du(11); preferredHeight: ui.du(9)
                 leftMargin: ui.du(0.6)
-                defaultImageSource: "asset:///images/timemess.png"
-                pressedImageSource: "asset:///images/timemess.png"
+                defaultImageSource: chatViewPage.isDark ? "asset:///images/timemesswhite.png" : "asset:///images/timemess.png"
+                pressedImageSource: chatViewPage.isDark ? "asset:///images/timemesswhite.png" : "asset:///images/timemess.png"
                 onClicked: { timedMsgDialog.show() }
             }
 
@@ -469,11 +474,11 @@ Page {
                 preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
                 leftMargin: ui.du(0.5)
                 defaultImageSource: emojiPanelOpen
-                    ? "asset:///images/emoji/darkkeyboard.png"
-                    : "asset:///images/ic_emoticon_enabled.png"
+                    ? (chatViewPage.isDark ? "asset:///images/ic_keyboard_enabled.png" : "asset:///images/emoji/darkkeyboard.png")
+                    : (chatViewPage.isDark ? "asset:///images/ic_emoticon_enabled_white.png" : "asset:///images/ic_emoticon_enabled.png")
                 pressedImageSource: emojiPanelOpen
-                    ? "asset:///images/emoji/darkkeyboard.png"
-                    : "asset:///images/ic_emoticon_enabled.png"
+                    ? (chatViewPage.isDark ? "asset:///images/ic_keyboard_enabled.png" : "asset:///images/emoji/darkkeyboard.png")
+                    : (chatViewPage.isDark ? "asset:///images/ic_emoticon_enabled_white.png" : "asset:///images/ic_emoticon_enabled.png")
                 onClicked: {
                     emojiPanelOpen = !emojiPanelOpen;
                     emojiPanel.visible = emojiPanelOpen;
