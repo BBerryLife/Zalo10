@@ -19,6 +19,8 @@ Page {
     property bool   isMuted: false
     property bool   isBlocked: false
     property bool   popRequested: false
+    property variant pendingImageUpdates: ([])
+    property bool   pageVisible: false
 
     // - TITLE BAR -
     titleBar: TitleBar {
@@ -100,10 +102,56 @@ Page {
         }
     }
 
+    // Apply a single image update into the model
+    function applyImageUpdate(msgId, localPath) {
+        // BB10 ImageView does not re-render when imageSource changes via replace() or removeAt+insert.
+        // The only reliable fix: snapshot all items, set localImage, clear model, re-append all.
+        // This forces BB10 to create fresh delegates with the correct imageSource from the start.
+        var size = msgModel.size();
+        if (size === 0) {
+            console.log("[QML] applyImageUpdate: model empty, msgId=" + msgId);
+            return;
+        }
+        var found = false;
+        var snapshot = [];
+        for (var j = 0; j < size; j++) {
+            var d = msgModel.value(j);
+            if ((d.msgId || "") === msgId) {
+                d.localImage = localPath;
+                found = true;
+                console.log("[QML] applyImageUpdate: set idx=" + j + " msgId=" + msgId);
+            }
+            snapshot.push(d);
+        }
+        if (!found) {
+            console.log("[QML] applyImageUpdate: NOT found msgId=" + msgId);
+            return;
+        }
+        // Full rebuild so BB10 creates new delegates with correct imageSource
+        msgModel.clear();
+        for (var k = 0; k < snapshot.length; k++) {
+            msgModel.append(snapshot[k]);
+        }
+        msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.None);
+    }
+
+    // Flush any image updates that arrived before page was visible
+    function flushPendingImages() {
+        var pending = chatViewPage.pendingImageUpdates;
+        if (!pending || pending.length === 0) return;
+        console.log("[QML] flushPendingImages: count=" + pending.length);
+        for (var i = 0; i < pending.length; i++) {
+            chatViewPage.applyImageUpdate(pending[i].msgId, pending[i].localPath);
+        }
+        chatViewPage.pendingImageUpdates = [];
+    }
+
     // Gọi từ JS sau khi assign đủ threadId + selfName + isGroup
     function startChat() {
         if (chatViewPage.initialized) return;
         if (chatViewPage.threadId === "") return;
+        chatViewPage.pageVisible = false;  // Will be set true in onPushTransitionEnded
+        chatViewPage.pendingImageUpdates = [];
         if (chatViewPage.selfName === "") chatViewPage.selfName = "Me";
         chatViewPage.initialized = true;
 
@@ -152,6 +200,8 @@ Page {
 
     onThreadIdChanged: {
         chatViewPage.initialized = false;
+        chatViewPage.pageVisible = false;
+        chatViewPage.pendingImageUpdates = [];
         msgModel.clear();
         chatViewPage.dbIsMineCache = {};  // FIX1: reset cache for new thread
     }
@@ -299,12 +349,12 @@ Page {
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment:   VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
-                                        // Direct property access (no ternary condition) so BB10 tracks it
+                                        // Always visible — BB10 renders nothing when imageSource is empty
+                                        // visible binding with !== does NOT re-evaluate after replace() on BB10
                                         imageSource: ListItemData.localImage
-                                        visible:     ListItemData.localImage !== "" && ListItemData.localImage !== undefined
                                     }
                                     Label {
-                                        visible: ListItemData.localImage === "" || ListItemData.localImage === undefined
+                                        visible: !ListItemData.localImage || ListItemData.localImage === ""
                                         text: "[Photo]"
                                         horizontalAlignment: HorizontalAlignment.Center
                                         verticalAlignment:   VerticalAlignment.Center
@@ -405,7 +455,7 @@ Page {
             // Timed message icon — preferredWidth wider than height to match 116x96 ratio
             ImageButton {
                 verticalAlignment: VerticalAlignment.Center
-                preferredWidth:  ui.du(9.7); preferredHeight: ui.du(8)
+                preferredWidth:  ui.du(11); preferredHeight: ui.du(9)
                 leftMargin: ui.du(0.6)
                 defaultImageSource: "asset:///images/timemess.png"
                 pressedImageSource: "asset:///images/timemess.png"
@@ -882,23 +932,16 @@ Page {
             }
 
             onImageMsgReady: {
-                // Update localImage in model via replace() so pure-expression bindings re-evaluate
-                var found = false;
-                for (var j = 0; j < msgModel.size(); j++) {
-                    var d = msgModel.value(j);
-                    if ((d.msgId || "") === msgId) {
-                        d.localImage = localPath;
-                        msgModel.replace(j, d);
-                        found = true;
-                        console.log("[QML] onImageMsgReady: replaced idx=" + j
-                                    + " msgId=" + msgId + " path=" + localPath
-                                    + " verify=" + msgModel.value(j).localImage);
-                        break;
-                    }
+                if (chatViewPage.pageVisible) {
+                    // Page visible: apply immediately
+                    chatViewPage.applyImageUpdate(msgId, localPath);
+                } else {
+                    // Page not yet visible: queue for flush when page becomes active
+                    var pending = chatViewPage.pendingImageUpdates;
+                    pending.push({ msgId: msgId, localPath: localPath });
+                    chatViewPage.pendingImageUpdates = pending;
+                    console.log("[QML] onImageMsgReady: queued msgId=" + msgId + " pending=" + pending.length);
                 }
-                if (!found)
-                    console.log("[QML] onImageMsgReady: msgId NOT found in model: " + msgId
-                                + " modelSize=" + msgModel.size());
             }
 
             onMuteDone: {

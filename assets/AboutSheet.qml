@@ -114,9 +114,28 @@ Sheet {
                 id: donatePageDef
                 Page {
                     titleBar: TitleBar {
-                        title: "Donate & Support"
+                        kind: TitleBarKind.FreeForm
+                        kindProperties: FreeFormTitleBarKindProperties {
+                            content: Container {
+                                background: Color.create("#2575fc")
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                verticalAlignment: VerticalAlignment.Fill
+                                leftPadding: ui.du(2.5)
+                                layout: DockLayout {}
+                                Label {
+                                    text: "Donate & Support"
+                                    horizontalAlignment: HorizontalAlignment.Left
+                                    verticalAlignment: VerticalAlignment.Center
+                                    textStyle {
+                                        color: Color.White
+                                        fontWeight: FontWeight.Bold
+                                        fontSize: FontSize.Large
+                                    }
+                                }
+                            }
+                        }
                     }
-                    
+
                     ScrollView {
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill

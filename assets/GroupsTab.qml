@@ -1,4 +1,5 @@
 import bb.cascades 1.4
+import bb.system 1.0
 import QtQuick 1.0
 
 NavigationPane {
@@ -50,6 +51,15 @@ NavigationPane {
 
     onPopTransitionEnded: {
         zService.clearActiveThread();
+    }
+
+    onPushTransitionEnded: {
+        // After push animation completes, flush any image updates that arrived
+        // during the transition (when ListView was not yet on screen)
+        if (page && typeof page.flushPendingImages === "function") {
+            page.pageVisible = true;
+            page.flushPendingImages();
+        }
     }
 
     Page {
@@ -139,7 +149,7 @@ NavigationPane {
                 title: "Create Group"
                 imageSource: "asset:///images/ic_create_group_disabled.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {}
+                onTriggered: { createGroupDialog.show() }
             }
         ]
 
@@ -243,6 +253,14 @@ NavigationPane {
 
         attachedObjects: [
             ArrayDataModel { id: groupModel },
+            SystemDialog {
+                id: createGroupDialog
+                title: "Create Group"
+                body: "This feature is still under development."
+                confirmButton.label: "OK"
+                cancelButton.label: ""
+                cancelButton.enabled: false
+            },
             ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: groupsDef

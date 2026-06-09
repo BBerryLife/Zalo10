@@ -1,4 +1,5 @@
 import bb.cascades 1.4
+import bb.system 1.0
 import QtQuick 1.0
 
 NavigationPane {
@@ -7,6 +8,15 @@ NavigationPane {
 
     onPopTransitionEnded: {
         zService.clearActiveThread();
+    }
+
+    onPushTransitionEnded: {
+        // After push animation completes, flush any image updates that arrived
+        // during the transition (when ListView was not yet on screen)
+        if (page && typeof page.flushPendingImages === "function") {
+            page.pageVisible = true;
+            page.flushPendingImages();
+        }
     }
 
     property bool searchVisible: false
@@ -99,13 +109,13 @@ NavigationPane {
                 title: "Mark All as Read"
                 imageSource: "asset:///images/ai_add_task.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {}
+                onTriggered: { markAllReadDialog.show() }
             },
             ActionItem {
                 title: "Edit Status"
                 imageSource: "asset:///images/edit.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {}
+                onTriggered: { editStatusDialog.show() }
             }
         ]
 
@@ -232,6 +242,22 @@ NavigationPane {
 
         attachedObjects: [
             ArrayDataModel { id: friendModel },
+            SystemDialog {
+                id: markAllReadDialog
+                title: "Mark All as Read"
+                body: "This feature is still under development."
+                confirmButton.label: "OK"
+                cancelButton.label: ""
+                cancelButton.enabled: false
+            },
+            SystemDialog {
+                id: editStatusDialog
+                title: "Edit Status"
+                body: "This feature is still under development."
+                confirmButton.label: "OK"
+                cancelButton.label: ""
+                cancelButton.enabled: false
+            },
             ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: chatsDef

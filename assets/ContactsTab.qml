@@ -1,5 +1,6 @@
 // ContactsTab.qml
 import bb.cascades 1.4
+import bb.system 1.0
 import QtQuick 1.0
 
 NavigationPane {
@@ -118,7 +119,7 @@ NavigationPane {
                 title: "Add Contact"
                 imageSource: "asset:///images/ic_add_contact.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {}
+                onTriggered: { addContactDialog.show() }
             }
         ]
         
@@ -226,6 +227,14 @@ NavigationPane {
         
         attachedObjects: [
             ArrayDataModel { id: contactModel },
+            SystemDialog {
+                id: addContactDialog
+                title: "Add Contact"
+                body: "This feature is still under development."
+                confirmButton.label: "OK"
+                cancelButton.label: ""
+                cancelButton.enabled: false
+            },
             ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: contactsProfileDef
