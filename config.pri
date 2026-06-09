@@ -136,9 +136,9 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/attach_icon.png) \
         $$quote($$BASEDIR/assets/images/barcode.png) \
+        $$quote($$BASEDIR/assets/images/bbid.png) \
         $$quote($$BASEDIR/assets/images/berrylife.png) \
         $$quote($$BASEDIR/assets/images/blank.png) \
-        $$quote($$BASEDIR/assets/images/ca_bbid.png) \
         $$quote($$BASEDIR/assets/images/ca_video_chat_active.png) \
         $$quote($$BASEDIR/assets/images/clear_chat.png) \
         $$quote($$BASEDIR/assets/images/cover.png) \
@@ -640,6 +640,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_back_white.png) \
         $$quote($$BASEDIR/assets/images/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/ic_block_contact.png) \
+        $$quote($$BASEDIR/assets/images/ic_call.png) \
         $$quote($$BASEDIR/assets/images/ic_chat_leave.png) \
         $$quote($$BASEDIR/assets/images/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/ic_contact.png) \

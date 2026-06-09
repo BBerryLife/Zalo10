@@ -345,24 +345,29 @@ Page {
                                                      || ListItemData.content.indexOf("href") >= 0))
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     topMargin: 2; bottomMargin: 2
-                                    preferredHeight: ui.du(30)
-                                    minHeight:       ui.du(12)
-                                    background: rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
+                                    preferredHeight: (ListItemData.localImage && ListItemData.localImage !== "") ? ui.du(30) : ui.du(5)
+                                    minHeight:       (ListItemData.localImage && ListItemData.localImage !== "") ? ui.du(12) : ui.du(4)
+                                    background: (ListItemData.localImage && ListItemData.localImage !== "")
+                                                ? (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0"))
+                                                : Color.Transparent
                                     layout: DockLayout {}
                                     ImageView {
+                                        visible: ListItemData.localImage && ListItemData.localImage !== ""
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment:   VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
-                                        // Always visible — BB10 renders nothing when imageSource is empty
-                                        // visible binding with !== does NOT re-evaluate after replace() on BB10
                                         imageSource: ListItemData.localImage
                                     }
                                     Label {
                                         visible: !ListItemData.localImage || ListItemData.localImage === ""
                                         text: "[Photo]"
-                                        horizontalAlignment: HorizontalAlignment.Center
+                                        horizontalAlignment: HorizontalAlignment.Left
                                         verticalAlignment:   VerticalAlignment.Center
-                                        textStyle { color: Color.create("#888888"); fontSize: FontSize.Small }
+                                        textStyle {
+                                            color: rowRoot.isDark ? Color.create("#7ab3f5") : Color.create("#1a73e8")
+                                            fontSize: FontSize.Small
+                                            fontStyle: FontStyle.Italic
+                                        }
                                     }
                                 }
                             }

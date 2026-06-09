@@ -179,7 +179,7 @@ ZaloService::ZaloService(QObject *parent)
     connect(m_listenTimer,      SIGNAL(timeout()), this, SLOT(onListenTimer()));
     connect(m_wsReconnectTimer, SIGNAL(timeout()), this, SLOT(onWsReconnectTimer()));
     qsrand((uint)QDateTime::currentMSecsSinceEpoch());
-    qDebug() << "[Zalo] ===== BUILD v26 - WS cmd510 history refetch for photo URLs =====";
+    qDebug() << "[Zalo] ===== BUILD v28 - fetchMsgDetail via file service URL =====";
 
     QString dbPath = QDir::homePath() + "/zalo_messages.db";
     if (sqlite3_open(dbPath.toUtf8().constData(), &m_db) == SQLITE_OK) {
@@ -880,6 +880,7 @@ void ZaloService::onStep8Done()
     qDebug() << "[Zalo] profile:"     << m_profileServiceUrl;
     qDebug() << "[Zalo] group_poll:"  << m_groupPollServiceUrl;
     qDebug() << "[Zalo] friend:"      << m_friendServiceUrl;
+    qDebug() << "[Zalo] file:"        << m_fileServiceUrl;
     qDebug() << "[Zalo] zpw_ws count:" << m_zpwWsUrls.size()
              << (m_zpwWsUrls.isEmpty() ? QString() : m_zpwWsUrls[0]);
 
@@ -1606,45 +1607,9 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 }
             }
 
-            // Check if this is a pending photo detail response (from fetchMsgDetail)
-            bool isPendingPhoto = (mtH == 2 || out["msgType"].toInt() == 2)
-                                  && !msgId.isEmpty()
-                                  && m_pendingPhotoMsgIds.contains(msgId);
-
-            if (isPendingPhoto) {
-                // Extract real HTTP URL from this history response
-                QString photoUrl;
-                if (!rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(rawContentH.toUtf8());
-                    photoUrl = cm["normalUrl"].toString();
-                    if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
-                    if (photoUrl.isEmpty()) photoUrl = cm["thumbUrl"].toString();
-                }
-                if (photoUrl.startsWith("http")) {
-                    qDebug() << "[Zalo] fetchMsgDetail: got URL for msgId=" << msgId << "->" << photoUrl.left(80);
-                    m_pendingPhotoMsgIds.remove(msgId);
-                    // Update DB and download
-                    if (m_db) {
-                        const char *sql = "UPDATE messages SET content=?, msgType=2 WHERE msgId=?";
-                        sqlite3_stmt *stmt = 0;
-                        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
-                            sqlite3_bind_text(stmt, 1, rawContentH.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                            sqlite3_bind_text(stmt, 2, msgId.toUtf8().constData(),       -1, SQLITE_TRANSIENT);
-                            sqlite3_step(stmt);
-                            sqlite3_finalize(stmt);
-                        }
-                    }
-                    downloadImageMessage(msgId, photoUrl, emitThread);
-                    continue; // don't re-append to msgs list or re-emit
-                } else {
-                    qDebug() << "[Zalo] fetchMsgDetail: history response still no HTTP URL for msgId=" << msgId
-                             << "content=" << rawContentH.left(80);
-                    m_pendingPhotoMsgIds.remove(msgId);
-                }
-            }
-
-            // If still no real HTTP URL for a photo, schedule a detail fetch
-            if (!isPendingPhoto && (mtH == 2 || out["msgType"].toInt() == 2) && !msgId.isEmpty()) {
+            // Check if this is a pending photo detail response (from fetchMsgDetail) - no longer WS-based
+            // Just check if photo has no real HTTP URL and schedule HTTP fetch
+            if ((mtH == 2 || out["msgType"].toInt() == 2) && !msgId.isEmpty()) {
                 QString checkUrl;
                 if (!rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{")) {
                     QVariantMap cm = jsonToMap(rawContentH.toUtf8());
@@ -1653,8 +1618,10 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     if (checkUrl.isEmpty()) checkUrl = cm["thumbUrl"].toString();
                 }
                 if (checkUrl.isEmpty() || !checkUrl.startsWith("http")) {
-                    qDebug() << "[Zalo WS] old_messages photo no HTTP URL → fetchMsgDetail msgId=" << msgId;
-                    fetchMsgDetail(msgId, emitThread, false);
+                    if (!m_pendingPhotoMsgIds.contains(msgId)) {
+                        qDebug() << "[Zalo WS] old_messages photo no HTTP URL → fetchMsgDetail msgId=" << msgId;
+                        fetchMsgDetail(msgId, emitThread, false);
+                    }
                 }
             }
             out["content"] = rawContentH;
@@ -2695,30 +2662,47 @@ void ZaloService::fetchMsgDetail(const QString &msgId, const QString &threadId, 
 {
     if (!m_loggedIn || msgId.isEmpty() || threadId.isEmpty()) return;
 
-    qint64 msgNum = msgId.toLongLong();
-    if (msgNum <= 0) return;
-    QString lastId = QString::number(msgNum - 1);
+    // Track this msgId as pending
+    m_pendingPhotoMsgIds.insert(msgId);
 
+    // Use file service URL (zpw_service_map_v3.file[0]) — same service used for photo upload/send
+    QString fileBase = m_fileServiceUrl;
+    if (fileBase.isEmpty()) fileBase = m_chatServiceUrl;
+
+    qDebug() << "[Zalo] fetchMsgDetail: fileBase=" << fileBase << "msgId=" << msgId;
+
+    // Try HTTP endpoint on file service: /api/message/getmsgdetail
+    // This is different from chat service (which returns 404)
+    QVariantMap params;
     if (isGroup) {
-        // Group: use cmd=511
-        QVariantMap p;
-        p["groupId"] = threadId;
-        p["lastId"]  = msgNum - 1;
-        p["count"]   = 1;
-        QString req511 = QString("{\"groupId\":\"%1\",\"lastId\":\"%2\",\"count\":1}")
-                         .arg(threadId).arg(lastId);
-        qDebug() << "[Zalo] fetchMsgDetail group: WS cmd=511 groupId=" << threadId << "lastId=" << lastId;
-        sendWsRequest(511, 1, req511);
+        params["grid"]  = threadId;
+        params["msgId"] = msgId.toLongLong();
+        params["count"] = 1;
     } else {
-        // DM: use cmd=510 with lastId=msgId-1, first=false
-        // "first=false" + specific lastId → server fetches from history DB (has full URLs)
-        m_pendingDmThreadIds.enqueue(threadId);
-        m_pendingPhotoMsgIds.insert(msgId);
-        QString req510 = QString("{\"first\":false,\"lastId\":\"%1\",\"toid\":\"%2\",\"preIds\":[]}")
-                         .arg(lastId).arg(threadId);
-        qDebug() << "[Zalo] fetchMsgDetail DM: WS cmd=510 toid=" << threadId << "lastId=" << lastId;
-        sendWsRequest(510, 1, req510);
+        params["toid"]  = threadId;
+        params["msgId"] = msgId.toLongLong();
+        params["count"] = 1;
+        params["imei"]  = m_imei;
     }
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QString endpoint  = isGroup
+        ? (fileBase + "/api/group/getmsgdetail")
+        : (fileBase + "/api/message/getmsgdetail");
+
+    QString urlStr = endpoint
+        + "?zpw_ver=" + QString::number(API_VERSION)
+        + "&zpw_type=" + QString::number(API_TYPE)
+        + "&params="   + QUrl::toPercentEncoding(encParams);
+
+    qDebug() << "[Zalo] fetchMsgDetail GET" << endpoint.left(80) << "msgId=" << msgId;
+
+    QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
+    reply->setProperty("msgId",    msgId);
+    reply->setProperty("threadId", threadId);
+    reply->setProperty("isGroup",  isGroup);
+    reply->setProperty("tryIndex", 0);
+    connect(reply, SIGNAL(finished()), this, SLOT(onFetchMsgDetailDone()));
 }
 
 void ZaloService::onFetchMsgDetailDone()

@@ -1,5 +1,5 @@
 1
-644
+645
 AboutSheet.qml
 ChatsTab.qml
 ChatView.qml
@@ -12,6 +12,7 @@ images/action_delete.png
 images/ai_add_task.png
 images/attach_icon.png
 images/barcode.png
+images/bbid.png
 images/berrylife.png
 images/blank.png
 images/Bubble/incoming/bottom.png
@@ -34,7 +35,6 @@ images/Bubble/outgoing/middle.png
 images/Bubble/outgoing/middle.png.amd
 images/Bubble/outgoing/top.png
 images/Bubble/outgoing/top.png.amd
-images/ca_bbid.png
 images/ca_video_chat_active.png
 images/clear_chat.png
 images/ConversationPaneSend.png
@@ -599,6 +599,7 @@ images/ic_attach.png
 images/ic_back_white.png
 images/ic_bbm.png
 images/ic_block_contact.png
+images/ic_call.png
 images/ic_chat_leave.png
 images/ic_close_white.png
 images/ic_contact.png
