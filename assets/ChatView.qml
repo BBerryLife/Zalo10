@@ -105,35 +105,21 @@ Page {
 
     // Apply a single image update into the model
     function applyImageUpdate(msgId, localPath) {
-        // BB10 ImageView does not re-render when imageSource changes via replace() or removeAt+insert.
-        // The only reliable fix: snapshot all items, set localImage, clear model, re-append all.
-        // This forces BB10 to create fresh delegates with the correct imageSource from the start.
         var size = msgModel.size();
         if (size === 0) {
             console.log("[QML] applyImageUpdate: model empty, msgId=" + msgId);
             return;
         }
-        var found = false;
-        var snapshot = [];
         for (var j = 0; j < size; j++) {
             var d = msgModel.value(j);
             if ((d.msgId || "") === msgId) {
                 d.localImage = localPath;
-                found = true;
-                console.log("[QML] applyImageUpdate: set idx=" + j + " msgId=" + msgId);
+                msgModel.replace(j, d);
+                console.log("[QML] applyImageUpdate: replaced idx=" + j + " msgId=" + msgId);
+                return;
             }
-            snapshot.push(d);
         }
-        if (!found) {
-            console.log("[QML] applyImageUpdate: NOT found msgId=" + msgId);
-            return;
-        }
-        // Full rebuild so BB10 creates new delegates with correct imageSource
-        msgModel.clear();
-        for (var k = 0; k < snapshot.length; k++) {
-            msgModel.append(snapshot[k]);
-        }
-        msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.None);
+        console.log("[QML] applyImageUpdate: NOT found msgId=" + msgId);
     }
 
     // Flush any image updates that arrived before page was visible

@@ -88,7 +88,7 @@ Page {
                     id: bgImage
                     imageSource: {
                         if (profilePage.bgAvatarPath.length > 0) return profilePage.bgAvatarPath
-                        return "asset:///images/blank.png"
+                        return "asset:///images/default_caller.png"
                     }
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
