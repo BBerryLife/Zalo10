@@ -64,6 +64,12 @@ TabbedPane {
     }
 
     onCreationCompleted: {
+        // Detect device type bằng ui.du():
+        // Z10/Z30 portrait : screen width = 96 du (768px / 8px per du)
+        // Q10/Q20/Passport  : screen width = 90 du (720px / 8px per du)
+        // Z10/Z30 landscape : screen width = 160 du (1280px / 8px per du)
+        // Dùng ui.du(1) = 8px để tính screen du width
+        // Container fill màn hình nên splashRoot.width sẽ có giá trị sau khi scene active
         splashDialog.open();
         splashTimer.start();
     }
@@ -126,14 +132,32 @@ TabbedPane {
         Dialog {
             id: splashDialog
             Container {
+                id: splashRoot
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
                 layout: DockLayout {}
                 ImageView {
+                    id: splashImg
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
                     scalingMethod: ScalingMethod.Fill
                     imageSource: "asset:///images/splash.png"
+                }
+                // Dùng width binding: khi Dialog mở, Container có width thực
+                // Q10/Q20/Passport = 720px = 90du; Z10 portrait = 768px = 96du
+                onWidthChanged: {
+                    if (width <= 0) return;
+                    var duWidth = Math.round(width / ui.du(1));
+                    if (width == height) {
+                        // Màn vuông (Q10/Q20/Passport)
+                        splashImg.imageSource = "asset:///images/splash720.png";
+                    } else if (width > height) {
+                        // Landscape
+                        splashImg.imageSource = "asset:///images/splashLS.png";
+                    } else {
+                        // Portrait (Z10/Z30/Z3/Leap)
+                        splashImg.imageSource = "asset:///images/splash.png";
+                    }
                 }
             }
         },
