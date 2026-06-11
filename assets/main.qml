@@ -130,16 +130,11 @@ TabbedPane {
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
                 layout: DockLayout {}
-                Label {
-                    text: "Zalo10"
-                    textStyle {
-                        color: Color.White
-                        fontWeight: FontWeight.Bold
-                        fontSize: FontSize.PointValue
-                        fontSizeValue: 30
-                    }
-                    horizontalAlignment: HorizontalAlignment.Center
-                    verticalAlignment: VerticalAlignment.Center
+                ImageView {
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment: VerticalAlignment.Fill
+                    imageSource: "asset:///images/splash.png"
+                    scalingMethod: ScalingMethod.AspectFit
                 }
             }
         },

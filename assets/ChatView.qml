@@ -89,7 +89,7 @@ Page {
                     defaultImageSource: "asset:///images/ic_voice_call.png"
                     pressedImageSource: "asset:///images/ic_voice_call.png"
                     rightMargin: ui.du(0.3)
-                    onClicked: { callSheet.open() }
+                    onClicked: { voiceCallUnderDevDialog.show() }
                 }
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
@@ -97,7 +97,7 @@ Page {
                     defaultImageSource: "asset:///images/ca_video_chat_active.png"
                     pressedImageSource: "asset:///images/ca_video_chat_active.png"
                     rightMargin: ui.du(0.5)
-                    onClicked: { videoCallSheet.open() }
+                    onClicked: { videoCallUnderDevDialog.show() }
                 }
             }
         }
@@ -207,7 +207,7 @@ Page {
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: ArrayDataModel { id: msgModel }
-
+            bottomPadding: ui.du(1.5)
             flickMode: FlickMode.Momentum
 
             listItemComponents: [
@@ -673,143 +673,22 @@ Page {
     }
 
     attachedObjects: [
-        Sheet {
-            id: callSheet
-            peekEnabled: false
-            Page {
-                titleBar: TitleBar {
-                    title: "Voice Call"
-                    dismissAction: ActionItem { title: "End"; onTriggered: { callSheet.close() } }
-                }
-                content: Container {
-                    layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    verticalAlignment:   VerticalAlignment.Fill
-                    background: Color.create("#1a1a1a")
-                    Container {
-                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                        layout: DockLayout {}
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        Container {
-                            horizontalAlignment: HorizontalAlignment.Center
-                            verticalAlignment:   VerticalAlignment.Center
-                            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            ImageView {
-                                horizontalAlignment: HorizontalAlignment.Center
-                                preferredWidth: ui.du(22); preferredHeight: ui.du(22)
-                                scalingMethod: ScalingMethod.AspectFill
-                                imageSource: chatViewPage.avatarUrl.length > 0
-                                             ? chatViewPage.avatarUrl : "asset:///images/ic_contact.png"
-                            }
-                            Label {
-                                text: chatViewPage.threadName
-                                horizontalAlignment: HorizontalAlignment.Center
-                                textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
-                                topMargin: ui.du(2)
-                            }
-                            Label {
-                                text: "Calling..."
-                                horizontalAlignment: HorizontalAlignment.Center
-                                textStyle { color: Color.create("#aaaaaa"); fontSize: FontSize.Medium }
-                                topMargin: ui.du(1)
-                            }
-                        }
-                    }
-                    Container {
-                        horizontalAlignment: HorizontalAlignment.Center
-                        bottomPadding: ui.du(5); topPadding: ui.du(3)
-                        ImageButton {
-                            horizontalAlignment: HorizontalAlignment.Center
-                            preferredWidth: ui.du(14); preferredHeight: ui.du(14)
-                            defaultImageSource: "asset:///images/ic_voice_call.png"
-                            pressedImageSource: "asset:///images/ic_voice_call.png"
-                            onClicked: { callSheet.close() }
-                        }
-                        Label { text: "End"; horizontalAlignment: HorizontalAlignment.Center; textStyle { color: Color.White; fontSize: FontSize.Small } }
-                    }
-                }
-            }
+        SystemDialog {
+            id: voiceCallUnderDevDialog
+            title: "Voice Call"
+            body: "This feature is still under development."
+            confirmButton.label: "OK"
+            cancelButton.label: ""
+            cancelButton.enabled: false
         },
 
-        Sheet {
-            id: videoCallSheet
-            peekEnabled: false
-            Page {
-                titleBar: TitleBar {
-                    title: "Video Call"
-                    dismissAction: ActionItem { title: "End"; onTriggered: { videoCallSheet.close() } }
-                }
-                content: Container {
-                    layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    verticalAlignment:   VerticalAlignment.Fill
-                    background: Color.create("#0d0d0d")
-                    Container {
-                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                        layout: DockLayout {}
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        background: Color.create("#111111")
-                        Container {
-                            horizontalAlignment: HorizontalAlignment.Center
-                            verticalAlignment:   VerticalAlignment.Center
-                            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            ImageView {
-                                horizontalAlignment: HorizontalAlignment.Center
-                                preferredWidth: ui.du(22); preferredHeight: ui.du(22)
-                                scalingMethod: ScalingMethod.AspectFill
-                                imageSource: chatViewPage.avatarUrl.length > 0
-                                             ? chatViewPage.avatarUrl : "asset:///images/ic_contact.png"
-                            }
-                            Label {
-                                text: chatViewPage.threadName
-                                horizontalAlignment: HorizontalAlignment.Center
-                                textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
-                                topMargin: ui.du(2)
-                            }
-                            Label {
-                                text: "Connecting video..."
-                                horizontalAlignment: HorizontalAlignment.Center
-                                textStyle { color: Color.create("#aaaaaa"); fontSize: FontSize.Medium }
-                                topMargin: ui.du(1)
-                            }
-                        }
-                        Container {
-                            horizontalAlignment: HorizontalAlignment.Right
-                            verticalAlignment:   VerticalAlignment.Top
-                            rightPadding: ui.du(2); topPadding: ui.du(2)
-                            preferredWidth: ui.du(16); preferredHeight: ui.du(22)
-                            background: Color.create("#333333")
-                            layout: DockLayout {}
-                            Label { text: "You"; horizontalAlignment: HorizontalAlignment.Center; verticalAlignment: VerticalAlignment.Center; textStyle { color: Color.create("#888888"); fontSize: FontSize.Small } }
-                        }
-                    }
-                    Container {
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        background: Color.create("#1a1a1a")
-                        topPadding: ui.du(2); bottomPadding: ui.du(3)
-                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                        Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
-                        Container {
-                            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            ImageButton { horizontalAlignment: HorizontalAlignment.Center; preferredWidth: ui.du(10); preferredHeight: ui.du(10); defaultImageSource: "asset:///images/ic_microphone.png"; pressedImageSource: "asset:///images/ic_microphone.png"; onClicked: {} }
-                            Label { text: "Mute"; horizontalAlignment: HorizontalAlignment.Center; textStyle { color: Color.White; fontSize: FontSize.XSmall } }
-                        }
-                        Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
-                        Container {
-                            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            ImageButton { horizontalAlignment: HorizontalAlignment.Center; preferredWidth: ui.du(13); preferredHeight: ui.du(13); defaultImageSource: "asset:///images/ca_video_chat_active.png"; pressedImageSource: "asset:///images/ca_video_chat_active.png"; onClicked: { videoCallSheet.close() } }
-                            Label { text: "End"; horizontalAlignment: HorizontalAlignment.Center; textStyle { color: Color.White; fontSize: FontSize.XSmall } }
-                        }
-                        Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
-                        Container {
-                            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            ImageButton { horizontalAlignment: HorizontalAlignment.Center; preferredWidth: ui.du(10); preferredHeight: ui.du(10); defaultImageSource: "asset:///images/ic_video_chat.png"; pressedImageSource: "asset:///images/ic_video_chat.png"; onClicked: {} }
-                            Label { text: "Flip"; horizontalAlignment: HorizontalAlignment.Center; textStyle { color: Color.White; fontSize: FontSize.XSmall } }
-                        }
-                        Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
-                    }
-                }
-            }
+        SystemDialog {
+            id: videoCallUnderDevDialog
+            title: "Video Call"
+            body: "This feature is still under development."
+            confirmButton.label: "OK"
+            cancelButton.label: ""
+            cancelButton.enabled: false
         },
 
         Connections {

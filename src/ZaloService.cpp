@@ -3372,7 +3372,7 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                 qDebug() << "[Zalo] downloadImageMessage: unrecognised format, msgId=" << msgId
                          << "first bytes=" << imgData.left(4).toHex();
                 return;
-            }
+            } // end if(ext.isEmpty())
 
             QString tmpPath = QDir::tempPath() + "/msgimg_" +
                               QString::number(qHash(url)) + "." + ext;
@@ -3397,7 +3397,7 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                 emit imageMsgReady(msgId, filePath);
                 return;
             }
-        }
+        } // end if(!imgData.isEmpty())
         qDebug() << "[Zalo] downloadImageMessage: non-http url and base64 decode failed, msgId=" << msgId;
         return;
     }

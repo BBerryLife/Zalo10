@@ -10,15 +10,16 @@ VERSION = 1.1.0
 DEFINES += APP_VER_MAJOR=1 APP_VER_MINOR=1 APP_VER_PATCH=0 APP_VER_BUILD=1
 
 # Qt modules — tất cả có sẵn trong BB10 NDK 10.3
-QT += network script
+QT += network script gui
 
 # BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
 LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform
-LIBS += -lQtNetwork -lQtScript
+LIBS += -lQtNetwork -lQtScript -lQtGui
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3
 
 INCLUDEPATH += src
+INCLUDEPATH += $$(QNX_TARGET)/usr/include/qt4/QtGui
 
 HEADERS += \
     src/applicationui.hpp \
