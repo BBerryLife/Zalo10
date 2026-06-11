@@ -64,12 +64,8 @@ TabbedPane {
     }
 
     onCreationCompleted: {
-        // Detect device type bằng ui.du():
-        // Z10/Z30 portrait : screen width = 96 du (768px / 8px per du)
-        // Q10/Q20/Passport  : screen width = 90 du (720px / 8px per du)
-        // Z10/Z30 landscape : screen width = 160 du (1280px / 8px per du)
-        // Dùng ui.du(1) = 8px để tính screen du width
-        // Container fill màn hình nên splashRoot.width sẽ có giá trị sau khi scene active
+        // app.splashImage() đọc /pps/services/display/display0 → đúng mọi thiết bị
+        splashImg.imageSource = app.splashImage();
         splashDialog.open();
         splashTimer.start();
     }

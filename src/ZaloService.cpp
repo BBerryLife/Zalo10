@@ -1367,12 +1367,10 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     out["msgType"] = 2;
                     qDebug() << "[Zalo WS] photo detected via paramsExt/previewThumb: content=" << rawContent.left(80);
                     // FULL MESSAGE DUMP để debug URL ảnh thật
-                    qDebug() << "[Zalo WS] PHOTO MSG FULL KEYS=" << m.keys();
-                    for (const QString &k : m.keys()) {
-                        QString v = m[k].toString();
-                        if (!v.isEmpty() && v.length() < 500)
-                            qDebug() << "[Zalo WS] PHOTO MSG" << k << "=" << v.left(200);
-                    }
+                    // Print content & attach riêng vì có thể > 500 chars
+                    qDebug() << "[Zalo WS] PHOTO content=" << m["content"].toString().left(500);
+                    qDebug() << "[Zalo WS] PHOTO attach="  << m["attach"].toString().left(500);
+                    qDebug() << "[Zalo WS] PHOTO params="  << m["params"].toString().left(500);
                 }
             }
             if (mt == 2) {

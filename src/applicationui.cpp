@@ -17,6 +17,8 @@
 #include <QDebug>
 #include <QFile>
 #include <QXmlStreamReader>
+#include <QFile>
+#include <QTextStream>
 
 using namespace bb::cascades;
 using namespace bb::system;
@@ -136,4 +138,30 @@ QString ApplicationUI::appVersion()
 #else
     return "1.1.0.1";
 #endif
+}
+
+QString ApplicationUI::splashImage()
+{
+    // Đọc màn hình thực từ /pps/services/display/display0
+    // Format: resolution::1280x768  (landscape) hoặc 768x1280 (portrait)
+    QFile f("/pps/services/display/display0");
+    if (f.open(QIODevice::ReadOnly)) {
+        QString data = QString::fromUtf8(f.readAll());
+        f.close();
+        // Tìm dòng chứa "resolution::"
+        foreach (const QString &line, data.split('\n')) {
+            if (line.startsWith("resolution::")) {
+                QString res = line.mid(12).trimmed(); // "768x1280" hoặc "720x720"
+                QStringList parts = res.split('x');
+                if (parts.size() == 2) {
+                    int w = parts[0].toInt();
+                    int h = parts[1].toInt();
+                    if (w == h) return "asset:///images/splash720.png";
+                    if (w > h)  return "asset:///images/splashLS.png";
+                    return "asset:///images/splash.png";
+                }
+            }
+        }
+    }
+    return "asset:///images/splash.png"; // fallback
 }
