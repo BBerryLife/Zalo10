@@ -80,6 +80,15 @@
     <initialWindow>
         <autoOrients>true</autoOrients>
         <systemChrome>none</systemChrome>
+        <!-- Splash screens:
+             splash.png     = portrait (Z10, Z30, Z3, Leap …)
+             splashLS.png   = landscape (same devices rotated)
+             splash720.png  = square screens (Q10, Q20, Passport) -->
+        <splashScreens>
+            <image orientation="portrait">assets/images/splash.png</image>
+            <image orientation="landscape">assets/images/splashLS.png</image>
+            <image orientation="square">assets/images/splash720.png</image>
+        </splashScreens>
     </initialWindow>
 
     <!--  The icon for the application, which should be 114x114. -->

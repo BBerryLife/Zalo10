@@ -1,5 +1,5 @@
 1
-645
+648
 AboutSheet.qml
 ChatsTab.qml
 ChatView.qml
@@ -635,6 +635,9 @@ images/ic_voice_call.png
 images/read.png
 images/sending.png
 images/sent.png
+images/splash.png
+images/splash720.png
+images/splashLS.png
 images/splat.png
 images/timemess.png
 images/timemesswhite.png

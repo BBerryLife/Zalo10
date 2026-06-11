@@ -341,6 +341,10 @@ Page {
                                         visible: ListItemData.localImage && ListItemData.localImage !== ""
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment:   VerticalAlignment.Fill
+                                        // BB10: ImageView với Fill cần preferredWidth/Height tường minh,
+                                        // nếu không layout engine sẽ không cấp phát kích thước → ảnh trắng.
+                                        preferredWidth:  ui.du(30)
+                                        preferredHeight: ui.du(30)
                                         scalingMethod: ScalingMethod.AspectFit
                                         imageSource: ListItemData.localImage
                                     }

@@ -17,6 +17,7 @@
 #include <QStringList>
 #include <QDebug>
 #include <QDir>
+#include <QBuffer>
 #include <QFile>
 #include <QImage>
 #include <QSslConfiguration>
@@ -171,8 +172,8 @@ ZaloService::ZaloService(QObject *parent)
     : QObject(parent), m_manager(new QNetworkAccessManager(this)),
       m_qrExpireTimer(new QTimer(this)), m_listenTimer(new QTimer(this)),
       m_wsReconnectTimer(new QTimer(this)),
-      m_webSocket(0), m_wsUrlIndex(0), m_wsConnected(false), m_wsHandshakeSent(false), m_db(0),
-      m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false)
+      m_webSocket(0), m_wsUrlIndex(0), m_wsConnected(false), m_wsHandshakeSent(false),
+      m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false), m_db(0)
 {
     m_qrExpireTimer->setSingleShot(true);
     m_wsReconnectTimer->setSingleShot(true);
@@ -1435,11 +1436,16 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     qDebug() << "[Zalo WS] photo msgType=2 but no URL found. m.keys=" << m.keys()
                              << "content=" << rawContent.left(100);
                 }
-                // If nUrl is set but is NOT a real HTTP URL (it's a Zalo protobuf thumbnail),
-                // trigger downloadImageMessage which will reconstruct the JPEG from it.
+                // If nUrl is NOT a real HTTP URL (it's a Zalo protobuf thumbnail):
+                // 1. Decode thumbnail immediately for fast preview.
+                // 2. Call fetchMsgDetail (converimgs) to get the real full-size HTTP URL.
                 if (!nUrl.isEmpty() && !nUrl.startsWith("http") && !msgId.isEmpty()) {
                     qDebug() << "[Zalo WS] photo has protobuf thumb (not HTTP URL), decoding thumbnail msgId=" << msgId;
                     downloadImageMessage(msgId, nUrl, threadId);
+                    // Schedule full-res fetch via converimgs so we replace the 24x24 thumb
+                    bool grp = out["isGroup"].toBool();
+                    if (!m_pendingPhotoMsgIds.contains(msgId))
+                        fetchMsgDetail(msgId, threadId, grp);
                 }
             }
             out["content"] = rawContent;
@@ -1622,7 +1628,11 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (checkUrl.isEmpty() || !checkUrl.startsWith("http")) {
                     if (!m_pendingPhotoMsgIds.contains(msgId) && !checkUrl.isEmpty()) {
                         qDebug() << "[Zalo WS] old_messages photo protobuf thumb, decoding msgId=" << msgId;
+                        // Decode thumbnail for immediate preview
                         downloadImageMessage(msgId, checkUrl, emitThread);
+                        // Also fetch full-res via converimgs
+                        bool grp = out["isGroup"].toBool();
+                        fetchMsgDetail(msgId, emitThread, grp);
                     }
                 }
             }
@@ -3367,7 +3377,6 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                         qDebug() << "[Zalo] decoded Zalo thumb" << W << "x" << H << "msgId=" << msgId << "->" << tmpPath;
                         emit imageMsgReady(msgId, filePath);
                         return;
-                    }
                 }
                 qDebug() << "[Zalo] downloadImageMessage: unrecognised format, msgId=" << msgId
                          << "first bytes=" << imgData.left(4).toHex();
@@ -3440,9 +3449,26 @@ void ZaloService::onImageMsgDownloaded()
     if (ct.contains("gif"))  ext = "gif";
     if (ct.contains("webp")) ext = "webp";
 
+    // BB10's ImageView does not support WebP. Transcode any WebP (or
+    // unrecognised) image to PNG via QImage so it always displays correctly.
+    QByteArray finalData = data;
+    if (ext == "webp" || ext == "jpg") {
+        QImage img;
+        if (img.loadFromData(data)) {
+            QByteArray pngBuf;
+            QBuffer buf(&pngBuf);
+            buf.open(QIODevice::WriteOnly);
+            if (img.save(&buf, "PNG")) {
+                finalData = pngBuf;
+                ext = "png";
+                qDebug() << "[Zalo] onImageMsgDownloaded: transcoded" << ct << "-> PNG for msgId" << msgId;
+            }
+        }
+    }
+
     QString tmpPath = QDir::tempPath() + "/zalo_img_" + md5Hex(url) + "." + ext;
     QFile f(tmpPath);
-    if (f.open(QIODevice::WriteOnly)) { f.write(data); f.close(); }
+    if (f.open(QIODevice::WriteOnly)) { f.write(finalData); f.close(); }
     QString filePath = "file://" + tmpPath;
     m_avatarCache[url] = filePath;
 

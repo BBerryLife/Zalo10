@@ -126,15 +126,14 @@ TabbedPane {
         Dialog {
             id: splashDialog
             Container {
-                background: Color.create("#2575fc")
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
                 layout: DockLayout {}
                 ImageView {
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
+                    scalingMethod: ScalingMethod.Fill
                     imageSource: "asset:///images/splash.png"
-                    scalingMethod: ScalingMethod.AspectFit
                 }
             }
         },

@@ -55,6 +55,7 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
     qml->setContextProperty("app",      this);
     qml->setContextProperty("zService", zService);
 
+
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
 
