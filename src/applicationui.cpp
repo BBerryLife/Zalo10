@@ -19,6 +19,7 @@
 #include <QXmlStreamReader>
 #include <QFile>
 #include <QTextStream>
+#include <bb/device/DisplayInfo>
 
 using namespace bb::cascades;
 using namespace bb::system;
@@ -140,13 +141,58 @@ QString ApplicationUI::appVersion()
 #endif
 }
 
-// Helper: get screen width and height via BB10 PPS display file.
-// /pps/services/display/display0 is always present and readable on BB10.
-// Format example:  resolution::720x720:n
-static void getScreenSize(int &w, int &h)
+// Helper: detect screen type using BB10's official APIs.
+// Returns: 0 = portrait/tall, 1 = square, 2 = landscape
+//
+// Strategy (in order of reliability):
+//   1. bb::device::DisplayInfo::pixelSize() — official BB10 API for screen dimensions
+//   2. PPS /pps/services/deviceproperties/physical — model name heuristic (Q-series/Passport)
+//   3. PPS /pps/services/display/display0 — resolution key fallback
+static int detectScreenType()
 {
-    w = 0; h = 0;
-    // BB10 PPS display info — no QWidget/QApplication needed
+    // ── Method 1: bb::device::DisplayInfo ──────────────────────────────────
+    // Try display IDs 0..3. On most BB10 devices the primary display is 0,
+    // but some firmware builds assign a different ID and reject 0.
+    {
+        for (int dispId = 0; dispId <= 3; ++dispId) {
+            bb::device::DisplayInfo di(dispId);
+            QSize sz = di.pixelSize();
+            int w = sz.width();
+            int h = sz.height();
+            if (w > 0 && h > 0) {
+                qDebug() << "[App] DisplayInfo id=" << dispId << "pixelSize=" << w << "x" << h;
+                if (w == h) return 1;  // square (Q10/Q20/Passport)
+                if (w > h)  return 2;  // landscape
+                return 0;              // portrait (Z10/Z30/Z3/Leap)
+            }
+        }
+        qDebug() << "[App] DisplayInfo: no valid display found";
+    }
+
+    // ── Method 2: Device model via PPS — Q-series/Passport = square screen ─
+    // /pps/services/deviceproperties/physical identifies the hardware model.
+    // Q5=SQR100, Q10=SQN100, Q20=SQC100, Passport=SQW100/STR100 — all square.
+    {
+        QFile f("/pps/services/deviceproperties/physical");
+        if (f.open(QIODevice::ReadOnly)) {
+            QString data = QString::fromUtf8(f.readAll());
+            f.close();
+            qDebug() << "[App] deviceproperties:" << data.left(200);
+            // Look for "hardware_id::SQxxx" or "model_name::SQxxx"
+            foreach (const QString &line, data.split('\n')) {
+                QString t = line.trimmed().toUpper();
+                // Square-screen model prefixes
+                if (t.contains("SQN") || t.contains("SQR") ||
+                    t.contains("SQC") || t.contains("SQW") ||
+                    t.contains("STR1")) {
+                    qDebug() << "[App] PPS model: Q-series/Passport → square";
+                    return 1;
+                }
+            }
+        }
+    }
+
+    // ── Method 3: PPS file fallback ─────────────────────────────────────────
     static const char *paths[] = {
         "/pps/services/display/display0",
         "/pps/services/display/display0/display",
@@ -157,56 +203,48 @@ static void getScreenSize(int &w, int &h)
         if (!f.open(QIODevice::ReadOnly)) continue;
         QString data = QString::fromUtf8(f.readAll());
         f.close();
-        qDebug() << "[App] PPS" << paths[pi] << ":" << data.left(200);
         foreach (const QString &line, data.split('\n')) {
             QString t = line.trimmed();
-            if (t.startsWith("resolution::")) {
-                QString res = t.mid(12).trimmed();
-                // Strip PPS type suffix e.g. ":n" or ":s"
-                int ci = res.indexOf(':');
-                if (ci != -1) res = res.left(ci).trimmed();
-                QStringList parts = res.split('x');
-                if (parts.size() == 2) {
-                    int tw = parts[0].trimmed().toInt();
-                    int th = parts[1].trimmed().toInt();
-                    qDebug() << "[App] screen resolution:" << tw << "x" << th;
-                    if (tw > 0 && th > 0) { w = tw; h = th; return; }
-                }
-            }
-            // Alternative key: "size::WxH" or "display_size::WxH"
-            if (t.startsWith("size::") || t.startsWith("display_size::")) {
-                QString res = t.mid(t.indexOf("::") + 2).trimmed();
-                int ci = res.indexOf(':');
-                if (ci != -1) res = res.left(ci).trimmed();
-                QStringList parts = res.split('x');
-                if (parts.size() == 2) {
-                    int tw = parts[0].trimmed().toInt();
-                    int th = parts[1].trimmed().toInt();
-                    if (tw > 0 && th > 0) { w = tw; h = th; return; }
+            int sep = -1;
+            if (t.startsWith("resolution::"))    sep = 12;
+            else if (t.startsWith("size::"))      sep = 6;
+            else if (t.startsWith("display_size::")) sep = 14;
+            if (sep < 0) continue;
+            QString res = t.mid(sep).trimmed();
+            int ci = res.indexOf(':');
+            if (ci != -1) res = res.left(ci).trimmed();
+            QStringList parts = res.split('x');
+            if (parts.size() == 2) {
+                int w = parts[0].trimmed().toInt();
+                int h = parts[1].trimmed().toInt();
+                if (w > 0 && h > 0) {
+                    qDebug() << "[App] PPS screen:" << w << "x" << h;
+                    if (w == h) return 1;
+                    if (w > h)  return 2;
+                    return 0;
                 }
             }
         }
     }
-    qDebug() << "[App] getScreenSize: could not determine resolution, using portrait fallback";
+
+    qDebug() << "[App] detectScreenType: could not determine resolution, defaulting to portrait";
+    return 0;
 }
 
 QString ApplicationUI::splashImage()
 {
-    int w = 0, h = 0;
-    getScreenSize(w, h);
-    if (w > 0 && h > 0) {
-        if (w == h) return "asset:///images/splash720.png"; // square: Q5/Q10/Q20/Passport
-        if (w > h)  return "asset:///images/splashLS.png";  // landscape
-        return "asset:///images/splash.png";                 // portrait: Z10/Z30/Z3/Leap
+    int type = detectScreenType();
+    switch (type) {
+        case 1:  return "asset:///images/splash720.png"; // square: Q5/Q10/Q20/Passport
+        case 2:  return "asset:///images/splashLS.png";  // landscape
+        default: return "asset:///images/splash.png";    // portrait: Z10/Z30/Z3/Leap
     }
-    return "asset:///images/splash.png"; // fallback
 }
 
 QString ApplicationUI::coverImage()
 {
-    int w = 0, h = 0;
-    getScreenSize(w, h);
-    if (w > 0 && h > 0 && w == h)
-        return "asset:///images/cover.png";  // square devices only
-    return "asset:///images/splash.png";     // all other devices use splash
+    int type = detectScreenType();
+    if (type == 1)
+        return "asset:///images/cover.png";  // square devices: cover.png fits perfectly
+    return "asset:///images/splash.png";     // all other devices: reuse splash
 }

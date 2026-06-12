@@ -78,8 +78,8 @@
     <!-- <authorId>ABC1234YjsnUk235h</authorId> -->
 
     <initialWindow>
-        <autoOrients>true</autoOrients>
         <systemChrome>none</systemChrome>
+        <autoOrients>true</autoOrients>
         <!-- Splash screens:
              splash.png     = portrait (Z10, Z30, Z3, Leap …)
              splashLS.png   = landscape (same devices rotated)

@@ -1447,9 +1447,11 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (!nUrl.isEmpty() && !nUrl.startsWith("http") && !msgId.isEmpty()) {
                     qDebug() << "[Zalo WS] photo has protobuf thumb (not HTTP URL), decoding thumbnail msgId=" << msgId;
                     downloadImageMessage(msgId, nUrl, threadId);
-                    // Schedule full-res fetch via WS cmd=510
-                    if (!m_pendingPhotoMsgIds.contains(msgId))
+                    // Fetch full-res via WS cmd=510 AND HTTP API in parallel
+                    if (!m_pendingPhotoMsgIds.contains(msgId)) {
                         fetchPhotoViaWs510(msgId, threadId);
+                        fetchPhotoViaHttp(msgId, threadId);
+                    }
                 }
             }
             out["content"] = rawContent;
@@ -1635,6 +1637,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         downloadImageMessage(msgId, checkUrl, emitThread);
                         // Fetch full-res via WS cmd=510 history
                         fetchPhotoViaWs510(msgId, emitThread);
+                        fetchPhotoViaHttp(msgId, emitThread);
                     }
                 }
             }
@@ -2726,6 +2729,100 @@ void ZaloService::fetchPhotoViaWs510(const QString &msgId, const QString &thread
     qDebug() << "[Zalo] fetchPhotoViaWs510: sent WS cmd=510 msgId=" << msgId << "toid=" << threadId;
 }
 
+// Fetch photo HTTP URL when WS cmd=510 keeps returning protobuf blob.
+// Uses HTTP GET chat[0]/api/message/getmsg?params=AES({msgId, toid})
+// which returns the real normalUrl / hdUrl for the image.
+void ZaloService::fetchPhotoViaHttp(const QString &msgId, const QString &threadId)
+{
+    if (!m_loggedIn || msgId.isEmpty() || threadId.isEmpty()) return;
+
+    // Track for response handler
+    m_pendingPhotoMsgIds[msgId] = threadId;
+
+    QVariantMap p;
+    p["msgId"]  = msgId;
+    p["toid"]   = threadId;
+    p["imei"]   = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(p)));
+    QString urlStr = m_chatServiceUrl + "/api/message/getmsg"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    qDebug() << "[Zalo] fetchPhotoViaHttp GET msgId=" << msgId;
+    QNetworkReply *reply = m_manager->get(req);
+    reply->setProperty("msgId",    msgId);
+    reply->setProperty("threadId", threadId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onFetchPhotoDetailDone()));
+}
+
+void ZaloService::onFetchPhotoDetailDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString msgId    = reply->property("msgId").toString();
+    QString threadId = reply->property("threadId").toString();
+    reply->deleteLater();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        qDebug() << "[Zalo] fetchPhotoViaHttp error msgId=" << msgId << reply->errorString();
+        return;
+    }
+
+    QByteArray raw = reply->readAll();
+    QVariantMap outer = jsonToMap(raw);
+    if (outer["error_code"].toInt() != 0) {
+        qDebug() << "[Zalo] fetchPhotoViaHttp API error msgId=" << msgId
+                 << outer["error_message"].toString();
+        return;
+    }
+
+    // Decrypt data field
+    QString dataEnc = outer["data"].toString();
+    QString dataJson;
+    if (!dataEnc.isEmpty() && !dataEnc.startsWith("{")) {
+        dataJson = aesDecryptBase64(m_secretKey, dataEnc);
+    } else {
+        dataJson = dataEnc;
+    }
+
+    QVariantMap data = jsonToMap(dataJson.toUtf8());
+    // Response may have the message directly or wrapped in "msgs" array
+    QString photoUrl;
+    if (data.contains("msgs")) {
+        QVariantList msgs = data["msgs"].toList();
+        for (int i = 0; i < msgs.size(); ++i) {
+            QVariantMap mm = msgs[i].toMap();
+            if (mm["msgId"].toString() != msgId) continue;
+            QString content = mm["content"].toString();
+            if (!content.isEmpty() && content.trimmed().startsWith("{")) {
+                QVariantMap cm = jsonToMap(content.toUtf8());
+                photoUrl = cm["normalUrl"].toString();
+                if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
+                if (photoUrl.isEmpty()) photoUrl = cm["thumbUrl"].toString();
+            }
+        }
+    } else {
+        QString content = data["content"].toString();
+        if (!content.isEmpty() && content.trimmed().startsWith("{")) {
+            QVariantMap cm = jsonToMap(content.toUtf8());
+            photoUrl = cm["normalUrl"].toString();
+            if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
+        }
+    }
+
+    if (!photoUrl.isEmpty() && photoUrl.startsWith("http")) {
+        qDebug() << "[Zalo] fetchPhotoViaHttp resolved msgId=" << msgId << "url=" << photoUrl.left(80);
+        m_pendingPhotoMsgIds.remove(msgId);
+        downloadImageMessage(msgId, photoUrl, threadId);
+    } else {
+        qDebug() << "[Zalo] fetchPhotoViaHttp: still no HTTP URL for msgId=" << msgId
+                 << "response=" << dataJson.left(200);
+    }
+}
+
 
 void ZaloService::sendMessage(const QString &threadId, const QString &content, bool isGroup)
 {
@@ -3209,14 +3306,26 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                     dqt1 += QByteArray((const char*)chromaQ, 64);
 
                     // SOF0: 8-bit, 3 components, Y=2x2/qtable0, Cb=1x1/qtable1, Cr=1x1/qtable1
+                    // IMPORTANT: build byte-by-byte with explicit (char) casts.
+                    // Do NOT use string literals like "\x01\x22\x00" because QByteArray::operator+=
+                    // with const char* stops at the first \x00 null byte, silently dropping
+                    // the Y-component qtable index byte and corrupting all downstream markers.
                     QByteArray sof0Data;
-                    sof0Data += (char)8;
-                    sof0Data += (char)((H >> 8) & 0xFF); sof0Data += (char)(H & 0xFF);
-                    sof0Data += (char)((W >> 8) & 0xFF); sof0Data += (char)(W & 0xFF);
-                    sof0Data += (char)3;
-                    sof0Data += "\x01\x22\x00"  // Y: 2x2 sampling, qtable 0
-                                "\x02\x11\x01"  // Cb: 1x1 sampling, qtable 1
-                                "\x03\x11\x01"; // Cr: 1x1 sampling, qtable 1
+                    sof0Data += (char)8;                    // sample precision (bits)
+                    sof0Data += (char)((H >> 8) & 0xFF);   // height high byte
+                    sof0Data += (char)(H & 0xFF);           // height low byte
+                    sof0Data += (char)((W >> 8) & 0xFF);   // width high byte
+                    sof0Data += (char)(W & 0xFF);           // width low byte
+                    sof0Data += (char)3;                    // num components
+                    sof0Data += (char)0x01;                 // Y  component id
+                    sof0Data += (char)0x22;                 // Y  sampling: 2x2
+                    sof0Data += (char)0x00;                 // Y  qtable index: 0  <-- THIS BYTE was lost!
+                    sof0Data += (char)0x02;                 // Cb component id
+                    sof0Data += (char)0x11;                 // Cb sampling: 1x1
+                    sof0Data += (char)0x01;                 // Cb qtable index: 1
+                    sof0Data += (char)0x03;                 // Cr component id
+                    sof0Data += (char)0x11;                 // Cr sampling: 1x1
+                    sof0Data += (char)0x01;                 // Cr qtable index: 1
 
                     // DHT
                     QByteArray dhtDcLum; dhtDcLum += (char)0x00;
@@ -3258,45 +3367,95 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                     jpeg += sosData;                                        // SOS + scan data
                     jpeg += "\xFF\xD9";                                     // EOI
 
-                    // Use msgId in filename so each message has a unique path,
-                    // avoiding BB10's image load cache serving stale failed data.
+                    // Use msgId in filename — unique path avoids BB10 image cache stale data.
+                    // Always save as .png — BB10 ImageView is more reliable with PNG than JPEG.
                     QString tmpPath = QDir::tempPath() + "/msgthumb_" +
-                                      msgId + ".jpg";
-                    QFile::remove(tmpPath); // Remove stale file from previous builds
-                    // Transcode to PNG via QImage so BB10's ImageView always gets
-                    // a format it can display (avoids BB10 libjpeg compatibility issues).
-                    QImage qimg;
-                    if (!qimg.loadFromData(jpeg, "JPEG")) {
-                        qDebug() << "[Zalo] thumb QImage load failed, saving raw JPEG msgId=" << msgId;
-                        // Fall back to saving JPEG directly
-                        QFile f(tmpPath);
-                        if (f.open(QIODevice::WriteOnly)) { f.write(jpeg); f.close(); }
-                    } else {
-                        // Scale up to 240x240 so BB10 ImageView shows a visible placeholder
-                        // (original is 24x24 — too small, renders as gray square)
-                        if (qimg.width() < 120 || qimg.height() < 120) {
-                            qimg = qimg.scaled(240, 240, Qt::IgnoreAspectRatio, Qt::FastTransformation);
-                        }
-                        // Save as PNG - universally compatible with BB10 ImageView
-                        tmpPath.replace(".jpg", ".png");
-                        QFile::remove(tmpPath);
-                        qimg.save(tmpPath, "PNG");
+                                      msgId + ".png";
+                    QFile::remove(tmpPath);
+
+                    // Byte-stuff scan data: in JPEG, any 0xFF byte in entropy-coded
+                    // data MUST be followed by 0x00 so decoders don't mistake it for
+                    // a marker. Zalo's raw SOS data has bare 0xFF bytes that cause
+                    // "Bogus marker length" in BB10's libjpeg. Escape them here.
+                    QByteArray stuffedSos;
+                    // SOS header: FF DA + length(2 bytes) + payload[length-2]
+                    // Keep header verbatim, only stuff entropy scan data after it.
+                    int sosHeaderLen = 0;
+                    if (sosData.size() >= 4) {
+                        int segLen = ((unsigned char)sosData[2] << 8) | (unsigned char)sosData[3];
+                        sosHeaderLen = 2 + segLen; // FF DA + payload
                     }
-                    QString filePath = "file://" + tmpPath;
-                        m_avatarCache[url] = filePath;
-                        if (!msgId.isEmpty() && !threadId.isEmpty() && m_db) {
-                            const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
-                            sqlite3_stmt *stmt2 = 0;
-                            if (sqlite3_prepare_v2(m_db, sql, -1, &stmt2, 0) == SQLITE_OK) {
-                                sqlite3_bind_text(stmt2, 1, filePath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                                sqlite3_bind_text(stmt2, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
-                                sqlite3_step(stmt2);
-                                sqlite3_finalize(stmt2);
+                    stuffedSos += sosData.left(sosHeaderLen);
+                    for (int si = sosHeaderLen; si < sosData.size(); ++si) {
+                        unsigned char b = (unsigned char)sosData[si];
+                        stuffedSos += (char)b;
+                        if (b == 0xFF) {
+                            // Only insert stuffing 0x00 if next byte is not already
+                            // a valid stuffed zero, restart marker (D0-D7), or EOI (D9).
+                            unsigned char next = (si + 1 < sosData.size())
+                                                 ? (unsigned char)sosData[si + 1] : 0x00;
+                            if (next != 0x00 &&
+                                !(next >= 0xD0 && next <= 0xD7) &&
+                                next != 0xD9) {
+                                stuffedSos += (char)0x00;
                             }
                         }
-                        qDebug() << "[Zalo] decoded Zalo thumb" << W << "x" << H << "msgId=" << msgId << "->" << tmpPath;
-                        emit imageMsgReady(msgId, filePath);
-                        return;
+                    }
+
+                    // Rebuild JPEG with byte-stuffed scan data
+                    QByteArray jpeg2;
+                    jpeg2 += "\xFF\xD8";
+                    jpeg2 += makeJpegMarker(0xE0, QByteArray(app0Data, sizeof(app0Data)));
+                    jpeg2 += makeJpegMarker(0xDB, dqt0);
+                    jpeg2 += makeJpegMarker(0xDB, dqt1);
+                    jpeg2 += makeJpegMarker(0xC0, sof0Data);
+                    jpeg2 += makeJpegMarker(0xC4, dhtDcLum);
+                    jpeg2 += makeJpegMarker(0xC4, dhtDcChr);
+                    jpeg2 += makeJpegMarker(0xC4, dhtAcLum);
+                    jpeg2 += makeJpegMarker(0xC4, dhtAcChr);
+                    jpeg2 += stuffedSos;
+                    jpeg2 += "\xFF\xD9";
+
+                    // Decode → scale → save as PNG.
+                    // Try byte-stuffed version first, then original as last resort.
+                    QImage qimg;
+                    bool decoded = qimg.loadFromData(jpeg2, "JPEG");
+                    if (!decoded) decoded = qimg.loadFromData(jpeg, "JPEG");
+
+                    if (decoded) {
+                        // Scale small thumbnails up so they're visible in the chat bubble.
+                        // Original is 24×24 — far too small for a chat photo placeholder.
+                        if (qimg.width() < 120 || qimg.height() < 120) {
+                            qimg = qimg.scaled(240, 240,
+                                               Qt::KeepAspectRatio,
+                                               Qt::SmoothTransformation);
+                        }
+                        qimg.save(tmpPath, "PNG");
+                        qDebug() << "[Zalo] decoded Zalo thumb" << W << "x" << H
+                                 << "→ PNG msgId=" << msgId << tmpPath;
+                    } else {
+                        // Decode failed completely — write a solid blue 240×240 PNG
+                        // placeholder so the chat bubble shows *something* while the
+                        // full-res fetch (cmd=510) is in flight.
+                        QImage placeholder(240, 240, QImage::Format_RGB32);
+                        placeholder.fill(QColor(37, 117, 252)); // Zalo blue #2575fc
+                        placeholder.save(tmpPath, "PNG");
+                        qDebug() << "[Zalo] thumb decode failed, saved placeholder msgId=" << msgId;
+                    }
+                    QString filePath = "file://" + tmpPath;
+                    m_avatarCache[url] = filePath;
+                    if (!msgId.isEmpty() && !threadId.isEmpty() && m_db) {
+                        const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
+                        sqlite3_stmt *stmt2 = 0;
+                        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt2, 0) == SQLITE_OK) {
+                            sqlite3_bind_text(stmt2, 1, filePath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                            sqlite3_bind_text(stmt2, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+                            sqlite3_step(stmt2);
+                            sqlite3_finalize(stmt2);
+                        }
+                    }
+                    emit imageMsgReady(msgId, filePath);
+                    return;
                 }
                 qDebug() << "[Zalo] downloadImageMessage: unrecognised format, msgId=" << msgId
                          << "first bytes=" << imgData.left(4).toHex();

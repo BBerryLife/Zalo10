@@ -13,7 +13,7 @@ DEFINES += APP_VER_MAJOR=1 APP_VER_MINOR=1 APP_VER_PATCH=0 APP_VER_BUILD=1
 QT += network script gui
 
 # BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
-LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform
+LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform -lbbdevice
 LIBS += -lQtNetwork -lQtScript -lQtGui
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3

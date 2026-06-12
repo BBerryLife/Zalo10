@@ -112,7 +112,7 @@ private slots:
     void onRejectFriendDone();
     void onGroupDetailsDone();
     void onFetchMsgDone();
-    // (no HTTP slot needed for photo detail — uses WS cmd=510)
+    void onFetchPhotoDetailDone();  // HTTP fallback khi cmd=510 không trả HTTP URL
     void onSendMsgDone();
     void onSendPhotoDone();
     void onSendPhotoMsgDone();
@@ -162,6 +162,7 @@ private:
     void cookieStep2_getServerInfo(const QString &encryptKey);
 
     void fetchPhotoViaWs510(const QString &msgId, const QString &threadId);
+    void fetchPhotoViaHttp(const QString &msgId, const QString &threadId);
 
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);
