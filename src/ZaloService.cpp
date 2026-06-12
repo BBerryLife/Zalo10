@@ -106,12 +106,24 @@ static QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
     // 1. Try content JSON field first
     if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
         QVariantMap cm = jsonToMap(rawContent.toUtf8());
-        nUrl = cm["normalUrl"].toString();
+        // FIX: prefer href/thumb (real CDN URLs) over normalUrl (may be protobuf blob)
+        // Check if normalUrl is a real HTTP URL first
+        QString nu = cm["normalUrl"].toString();
+        if (nu.startsWith("http")) {
+            nUrl = nu;
+        } else {
+            // normalUrl is protobuf blob — use href/oriUrl as real CDN URL instead
+            nUrl = cm["href"].toString();
+            if (nUrl.isEmpty()) nUrl = cm["oriUrl"].toString();
+            if (nUrl.isEmpty() && nu.startsWith("http")) nUrl = nu; // fallback
+        }
         hUrl = cm["hdUrl"].toString();
-        tUrl = cm["thumbUrl"].toString();
-        if (nUrl.isEmpty()) nUrl = cm["href"].toString();
         if (hUrl.isEmpty()) hUrl = cm["oriUrl"].toString();
+        if (hUrl.isEmpty()) hUrl = cm["href"].toString();
+        tUrl = cm["thumbUrl"].toString();
         if (tUrl.isEmpty()) tUrl = cm["thumb"].toString();
+        // If still empty, use whatever we have
+        if (nUrl.isEmpty()) nUrl = nu;
     }
 
     // 2. Try top-level fields on message map
@@ -122,21 +134,25 @@ static QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
     if (tUrl.isEmpty()) tUrl = m["thumb"].toString();
 
     // 3. Try paramsExt JSON string (Zalo WS real-time photo delivery)
-    if (nUrl.isEmpty()) {
+    if (nUrl.isEmpty() || !nUrl.startsWith("http")) {
         QString pe = m["paramsExt"].toString();
         if (!pe.isEmpty() && pe.trimmed().startsWith("{")) {
             QVariantMap pm = jsonToMap(pe.toUtf8());
-            if (nUrl.isEmpty()) nUrl = pm["normalUrl"].toString();
+            QString pnu = pm["normalUrl"].toString();
+            if (pnu.startsWith("http")) nUrl = pnu;
             if (hUrl.isEmpty()) hUrl = pm["hdUrl"].toString();
             if (tUrl.isEmpty()) tUrl = pm["thumbUrl"].toString();
-            if (nUrl.isEmpty()) nUrl = pm["href"].toString();
-            if (nUrl.isEmpty()) nUrl = pm["oriUrl"].toString();
+            if (!nUrl.startsWith("http")) {
+                if (!pm["href"].toString().isEmpty()) nUrl = pm["href"].toString();
+                if (!pm["oriUrl"].toString().isEmpty() && nUrl.isEmpty())
+                    nUrl = pm["oriUrl"].toString();
+            }
             if (tUrl.isEmpty()) tUrl = pm["thumb"].toString();
         }
     }
 
     // 4. Try attach sub-object
-    if (nUrl.isEmpty()) {
+    if (nUrl.isEmpty() || !nUrl.startsWith("http")) {
         QVariantMap att = m["attach"].toMap();
         if (att.isEmpty()) {
             QString attStr = m["attach"].toString();
@@ -144,10 +160,13 @@ static QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
                 att = jsonToMap(attStr.toUtf8());
         }
         if (!att.isEmpty()) {
-            if (nUrl.isEmpty()) nUrl = att["normalUrl"].toString();
+            QString anu = att["normalUrl"].toString();
+            if (anu.startsWith("http")) nUrl = anu;
             if (hUrl.isEmpty()) hUrl = att["hdUrl"].toString();
             if (tUrl.isEmpty()) tUrl = att["thumbUrl"].toString();
-            if (nUrl.isEmpty()) nUrl = att["href"].toString();
+            if (!nUrl.startsWith("http")) {
+                if (!att["href"].toString().isEmpty()) nUrl = att["href"].toString();
+            }
             if (tUrl.isEmpty()) tUrl = att["thumb"].toString();
         }
     }
@@ -181,7 +200,7 @@ ZaloService::ZaloService(QObject *parent)
     connect(m_listenTimer,      SIGNAL(timeout()), this, SLOT(onListenTimer()));
     connect(m_wsReconnectTimer, SIGNAL(timeout()), this, SLOT(onWsReconnectTimer()));
     qsrand((uint)QDateTime::currentMSecsSinceEpoch());
-    qDebug() << "[Zalo] ===== BUILD v32 - msgId-based thumbnail filename, avoid BB10 image cache =====";
+    qDebug() << "[Zalo] ===== BUILD v34 - photo field dump + inflated500 for CDN URL discovery =====";
 
     QString dbPath = QDir::homePath() + "/zalo_messages.db";
     if (sqlite3_open(dbPath.toUtf8().constData(), &m_db) == SQLITE_OK) {
@@ -1246,7 +1265,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     }
                 }
                 if (inflateOk) {
-                    qDebug() << "[Zalo WS] inflated (first150):" << QString::fromUtf8(inflated.left(150));
+                    qDebug() << "[Zalo WS] inflated (first500):" << QString::fromUtf8(inflated.left(500));
                     QVariantMap parsed = jsonToMap(inflated);
                     // zca-js: inflate result is direct JSON, no "data" wrapper
                     if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
@@ -1345,7 +1364,37 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (mt == 0) mt = m["mt"].toInt();
                 if (mt == 0) mt = m["msgtype"].toInt();
             }
+            // FIX: Zalo WS sends msgType as STRING "chat.photo" not int 2
+            // Check string msgType fields for photo type
+            if (mt == 0) {
+                QString mtStr = m["msgType"].toString().toLower();
+                if (mtStr.isEmpty()) mtStr = m["msgtype"].toString().toLower();
+                if (mtStr.contains("photo") || mtStr.contains("image") || mtStr == "2")
+                    mt = 2;
+            }
+
+            // FIX: m["content"] may be a nested QVariantMap (not a string) when
+            // QScriptEngine parses the WS JSON — content.toString() returns "" for objects.
+            // Serialize it back to JSON string so downstream code can parse it normally.
             QString rawContent = m["content"].toString();
+            if (rawContent.isEmpty()) {
+                QVariantMap cm = m["content"].toMap();
+                if (!cm.isEmpty()) {
+                    // Build JSON string from the content map
+                    rawContent = "{";
+                    QStringList cmKeys = cm.keys();
+                    for (int k = 0; k < cmKeys.size(); ++k) {
+                        if (k > 0) rawContent += ",";
+                        QString v = cm[cmKeys[k]].toString();
+                        // escape backslash and double-quote
+                        v.replace("\\", "\\\\").replace("\"", "\\\"");
+                        rawContent += "\"" + cmKeys[k] + "\":\"" + v + "\"";
+                    }
+                    rawContent += "}";
+                    qDebug() << "[Zalo WS] content was nested object, serialized:" << rawContent.left(200);
+                }
+            }
+
             // Debug: dump paramsExt and previewThumb to find photo data
             if (rawContent.isEmpty()) {
                 QString paramsExtStr = m["paramsExt"].toString();
@@ -1515,7 +1564,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     }
                 }
                 if (inflateOk2) {
-                    qDebug() << "[Zalo WS] inflated (first150):" << QString::fromUtf8(inflated.left(150));
+                    qDebug() << "[Zalo WS] inflated (first500):" << QString::fromUtf8(inflated.left(500));
                     QVariantMap parsed = jsonToMap(inflated);
                     // zca-js: inflate result is direct JSON, no "data" wrapper
                     if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
@@ -1610,7 +1659,34 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 mtH = m["type"].toInt();
                 if (mtH == 0) mtH = m["mt"].toInt();
             }
+            // FIX: Zalo WS sends msgType as STRING "chat.photo", not int 2
+            if (mtH == 0) {
+                QString mtStr = m["msgType"].toString().toLower();
+                if (mtStr.isEmpty()) mtStr = m["msgtype"].toString().toLower();
+                if (mtStr.contains("photo") || mtStr.contains("image") || mtStr == "2")
+                    mtH = 2;
+            }
+
+            // FIX: content may be a nested QVariantMap (Qt4 QScriptEngine converts nested
+            // JSON objects to QVariantMap, so .toString() returns ""). Re-serialize to JSON.
             QString rawContentH = m["content"].toString();
+            if (rawContentH.isEmpty()) {
+                QVariantMap cm = m["content"].toMap();
+                if (!cm.isEmpty()) {
+                    rawContentH = "{";
+                    QStringList cmKeys = cm.keys();
+                    for (int k = 0; k < cmKeys.size(); ++k) {
+                        if (k > 0) rawContentH += ",";
+                        QString v = cm[cmKeys[k]].toString();
+                        v.replace("\\", "\\\\").replace("\"", "\\\"");
+                        rawContentH += "\"" + cmKeys[k] + "\":\"" + v + "\"";
+                    }
+                    rawContentH += "}";
+                    qDebug() << "[Zalo WS] old_messages: content was nested obj, serialized:"
+                             << rawContentH.left(200);
+                    if (mtH == 0) mtH = 2; // nested content obj → photo message
+                }
+            }
             // Normalize photo: also handles paramsExt/previewThumb (msgType may be 0)
             if (mtH == 2 || rawContentH.isEmpty()) {
                 QString normalized = normalizePhotoContent(m, rawContentH);
@@ -1686,6 +1762,15 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     downloadImageMessage(mid, photoUrl, threadForPhoto);
                 } else {
                     qDebug() << "[Zalo WS] photo fetch: no HTTP URL for msgId=" << mid << "content=" << content.left(80);
+                    // FULL RAW DUMP: print every field of the message map so we can
+                    // identify which field carries the real CDN URL in a future build.
+                    qDebug() << "[Zalo WS] photo msg KEYS=" << mm.keys();
+                    QStringList dumpKeys = mm.keys();
+                    for (int dk = 0; dk < dumpKeys.size(); ++dk) {
+                        QString val = mm[dumpKeys[dk]].toString();
+                        if (!val.isEmpty())
+                            qDebug() << "[Zalo WS] photo msg" << dumpKeys[dk] << "=" << val.left(120);
+                    }
                 }
             }
         }
@@ -2710,7 +2795,8 @@ void ZaloService::onFetchMsgDone()
 
 // Fetch full-res photo URL via WS cmd=510 history.
 // Called when a real-time WS photo arrives with only a protobuf previewThumb (no HTTP URL).
-// Sends cmd=510 with lastId=msgId — server returns the message with real href/normalUrl.
+// Sends cmd=510 with lastId=(msgId-1) so the server returns msgId and any newer messages,
+// which allows us to extract the real CDN normalUrl/hdUrl from the content field.
 void ZaloService::fetchPhotoViaWs510(const QString &msgId, const QString &threadId)
 {
     if (!m_loggedIn || msgId.isEmpty() || threadId.isEmpty()) return;
@@ -2722,16 +2808,46 @@ void ZaloService::fetchPhotoViaWs510(const QString &msgId, const QString &thread
     // Track msgId -> threadId so cmd=510 handler knows this is a photo fetch
     m_pendingPhotoMsgIds[msgId] = threadId;
 
-    // Send cmd=510 with lastId = msgId (fetch the message and a few before it)
+    // Use lastId = (msgId - 1) so the server returns msgId itself (and any newer msgs).
+    // BUG FIX: previously sent lastId=msgId which asks for msgs OLDER than msgId
+    // → returns 0 results when msgId is the newest message in the thread.
+    qint64 lastIdNum = msgId.toLongLong() - 1;
+    QString lastIdStr = lastIdNum > 0 ? QString::number(lastIdNum) : "0";
     QString req = QString("{\"first\":false,\"lastId\":\"%1\",\"toid\":\"%2\",\"preIds\":[]}")
-                  .arg(msgId).arg(threadId);
+                  .arg(lastIdStr).arg(threadId);
     sendWsRequest(510, 1, req);
-    qDebug() << "[Zalo] fetchPhotoViaWs510: sent WS cmd=510 msgId=" << msgId << "toid=" << threadId;
+    qDebug() << "[Zalo] fetchPhotoViaWs510: sent WS cmd=510 msgId=" << msgId
+             << "lastId=" << lastIdStr << "toid=" << threadId;
 }
 
 // Fetch photo HTTP URL when WS cmd=510 keeps returning protobuf blob.
-// Uses HTTP GET chat[0]/api/message/getmsg?params=AES({msgId, toid})
-// which returns the real normalUrl / hdUrl for the image.
+//
+// Zalo does NOT expose /api/message/getmsg (returns 404).
+// We try a sequence of known endpoints, retrying on 404 / API error:
+//   [0] file service:  file[0]/api/message/getmsg        (file service variant)
+//   [1] chat service:  chat[0]/api/message/list           (DM history, like group/history)
+//   [2] chat service:  chat[0]/api/message/getmsgv2       (v2 variant)
+//   [3] chat service:  chat[0]/api/message/getconversation
+//
+// Params: {toid, msgId, imei, count} — subset used by each endpoint.
+//
+static QStringList photoFetchEndpoints(const QString &chatUrl, const QString &fileUrl)
+{
+    // Build file service base: derive from chatUrl if fileUrl is empty
+    QString fileBase = fileUrl;
+    if (fileBase.isEmpty()) {
+        fileBase = chatUrl;
+        QRegExp rx("tt-chat\\d+-wpa");
+        fileBase.replace(rx, "tt-files-wpa");
+    }
+    QStringList list;
+    list << fileBase  + "/api/message/getmsg";          // [0] file service
+    list << chatUrl   + "/api/message/list";             // [1] DM history (like group/history)
+    list << chatUrl   + "/api/message/getmsgv2";         // [2] v2 variant
+    list << chatUrl   + "/api/message/getconversation";  // [3] conversation endpoint
+    return list;
+}
+
 void ZaloService::fetchPhotoViaHttp(const QString &msgId, const QString &threadId)
 {
     if (!m_loggedIn || msgId.isEmpty() || threadId.isEmpty()) return;
@@ -2739,23 +2855,60 @@ void ZaloService::fetchPhotoViaHttp(const QString &msgId, const QString &threadI
     // Track for response handler
     m_pendingPhotoMsgIds[msgId] = threadId;
 
+    // Start with endpoint index 0
+    fetchPhotoViaHttpAtIndex(msgId, threadId, 0);
+}
+
+void ZaloService::fetchPhotoViaHttpAtIndex(const QString &msgId, const QString &threadId, int idx)
+{
+    QStringList endpoints = photoFetchEndpoints(m_chatServiceUrl, m_fileServiceUrl);
+    if (idx >= endpoints.size()) {
+        qDebug() << "[Zalo] fetchPhotoViaHttp: all endpoints exhausted for msgId=" << msgId;
+        return;
+    }
+
     QVariantMap p;
     p["msgId"]  = msgId;
     p["toid"]   = threadId;
     p["imei"]   = m_imei;
+    p["count"]  = 1;   // only need this one message
 
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(p)));
-    QString urlStr = m_chatServiceUrl + "/api/message/getmsg"
+    QString urlStr = endpoints[idx]
                    + "?zpw_ver=" + QString::number(API_VERSION)
                    + "&zpw_type=" + QString::number(API_TYPE)
                    + "&params=" + QUrl::toPercentEncoding(encParams);
 
     QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
-    qDebug() << "[Zalo] fetchPhotoViaHttp GET msgId=" << msgId;
+    qDebug() << "[Zalo] fetchPhotoViaHttp[" << idx << "] GET msgId=" << msgId
+             << endpoints[idx].section('/', -1);
     QNetworkReply *reply = m_manager->get(req);
     reply->setProperty("msgId",    msgId);
     reply->setProperty("threadId", threadId);
+    reply->setProperty("endpointIdx", idx);
     connect(reply, SIGNAL(finished()), this, SLOT(onFetchPhotoDetailDone()));
+}
+
+// Extract real CDN photo URL from a decrypted message JSON map.
+static QString extractPhotoUrl(const QVariantMap &mm)
+{
+    // Try content JSON
+    QString content = mm["content"].toString();
+    if (!content.isEmpty() && content.trimmed().startsWith("{")) {
+        QVariantMap cm = jsonToMap(content.toUtf8());
+        QString u = cm["normalUrl"].toString();
+        if (u.isEmpty()) u = cm["hdUrl"].toString();
+        if (u.isEmpty()) u = cm["thumbUrl"].toString();
+        if (u.isEmpty()) u = cm["href"].toString();
+        if (u.isEmpty()) u = cm["oriUrl"].toString();
+        if (!u.isEmpty()) return u;
+    }
+    // Try top-level fields
+    QString u = mm["normalUrl"].toString();
+    if (u.isEmpty()) u = mm["hdUrl"].toString();
+    if (u.isEmpty()) u = mm["thumbUrl"].toString();
+    if (u.isEmpty()) u = mm["href"].toString();
+    return u;
 }
 
 void ZaloService::onFetchPhotoDetailDone()
@@ -2764,18 +2917,24 @@ void ZaloService::onFetchPhotoDetailDone()
     if (!reply) return;
     QString msgId    = reply->property("msgId").toString();
     QString threadId = reply->property("threadId").toString();
+    int     idx      = reply->property("endpointIdx").toInt();
     reply->deleteLater();
 
+    // On HTTP error (e.g. 404), try next endpoint
     if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "[Zalo] fetchPhotoViaHttp error msgId=" << msgId << reply->errorString();
+        QByteArray errBody = reply->readAll();
+        qDebug() << "[Zalo] fetchPhotoViaHttp[" << idx << "] HTTP error msgId=" << msgId
+                 << reply->errorString() << "body=" << errBody.left(100);
+        fetchPhotoViaHttpAtIndex(msgId, threadId, idx + 1);
         return;
     }
 
     QByteArray raw = reply->readAll();
     QVariantMap outer = jsonToMap(raw);
     if (outer["error_code"].toInt() != 0) {
-        qDebug() << "[Zalo] fetchPhotoViaHttp API error msgId=" << msgId
-                 << outer["error_message"].toString();
+        qDebug() << "[Zalo] fetchPhotoViaHttp[" << idx << "] API error msgId=" << msgId
+                 << outer["error_message"].toString() << "→ trying next endpoint";
+        fetchPhotoViaHttpAtIndex(msgId, threadId, idx + 1);
         return;
     }
 
@@ -2789,37 +2948,36 @@ void ZaloService::onFetchPhotoDetailDone()
     }
 
     QVariantMap data = jsonToMap(dataJson.toUtf8());
-    // Response may have the message directly or wrapped in "msgs" array
+
+    // Try to find the matching message in multiple possible response shapes:
+    //   {msgs: [...]}  /  {groupMsgs: [...]}  /  {data: [...]}  /  single message map
     QString photoUrl;
-    if (data.contains("msgs")) {
-        QVariantList msgs = data["msgs"].toList();
-        for (int i = 0; i < msgs.size(); ++i) {
-            QVariantMap mm = msgs[i].toMap();
-            if (mm["msgId"].toString() != msgId) continue;
-            QString content = mm["content"].toString();
-            if (!content.isEmpty() && content.trimmed().startsWith("{")) {
-                QVariantMap cm = jsonToMap(content.toUtf8());
-                photoUrl = cm["normalUrl"].toString();
-                if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
-                if (photoUrl.isEmpty()) photoUrl = cm["thumbUrl"].toString();
-            }
-        }
-    } else {
-        QString content = data["content"].toString();
-        if (!content.isEmpty() && content.trimmed().startsWith("{")) {
-            QVariantMap cm = jsonToMap(content.toUtf8());
-            photoUrl = cm["normalUrl"].toString();
-            if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
+
+    static const char* listKeys[] = {"msgs", "groupMsgs", "msgList", "data", 0};
+    for (int k = 0; listKeys[k] && photoUrl.isEmpty(); ++k) {
+        QVariantList list = data[listKeys[k]].toList();
+        for (int i = 0; i < list.size(); ++i) {
+            QVariantMap mm = list[i].toMap();
+            // Accept any message in the list if we only requested 1; or match msgId
+            QString mid = mm["msgId"].toString();
+            if (!mid.isEmpty() && mid != msgId) continue;
+            photoUrl = extractPhotoUrl(mm);
+            if (!photoUrl.isEmpty()) break;
         }
     }
+    // Fallback: treat data itself as the message
+    if (photoUrl.isEmpty())
+        photoUrl = extractPhotoUrl(data);
 
     if (!photoUrl.isEmpty() && photoUrl.startsWith("http")) {
-        qDebug() << "[Zalo] fetchPhotoViaHttp resolved msgId=" << msgId << "url=" << photoUrl.left(80);
+        qDebug() << "[Zalo] fetchPhotoViaHttp[" << idx << "] resolved msgId=" << msgId
+                 << "url=" << photoUrl.left(80);
         m_pendingPhotoMsgIds.remove(msgId);
         downloadImageMessage(msgId, photoUrl, threadId);
     } else {
-        qDebug() << "[Zalo] fetchPhotoViaHttp: still no HTTP URL for msgId=" << msgId
-                 << "response=" << dataJson.left(200);
+        qDebug() << "[Zalo] fetchPhotoViaHttp[" << idx << "] no HTTP URL yet msgId=" << msgId
+                 << "resp=" << dataJson.left(150) << "→ trying next endpoint";
+        fetchPhotoViaHttpAtIndex(msgId, threadId, idx + 1);
     }
 }
 

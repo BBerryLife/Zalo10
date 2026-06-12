@@ -163,6 +163,7 @@ private:
 
     void fetchPhotoViaWs510(const QString &msgId, const QString &threadId);
     void fetchPhotoViaHttp(const QString &msgId, const QString &threadId);
+    void fetchPhotoViaHttpAtIndex(const QString &msgId, const QString &threadId, int idx);
 
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);
