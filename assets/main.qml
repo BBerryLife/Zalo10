@@ -64,8 +64,6 @@ TabbedPane {
     }
 
     onCreationCompleted: {
-        // app.splashImage() đọc /pps/services/display/display0 → đúng mọi thiết bị
-        splashImg.imageSource = app.splashImage();
         splashDialog.open();
         splashTimer.start();
     }
@@ -137,23 +135,7 @@ TabbedPane {
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
                     scalingMethod: ScalingMethod.Fill
-                    imageSource: "asset:///images/splash.png"
-                }
-                // Dùng width binding: khi Dialog mở, Container có width thực
-                // Q10/Q20/Passport = 720px = 90du; Z10 portrait = 768px = 96du
-                onWidthChanged: {
-                    if (width <= 0) return;
-                    var duWidth = Math.round(width / ui.du(1));
-                    if (width == height) {
-                        // Màn vuông (Q10/Q20/Passport)
-                        splashImg.imageSource = "asset:///images/splash720.png";
-                    } else if (width > height) {
-                        // Landscape
-                        splashImg.imageSource = "asset:///images/splashLS.png";
-                    } else {
-                        // Portrait (Z10/Z30/Z3/Leap)
-                        splashImg.imageSource = "asset:///images/splash.png";
-                    }
+                    imageSource: app.splashImage()
                 }
             }
         },

@@ -112,7 +112,7 @@ private slots:
     void onRejectFriendDone();
     void onGroupDetailsDone();
     void onFetchMsgDone();
-    void onFetchMsgDetailDone();
+    // (no HTTP slot needed for photo detail — uses WS cmd=510)
     void onSendMsgDone();
     void onSendPhotoDone();
     void onSendPhotoMsgDone();
@@ -161,7 +161,7 @@ private:
     void cookieStep1_getZaloLoginInfo();
     void cookieStep2_getServerInfo(const QString &encryptKey);
 
-    void fetchMsgDetail(const QString &msgId, const QString &threadId, bool isGroup);
+    void fetchPhotoViaWs510(const QString &msgId, const QString &threadId);
 
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);
@@ -241,7 +241,7 @@ private:
     QMap<QString, QString> m_groupNames;        // groupId -> group name for notifications
     QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
     QQueue<QString> m_pendingDmThreadIds; // Queue các DM thread đang chờ WS cmd=510 response
-    QSet<QString>   m_pendingPhotoMsgIds; // msgIds đang chờ photo URL từ fetchMsgDetail
+    QMap<QString, QString> m_pendingPhotoMsgIds; // msgId -> threadId, waiting for photo URL via WS cmd=510
 
     // Cache avatar: url -> localPath (file:///tmp/avatar_<md5>.jpg)
     QMap<QString, QString> m_avatarCache;

@@ -122,6 +122,7 @@
     <permission>read_phonecall_details</permission>
     <permission>control_phone</permission>
     <permission>access_pimdomain_calllogs</permission>
+    <permission>read_device_identifying_information</permission>
     <env var="LD_LIBRARY_PATH" value="app/native/lib:/usr/lib/qt4/lib"/>
     <env var="CASCADES_THEME" value="default"/>
 

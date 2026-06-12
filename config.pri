@@ -132,6 +132,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/File Types/File Type - XLS (Spreadsheet).png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - ZIP (Compressed).png) \
         $$quote($$BASEDIR/assets/images/File Types/Thumbs.db) \
+        $$quote($$BASEDIR/assets/images/Profile_Star_icon.png) \
+        $$quote($$BASEDIR/assets/images/Square_badge.png) \
         $$quote($$BASEDIR/assets/images/action_delete.png) \
         $$quote($$BASEDIR/assets/images/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/attach_icon.png) \

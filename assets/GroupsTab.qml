@@ -11,6 +11,7 @@ NavigationPane {
     property variant currentPage: null
     property bool searchVisible: false
     property string searchText: ""
+    property variant allGroups: []
 
     function filterList() {
         var q = groupsNav.searchText.toLowerCase().trim();

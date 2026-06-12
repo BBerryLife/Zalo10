@@ -7,6 +7,7 @@ NavigationPane {
 
     property bool searchVisible: false
     property string searchText: ""
+    property variant allInvites: []
 
     function filterList() {
         var q = invitesNav.searchText.toLowerCase().trim();
