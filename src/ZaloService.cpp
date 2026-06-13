@@ -243,7 +243,9 @@ void ZaloService::startQRLogin()
 {
     m_qrCancelled  = false;
     m_isAutoRenew  = false;
-    m_loggedIn     = false;
+    m_loggedIn                 = false;
+    m_isFetchingFriends        = false;
+    m_isFetchingConversations  = false;
     m_pendingFriendAvatarCount = 0;
     m_loadedFriendAvatarCount  = 0;
     m_cookies.clear();
@@ -1831,6 +1833,11 @@ void ZaloService::onWsReconnectTimer()
 
 void ZaloService::fetchConversations(){
     if (!m_loggedIn) return;
+    if (m_isFetchingConversations) {
+        qDebug() << "[Zalo] fetchConversations: already in progress, skipping duplicate call";
+        return;
+    }
+    m_isFetchingConversations = true;
 
     QVariantMap qp;
     qp["zpw_ver"]  = QString::number(API_VERSION);
@@ -1858,6 +1865,7 @@ void ZaloService::onFetchConvoDone()
 
     if (raw.isEmpty()) {
         emit conversationsReady(QVariantList());
+        m_isFetchingConversations = false;
         return;
     }
 
@@ -1867,6 +1875,7 @@ void ZaloService::onFetchConvoDone()
     if (ec != 0) {
         qDebug() << "[Zalo Error] fetchConvo error_code:" << ec << root["error_message"].toString();
         emit conversationsReady(QVariantList());
+        m_isFetchingConversations = false;
         return;
     }
 
@@ -1998,6 +2007,7 @@ void ZaloService::onGroupDetailsDone()
     qDebug() << "[Zalo] groupDetails found" << threads.size() << "groups with names";
     if (!threads.isEmpty())
         emit conversationsReady(threads);
+    m_isFetchingConversations = false;
 }
 
 void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
@@ -2110,6 +2120,11 @@ void ZaloService::onAvatarDownloaded()
 void ZaloService::fetchFriends()
 {
     if (!m_loggedIn) return;
+    if (m_isFetchingFriends) {
+        qDebug() << "[Zalo] fetchFriends: already in progress, skipping duplicate call";
+        return;
+    }
+    m_isFetchingFriends = true;
 
     // zca-js dùng GET, params trong query string (không phải POST body)
     QVariantMap innerParams;
@@ -2208,6 +2223,7 @@ void ZaloService::onFetchFriendsDone()
             m_loadedFriendAvatarCount  = 0;
         }
     }
+    m_isFetchingFriends = false;
 }
 
 void ZaloService::fetchInvites()

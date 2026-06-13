@@ -243,8 +243,32 @@ QString ApplicationUI::splashImage()
 
 QString ApplicationUI::coverImage()
 {
+    // Passport (SQW100/STR100) → splash.png
+    // Q5/Q10/Q20 (SQR/SQN/SQC) → cover.png
+    // Z10/Z30/Z3/Z20/Leap → splash.png
+    QFile f("/pps/services/deviceproperties/physical");
+    if (f.open(QIODevice::ReadOnly)) {
+        QString data = QString::fromUtf8(f.readAll());
+        f.close();
+        foreach (const QString &line, data.split('\n')) {
+            QString t = line.trimmed().toUpper();
+            if (t.contains("SQW") || t.contains("STR1")) {
+                qDebug() << "[App] coverImage: Passport → splash.png";
+                return "asset:///images/splash.png";
+            }
+            if (t.contains("SQN") || t.contains("SQR") || t.contains("SQC")) {
+                qDebug() << "[App] coverImage: Q-series → cover.png";
+                return "asset:///images/cover.png";
+            }
+        }
+    }
+    // Fallback: square screen → cover.png, portrait → splash.png
     int type = detectScreenType();
-    if (type == 1)
-        return "asset:///images/cover.png";  // square devices: cover.png fits perfectly
-    return "asset:///images/splash.png";     // all other devices: reuse splash
+    qDebug() << "[App] coverImage: detectScreenType=" << type;
+    if (type == 1) {
+        qDebug() << "[App] coverImage: square → cover.png";
+        return "asset:///images/cover.png";
+    }
+    qDebug() << "[App] coverImage: portrait → splash.png";
+    return "asset:///images/splash.png";
 }

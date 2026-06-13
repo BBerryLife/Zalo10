@@ -308,8 +308,7 @@ NavigationPane {
                 onLoginSuccess: {
                     contactsPage.populated = false
                     contactModel.clear()
-                    zService.fetchFriends()
-                    contactsLoading.visible = true
+                    // ChatsTab owns fetchFriends on login; ContactsTab receives via onFriendsReady
                 }
             }
         ]

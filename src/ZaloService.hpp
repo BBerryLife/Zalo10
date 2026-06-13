@@ -213,7 +213,9 @@ private:
     QString m_language;
     bool m_loggedIn;
     bool m_qrCancelled;
-    bool m_isAutoRenew;  // true khi step7/step8 được gọi từ refreshSessionKey (không phải QR flow)
+    bool m_isAutoRenew;
+    bool m_isFetchingFriends;
+    bool m_isFetchingConversations;  // true khi step7/step8 được gọi từ refreshSessionKey (không phải QR flow)
 
     QMap<QString, QString> m_cookies;
     QString m_uid;

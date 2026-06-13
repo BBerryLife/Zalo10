@@ -134,7 +134,7 @@ TabbedPane {
                     id: splashImg
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
-                    scalingMethod: ScalingMethod.Fill
+                    scalingMethod: ScalingMethod.AspectFill
                     imageSource: app.splashImage()
                 }
             }
