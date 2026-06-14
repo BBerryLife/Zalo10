@@ -750,12 +750,26 @@ Page {
             onMessageSent: {
                 if (threadId !== chatViewPage.threadId) return;
                 if (!success) {
-                    // Send failed — remove placeholder and restore input
+                    // Send failed — remove text placeholder and restore input
                     chatViewPage.removeLocalPlaceholder(chatViewPage.pendingMsg);
                     inputField.text = chatViewPage.pendingMsg;
-                    sendAction.enabled = true;
+                    // Also remove any pending image placeholder
+                    for (var ri = msgModel.size() - 1; ri >= 0; ri--) {
+                        var ritem = msgModel.value(ri);
+                        if (ritem.msgId && (ritem.msgId.indexOf("local_img_") === 0
+                                         || ritem.msgId.indexOf("local_file_") === 0)) {
+                            msgModel.removeAt(ri);
+                            break;
+                        }
+                    }
+                    chatViewPage.rebuildGroups();
+                } else {
+                    // Send OK — remove text placeholder now.
+                    // The real message will arrive via onNewMessage and replace it.
+                    chatViewPage.removeLocalPlaceholder(chatViewPage.pendingMsg);
                 }
                 chatViewPage.pendingMsg = "";
+                sendAction.enabled = true;
             }
 
             onNewMessage: {
@@ -858,17 +872,8 @@ Page {
         // - FilePicker for all file types (ảnh + tài liệu + video ...) -
         FilePicker {
             id: filePicker
-            type: FileType.Other   // Cho phép mọi loại file
-            title: "Select File"
-            // Bao gồm tất cả thư mục phổ biến
-            directories: [
-                "/accounts/1000/shared/camera",
-                "/accounts/1000/shared/photos",
-                "/accounts/1000/shared/documents",
-                "/accounts/1000/shared/downloads",
-                "/accounts/1000/shared/videos",
-                "/accounts/1000/shared/voice"
-            ]
+            type: FileType.Picture
+            title: "Select Photo"
             onFileSelected: {
                 var path = selectedFiles[0];
                 chatViewPage.pendingAttachPath = path;

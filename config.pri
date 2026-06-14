@@ -678,9 +678,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/read.png) \
         $$quote($$BASEDIR/assets/images/sending.png) \
         $$quote($$BASEDIR/assets/images/sent.png) \
-        $$quote($$BASEDIR/assets/images/splash.png) \
-        $$quote($$BASEDIR/assets/images/splash720.png) \
-        $$quote($$BASEDIR/assets/images/splashLS.png) \
         $$quote($$BASEDIR/assets/images/splat.png) \
         $$quote($$BASEDIR/assets/images/timemess.png) \
         $$quote($$BASEDIR/assets/images/timemesswhite.png) \

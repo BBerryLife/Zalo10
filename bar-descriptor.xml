@@ -69,8 +69,22 @@
 
     <!--  Name of author which is used for signing. Must match the developer name of your development certificate. -->
     <icon>
+       <image>icon86.png</image>
+       <image>icon90.png</image>
+       <image>icon96.png</image>
        <image>icon.png</image>
+       <image>icon110.png</image>
     </icon>
+    <splashScreens>
+       <image>splash.png</image>
+       <image>splash720x1280.png</image>
+       <image>splash768x1280.png</image>
+       <image>splash720.png</image>
+       <image>splash1024x600.png</image>
+       <image>splash1280x720.png</image>
+       <image>splash1280x768.png</image>
+       <image>splash600x1024.png</image>
+    </splashScreens>
     <author>BerryLife</author>
     <buildId>1</buildId>
 
@@ -100,6 +114,20 @@
     <asset path="translations" dest="qm">
         <include name="*.qm"/>
     </asset>
+    <asset path="C:/Users/Hoang/Documents/GitHub/Zalo10">Zalo10</asset>
+    <asset path="icon86.png">icon86.png</asset>
+    <asset path="icon90.png">icon90.png</asset>
+    <asset path="icon96.png">icon96.png</asset>
+    <asset path="icon110.png">icon110.png</asset>
+    <asset path="splash.png">splash.png</asset>
+    <asset path="splash720x1280.png">splash720x1280.png</asset>
+    <asset path="C:/Users/Hoang/Documents/GitHub/Zalo10/">Zalo10</asset>
+    <asset path="splash768x1280.png">splash768x1280.png</asset>
+    <asset path="splash720.png">splash720.png</asset>
+    <asset path="splash1024x600.png">splash1024x600.png</asset>
+    <asset path="splash1280x720.png">splash1280x720.png</asset>
+    <asset path="splash1280x768.png">splash1280x768.png</asset>
+    <asset path="splash600x1024.png">splash600x1024.png</asset>
 
     <!-- Request permission to execute native code.  Required for native applications. -->
     <permission system="true">run_native</permission>

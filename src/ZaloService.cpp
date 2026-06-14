@@ -3094,6 +3094,8 @@ void ZaloService::sendMessage(const QString &threadId, const QString &content, b
     qDebug() << "[Zalo] sendMessage POST" << urlStr << "isGroup:" << isGroup;
     QNetworkReply *reply = m_manager->post(sendReq, body);
     reply->setProperty("threadId", threadId);
+    reply->setProperty("content",  content);
+    reply->setProperty("isGroup",  isGroup);
     connect(reply, SIGNAL(finished()), this, SLOT(onSendMsgDone()));
 }
 
@@ -3101,11 +3103,48 @@ void ZaloService::onSendMsgDone()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
-    bool hasError = (reply->error() != QNetworkReply::NoError);
-    QString tid   = reply->property("threadId").toString();
-    QByteArray raw = reply->readAll();
+    bool hasError   = (reply->error() != QNetworkReply::NoError);
+    QString tid     = reply->property("threadId").toString();
+    QString content = reply->property("content").toString();
+    bool isGroup    = reply->property("isGroup").toBool();
+    QByteArray raw  = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] sendMessage response:" << raw.left(200);
+
+    if (!hasError) {
+        QVariantMap outer = jsonToMap(raw);
+        if (outer["error_code"].toInt() == 0) {
+            // Parse msgId from encrypted response (same pattern as onSendPhotoMsgDone)
+            QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
+            qDebug() << "[Zalo] sendMessage decrypted:" << dec.left(200);
+            QVariantMap data = jsonToMap(dec.toUtf8());
+            qDebug() << "[Zalo] sendMessage data keys:" << data.keys() << "msgId=" << data["msgId"].toString();
+            qint64 msgIdInt = data["msgId"].toLongLong();
+            QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt)
+                                            : QString::number(QDateTime::currentMSecsSinceEpoch());
+            // If WS cmd=501 already delivered this message, skip to avoid duplicate bubble
+            if (!m_seenMsgIds.contains(msgId)) {
+                QVariantMap out;
+                out["msgId"]    = msgId;
+                out["content"]  = content;
+                out["msgType"]  = 1;
+                out["isMine"]   = true;
+                out["isGroup"]  = isGroup;
+                out["senderId"] = m_uid;
+                out["dName"]    = m_displayName;
+                out["ts"]       = QString::number(QDateTime::currentMSecsSinceEpoch());
+                m_seenMsgIds.insert(msgId);
+                dbSaveMessage(out, tid);
+                emit newMessage(tid, out);
+            } else {
+                qDebug() << "[Zalo] sendMessage: WS already delivered msgId=" << msgId << ", skipping duplicate";
+            }
+        } else {
+            hasError = true;
+            qDebug() << "[Zalo] sendMessage error_code:" << outer["error_code"].toInt()
+                     << outer["error_message"].toString();
+        }
+    }
     emit messageSent(!hasError, tid);
 }
 
@@ -3134,14 +3173,14 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     QString boundary = "----ZaloBoundary" + QString::number(ts);
 
     // Params in query string (AES-encrypted) per zca-js uploadAttachment.ts
+    // Note: imei goes in multipart body, NOT in AES params
     QVariantMap p;
     if (isGroup) p["grid"] = threadId;
     else         p["toid"] = threadId;
     p["totalChunk"] = 1;
     p["fileName"]   = filename;
-    p["clientId"]   = (qint64)ts;
+    p["clientId"]   = QString::number(ts);
     p["totalSize"]  = (int)fileData.size();
-    p["imei"]       = m_imei;
     p["isE2EE"]     = 0;
     p["jxl"]        = 0;
     p["chunkId"]    = 1;
@@ -3162,9 +3201,15 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
                    + "&params=" + QUrl::toPercentEncoding(encParams);
 
     QByteArray body;
+    // imei must be sent as a separate multipart field (not in AES params)
+    if (!isGroup) {
+        body += ("--" + boundary + "\r\n").toUtf8();
+        body += "Content-Disposition: form-data; name=\"imei\"\r\n\r\n";
+        body += m_imei.toUtf8() + "\r\n";
+    }
     body += ("--" + boundary + "\r\n").toUtf8();
     body += ("Content-Disposition: form-data; name=\"chunkContent\"; filename=\"" + filename + "\"\r\n").toUtf8();
-    body += ("Content-Type: " + mime + "\r\n\r\n").toUtf8();
+    body += QByteArray("Content-Type: application/octet-stream\r\n\r\n");
     body += fileData + "\r\n";
     body += ("--" + boundary + "--\r\n").toUtf8();
 
@@ -3312,19 +3357,35 @@ void ZaloService::onSendPhotoMsgDone()
             qint64 msgIdInt = data["msgId"].toLongLong();
             QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt)
                                             : QString::number(QDateTime::currentMSecsSinceEpoch());
-            QVariantMap out;
-            out["msgId"]      = msgId;
-            out["content"]    = contentJson;
-            out["msgType"]    = 2;
-            out["isMine"]     = true;
-            out["isGroup"]    = isGroup;
-            out["senderId"]   = m_uid;
-            out["dName"]      = m_displayName;
-            out["ts"]         = QString::number(QDateTime::currentMSecsSinceEpoch());
-            out["localImage"] = localPath;
-            m_seenMsgIds.insert(msgId);
-            dbSaveMessage(out, tid);
-            emit newMessage(tid, out);
+            // If WS cmd=501 already delivered this message, skip emit but still save localImage to DB
+            if (m_seenMsgIds.contains(msgId)) {
+                qDebug() << "[Zalo] sendPhoto: WS already delivered msgId=" << msgId << ", skipping duplicate emit";
+                // Still persist localImage so it shows on reopen
+                if (!localPath.isEmpty() && m_db) {
+                    const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
+                    sqlite3_stmt *stmt = 0;
+                    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+                        sqlite3_bind_text(stmt, 1, localPath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_text(stmt, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+                        sqlite3_step(stmt);
+                        sqlite3_finalize(stmt);
+                    }
+                }
+            } else {
+                QVariantMap out;
+                out["msgId"]      = msgId;
+                out["content"]    = contentJson;
+                out["msgType"]    = 2;
+                out["isMine"]     = true;
+                out["isGroup"]    = isGroup;
+                out["senderId"]   = m_uid;
+                out["dName"]      = m_displayName;
+                out["ts"]         = QString::number(QDateTime::currentMSecsSinceEpoch());
+                out["localImage"] = localPath;
+                m_seenMsgIds.insert(msgId);
+                dbSaveMessage(out, tid);
+                emit newMessage(tid, out);
+            }
         } else {
             ok = false;
             qDebug() << "[Zalo] sendPhoto send-msg error_code:" << outer["error_code"].toInt()
