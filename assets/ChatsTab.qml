@@ -22,6 +22,18 @@ NavigationPane {
     property bool searchVisible: false
     property string searchText: ""
 
+    // Debounce timer: chặn spam bấm Refresh liên tiếp
+    property bool refreshCooldown: false
+
+    attachedObjects: [
+        Timer {
+            id: chatsRefreshCooldownTimer
+            interval: 11000
+            repeat: false
+            onTriggered: chatsNav.refreshCooldown = false
+        }
+    ]
+
     Page {
         id: chatsPage
 
@@ -96,10 +108,14 @@ NavigationPane {
 
         actions: [
             ActionItem {
-                title: "Refresh"
+                title: chatsNav.refreshCooldown ? "Please wait..." : "Refresh"
+                enabled: !chatsNav.refreshCooldown
                 imageSource: "asset:///images/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
+                    if (chatsNav.refreshCooldown) return;
+                    chatsNav.refreshCooldown = true;
+                    chatsRefreshCooldownTimer.restart();
                     friendModel.clear();
                     zService.fetchFriends();
                     chatsLoading.visible = true;
@@ -315,8 +331,13 @@ NavigationPane {
                 onLoginSuccess: {
                     if (typeof displayName !== "undefined" && displayName.length > 0)
                         chatsNav.selfName = displayName;
-                    zService.fetchFriends();
-                    chatsLoading.visible = true;
+                    // Chỉ fetch nếu chưa có data (tránh refreshSessionKey spam emit)
+                    if (friendModel.size() === 0) {
+                        chatsNav.refreshCooldown = true;
+                        chatsRefreshCooldownTimer.restart();
+                        zService.fetchFriends();
+                        chatsLoading.visible = true;
+                    }
                 }
 
                 onNewMessage: {

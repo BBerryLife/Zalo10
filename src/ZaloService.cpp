@@ -192,7 +192,9 @@ ZaloService::ZaloService(QObject *parent)
       m_qrExpireTimer(new QTimer(this)), m_listenTimer(new QTimer(this)),
       m_wsReconnectTimer(new QTimer(this)),
       m_webSocket(0), m_wsUrlIndex(0), m_wsConnected(false), m_wsHandshakeSent(false),
-      m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false), m_db(0)
+      m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false),
+      m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),
+      m_lastFetchFriendsTime(0), m_lastFetchConvoTime(0), m_db(0)
 {
     m_qrExpireTimer->setSingleShot(true);
     m_wsReconnectTimer->setSingleShot(true);
@@ -246,6 +248,9 @@ void ZaloService::startQRLogin()
     m_loggedIn                 = false;
     m_isFetchingFriends        = false;
     m_isFetchingConversations  = false;
+    m_loginEmitted             = false;
+    m_lastFetchFriendsTime     = 0;
+    m_lastFetchConvoTime       = 0;
     m_pendingFriendAvatarCount = 0;
     m_loadedFriendAvatarCount  = 0;
     m_cookies.clear();
@@ -427,7 +432,12 @@ void ZaloService::onCookieStep2Done()
 
     m_loggedIn = true;
     emit loggedInChanged();
-    emit loginSuccess(m_uid, m_displayName);
+    if (!m_loginEmitted) {
+        m_loginEmitted = true;
+        emit loginSuccess(m_uid, m_displayName);
+    } else {
+        emit sessionRefreshed();
+    }
     m_listenTimer->start(8000);
 }
 
@@ -932,7 +942,12 @@ void ZaloService::onStep9Done()
     m_loggedIn = true;
     emit loggedInChanged();
     saveSession();
-    emit loginSuccess(m_uid, m_displayName);
+    if (!m_loginEmitted) {
+        m_loginEmitted = true;
+        emit loginSuccess(m_uid, m_displayName);
+    } else {
+        emit sessionRefreshed();
+    }
     m_listenTimer->start(8000);
     connectWebSocket();
 }
@@ -1837,6 +1852,12 @@ void ZaloService::fetchConversations(){
         qDebug() << "[Zalo] fetchConversations: already in progress, skipping duplicate call";
         return;
     }
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_lastFetchConvoTime > 0 && (now - m_lastFetchConvoTime) < FETCH_COOLDOWN_MS) {
+        qDebug() << "[Zalo] fetchConversations: cooldown active, skipping ("
+                 << (now - m_lastFetchConvoTime) << "ms since last fetch, need" << FETCH_COOLDOWN_MS << "ms)";
+        return;
+    }
     m_isFetchingConversations = true;
 
     QVariantMap qp;
@@ -1870,6 +1891,16 @@ void ZaloService::onFetchConvoDone()
     }
 
     qDebug() << "[Zalo] fetchConvo raw (first200):" << raw.left(200);
+
+    // Xử lý HTTP 429 Too Many Requests — raw là HTML, không phải JSON
+    if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
+        qDebug() << "[Zalo] fetchConversations: got 429, backing off for" << (FETCH_COOLDOWN_MS * 3) << "ms";
+        m_isFetchingConversations = false;
+        m_lastFetchConvoTime = QDateTime::currentMSecsSinceEpoch() + (FETCH_COOLDOWN_MS * 2);
+        emit conversationsReady(QVariantList());
+        return;
+    }
+
     QVariantMap root = jsonToMap(raw);
     int ec = root["error_code"].toInt();
     if (ec != 0) {
@@ -1878,6 +1909,7 @@ void ZaloService::onFetchConvoDone()
         m_isFetchingConversations = false;
         return;
     }
+    m_lastFetchConvoTime = QDateTime::currentMSecsSinceEpoch();
 
     QVariantList threads;
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
@@ -1944,10 +1976,21 @@ void ZaloService::onGroupDetailsDone()
     reply->deleteLater();
     qDebug() << "[Zalo] groupDetails raw (first200):" << raw.left(200);
 
+    // Xử lý HTTP 429 Too Many Requests
+    if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
+        qDebug() << "[Zalo] groupDetails: got 429, backing off";
+        m_isFetchingConversations = false;
+        m_lastFetchConvoTime = QDateTime::currentMSecsSinceEpoch() + (FETCH_COOLDOWN_MS * 2);
+        emit conversationsReady(QVariantList());
+        return;
+    }
+
     QVariantMap root = jsonToMap(raw);
     int ec = root["error_code"].toInt();
     if (ec != 0) {
         qDebug() << "[Zalo Error] groupDetails outer error:" << ec << root["error_message"].toString();
+        m_isFetchingConversations = false;
+        emit conversationsReady(QVariantList());
         return;
     }
 
@@ -1958,6 +2001,8 @@ void ZaloService::onGroupDetailsDone()
     int ec2 = outer["error_code"].toInt();
     if (ec2 != 0) {
         qDebug() << "[Zalo Error] groupDetails inner error:" << ec2 << outer["error_message"].toString();
+        m_isFetchingConversations = false;
+        emit conversationsReady(QVariantList());
         return;
     }
 
@@ -2124,6 +2169,12 @@ void ZaloService::fetchFriends()
         qDebug() << "[Zalo] fetchFriends: already in progress, skipping duplicate call";
         return;
     }
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_lastFetchFriendsTime > 0 && (now - m_lastFetchFriendsTime) < FETCH_COOLDOWN_MS) {
+        qDebug() << "[Zalo] fetchFriends: cooldown active, skipping ("
+                 << (now - m_lastFetchFriendsTime) << "ms since last fetch, need" << FETCH_COOLDOWN_MS << "ms)";
+        return;
+    }
     m_isFetchingFriends = true;
 
     // zca-js dùng GET, params trong query string (không phải POST body)
@@ -2154,9 +2205,20 @@ void ZaloService::onFetchFriendsDone()
     reply->deleteLater();
 
     qDebug() << "[Zalo] fetchFriends raw (first300):" << raw.left(300);
+
+    // Xử lý HTTP 429 Too Many Requests — raw là HTML, không phải JSON
+    if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
+        qDebug() << "[Zalo] fetchFriends: got 429, backing off for" << (FETCH_COOLDOWN_MS * 3) << "ms";
+        m_isFetchingFriends = false;
+        // Đặt cooldown dài hơn bình thường khi bị rate-limit
+        m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch() + (FETCH_COOLDOWN_MS * 2);
+        return;
+    }
+
     QVariantMap root = jsonToMap(raw);
     if (root["error_code"].toInt() != 0) {
         qDebug() << "[Zalo Error] fetchFriends:" << root["error_message"].toString();
+        m_isFetchingFriends = false;
         return;
     }
 
@@ -2207,6 +2269,7 @@ void ZaloService::onFetchFriendsDone()
     }
 
     qDebug() << "[Zalo] fetchFriends parsed" << threads.size() << "valid friends";
+    m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch();
 
     if (!threads.isEmpty()) {
         emit friendsReady(threads);
@@ -4469,7 +4532,13 @@ void ZaloService::onRefreshSessionKeyDone()
         emit loggedInChanged();
         m_listenTimer->start(8000);
     }
-    emit loginSuccess(m_uid, m_displayName);
+    // Chỉ emit loginSuccess lần đầu; các lần refresh dùng sessionRefreshed
+    if (!m_loginEmitted) {
+        m_loginEmitted = true;
+        emit loginSuccess(m_uid, m_displayName);
+    } else {
+        emit sessionRefreshed();
+    }
 }
 
 void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)

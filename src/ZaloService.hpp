@@ -69,6 +69,7 @@ signals:
     void loginFailed(const QString &message);
     void sessionExpired();          // cookies/secretKey no longer valid → must re-login
     void loginSuccess(const QString &uid, const QString &displayName);
+    void sessionRefreshed();   // secretKey renewed — không cần re-fetch toàn bộ
     void qrCodeReady(const QString &imagePath, const QString &qrCode);
     void qrScanned(const QString &displayName);
     void qrExpired();
@@ -216,6 +217,10 @@ private:
     bool m_isAutoRenew;
     bool m_isFetchingFriends;
     bool m_isFetchingConversations;  // true khi step7/step8 được gọi từ refreshSessionKey (không phải QR flow)
+    bool m_loginEmitted;             // true sau khi loginSuccess đã emit lần đầu — ngăn emit lại từ refreshSessionKey
+    qint64 m_lastFetchFriendsTime;      // epoch-ms của lần fetch thành công gần nhất
+    qint64 m_lastFetchConvoTime;        // epoch-ms của lần fetch thành công gần nhất
+    static const int FETCH_COOLDOWN_MS = 10000; // 10 giây cooldown giữa 2 lần fetch
 
     QMap<QString, QString> m_cookies;
     QString m_uid;

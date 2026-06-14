@@ -29,6 +29,18 @@ NavigationPane {
         contactsEmpty.visible = (contactModel.size() === 0);
     }
 
+    // Debounce timer: chặn spam bấm Refresh liên tiếp
+    property bool refreshCooldown: false
+
+    attachedObjects: [
+        Timer {
+            id: refreshCooldownTimer
+            interval: 11000
+            repeat: false
+            onTriggered: contactsNav.refreshCooldown = false
+        }
+    ]
+
     Page {
         id: contactsPage
         property bool populated: false
@@ -105,10 +117,15 @@ NavigationPane {
 
         actions: [
             ActionItem {
-                title: "Refresh"
+                id: contactsRefreshAction
+                title: contactsNav.refreshCooldown ? "Please wait..." : "Refresh"
+                enabled: !contactsNav.refreshCooldown
                 imageSource: "asset:///images/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
+                    if (contactsNav.refreshCooldown) return;
+                    contactsNav.refreshCooldown = true;
+                    refreshCooldownTimer.restart();
                     contactsPage.populated = false
                     contactModel.clear()
                     zService.fetchFriends()

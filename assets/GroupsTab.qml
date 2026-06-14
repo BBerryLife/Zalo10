@@ -13,6 +13,18 @@ NavigationPane {
     property string searchText: ""
     property variant allGroups: []
 
+    // Debounce timer: chặn spam bấm Refresh liên tiếp
+    property bool refreshCooldown: false
+
+    attachedObjects: [
+        Timer {
+            id: groupsRefreshCooldownTimer
+            interval: 11000
+            repeat: false
+            onTriggered: groupsNav.refreshCooldown = false
+        }
+    ]
+
     function filterList() {
         var q = groupsNav.searchText.toLowerCase().trim();
         searchModel.clear();
@@ -137,10 +149,14 @@ NavigationPane {
 
         actions: [
             ActionItem {
-                title: "Refresh"
+                title: groupsNav.refreshCooldown ? "Please wait..." : "Refresh"
+                enabled: !groupsNav.refreshCooldown
                 imageSource: "asset:///images/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
+                    if (groupsNav.refreshCooldown) return;
+                    groupsNav.refreshCooldown = true;
+                    groupsRefreshCooldownTimer.restart();
                     groupModel.clear();
                     zService.fetchConversations();
                     groupsLoading.visible = true;
@@ -323,8 +339,13 @@ NavigationPane {
                 }
 
                 onLoginSuccess: {
-                    zService.fetchConversations();
-                    groupsLoading.visible = true;
+                    // Chỉ fetch nếu chưa có data (tránh refreshSessionKey spam emit)
+                    if (groupModel.size() === 0) {
+                        groupsNav.refreshCooldown = true;
+                        groupsRefreshCooldownTimer.restart();
+                        zService.fetchConversations();
+                        groupsLoading.visible = true;
+                    }
                 }
 
                 onNewMessage: {
