@@ -12,49 +12,14 @@ Zalo10 is a Zalo messaging client built entirely with Cascades (Native C++/QML),
 
 ---
 
-## 📱 Key Features
-
-### Secure & Fast Login
-- **QR Code Login** — No need to enter complex passwords. Just open Zalo on your main phone and scan the QR code on your BB10 screen.
-
-### Messaging & Communication
-- Smooth native chat with BBM-like interface
-- Built-in Emoji keyboard
-- Send images from device storage
-- Support for 1-on-1 and group chats
-
-### Contact Management
-- Message list and contact list with names and avatars
-- View and manage friend requests
-
-### Interface & Customization
-- **Dark Theme** — Protects your eyes at night and saves battery on OLED screens (Q10, Z30, etc.)
-
-### Notifications
-- **BlackBerry Hub** notifications for both 1-on-1 and group messages
-
----
-
-## 📷 Screenshots
-
-| QR Login | Message List | Chat Interface |
-|----------|--------------|----------------|
-| ![QR](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/0.png) | ![List](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/4.jpg) | ![Chat](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/1_cover.png) |
-
-| Emoji Keyboard | Send Images | Friend Requests |
-|----------------|-------------|-----------------|
-| ![Emoji](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/2.png) | ![Send](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/3.png) | ![Requests](https://raw.githubusercontent.com/BBerryLife/BBerrylife.github.io/main/Media/Zalo/5.png) |
-
----
-
-## 📋 Requirements
+## Requirements
 
 - **OS:** BlackBerry 10.3.x or higher (10.3.3 recommended)
 - **Device:** Must be rooted
 
 ---
 
-## 🔧 Installation Guide
+## Installation Guide
 
 1. Enable **Development Mode** on your BB10 device
 2. Download the `.bar` file to your computer
@@ -63,23 +28,23 @@ Zalo10 is a Zalo messaging client built entirely with Cascades (Native C++/QML),
 
 ---
 
-## ⚠️ Notes
+## Notes
 
 - **Login:** Currently uses web API / QR code scanning from the official Zalo app on another phone
-- **Menu:** To access Menu / Email / Info, swipe down with **2 fingers from the top edge of the screen**
+- **Menu:** To access Menu / Email / Info, swipe down with **1 fingers from the top edge of the screen**
 - Zalo10 is an **unofficial** app, not affiliated with Zalo Official
 
 ---
 
-## 🙏 Support Development
+## Support Development
 
 If you're feeling generous, you can donate to help us afford test devices instead of relying on the simulator. We're paid with trust and hope ;-;
 
-(See the Info section in the app for more details)
+(See the About section in the app for more details)
 
 ---
 
-## 📄 License
+## License
 
 MIT License
 
