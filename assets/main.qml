@@ -73,7 +73,7 @@ TabbedPane {
         id: chatsTab
         title: "Chats"
         description: "Messages"
-        imageSource: "asset:///images/Chats/ic_bbm.png"
+        imageSource: "asset:///images/ic_bbm.png"
         ChatsTab {
             id: chatsTabContent
             onOnUnreadMessage: {
@@ -87,7 +87,7 @@ TabbedPane {
         id: contactsTab
         title: "Contacts"
         description: "Friends"
-        imageSource: "asset:///images/Contacts/ic_contact.png"
+        imageSource: "asset:///images/ic_contact.png"
         ContactsTab {
             id: contactsTabContent
         }
@@ -97,7 +97,7 @@ TabbedPane {
         id: groupsTab
         title: "Groups"
         description: "Group chats"
-        imageSource: "asset:///images/Groups/ic_groups_white.png"
+        imageSource: "asset:///images/ic_groups_white.png"
         GroupsTab {
             id: groupsTabContent
             onOnUnreadMessage: {
@@ -111,7 +111,7 @@ TabbedPane {
         id: invitesTab
         title: "Invites"
         description: "Friend requests"
-        imageSource: "asset:///images/Invites/ic_add_contact.png"
+        imageSource: "asset:///images/ic_add_contact.png"
         InvitesTab {
             id: invitesTabContent
         }
@@ -138,6 +138,32 @@ TabbedPane {
                     chatsTabContent.selfName    = displayName;
                     groupsTabContent.selfName   = displayName;
                     contactsTabContent.selfName = displayName;
+                }
+            }
+        },
+
+        InvokeManager {
+            id: invokeManager
+            onInvoked: {
+                // data format: "threadId|isGroup" (1=group, 0=DM)
+                var raw = String(request.data);
+                if (raw.length === 0) return;
+
+                var parts = raw.split("|");
+                var threadId = parts[0];
+                var isGroup  = (parts.length > 1 && parts[1] === "1");
+
+                if (threadId.length === 0) return;
+
+                qDebug("InvokeManager: threadId=" + threadId + " isGroup=" + isGroup);
+
+                // Switch to the right tab first
+                if (isGroup) {
+                    root.activeTab = groupsTab;
+                    groupsTabContent.openThread(threadId, isGroup);
+                } else {
+                    root.activeTab = chatsTab;
+                    chatsTabContent.openThread(threadId, isGroup);
                 }
             }
         }

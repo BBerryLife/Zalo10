@@ -1224,11 +1224,11 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
         sendWsPing();
         // Bắt đầu ping timer 25s
         if (m_listenTimer) m_listenTimer->start(25000);
-        if (!m_pendingDmThreadIds.isEmpty()) {
+        if (!m_pending510Toid.isEmpty()) {
             QString req510 = QString("{\"first\":true,\"lastId\":null,\"toid\":\"%1\",\"preIds\":[]}")
-                             .arg(m_pendingDmThreadIds.head());
+                             .arg(m_pending510Toid);
             sendWsRequest(510, 1, req510);
-            qDebug() << "[Zalo WS] WS ready, auto-fetch DM toid=" << m_pendingDmThreadIds.head();
+            qDebug() << "[Zalo WS] WS ready, auto-fetch DM toid=" << m_pending510Toid;
         }
         return;
     }
@@ -1534,7 +1534,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (msgPreview.isEmpty()) msgPreview = "[Message]";
                 bool isGrp = out["isGroup"].toBool();
                 QString notifTitle = isGrp ? m_groupNames.value(threadId, "Zalo10") : "Zalo10";
-                sendHubNotification(notifTitle, senderName + ": " + msgPreview, threadId);
+                sendHubNotification(notifTitle, senderName + ": " + msgPreview, threadId, isGrp);
             }
             if (threadId == m_activeThreadId && !msgId.isEmpty()) {
                 qint64 newNum = msgId.toLongLong();
@@ -1621,24 +1621,33 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                  << "d.keys=" << d.keys() << "activeThread:" << m_activeThreadId;
 
         // ── Xác định emitThread ────────────────────────────────────────────
-        QString emitThread;
-        if (!m_pendingDmThreadIds.isEmpty()) {
-            emitThread = m_pendingDmThreadIds.dequeue();
-        } else {
-            emitThread = m_activeThreadId;
-        }
+        // Dùng m_pending510Toid (thread đã gửi request) thay vì queue FIFO
+        // để tránh lệch pha khi user switch tab nhanh
+        QString emitThread = m_pending510Toid.isEmpty() ? m_activeThreadId : m_pending510Toid;
+        m_pending510Toid.clear(); // reset sau mỗi response
         qDebug() << "[Zalo WS] old_messages: emitThread=" << emitThread
                  << "msgs=" << rawMsgs.size();
 
         if (emitThread.isEmpty()) return;
+
+        // FIX: nếu msgs rỗng và emitThread không còn là thread đang hiện,
+        // response này là stale (của request cũ) → bỏ qua, không clear model thread mới
+        if (rawMsgs.isEmpty() && emitThread != m_activeThreadId) {
+            qDebug() << "[Zalo WS] cmd=510 empty stale response, discarding (emitThread="
+                     << emitThread << "activeThread=" << m_activeThreadId << ")";
+            return;
+        }
 
         // FIX: validate msgs belong to emitThread (guard against stale queue responses)
         if (!rawMsgs.isEmpty()) {
             bool anyMatch = false;
             for (int vi = 0; vi < rawMsgs.size(); ++vi) {
                 QVariantMap vm = rawMsgs[vi].toMap();
+                // Resolve "0" → m_uid (server uses "0" for self in DM responses)
                 QString vFrom = vm["uidFrom"].toString();
                 QString vTo   = vm["idTo"].toString();
+                if (vFrom == "0") vFrom = m_uid;
+                if (vTo   == "0") vTo   = m_uid;
                 if (vFrom == emitThread || vTo == emitThread
                     || (vFrom == m_uid && vTo == emitThread)
                     || (vTo == m_uid && vFrom == emitThread)) {
@@ -1659,6 +1668,24 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QVariantMap m = rawMsgs[i].toMap();
             QString msgId      = m["msgId"].toString();
             QString rawUidFrom = m["uidFrom"].toString();
+
+            // FIX: filter per-message — server may return msgs from multiple threads
+            // in one cmd=510 response (uses global lastId). Only keep msgs belonging
+            // to emitThread.
+            {
+                QString vFrom = rawUidFrom;
+                QString vTo   = m["idTo"].toString();
+                if (vFrom == "0") vFrom = m_uid;
+                if (vTo   == "0") vTo   = m_uid;
+                bool belongsHere = (vFrom == emitThread || vTo == emitThread
+                                    || (vFrom == m_uid && vTo == emitThread)
+                                    || (vTo == m_uid && vFrom == emitThread));
+                if (!belongsHere) {
+                    qDebug() << "[Zalo WS] old_messages: skip msg" << msgId
+                             << "belongs to other thread (from=" << vFrom << "to=" << vTo << ")";
+                    continue;
+                }
+            }
             bool isMine = (rawUidFrom == "0" || rawUidFrom == m_uid);
             QString uidFrom = (rawUidFrom == "0") ? m_uid : rawUidFrom;
 
@@ -2772,7 +2799,7 @@ void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
     } else {
         // DM: dùng WebSocket cmd=510 requestOldMessages (theo zca-js listen.js)
         // HTTP /api/message/getmsglist không tồn tại → 404
-        m_pendingDmThreadIds.enqueue(threadId);
+        m_pending510Toid = threadId; // track thread đang request (ghi đè nếu user switch tab)
         if (!m_wsConnected || !m_webSocket) {
             qDebug() << "[Zalo] fetchMessages DM: WS not ready, connecting for" << threadId;
             if (!m_zpwWsUrls.isEmpty()) connectWebSocket();
@@ -3117,7 +3144,9 @@ void ZaloService::onSendMsgDone()
             // Parse msgId from encrypted response (same pattern as onSendPhotoMsgDone)
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             qDebug() << "[Zalo] sendMessage decrypted:" << dec.left(200);
-            QVariantMap data = jsonToMap(dec.toUtf8());
+            QVariantMap decOuter = jsonToMap(dec.toUtf8());
+            // Response format: {"error_code":0,"error_message":"...","data":{"msgId":"..."}}
+            QVariantMap data = decOuter["data"].toMap();
             qDebug() << "[Zalo] sendMessage data keys:" << data.keys() << "msgId=" << data["msgId"].toString();
             qint64 msgIdInt = data["msgId"].toLongLong();
             QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt)
@@ -3942,12 +3971,12 @@ void ZaloService::setActiveThread(const QString &threadId, bool isGroup)
         // Thread mới → reset poll state và clear stale DM request queue
         m_lastPollMsgId.clear();
         m_seenMsgIds.clear();
-        m_pendingDmThreadIds.clear(); // FIX: tránh 510 response cũ leak vào thread mới
+        m_pending510Toid.clear();
     }
     qDebug() << "[Zalo] setActiveThread:" << threadId << "isGroup:" << isGroup << "changed:" << changed;
 }
 
-void ZaloService::sendHubNotification(const QString &title, const QString &body, const QString &threadId)
+void ZaloService::sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup)
 {
     bb::platform::Notification *notif = new bb::platform::Notification(this);
     notif->setTitle(title);
@@ -3956,11 +3985,13 @@ void ZaloService::sendHubNotification(const QString &title, const QString &body,
     bb::system::InvokeRequest req;
     req.setTarget("com.BerryLife.Zalo10.testDev");
     req.setAction("bb.action.OPEN");
-    req.setData(threadId.toUtf8());
+    // Encode: "threadId|1" for group, "threadId|0" for DM
+    QString data = threadId + "|" + (isGroup ? "1" : "0");
+    req.setData(data.toUtf8());
     notif->setInvokeRequest(req);
 
     notif->notify();
-    qDebug() << "[Zalo] Hub notification sent:" << title << body.left(40);
+    qDebug() << "[Zalo] Hub notification sent:" << title << body.left(40) << "data=" << data;
 }
 
 void ZaloService::clearActiveThread()
@@ -3969,7 +4000,7 @@ void ZaloService::clearActiveThread()
     m_activeThreadId.clear();
     m_lastPollMsgId.clear();
     m_seenMsgIds.clear();
-    m_pendingDmThreadIds.clear(); // FIX: clear stale queue to avoid cross-thread msgs
+    m_pending510Toid.clear();
 }
 
 void ZaloService::onPollMsgDone()

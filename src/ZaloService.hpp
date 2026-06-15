@@ -17,7 +17,6 @@
 #include <QFile>
 #include <QSslSocket>
 #include <QStringList>
-#include <QQueue>
 #include <sqlite3.h>
 
 class ZaloService : public QObject
@@ -60,7 +59,7 @@ public:
     Q_INVOKABLE bool isMutedThread(const QString &threadId) const { return m_mutedThreads.contains(threadId); }
     Q_INVOKABLE void clearHistory(const QString &threadId, bool isGroup);
     Q_INVOKABLE void leaveGroup(const QString &groupId);
-    Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId);
+    Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
 
@@ -249,7 +248,7 @@ private:
     QMap<QString, QString> m_threadLastMsgId; // per-thread last msgId để fetch chính xác
     QMap<QString, QString> m_groupNames;        // groupId -> group name for notifications
     QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
-    QQueue<QString> m_pendingDmThreadIds; // Queue các DM thread đang chờ WS cmd=510 response
+    QString m_pending510Toid; // Thread đang chờ WS cmd=510 response (chỉ 1 tại 1 thời điểm)
     QMap<QString, QString> m_pendingPhotoMsgIds; // msgId -> threadId, waiting for photo URL via WS cmd=510
 
     // Cache avatar: url -> localPath (file:///tmp/avatar_<md5>.jpg)

@@ -1,5 +1,5 @@
 1
-650
+662
 AboutSheet.qml
 ChatsTab.qml
 ChatView.qml
@@ -8,13 +8,14 @@ cover.qml
 EmojiButton.qml
 EmojiPanel.qml
 GroupsTab.qml
+images/AboutSheet/barcode.png
+images/AboutSheet/berrylife.png
+images/AboutSheet/ic_close_white.png
+images/AboutSheet/ic_facebook.png
+images/AboutSheet/ic_sb_network.png
+images/AboutSheet/ic_scan_barcode.png
 images/action_delete.png
-images/ai_add_task.png
-images/attach_icon.png
-images/barcode.png
 images/bbid.png
-images/berrylife.png
-images/blank.png
 images/Bubble/incoming/bottom.png
 images/Bubble/incoming/bottom.png.amd
 images/Bubble/incoming/bottom_flipped.png
@@ -35,16 +36,31 @@ images/Bubble/outgoing/middle.png
 images/Bubble/outgoing/middle.png.amd
 images/Bubble/outgoing/top.png
 images/Bubble/outgoing/top.png.amd
-images/ca_video_chat_active.png
-images/clear_chat.png
-images/ConversationPaneSend.png
-images/cover.png
+images/ChatsTab/ai_add_task.png
+images/ChatsTab/blank.png
+images/ChatsTab/edit.png
+images/ChatsTab/ic_sync.png
+images/ChatView/attach_icon.png
+images/ChatView/ca_video_chat_active.png
+images/ChatView/clear_chat.png
+images/ChatView/ConversationPaneSend.png
+images/ChatView/darkkeyboard.png
+images/ChatView/ic_attach.png
+images/ChatView/ic_block_contact.png
+images/ChatView/ic_chat_leave.png
+images/ChatView/ic_emoticon_enabled.png
+images/ChatView/ic_emoticon_enabled_white.png
+images/ChatView/ic_keyboard_enabled.png
+images/ChatView/ic_notifications_off.png
+images/ChatView/ic_voice_call.png
+images/ChatView/timemess.png
+images/ChatView/timemesswhite.png
+images/ContactsTab/blank.png
+images/ContactsTab/ic_add_contact.png
+images/ContactsTab/ic_sync.png
 images/cs_spark_small.png
-images/default_caller.png
 images/default_caller1.png
-images/delivered.png
 images/desktop.ini
-images/edit.png
 images/emoji/activePageDot.png
 images/emoji/darkkeyboard.png
 images/emoji/desktop.ini
@@ -529,7 +545,6 @@ images/emoji/symbols/emoji_37_20e3_64.png
 images/emoji/symbols/emoji_38_20e3_64.png
 images/emoji/symbols/emoji_39_20e3_64.png
 images/emoji/symbols/order.txt
-images/failed.png
 images/File Types/BT  File - Mail.png
 images/File Types/BT Fie - ZIP (Compressed).png
 images/File Types/BT File - App (BB App World).png
@@ -592,58 +607,55 @@ images/File Types/File Type - Webpage (Hyperlink).png
 images/File Types/File Type - XLS (Spreadsheet).png
 images/File Types/File Type - ZIP (Compressed).png
 images/File Types/Thumbs.db
-images/grey_pellet.png
+images/GroupsTab/blank.png
+images/GroupsTab/ic_create_group_disabled.png
+images/GroupsTab/ic_sync.png
 images/ic_add_comment.png
 images/ic_add_contact.png
-images/ic_attach.png
 images/ic_back_white.png
 images/ic_bbm.png
-images/ic_block_contact.png
 images/ic_call.png
-images/ic_chat_leave.png
-images/ic_close_white.png
 images/ic_contact.png
 images/ic_copy.png
 images/ic_copy_chat.png
 images/ic_create_event.png
-images/ic_create_group_disabled.png
-images/ic_emoticon_enabled.png
-images/ic_emoticon_enabled_white.png
-images/ic_facebook.png
 images/ic_forward_message.png
 images/ic_groups_white.png
 images/ic_info.png
 images/ic_invite_to_bbm.png
-images/ic_keyboard_enabled.png
 images/ic_like.png
 images/ic_mail.png
 images/ic_microphone.png
-images/ic_notifications_off.png
 images/ic_quote_message.png
 images/ic_save.png
 images/ic_save_image.png
-images/ic_sb_network.png
 images/ic_sb_textmessage.png
-images/ic_scan_barcode.png
 images/ic_select_more.png
 images/ic_settings.png
 images/ic_share.png
 images/ic_start_chat.png
-images/ic_sync.png
 images/ic_video_chat.png
-images/ic_voice_call.png
+images/InvitesTab/ai_add_task.png
+images/InvitesTab/blank.png
+images/InvitesTab/ic_sync.png
+images/Message States/delivered.png
+images/Message States/failed.png
+images/Message States/grey_pellet.png
+images/Message States/read.png
+images/Message States/sending.png
+images/Message States/sent.png
+images/Message States/yellow_pellet.png
+images/Official.png
+images/Official_White.png
+images/Owner.png
+images/ProfileView/blank.png
+images/ProfileView/default_caller.png
+images/ProfileView/ic_bbm.png
 images/Profile_Star_icon.png
-images/read.png
-images/sending.png
-images/sent.png
-images/splash.png
-images/splash720.png
-images/splashLS.png
+images/SceneCover/cover.png
+images/SettingsSheet/ic_close_white.png
 images/splat.png
 images/Square_badge.png
-images/timemess.png
-images/timemesswhite.png
-images/yellow_pellet.png
 InvitesTab.qml
 LoginView.qml
 main.qml

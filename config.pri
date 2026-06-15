@@ -49,6 +49,12 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/SceneCover.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
         $$quote($$BASEDIR/assets/cover.qml) \
+        $$quote($$BASEDIR/assets/images/AboutSheet/barcode.png) \
+        $$quote($$BASEDIR/assets/images/AboutSheet/berrylife.png) \
+        $$quote($$BASEDIR/assets/images/AboutSheet/ic_close_white.png) \
+        $$quote($$BASEDIR/assets/images/AboutSheet/ic_facebook.png) \
+        $$quote($$BASEDIR/assets/images/AboutSheet/ic_sb_network.png) \
+        $$quote($$BASEDIR/assets/images/AboutSheet/ic_scan_barcode.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom_flipped.png) \
@@ -69,7 +75,28 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/middle.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png.amd) \
-        $$quote($$BASEDIR/assets/images/ConversationPaneSend.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ConversationPaneSend.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/attach_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ca_video_chat_active.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/clear_chat.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/darkkeyboard.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_attach.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_block_contact.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_chat_leave.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled_white.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_voice_call.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/timemess.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/blank.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/edit.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/blank.png) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/ic_add_contact.png) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/File Types/BT  File - Mail.png) \
         $$quote($$BASEDIR/assets/images/File Types/BT Fie - ZIP (Compressed).png) \
         $$quote($$BASEDIR/assets/images/File Types/BT File - App (BB App World).png) \
@@ -132,24 +159,34 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/File Types/File Type - XLS (Spreadsheet).png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - ZIP (Compressed).png) \
         $$quote($$BASEDIR/assets/images/File Types/Thumbs.db) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/blank.png) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/ic_create_group_disabled.png) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/InvitesTab/ai_add_task.png) \
+        $$quote($$BASEDIR/assets/images/InvitesTab/blank.png) \
+        $$quote($$BASEDIR/assets/images/InvitesTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/Message States/delivered.png) \
+        $$quote($$BASEDIR/assets/images/Message States/failed.png) \
+        $$quote($$BASEDIR/assets/images/Message States/grey_pellet.png) \
+        $$quote($$BASEDIR/assets/images/Message States/read.png) \
+        $$quote($$BASEDIR/assets/images/Message States/sending.png) \
+        $$quote($$BASEDIR/assets/images/Message States/sent.png) \
+        $$quote($$BASEDIR/assets/images/Message States/yellow_pellet.png) \
+        $$quote($$BASEDIR/assets/images/Official.png) \
+        $$quote($$BASEDIR/assets/images/Official_White.png) \
+        $$quote($$BASEDIR/assets/images/Owner.png) \
+        $$quote($$BASEDIR/assets/images/ProfileView/blank.png) \
+        $$quote($$BASEDIR/assets/images/ProfileView/default_caller.png) \
+        $$quote($$BASEDIR/assets/images/ProfileView/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/Profile_Star_icon.png) \
+        $$quote($$BASEDIR/assets/images/SceneCover/cover.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/Square_badge.png) \
         $$quote($$BASEDIR/assets/images/action_delete.png) \
-        $$quote($$BASEDIR/assets/images/ai_add_task.png) \
-        $$quote($$BASEDIR/assets/images/attach_icon.png) \
-        $$quote($$BASEDIR/assets/images/barcode.png) \
         $$quote($$BASEDIR/assets/images/bbid.png) \
-        $$quote($$BASEDIR/assets/images/berrylife.png) \
-        $$quote($$BASEDIR/assets/images/blank.png) \
-        $$quote($$BASEDIR/assets/images/ca_video_chat_active.png) \
-        $$quote($$BASEDIR/assets/images/clear_chat.png) \
-        $$quote($$BASEDIR/assets/images/cover.png) \
         $$quote($$BASEDIR/assets/images/cs_spark_small.png) \
-        $$quote($$BASEDIR/assets/images/default_caller.png) \
         $$quote($$BASEDIR/assets/images/default_caller1.png) \
-        $$quote($$BASEDIR/assets/images/delivered.png) \
         $$quote($$BASEDIR/assets/images/desktop.ini) \
-        $$quote($$BASEDIR/assets/images/edit.png) \
         $$quote($$BASEDIR/assets/images/emoji/activePageDot.png) \
         $$quote($$BASEDIR/assets/images/emoji/darkkeyboard.png) \
         $$quote($$BASEDIR/assets/images/emoji/desktop.ini) \
@@ -634,54 +671,32 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/emoji/symbols/emoji_38_20e3_64.png) \
         $$quote($$BASEDIR/assets/images/emoji/symbols/emoji_39_20e3_64.png) \
         $$quote($$BASEDIR/assets/images/emoji/symbols/order.txt) \
-        $$quote($$BASEDIR/assets/images/failed.png) \
-        $$quote($$BASEDIR/assets/images/grey_pellet.png) \
         $$quote($$BASEDIR/assets/images/ic_add_comment.png) \
         $$quote($$BASEDIR/assets/images/ic_add_contact.png) \
-        $$quote($$BASEDIR/assets/images/ic_attach.png) \
         $$quote($$BASEDIR/assets/images/ic_back_white.png) \
         $$quote($$BASEDIR/assets/images/ic_bbm.png) \
-        $$quote($$BASEDIR/assets/images/ic_block_contact.png) \
         $$quote($$BASEDIR/assets/images/ic_call.png) \
-        $$quote($$BASEDIR/assets/images/ic_chat_leave.png) \
-        $$quote($$BASEDIR/assets/images/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/ic_contact.png) \
         $$quote($$BASEDIR/assets/images/ic_copy.png) \
         $$quote($$BASEDIR/assets/images/ic_copy_chat.png) \
         $$quote($$BASEDIR/assets/images/ic_create_event.png) \
-        $$quote($$BASEDIR/assets/images/ic_create_group_disabled.png) \
-        $$quote($$BASEDIR/assets/images/ic_emoticon_enabled.png) \
-        $$quote($$BASEDIR/assets/images/ic_emoticon_enabled_white.png) \
-        $$quote($$BASEDIR/assets/images/ic_facebook.png) \
         $$quote($$BASEDIR/assets/images/ic_forward_message.png) \
         $$quote($$BASEDIR/assets/images/ic_groups_white.png) \
         $$quote($$BASEDIR/assets/images/ic_info.png) \
         $$quote($$BASEDIR/assets/images/ic_invite_to_bbm.png) \
-        $$quote($$BASEDIR/assets/images/ic_keyboard_enabled.png) \
         $$quote($$BASEDIR/assets/images/ic_like.png) \
         $$quote($$BASEDIR/assets/images/ic_mail.png) \
         $$quote($$BASEDIR/assets/images/ic_microphone.png) \
-        $$quote($$BASEDIR/assets/images/ic_notifications_off.png) \
         $$quote($$BASEDIR/assets/images/ic_quote_message.png) \
         $$quote($$BASEDIR/assets/images/ic_save.png) \
         $$quote($$BASEDIR/assets/images/ic_save_image.png) \
-        $$quote($$BASEDIR/assets/images/ic_sb_network.png) \
         $$quote($$BASEDIR/assets/images/ic_sb_textmessage.png) \
-        $$quote($$BASEDIR/assets/images/ic_scan_barcode.png) \
         $$quote($$BASEDIR/assets/images/ic_select_more.png) \
         $$quote($$BASEDIR/assets/images/ic_settings.png) \
         $$quote($$BASEDIR/assets/images/ic_share.png) \
         $$quote($$BASEDIR/assets/images/ic_start_chat.png) \
-        $$quote($$BASEDIR/assets/images/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/ic_video_chat.png) \
-        $$quote($$BASEDIR/assets/images/ic_voice_call.png) \
-        $$quote($$BASEDIR/assets/images/read.png) \
-        $$quote($$BASEDIR/assets/images/sending.png) \
-        $$quote($$BASEDIR/assets/images/sent.png) \
         $$quote($$BASEDIR/assets/images/splat.png) \
-        $$quote($$BASEDIR/assets/images/timemess.png) \
-        $$quote($$BASEDIR/assets/images/timemesswhite.png) \
-        $$quote($$BASEDIR/assets/images/yellow_pellet.png) \
         $$quote($$BASEDIR/assets/main.qml)
 }
 
@@ -713,6 +728,12 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/images/*.qml) \
         $$quote($$BASEDIR/../assets/images/*.js) \
         $$quote($$BASEDIR/../assets/images/*.qs) \
+        $$quote($$BASEDIR/../assets/images/AboutSheet/*.qml) \
+        $$quote($$BASEDIR/../assets/images/AboutSheet/*.js) \
+        $$quote($$BASEDIR/../assets/images/AboutSheet/*.qs) \
+        $$quote($$BASEDIR/../assets/images/ActiveFrame/*.qml) \
+        $$quote($$BASEDIR/../assets/images/ActiveFrame/*.js) \
+        $$quote($$BASEDIR/../assets/images/ActiveFrame/*.qs) \
         $$quote($$BASEDIR/../assets/images/Bubble/*.qml) \
         $$quote($$BASEDIR/../assets/images/Bubble/*.js) \
         $$quote($$BASEDIR/../assets/images/Bubble/*.qs) \
@@ -722,9 +743,36 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.qml) \
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.js) \
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.qs) \
+        $$quote($$BASEDIR/../assets/images/ChatView/*.qml) \
+        $$quote($$BASEDIR/../assets/images/ChatView/*.js) \
+        $$quote($$BASEDIR/../assets/images/ChatView/*.qs) \
+        $$quote($$BASEDIR/../assets/images/ChatsTab/*.qml) \
+        $$quote($$BASEDIR/../assets/images/ChatsTab/*.js) \
+        $$quote($$BASEDIR/../assets/images/ChatsTab/*.qs) \
+        $$quote($$BASEDIR/../assets/images/ContactsTab/*.qml) \
+        $$quote($$BASEDIR/../assets/images/ContactsTab/*.js) \
+        $$quote($$BASEDIR/../assets/images/ContactsTab/*.qs) \
         $$quote($$BASEDIR/../assets/images/File Types/*.qml) \
         $$quote($$BASEDIR/../assets/images/File Types/*.js) \
         $$quote($$BASEDIR/../assets/images/File Types/*.qs) \
+        $$quote($$BASEDIR/../assets/images/GroupsTab/*.qml) \
+        $$quote($$BASEDIR/../assets/images/GroupsTab/*.js) \
+        $$quote($$BASEDIR/../assets/images/GroupsTab/*.qs) \
+        $$quote($$BASEDIR/../assets/images/InvitesTab/*.qml) \
+        $$quote($$BASEDIR/../assets/images/InvitesTab/*.js) \
+        $$quote($$BASEDIR/../assets/images/InvitesTab/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Message States/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Message States/*.js) \
+        $$quote($$BASEDIR/../assets/images/Message States/*.qs) \
+        $$quote($$BASEDIR/../assets/images/ProfileView/*.qml) \
+        $$quote($$BASEDIR/../assets/images/ProfileView/*.js) \
+        $$quote($$BASEDIR/../assets/images/ProfileView/*.qs) \
+        $$quote($$BASEDIR/../assets/images/SceneCover/*.qml) \
+        $$quote($$BASEDIR/../assets/images/SceneCover/*.js) \
+        $$quote($$BASEDIR/../assets/images/SceneCover/*.qs) \
+        $$quote($$BASEDIR/../assets/images/SettingsSheet/*.qml) \
+        $$quote($$BASEDIR/../assets/images/SettingsSheet/*.js) \
+        $$quote($$BASEDIR/../assets/images/SettingsSheet/*.qs) \
         $$quote($$BASEDIR/../assets/images/emoji/*.qml) \
         $$quote($$BASEDIR/../assets/images/emoji/*.js) \
         $$quote($$BASEDIR/../assets/images/emoji/*.qs) \

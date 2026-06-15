@@ -389,6 +389,32 @@ NavigationPane {
         chatsEmpty.visible = (friendModel.size() === 0);
     }
 
+    function openThread(threadId, isGroup) {
+        // Pop về root trước nếu đang trong chat khác
+        chatsNav.popToRoot();
+        var page = chatsDef.createObject();
+        if (!page) return;
+        // Tìm tên từ model nếu có
+        var threadName = "Chat";
+        var avatarUrl  = "";
+        for (var i = 0; i < friendModel.size(); i++) {
+            var d = friendModel.value(i);
+            var tid = d.threadId || d.uid || "";
+            if (tid === threadId) {
+                threadName = d.name || d.displayName || "Chat";
+                avatarUrl  = d.localAvatar || d.avatar || "";
+                break;
+            }
+        }
+        page.threadId   = threadId;
+        page.threadName = threadName;
+        page.isGroup    = isGroup;
+        page.avatarUrl  = avatarUrl;
+        page.selfName   = chatsNav.selfName;
+        page.startChat();
+        chatsNav.push(page);
+    }
+
     function formatTime(timestamp) {
         if (!timestamp || timestamp === "") return "";
         var date = new Date(timestamp * 1);

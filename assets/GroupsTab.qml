@@ -389,4 +389,29 @@ NavigationPane {
             }
         ]
     }
+
+    function openThread(threadId, isGroup) {
+        groupsNav.popToRoot();
+        var page = groupsDef.createObject();
+        if (!page) return;
+        var threadName = "Group";
+        var avatarUrl  = "asset:///images/GroupsTab/blank.png";
+        for (var i = 0; i < groupModel.size(); i++) {
+            var d = groupModel.value(i);
+            if ((d.threadId || "") === threadId) {
+                threadName = d.name || "Group";
+                var av = d.localAvatar || d.avatar || "";
+                if (av.length > 0) avatarUrl = av;
+                break;
+            }
+        }
+        page.threadId   = threadId;
+        page.threadName = threadName;
+        page.isGroup    = true;
+        page.avatarUrl  = avatarUrl;
+        page.selfName   = groupsNav.selfName;
+        page.startChat();
+        groupsNav.push(page);
+        groupsNav.currentPage = page;
+    }
 }

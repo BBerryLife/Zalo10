@@ -781,8 +781,9 @@ Page {
 
         FilePicker {
             id: filePicker
-            type: FileType.Picture
-            title: "Select Photo"
+            type: FileType.Other
+            mode: FilePickerMode.Picker
+            title: "Select File"
             onFileSelected: {
                 var path = selectedFiles[0];
                 chatViewPage.pendingAttachPath = path;
