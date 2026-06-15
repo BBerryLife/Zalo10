@@ -22,8 +22,8 @@ Sheet {
                         ImageButton {
                             verticalAlignment: VerticalAlignment.Center
                             preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
-                            defaultImageSource: "asset:///images/ic_close_white.png"
-                            pressedImageSource: "asset:///images/ic_close_white.png"
+                            defaultImageSource: "asset:///images/AboutSheet/ic_close_white.png"
+                            pressedImageSource: "asset:///images/AboutSheet/ic_close_white.png"
                             rightMargin: ui.du(0.5)
                             onClicked: { aboutSheetRoot.close() }
                         }
@@ -42,13 +42,13 @@ Sheet {
             actions: [
                 ActionItem {
                     title: "Facebook"
-                    imageSource: "asset:///images/ic_facebook.png"
+                    imageSource: "asset:///images/AboutSheet/ic_facebook.png"
                     ActionBar.placement: ActionBarPlacement.OnBar
                     onTriggered: { Qt.openUrlExternally("https://www.facebook.com/BBerrylife") }
                 },
                 ActionItem {
                     title: "Donate"
-                    imageSource: "asset:///images/ic_scan_barcode.png"
+                    imageSource: "asset:///images/AboutSheet/ic_scan_barcode.png"
                     ActionBar.placement: ActionBarPlacement.Signature
                     onTriggered: {
                         var donatePage = donatePageDef.createObject();
@@ -57,7 +57,7 @@ Sheet {
                 },
                 ActionItem {
                     title: "Website"
-                    imageSource: "asset:///images/ic_sb_network.png"
+                    imageSource: "asset:///images/AboutSheet/ic_sb_network.png"
                     ActionBar.placement: ActionBarPlacement.OnBar
                     onTriggered: { Qt.openUrlExternally("https://BBerryLife.github.io") }
                 }
@@ -81,7 +81,7 @@ Sheet {
                         }
 
                         ImageView {
-                            imageSource: "asset:///images/berrylife.png"
+                            imageSource: "asset:///images/AboutSheet/berrylife.png"
                             scalingMethod: ScalingMethod.AspectFit
                             preferredWidth:  160
                             preferredHeight: 160
@@ -155,7 +155,7 @@ Sheet {
                                 leftPadding: 10; rightPadding: 10; topPadding: 10; bottomPadding: 10
 
                                 ImageView {
-                                    imageSource: "asset:///images/barcode.png"
+                                    imageSource: "asset:///images/AboutSheet/barcode.png"
                                     scalingMethod: ScalingMethod.AspectFit
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     verticalAlignment: VerticalAlignment.Fill

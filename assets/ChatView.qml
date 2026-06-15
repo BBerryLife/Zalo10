@@ -82,16 +82,16 @@ Page {
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
                     preferredWidth: ui.du(7); preferredHeight: ui.du(7)
-                    defaultImageSource: "asset:///images/ic_voice_call.png"
-                    pressedImageSource: "asset:///images/ic_voice_call.png"
+                    defaultImageSource: "asset:///images/ChatView/ic_voice_call.png"
+                    pressedImageSource: "asset:///images/ChatView/ic_voice_call.png"
                     rightMargin: ui.du(0.3)
                     onClicked: { voiceCallUnderDevDialog.show() }
                 }
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
                     preferredWidth: ui.du(7); preferredHeight: ui.du(7)
-                    defaultImageSource: "asset:///images/ca_video_chat_active.png"
-                    pressedImageSource: "asset:///images/ca_video_chat_active.png"
+                    defaultImageSource: "asset:///images/ChatView/ca_video_chat_active.png"
+                    pressedImageSource: "asset:///images/ChatView/ca_video_chat_active.png"
                     rightMargin: ui.du(0.5)
                     onClicked: { videoCallUnderDevDialog.show() }
                 }
@@ -377,8 +377,8 @@ Page {
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
                 rightMargin: ui.du(0.8)
-                defaultImageSource: chatViewPage.isDark ? "asset:///images/attach_icon.png" : "asset:///images/ic_attach.png"
-                pressedImageSource: chatViewPage.isDark ? "asset:///images/attach_icon.png" : "asset:///images/ic_attach.png"
+                defaultImageSource: chatViewPage.isDark ? "asset:///images/ChatView/attach_icon.png" : "asset:///images/ChatView/ic_attach.png"
+                pressedImageSource: chatViewPage.isDark ? "asset:///images/ChatView/attach_icon.png" : "asset:///images/ChatView/ic_attach.png"
                 onClicked: { filePicker.open() }
             }
 
@@ -405,8 +405,8 @@ Page {
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth:  ui.du(11); preferredHeight: ui.du(9)
                 leftMargin: ui.du(0.6)
-                defaultImageSource: chatViewPage.isDark ? "asset:///images/timemesswhite.png" : "asset:///images/timemess.png"
-                pressedImageSource: chatViewPage.isDark ? "asset:///images/timemesswhite.png" : "asset:///images/timemess.png"
+                defaultImageSource: chatViewPage.isDark ? "asset:///images/ChatView/timemesswhite.png" : "asset:///images/ChatView/timemess.png"
+                pressedImageSource: chatViewPage.isDark ? "asset:///images/ChatView/timemesswhite.png" : "asset:///images/ChatView/timemess.png"
                 onClicked: { timedMsgDialog.show() }
             }
 
@@ -416,11 +416,11 @@ Page {
                 preferredWidth:  ui.du(8); preferredHeight: ui.du(8)
                 leftMargin: ui.du(0.5)
                 defaultImageSource: emojiPanelOpen
-                    ? (chatViewPage.isDark ? "asset:///images/ic_keyboard_enabled.png" : "asset:///images/emoji/darkkeyboard.png")
-                    : (chatViewPage.isDark ? "asset:///images/ic_emoticon_enabled_white.png" : "asset:///images/ic_emoticon_enabled.png")
+                    ? (chatViewPage.isDark ? "asset:///images/ChatView/ic_keyboard_enabled.png" : "asset:///images/ChatView/darkkeyboard.png")
+                    : (chatViewPage.isDark ? "asset:///images/ChatView/ic_emoticon_enabled_white.png" : "asset:///images/ChatView/ic_emoticon_enabled.png")
                 pressedImageSource: emojiPanelOpen
-                    ? (chatViewPage.isDark ? "asset:///images/ic_keyboard_enabled.png" : "asset:///images/emoji/darkkeyboard.png")
-                    : (chatViewPage.isDark ? "asset:///images/ic_emoticon_enabled_white.png" : "asset:///images/ic_emoticon_enabled.png")
+                    ? (chatViewPage.isDark ? "asset:///images/ChatView/ic_keyboard_enabled.png" : "asset:///images/ChatView/darkkeyboard.png")
+                    : (chatViewPage.isDark ? "asset:///images/ChatView/ic_emoticon_enabled_white.png" : "asset:///images/ChatView/ic_emoticon_enabled.png")
                 onClicked: {
                     emojiPanelOpen = !emojiPanelOpen;
                     emojiPanel.visible = emojiPanelOpen;
@@ -434,7 +434,7 @@ Page {
         ActionItem {
             id: sendAction
             title: "Send"
-            imageSource: "asset:///images/ConversationPaneSend.png"
+            imageSource: "asset:///images/ChatView/ConversationPaneSend.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             enabled: false
             onTriggered: { doSend() }
@@ -442,7 +442,7 @@ Page {
         ActionItem {
             id: muteAction
             title: chatViewPage.isMuted ? "Unmute" : "Mute notifications"
-            imageSource: "asset:///images/ic_notifications_off.png"
+            imageSource: "asset:///images/ChatView/ic_notifications_off.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: {
                 zService.setMute(chatViewPage.threadId, chatViewPage.isGroup, !chatViewPage.isMuted);
@@ -450,7 +450,7 @@ Page {
         },
         ActionItem {
             title: chatViewPage.isBlocked ? "Unblock user" : "Block user"
-            imageSource: "asset:///images/ic_block_contact.png"
+            imageSource: "asset:///images/ChatView/ic_block_contact.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: !chatViewPage.isGroup
             onTriggered: {
@@ -462,13 +462,13 @@ Page {
         },
         ActionItem {
             title: "Clear history"
-            imageSource: "asset:///images/clear_chat.png"
+            imageSource: "asset:///images/ChatView/clear_chat.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: { clearHistoryDialog.show() }
         },
         ActionItem {
             title: "Leave group"
-            imageSource: "asset:///images/ic_chat_leave.png"
+            imageSource: "asset:///images/ChatView/ic_chat_leave.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: chatViewPage.isGroup
             onTriggered: { leaveGroupDialog.show() }

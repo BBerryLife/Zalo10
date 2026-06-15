@@ -97,7 +97,7 @@ NavigationPane {
         actions: [
             ActionItem {
                 title: "Refresh"
-                imageSource: "asset:///images/ic_sync.png"
+                imageSource: "asset:///images/InvitesTab/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
                     inviteModel.clear();
@@ -107,7 +107,7 @@ NavigationPane {
             },
             ActionItem {
                 title: "Accept All"
-                imageSource: "asset:///images/ai_add_task.png"
+                imageSource: "asset:///images/InvitesTab/ai_add_task.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
                     for (var i = 0; i < inviteModel.size(); i++) {
@@ -149,7 +149,7 @@ NavigationPane {
                                 rightPadding: ui.du(2)
 
                                 ImageView {
-                                    imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/blank.png"
+                                    imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/InvitesTab/blank.png"
                                     preferredWidth: ui.du(9)
                                     preferredHeight: ui.du(9)
                                     scalingMethod: ScalingMethod.AspectFill

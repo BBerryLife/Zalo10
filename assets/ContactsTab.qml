@@ -116,7 +116,7 @@ NavigationPane {
                 id: contactsRefreshAction
                 title: contactsNav.refreshCooldown ? "Please wait..." : "Refresh"
                 enabled: !contactsNav.refreshCooldown
-                imageSource: "asset:///images/ic_sync.png"
+                imageSource: "asset:///images/ContactsTab/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
                     if (contactsNav.refreshCooldown) return;
@@ -130,7 +130,7 @@ NavigationPane {
             },
             ActionItem {
                 title: "Add Contact"
-                imageSource: "asset:///images/ic_add_contact.png"
+                imageSource: "asset:///images/ContactsTab/ic_add_contact.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: { addContactDialog.show() }
             }
@@ -169,7 +169,7 @@ NavigationPane {
                             ImageView {
                                 imageSource: (ListItemData.localAvatar && ListItemData.localAvatar.length > 0)
                                     ? ListItemData.localAvatar
-                                    : "asset:///images/blank.png"
+                                    : "asset:///images/ContactsTab/blank.png"
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 verticalAlignment:   VerticalAlignment.Fill
                                 scalingMethod: ScalingMethod.AspectFill

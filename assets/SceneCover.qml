@@ -11,7 +11,7 @@ SceneCover {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
             scalingMethod: ScalingMethod.AspectFill
-            imageSource: "asset:///images/cover.png"
+            imageSource: "asset:///images/SceneCover/cover.png"
         }
 
         Container {

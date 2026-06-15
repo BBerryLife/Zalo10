@@ -20,8 +20,8 @@ Sheet {
                     ImageButton {
                         verticalAlignment: VerticalAlignment.Center
                         preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
-                        defaultImageSource: "asset:///images/ic_close_white.png"
-                        pressedImageSource: "asset:///images/ic_close_white.png"
+                        defaultImageSource: "asset:///images/SettingsSheet/ic_close_white.png"
+                        pressedImageSource: "asset:///images/SettingsSheet/ic_close_white.png"
                         rightMargin: ui.du(0.5)
                         onClicked: { settingsSheetRoot.close() }
                     }

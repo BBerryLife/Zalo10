@@ -106,7 +106,7 @@ NavigationPane {
             ActionItem {
                 title: chatsNav.refreshCooldown ? "Please wait..." : "Refresh"
                 enabled: !chatsNav.refreshCooldown
-                imageSource: "asset:///images/ic_sync.png"
+                imageSource: "asset:///images/ChatsTab/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
                     if (chatsNav.refreshCooldown) return;
@@ -119,13 +119,13 @@ NavigationPane {
             },
             ActionItem {
                 title: "Mark All as Read"
-                imageSource: "asset:///images/ai_add_task.png"
+                imageSource: "asset:///images/ChatsTab/ai_add_task.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: { markAllReadDialog.show() }
             },
             ActionItem {
                 title: "Edit Status"
-                imageSource: "asset:///images/edit.png"
+                imageSource: "asset:///images/ChatsTab/edit.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: { editStatusDialog.show() }
             }
@@ -160,7 +160,7 @@ NavigationPane {
                                     verticalAlignment: VerticalAlignment.Center
                                     layout: DockLayout {}
                                     ImageView {
-                                        imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/blank.png"
+                                        imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/ChatsTab/blank.png"
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment: VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFill

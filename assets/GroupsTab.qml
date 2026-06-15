@@ -146,7 +146,7 @@ NavigationPane {
             ActionItem {
                 title: groupsNav.refreshCooldown ? "Please wait..." : "Refresh"
                 enabled: !groupsNav.refreshCooldown
-                imageSource: "asset:///images/ic_sync.png"
+                imageSource: "asset:///images/GroupsTab/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: {
                     if (groupsNav.refreshCooldown) return;
@@ -159,7 +159,7 @@ NavigationPane {
             },
             ActionItem {
                 title: "Create Group"
-                imageSource: "asset:///images/ic_create_group_disabled.png"
+                imageSource: "asset:///images/GroupsTab/ic_create_group_disabled.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: { createGroupDialog.show() }
             }
@@ -188,7 +188,7 @@ NavigationPane {
                                 preferredHeight: ui.du(12.0)
 
                                 ImageView {
-                                    imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/blank.png"
+                                    imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/GroupsTab/blank.png"
                                     preferredWidth: ui.du(12.0)
                                     preferredHeight: ui.du(12.0)
                                     horizontalAlignment: HorizontalAlignment.Left
@@ -243,7 +243,7 @@ NavigationPane {
                     page.threadName = item.name || "Group";
                     page.isGroup    = true;
                     var av = item.localAvatar || item.avatar || "";
-                    if (av.length === 0) av = "asset:///images/blank.png";
+                    if (av.length === 0) av = "asset:///images/GroupsTab/blank.png";
                     page.avatarUrl  = av;
                     page.selfName   = groupsNav.selfName;
                     page.startChat();
