@@ -11,8 +11,6 @@ NavigationPane {
     }
 
     onPushTransitionEnded: {
-        // After push animation completes, flush any image updates that arrived
-        // during the transition (when ListView was not yet on screen)
         if (page && typeof page.flushPendingImages === "function") {
             page.pageVisible = true;
             page.flushPendingImages();
@@ -21,8 +19,6 @@ NavigationPane {
 
     property bool searchVisible: false
     property string searchText: ""
-
-    // Debounce timer: chặn spam bấm Refresh liên tiếp
     property bool refreshCooldown: false
 
     attachedObjects: [
@@ -306,7 +302,6 @@ NavigationPane {
                 }
 
                 onAvatarReady: {
-                    // Update visible model
                     for (var i = 0; i < friendModel.size(); i++) {
                         var d = friendModel.value(i);
                         if ((d.threadId || d.uid || "") === threadId) {
@@ -315,7 +310,6 @@ NavigationPane {
                             break;
                         }
                     }
-                    // Update searchModel too if search is active
                     if (chatsNav.searchVisible) {
                         for (var j = 0; j < searchModel.size(); j++) {
                             var sd = searchModel.value(j);
@@ -331,7 +325,6 @@ NavigationPane {
                 onLoginSuccess: {
                     if (typeof displayName !== "undefined" && displayName.length > 0)
                         chatsNav.selfName = displayName;
-                    // Chỉ fetch nếu chưa có data (tránh refreshSessionKey spam emit)
                     if (friendModel.size() === 0) {
                         chatsNav.refreshCooldown = true;
                         chatsRefreshCooldownTimer.restart();
@@ -378,11 +371,8 @@ NavigationPane {
         ]
     }
 
-    // Properties set by main.qml
     property string selfName: ""
     signal onUnreadMessage()
-
-    // Search support
 
     function filterList() {
         var q = chatsNav.searchText.toLowerCase().trim();
@@ -397,10 +387,6 @@ NavigationPane {
             }
         }
         chatsEmpty.visible = (friendModel.size() === 0);
-    }
-
-    onCreationCompleted: {
-        // Listen for 's' key to toggle search
     }
 
     function formatTime(timestamp) {

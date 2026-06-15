@@ -1,16 +1,12 @@
-// SceneCover.qml — BB10 Active Frame (shown when app is minimized)
 import bb.cascades 1.4
 
 SceneCover {
-    // BB10 Active Frame: displayed in the multitasking tray when app is minimized.
-    // Uses cover.png as the background image.
     content: Container {
         layout: DockLayout {}
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment:   VerticalAlignment.Fill
         background: Color.create("#2575fc")
 
-        // Cover image fills the frame
         ImageView {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
@@ -18,7 +14,6 @@ SceneCover {
             imageSource: "asset:///images/cover.png"
         }
 
-        // Subtle overlay label at bottom
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Bottom

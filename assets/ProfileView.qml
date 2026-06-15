@@ -1,4 +1,3 @@
-// ProfileView.qml
 import bb.cascades 1.4
 import QtQuick 1.0
 
@@ -9,9 +8,9 @@ Page {
     property string contactName:  ""
     property string avatarPath:   ""
     property string bgAvatarPath: ""
-    property string avatarUrl:    ""  // fallback nếu chưa download
+    property string avatarUrl:    ""
     property string bgAvatarUrl:  ""
-    property string selfName:     ""  // truyền từ ngoài vào để pass cho ChatView
+    property string selfName:     ""
 
     titleBar: TitleBar {
         scrollBehavior: TitleBarScrollBehavior.Sticky
@@ -36,10 +35,8 @@ Page {
     }
 
     onCreationCompleted: {
-        // Trigger download avatar nếu chưa có localPath
         if (profilePage.avatarPath.length === 0 && profilePage.avatarUrl.length > 0)
             zService.downloadAvatar(profilePage.contactId, profilePage.avatarUrl)
-        // Trigger download bgavatar — dùng prefix "bg_" để phân biệt với avatar thường
         if (profilePage.bgAvatarPath.length === 0 && profilePage.bgAvatarUrl.length > 0)
             zService.downloadAvatar("bg_" + profilePage.contactId, profilePage.bgAvatarUrl)
     }
@@ -55,9 +52,7 @@ Page {
                 chatPage.threadId   = profilePage.contactId
                 chatPage.threadName = profilePage.contactName
                 chatPage.isGroup    = false
-                chatPage.avatarUrl  = profilePage.avatarPath.length > 0
-                                        ? profilePage.avatarPath
-                                        : profilePage.avatarUrl
+                chatPage.avatarUrl  = profilePage.avatarPath.length > 0 ? profilePage.avatarPath : profilePage.avatarUrl
                 chatPage.selfName   = profilePage.selfName
                 chatPage.startChat()
                 navigationPane.push(chatPage)
@@ -66,9 +61,7 @@ Page {
     ]
 
     ScrollView {
-        scrollViewProperties {
-            scrollMode: ScrollMode.Vertical
-        }
+        scrollViewProperties { scrollMode: ScrollMode.Vertical }
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment: VerticalAlignment.Fill
 
@@ -76,26 +69,22 @@ Page {
             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
             horizontalAlignment: HorizontalAlignment.Fill
 
-            // - Ảnh nền -
             Container {
                 preferredHeight: ui.du(28)
                 horizontalAlignment: HorizontalAlignment.Fill
                 layout: DockLayout {}
                 background: Color.create("#1a1a2e")
 
-                // Bg avatar
                 ImageView {
                     id: bgImage
-                    imageSource: {
-                        if (profilePage.bgAvatarPath.length > 0) return profilePage.bgAvatarPath
-                        return "asset:///images/default_caller.png"
-                    }
+                    imageSource: profilePage.bgAvatarPath.length > 0
+                        ? profilePage.bgAvatarPath
+                        : "asset:///images/default_caller.png"
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
                     scalingMethod: ScalingMethod.AspectFill
                 }
 
-                // Gradient overlay phía dưới để chữ dễ đọc
                 Container {
                     verticalAlignment: VerticalAlignment.Bottom
                     horizontalAlignment: HorizontalAlignment.Fill
@@ -103,7 +92,6 @@ Page {
                     background: Color.create("#99000000")
                 }
 
-                // Avatar tròn đè lên góc dưới-giữa
                 Container {
                     verticalAlignment: VerticalAlignment.Bottom
                     horizontalAlignment: HorizontalAlignment.Center
@@ -118,10 +106,9 @@ Page {
 
                         ImageView {
                             id: avatarImage
-                            imageSource: {
-                                if (profilePage.avatarPath.length > 0) return profilePage.avatarPath
-                                return "asset:///images/blank.png"
-                            }
+                            imageSource: profilePage.avatarPath.length > 0
+                                ? profilePage.avatarPath
+                                : "asset:///images/blank.png"
                             horizontalAlignment: HorizontalAlignment.Fill
                             verticalAlignment: VerticalAlignment.Fill
                             scalingMethod: ScalingMethod.AspectFill
@@ -130,7 +117,6 @@ Page {
                 }
             }
 
-            // - Tên -
             Container {
                 topPadding: ui.du(2)
                 bottomPadding: ui.du(1)
@@ -148,19 +134,15 @@ Page {
                 }
             }
 
-            // - Divider -
             Divider { topMargin: ui.du(1); bottomMargin: ui.du(1) }
 
-            // - Nút hành động -
             Container {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 horizontalAlignment: HorizontalAlignment.Center
                 topPadding: ui.du(1)
                 bottomPadding: ui.du(2)
-
             }
 
-            // - Thông tin thêm (placeholder cho sau) -
             Container {
                 leftPadding: ui.du(3)
                 rightPadding: ui.du(3)
@@ -175,9 +157,7 @@ Page {
                 }
                 Label {
                     text: profilePage.contactId
-                    textStyle {
-                        base: SystemDefaults.TextStyles.BodyText
-                    }
+                    textStyle { base: SystemDefaults.TextStyles.BodyText }
                     topMargin: ui.du(0.3)
                     bottomMargin: ui.du(2)
                 }
@@ -185,7 +165,6 @@ Page {
         }
     }
 
-    // Lắng nghe avatarReady để update ảnh nếu chưa load kịp
     attachedObjects: [
         ComponentDefinition {
             id: chatDef
@@ -202,6 +181,5 @@ Page {
         }
     ]
 
-    // navigationPane: được set từ bên ngoài khi push, hoặc lookup từ parent chain
     property variant navigationPane: null
 }

@@ -1,4 +1,3 @@
-// ContactsTab.qml
 import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
@@ -7,12 +6,12 @@ NavigationPane {
     id: contactsNav
     peekEnabled: false
 
-    // Exposed so main.qml can set it via contactsTabContent.selfName = ...
     property string selfName: ""
     onSelfNameChanged: contactsPage.selfName = selfName
 
     property bool searchVisible: false
     property string searchText: ""
+    property bool refreshCooldown: false
 
     function filterList() {
         var q = contactsNav.searchText.toLowerCase().trim();
@@ -29,9 +28,6 @@ NavigationPane {
         contactsEmpty.visible = (contactModel.size() === 0);
     }
 
-    // Debounce timer: chặn spam bấm Refresh liên tiếp
-    property bool refreshCooldown: false
-
     attachedObjects: [
         Timer {
             id: refreshCooldownTimer
@@ -45,7 +41,7 @@ NavigationPane {
         id: contactsPage
         property bool populated: false
         property string selfName: contactsNav.selfName
-        
+
         titleBar: TitleBar {
             kind: TitleBarKind.FreeForm
             kindProperties: FreeFormTitleBarKindProperties {
@@ -101,7 +97,7 @@ NavigationPane {
                 }
             }
         }
-        
+
         shortcuts: [
             Shortcut {
                 key: "s"
@@ -139,32 +135,28 @@ NavigationPane {
                 onTriggered: { addContactDialog.show() }
             }
         ]
-        
-        onCreationCompleted: {
-            // Fetch được trigger bởi onLoginSuccess signal từ C++ — không fetch ở đây
-        }
-        
+
         Container {
             layout: DockLayout {}
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
-            
+
             ListView {
                 id: contactsGrid
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment:   VerticalAlignment.Fill
-                
+
                 layout: GridListLayout {
                     columnCount: 4
                     headerMode: ListHeaderMode.None
                 }
-                
+
                 property variant profileDef: contactsProfileDef
                 property variant navPane:    contactsNav
                 property string  selfNameProp: contactsPage.selfName
-                
+
                 dataModel: contactsNav.searchVisible ? searchModel : contactModel
-                
+
                 listItemComponents: [
                     ListItemComponent {
                         type: ""
@@ -173,16 +165,16 @@ NavigationPane {
                             horizontalAlignment: HorizontalAlignment.Fill
                             verticalAlignment:   VerticalAlignment.Fill
                             layout: DockLayout {}
-                            
+
                             ImageView {
                                 imageSource: (ListItemData.localAvatar && ListItemData.localAvatar.length > 0)
-                                ? ListItemData.localAvatar
-                                : "asset:///images/blank.png"
+                                    ? ListItemData.localAvatar
+                                    : "asset:///images/blank.png"
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 verticalAlignment:   VerticalAlignment.Fill
                                 scalingMethod: ScalingMethod.AspectFill
                             }
-                            
+
                             Container {
                                 preferredHeight: ui.du(5)
                                 background: Color.create("#99000000")
@@ -200,7 +192,7 @@ NavigationPane {
                                     multiline: false
                                 }
                             }
-                            
+
                             onTouch: {
                                 if (event.isUp()) {
                                     var item = ListItemData
@@ -222,7 +214,7 @@ NavigationPane {
                     }
                 ]
             }
-            
+
             ActivityIndicator {
                 id: contactsLoading
                 horizontalAlignment: HorizontalAlignment.Center
@@ -232,7 +224,7 @@ NavigationPane {
                 running: visible
                 visible: false
             }
-            
+
             Label {
                 id: contactsEmpty
                 text: "No contacts found"
@@ -241,7 +233,7 @@ NavigationPane {
                 verticalAlignment:   VerticalAlignment.Center
             }
         }
-        
+
         attachedObjects: [
             ArrayDataModel { id: contactModel },
             SystemDialog {
@@ -259,7 +251,7 @@ NavigationPane {
             },
             Connections {
                 target: zService
-                
+
                 onFriendsReady: {
                     contactsLoading.visible = false
                     if (contactsPage.populated && contactModel.size() > 0)
@@ -279,10 +271,9 @@ NavigationPane {
                     }
                     contactsEmpty.visible = (friends.length === 0)
                 }
-                
+
                 onAvatarReady: {
                     var isBg = (threadId.indexOf("bg_") === 0)
-                    // Update visible model
                     for (var i = 0; i < contactModel.size(); i++) {
                         var d = contactModel.value(i)
                         var tid = d.threadId || d.uid || ""
@@ -300,7 +291,6 @@ NavigationPane {
                             }
                         }
                     }
-                    // Update searchModel too if search is active
                     if (contactsNav.searchVisible) {
                         for (var j = 0; j < searchModel.size(); j++) {
                             var sd = searchModel.value(j)
@@ -321,11 +311,10 @@ NavigationPane {
                         }
                     }
                 }
-                
+
                 onLoginSuccess: {
                     contactsPage.populated = false
                     contactModel.clear()
-                    // ChatsTab owns fetchFriends on login; ContactsTab receives via onFriendsReady
                 }
             }
         ]

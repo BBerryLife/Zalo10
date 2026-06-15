@@ -1,5 +1,4 @@
 import bb.cascades 1.4
-import QtQuick 1.0
 
 SceneCover {
     content: Container {

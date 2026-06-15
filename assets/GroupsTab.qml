@@ -12,8 +12,6 @@ NavigationPane {
     property bool searchVisible: false
     property string searchText: ""
     property variant allGroups: []
-
-    // Debounce timer: chặn spam bấm Refresh liên tiếp
     property bool refreshCooldown: false
 
     attachedObjects: [
@@ -41,7 +39,6 @@ NavigationPane {
 
     onCurrentPageChanged: {
         if (!currentPage) return;
-        // Watch for leave group request from ChatView
         popWatcher.target = currentPage;
     }
 
@@ -67,8 +64,6 @@ NavigationPane {
     }
 
     onPushTransitionEnded: {
-        // After push animation completes, flush any image updates that arrived
-        // during the transition (when ListView was not yet on screen)
         if (page && typeof page.flushPendingImages === "function") {
             page.pageVisible = true;
             page.flushPendingImages();
@@ -325,7 +320,6 @@ NavigationPane {
                             break;
                         }
                     }
-                    // searchModel mirrors groupModel - update it too if visible
                     if (groupsNav.searchVisible) {
                         for (var j = 0; j < searchModel.size(); j++) {
                             var sd = searchModel.value(j);
@@ -339,7 +333,6 @@ NavigationPane {
                 }
 
                 onLoginSuccess: {
-                    // Chỉ fetch nếu chưa có data (tránh refreshSessionKey spam emit)
                     if (groupModel.size() === 0) {
                         groupsNav.refreshCooldown = true;
                         groupsRefreshCooldownTimer.restart();

@@ -1,4 +1,3 @@
-// LoginView.qml
 import bb.cascades 1.4
 import QtQuick 1.0
 
@@ -13,7 +12,6 @@ Page {
     }
 
     onCreationCompleted: {
-        // Nếu QR đã sẵn sàng (do startQROnly từ sessionExpired), không start lại
         if (!zService.qrReady) {
             zService.startQRLogin();
         }
@@ -121,9 +119,9 @@ Page {
         Connections {
             target: zService
             onQrCodeReady: {
-                qrLoading.visible  = false;
+                qrLoading.visible      = false;
                 expiredOverlay.visible = false;
-                retryBtn.visible   = false;
+                retryBtn.visible       = false;
                 if (imagePath.indexOf("data:") === 0) {
                     statusLabel.text = "Code: " + qrCode.substring(0, 16) + "...";
                 } else {
@@ -138,15 +136,15 @@ Page {
                 qrLoading.visible = true;
             }
             onQrExpired: {
-                qrLoading.visible  = false;
+                qrLoading.visible      = false;
                 expiredOverlay.visible = true;
-                retryBtn.visible   = true;
-                statusLabel.text   = "QR code has expired";
+                retryBtn.visible       = true;
+                statusLabel.text       = "QR code has expired";
             }
             onLoginSuccess: { loginView.loginSuccessful(); }
             onLoginFailed:  {
-                statusLabel.text = "Error: " + message;
-                retryBtn.visible = true;
+                statusLabel.text  = "Error: " + message;
+                retryBtn.visible  = true;
                 qrLoading.visible = false;
             }
         }

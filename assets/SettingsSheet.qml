@@ -6,7 +6,7 @@ Sheet {
     id: settingsSheetRoot
 
     Page {
-                titleBar: TitleBar {
+        titleBar: TitleBar {
             scrollBehavior: TitleBarScrollBehavior.Sticky
             kind: TitleBarKind.FreeForm
             kindProperties: FreeFormTitleBarKindProperties {
@@ -38,7 +38,6 @@ Sheet {
         }
 
         onCreationCompleted: {
-            // Load saved value mỗi khi sheet được tạo/hiện
             darkToggle.checked = app.getDarkTheme();
         }
 
@@ -62,9 +61,7 @@ Sheet {
                     }
                     ToggleButton {
                         id: darkToggle
-                        // checked được set trong onCreationCompleted, không dùng binding tĩnh
                         onCheckedChanged: {
-                            // Lưu ngay khi toggle — gọi setDarkTheme áp dụng + lưu cả hai
                             app.setDarkTheme(checked);
                         }
                     }

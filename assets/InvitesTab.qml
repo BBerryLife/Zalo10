@@ -276,7 +276,6 @@ NavigationPane {
                             break;
                         }
                     }
-                    // searchModel mirrors inviteModel - update it too if visible
                     if (invitesNav.searchVisible) {
                         for (var j = 0; j < searchModel.size(); j++) {
                             var sd = searchModel.value(j);
