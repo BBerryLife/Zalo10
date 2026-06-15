@@ -25,7 +25,6 @@ public slots:
     Q_INVOKABLE void setDarkTheme(bool dark);
     Q_INVOKABLE bool getDarkTheme();
     Q_INVOKABLE QString appVersion();
-    Q_INVOKABLE QString coverImage();
 
 private slots:
     void onSystemLanguageChanged();

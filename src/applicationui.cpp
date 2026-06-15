@@ -10,14 +10,11 @@
 #include <bb/cascades/ThemeSupport>
 #include <bb/system/InvokeManager>
 #include <bb/system/InvokeRequest>
-#include <bb/device/DisplayInfo>
 
 #include <QTranslator>
 #include <QLocale>
 #include <QSettings>
 #include <QDebug>
-#include <QFile>
-#include <QTextStream>
 
 using namespace bb::cascades;
 using namespace bb::system;
@@ -37,18 +34,13 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
     ZaloService *zService = new ZaloService(this);
     m_zService = zService;
 
-    // Save session on manual exit so timestamps stay up to date
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
                      this, SLOT(onManualExit()));
 
-    // Apply saved theme before creating QML scene
     {
         QSettings s("BerryLife", "Zalo10");
-        bool dark = s.value("darkTheme", false).toBool();
-        if (dark) {
+        if (s.value("darkTheme", false).toBool())
             Application::instance()->themeSupport()->setVisualStyle(VisualStyle::Dark);
-            qDebug() << "[App] Startup: applying saved Dark theme";
-        }
     }
 
     QmlDocument *qml = QmlDocument::create("asset:///main.qml").parent(this);
@@ -61,12 +53,10 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
     QmlDocument *coverQml = QmlDocument::create("asset:///cover.qml").parent(this);
     coverQml->setContextProperty("app", this);
     SceneCover *cover = coverQml->createRootObject<SceneCover>();
-    if (cover) {
+    if (cover)
         Application::instance()->setCover(cover);
-        qDebug() << "[App] Active Frame set";
-    } else {
+    else
         qDebug() << "[App] cover.qml failed";
-    }
 }
 
 void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
@@ -91,7 +81,6 @@ void ApplicationUI::setDarkTheme(bool dark)
     settings.sync();
     Application::instance()->themeSupport()->setVisualStyle(
         dark ? VisualStyle::Dark : VisualStyle::Bright);
-    qDebug() << "[App] setDarkTheme:" << dark;
 }
 
 bool ApplicationUI::getDarkTheme()
@@ -128,100 +117,4 @@ QString ApplicationUI::appVersion()
 #else
     return "1.1.0.1";
 #endif
-}
-
-// Detect screen orientation/shape using BB10 APIs.
-// Returns: 0 = portrait, 1 = square, 2 = landscape
-static int detectScreenType()
-{
-    // Method 1: bb::device::DisplayInfo
-    for (int dispId = 0; dispId <= 3; ++dispId) {
-        bb::device::DisplayInfo di(dispId);
-        QSize sz = di.pixelSize();
-        int w = sz.width(), h = sz.height();
-        if (w > 0 && h > 0) {
-            qDebug() << "[App] DisplayInfo id=" << dispId << "size=" << w << "x" << h;
-            if (w == h) return 1;
-            if (w > h)  return 2;
-            return 0;
-        }
-    }
-
-    // Method 2: PPS device model — Q/Passport series = square
-    {
-        QFile f("/pps/services/deviceproperties/physical");
-        if (f.open(QIODevice::ReadOnly)) {
-            QString data = QString::fromUtf8(f.readAll());
-            f.close();
-            foreach (const QString &line, data.split('\n')) {
-                QString t = line.trimmed().toUpper();
-                if (t.contains("SQN") || t.contains("SQR") ||
-                    t.contains("SQC") || t.contains("SQW") ||
-                    t.contains("STR1")) {
-                    qDebug() << "[App] PPS model: square";
-                    return 1;
-                }
-            }
-        }
-    }
-
-    // Method 3: PPS display resolution fallback
-    static const char *paths[] = {
-        "/pps/services/display/display0",
-        "/pps/services/display/display0/display",
-        "/pps/services/graphics/display/display_0"
-    };
-    for (int pi = 0; pi < 3; ++pi) {
-        QFile f(paths[pi]);
-        if (!f.open(QIODevice::ReadOnly)) continue;
-        QString data = QString::fromUtf8(f.readAll());
-        f.close();
-        foreach (const QString &line, data.split('\n')) {
-            QString t = line.trimmed();
-            int sep = -1;
-            if (t.startsWith("resolution::"))    sep = 12;
-            else if (t.startsWith("size::"))      sep = 6;
-            else if (t.startsWith("display_size::")) sep = 14;
-            if (sep < 0) continue;
-            QString res = t.mid(sep).trimmed();
-            int ci = res.indexOf(':');
-            if (ci != -1) res = res.left(ci).trimmed();
-            QStringList parts = res.split('x');
-            if (parts.size() == 2) {
-                int w = parts[0].trimmed().toInt();
-                int h = parts[1].trimmed().toInt();
-                if (w > 0 && h > 0) {
-                    qDebug() << "[App] PPS screen:" << w << "x" << h;
-                    if (w == h) return 1;
-                    if (w > h)  return 2;
-                    return 0;
-                }
-            }
-        }
-    }
-
-    qDebug() << "[App] detectScreenType: defaulting to portrait";
-    return 0;
-}
-
-QString ApplicationUI::coverImage()
-{
-    QFile f("/pps/services/deviceproperties/physical");
-    if (f.open(QIODevice::ReadOnly)) {
-        QString data = QString::fromUtf8(f.readAll());
-        f.close();
-        foreach (const QString &line, data.split('\n')) {
-            QString t = line.trimmed().toUpper();
-            if (t.contains("SQW") || t.contains("STR1")) {
-                qDebug() << "[App] coverImage: Passport";
-                return "asset:///images/splash.png";
-            }
-            if (t.contains("SQN") || t.contains("SQR") || t.contains("SQC")) {
-                qDebug() << "[App] coverImage: Q-series";
-                return "asset:///images/cover.png";
-            }
-        }
-    }
-    int type = detectScreenType();
-    return (type == 1) ? "asset:///images/cover.png" : "asset:///images/splash.png";
 }
