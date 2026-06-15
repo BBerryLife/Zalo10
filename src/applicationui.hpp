@@ -25,18 +25,17 @@ public slots:
     Q_INVOKABLE void setDarkTheme(bool dark);
     Q_INVOKABLE bool getDarkTheme();
     Q_INVOKABLE QString appVersion();
-    Q_INVOKABLE QString splashImage();
     Q_INVOKABLE QString coverImage();
 
 private slots:
     void onSystemLanguageChanged();
-    void onManualExit(); // save session khi user swipe-close app
+    void onManualExit();
 
 private:
     QTranslator*                  m_pTranslator;
     bb::cascades::LocaleHandler*  m_pLocaleHandler;
     bb::system::InvokeManager*    m_pInvokeManager;
-    ZaloService*                  m_zService; // để save session khi manualExit
+    ZaloService*                  m_zService;
 };
 
 #endif

@@ -6,26 +6,26 @@ TabbedPane {
     id: root
     showTabsOnActionBar: false
     sidebarState: SidebarState.VisibleCompact
-
+    
     property string selfName: "Me"
     property int chatsUnreadCount: 0
     property int groupsUnreadCount: 0
-
+    
     onChatsUnreadCountChanged: {
         chatsTab.title = chatsUnreadCount > 0
-            ? "Chats (" + chatsUnreadCount + ")"
-            : "Chats";
+        ? "Chats (" + chatsUnreadCount + ")"
+        : "Chats";
     }
     onGroupsUnreadCountChanged: {
         groupsTab.title = groupsUnreadCount > 0
-            ? "Groups (" + groupsUnreadCount + ")"
-            : "Groups";
+        ? "Groups (" + groupsUnreadCount + ")"
+        : "Groups";
     }
     onActiveTabChanged: {
         if (activeTab === chatsTab)  root.chatsUnreadCount  = 0;
         if (activeTab === groupsTab) root.groupsUnreadCount = 0;
     }
-
+    
     Menu.definition: MenuDefinition {
         actions: [
             ActionItem {
@@ -45,7 +45,7 @@ TabbedPane {
             }
         ]
     }
-
+    
     function formatTime(timestamp) {
         if (!timestamp || timestamp === "") return "";
         var date = new Date(timestamp * 1);
@@ -62,20 +62,18 @@ TabbedPane {
         var mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][date.getMonth()];
         return mon + " " + date.getDate();
     }
-
+    
     onCreationCompleted: {
-        splashDialog.open();
-        splashTimer.start();
+        if (!zService.loadSession()) {
+            loginSheet.open();
+        }
     }
-
-
-
-    // Chats tab
+    
     Tab {
         id: chatsTab
         title: "Chats"
         description: "Messages"
-        imageSource: "asset:///images/ic_bbm.png"
+        imageSource: "asset:///images/Chats/ic_bbm.png"
         ChatsTab {
             id: chatsTabContent
             onOnUnreadMessage: {
@@ -84,24 +82,22 @@ TabbedPane {
             }
         }
     }
-
-    // Contacts tab
+    
     Tab {
         id: contactsTab
         title: "Contacts"
         description: "Friends"
-        imageSource: "asset:///images/ic_contact.png"
+        imageSource: "asset:///images/Contacts/ic_contact.png"
         ContactsTab {
             id: contactsTabContent
         }
     }
-
-    // Groups tab
+    
     Tab {
         id: groupsTab
         title: "Groups"
         description: "Group chats"
-        imageSource: "asset:///images/ic_groups_white.png"
+        imageSource: "asset:///images/Groups/ic_groups_white.png"
         GroupsTab {
             id: groupsTabContent
             onOnUnreadMessage: {
@@ -110,60 +106,28 @@ TabbedPane {
             }
         }
     }
-
-    // Invites tab
+    
     Tab {
         id: invitesTab
         title: "Invites"
         description: "Friend requests"
-        imageSource: "asset:///images/ic_add_contact.png"
+        imageSource: "asset:///images/Invites/ic_add_contact.png"
         InvitesTab {
             id: invitesTabContent
         }
     }
-
+    
     attachedObjects: [
-        Dialog {
-            id: splashDialog
-            Container {
-                id: splashRoot
-                horizontalAlignment: HorizontalAlignment.Fill
-                verticalAlignment: VerticalAlignment.Fill
-                layout: DockLayout {}
-                ImageView {
-                    id: splashImg
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    verticalAlignment: VerticalAlignment.Fill
-                    scalingMethod: ScalingMethod.AspectFill
-                    imageSource: app.splashImage()
-                }
-            }
-        },
-
-        Timer {
-            id: splashTimer
-            interval: 2000
-            repeat: false
-            onTriggered: {
-                splashDialog.close();
-                if (!zService.loadSession()) {
-                    loginSheet.open();
-                }
-                // If loadSession() == true: refreshSessionKey() runs async
-                // and emits loginSuccess when done — QML handlers fetch then.
-            }
-        },
-
         Sheet {
             id: loginSheet
             LoginView {
                 onLoginSuccessful: { loginSheet.close(); }
             }
         },
-
+        
         SettingsSheet { id: settingsSheet },
         AboutSheet    { id: aboutSheet },
-
+        
         Connections {
             target: zService
             onSessionExpired: { loginSheet.open(); }
@@ -176,12 +140,6 @@ TabbedPane {
                     contactsTabContent.selfName = displayName;
                 }
             }
-        },
-
-        SystemToast {
-            id: sessionToast
-            body: "Phiên đăng nhập đã hết hạn. Vào Settings → Logout để đăng nhập lại."
-            position: SystemUiPosition.MiddleCenter
         }
     ]
 }
