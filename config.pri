@@ -37,6 +37,7 @@ simulator {
 config_pri_assets {
     OTHER_FILES += \
         $$quote($$BASEDIR/assets/AboutSheet.qml) \
+        $$quote($$BASEDIR/assets/ActiveFrameCover.qml) \
         $$quote($$BASEDIR/assets/ChatView.qml) \
         $$quote($$BASEDIR/assets/ChatsTab.qml) \
         $$quote($$BASEDIR/assets/ContactsTab.qml) \

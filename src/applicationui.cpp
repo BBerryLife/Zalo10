@@ -52,37 +52,11 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
 
-    // Load cover from QML after scene is set.
-    // Pass screen size as context property so QML can pick the right image.
-    bb::device::DisplayInfo display;
-    QSize px = display.pixelSize();
-    int w = px.width(), h = px.height();
-    if (w > h) { int tmp = w; w = h; h = tmp; }
-
-    // coverImageBig: used on 720x1280 and 1440x1440
-    // coverImageSmall: used on 1440x1440 small slot (empty string = no small cover)
-    // coverImageMedium: used on 720x720
-    QString imgBig    = "asset:///images/ActiveFrame/activeframe_zl10_big.png";
-    QString imgSmall  = (w >= 1440) ? "asset:///images/ActiveFrame/Activeframe_zl10_Small.png" : "";
-    QString imgMedium = "asset:///images/ActiveFrame/activeframe_zl10_medium.png";
-
-    QmlDocument *coverQml = QmlDocument::create("asset:///ActiveFrameCover.qml").parent(this);
-
-    // bb::cascades::QmlDocument::setContextProperty only accepts QObject*.
-    // Use the underlying QDeclarativeContext to pass QString/bool values.
-    QDeclarativeContext *coverCtx = coverQml->documentContext();
-    coverCtx->setContextProperty("app",            this);
-    coverCtx->setContextProperty("coverImgBig",    QVariant(imgBig));
-    coverCtx->setContextProperty("coverImgSmall",  QVariant(imgSmall));
-    coverCtx->setContextProperty("coverImgMedium", QVariant(imgMedium));
-    coverCtx->setContextProperty("coverIsPassport",QVariant(w >= 1440));
-    coverCtx->setContextProperty("coverIsTall",    QVariant(h >= 1280 && w < 1440));
-
-    SceneCover *cover = coverQml->createRootObject<SceneCover>();
-    if (cover)
-        Application::instance()->setCover(cover);
-    else
-        qDebug() << "[App] ActiveFrameCover.qml failed to load";
+    // Set Active Frame cover using C++ class (no QML needed).
+    // ActiveFrameCover selects the correct image based on DisplayInfo internally.
+    ActiveFrameCover *cover = new ActiveFrameCover();
+    Application::instance()->setCover(cover);
+    qDebug() << "[App] ActiveFrameCover set";
 }
 
 void ApplicationUI::invokeEmail(const QString &to, const QString &subject)

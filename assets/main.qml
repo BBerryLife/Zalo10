@@ -120,11 +120,10 @@ TabbedPane {
     attachedObjects: [
         Sheet {
             id: loginSheet
+            property bool needsQR: false
             onOpened: {
-                // Guard: don't start QR if session was already restored.
-                // onOpened can fire on BB10 even when sheet is being restored
-                // from a previous state while refreshSessionKey is in progress.
-                if (!zService.loggedIn) {
+                if (needsQR || !zService.loggedIn) {
+                    needsQR = false;
                     zService.startQRLogin();
                 }
             }
@@ -138,8 +137,8 @@ TabbedPane {
         
         Connections {
             target: zService
-            onSessionExpired: { loginSheet.open(); }
-            onLoginFailed:    { loginSheet.open(); }
+            onSessionExpired: { loginSheet.needsQR = true; loginSheet.open(); }
+            onLoginFailed:    { loginSheet.needsQR = true; loginSheet.open(); }
             onLoginSuccess: {
                 if (typeof displayName !== "undefined" && displayName.length > 0) {
                     root.selfName = displayName;

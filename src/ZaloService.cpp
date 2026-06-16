@@ -1932,8 +1932,16 @@ void ZaloService::onFetchConvoDone()
     int ec = root["error_code"].toInt();
     if (ec != 0) {
         qDebug() << "[Zalo Error] fetchConvo error_code:" << ec << root["error_message"].toString();
-        emit conversationsReady(QVariantList());
         m_isFetchingConversations = false;
+        // ec=600: zpw_sek expired — session cookies invalid, must re-login
+        if (ec == 600) {
+            qDebug() << "[Zalo] fetchConvo: session expired (600), emitting sessionExpired";
+            m_loggedIn = false;
+            emit loggedInChanged();
+            emit sessionExpired();
+            return;
+        }
+        emit conversationsReady(QVariantList());
         return;
     }
     m_lastFetchConvoTime = QDateTime::currentMSecsSinceEpoch();
@@ -4525,12 +4533,14 @@ void ZaloService::onRefreshSessionKeyDone()
     if (!reply) return;
 
     if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "[Zalo] refreshSessionKey network error:" << reply->errorString();
+        qDebug() << "[Zalo] refreshSessionKey network error:" << reply->errorString()
+                 << "- session may be invalid, triggering re-login";
         reply->deleteLater();
-        m_loggedIn = true;
-        emit loggedInChanged();
-        m_listenTimer->start(8000);
-        emit loginSuccess(m_uid, m_displayName);
+        // Do NOT fake loginSuccess here — cookies may be expired.
+        // Fall through to step7 to attempt cookie renewal; if that also fails,
+        // sessionExpired will be emitted and QR login sheet will open.
+        m_isAutoRenew = true;
+        step7_checkSession();
         return;
     }
 
