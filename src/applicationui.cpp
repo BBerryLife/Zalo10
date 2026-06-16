@@ -1,15 +1,15 @@
 #include "applicationui.hpp"
 #include "ZaloService.hpp"
+#include "ActiveFrameCover.hpp"
 
 #include <bb/cascades/Application>
 #include <bb/cascades/QmlDocument>
 #include <bb/cascades/AbstractPane>
-#include <bb/cascades/AbstractCover>
-#include <bb/cascades/SceneCover>
 #include <bb/cascades/LocaleHandler>
 #include <bb/cascades/ThemeSupport>
 #include <bb/system/InvokeManager>
 #include <bb/system/InvokeRequest>
+#include <bb/ApplicationInfo>
 
 #include <QTranslator>
 #include <QLocale>
@@ -22,6 +22,8 @@ using namespace bb::system;
 ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
 {
     m_pInvokeManager = new InvokeManager(this);
+    QObject::connect(m_pInvokeManager, SIGNAL(invoked(const bb::system::InvokeRequest&)),
+                     this,             SLOT(onInvoked(const bb::system::InvokeRequest&)));
     m_pTranslator    = new QTranslator(this);
     m_pLocaleHandler = new LocaleHandler(this);
 
@@ -50,13 +52,37 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL)
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
 
-    QmlDocument *coverQml = QmlDocument::create("asset:///cover.qml").parent(this);
-    coverQml->setContextProperty("app", this);
+    // Load cover from QML after scene is set.
+    // Pass screen size as context property so QML can pick the right image.
+    bb::device::DisplayInfo display;
+    QSize px = display.pixelSize();
+    int w = px.width(), h = px.height();
+    if (w > h) { int tmp = w; w = h; h = tmp; }
+
+    // coverImageBig: used on 720x1280 and 1440x1440
+    // coverImageSmall: used on 1440x1440 small slot (empty string = no small cover)
+    // coverImageMedium: used on 720x720
+    QString imgBig    = "asset:///images/ActiveFrame/activeframe_zl10_big.png";
+    QString imgSmall  = (w >= 1440) ? "asset:///images/ActiveFrame/Activeframe_zl10_Small.png" : "";
+    QString imgMedium = "asset:///images/ActiveFrame/activeframe_zl10_medium.png";
+
+    QmlDocument *coverQml = QmlDocument::create("asset:///ActiveFrameCover.qml").parent(this);
+
+    // bb::cascades::QmlDocument::setContextProperty only accepts QObject*.
+    // Use the underlying QDeclarativeContext to pass QString/bool values.
+    QDeclarativeContext *coverCtx = coverQml->documentContext();
+    coverCtx->setContextProperty("app",            this);
+    coverCtx->setContextProperty("coverImgBig",    QVariant(imgBig));
+    coverCtx->setContextProperty("coverImgSmall",  QVariant(imgSmall));
+    coverCtx->setContextProperty("coverImgMedium", QVariant(imgMedium));
+    coverCtx->setContextProperty("coverIsPassport",QVariant(w >= 1440));
+    coverCtx->setContextProperty("coverIsTall",    QVariant(h >= 1280 && w < 1440));
+
     SceneCover *cover = coverQml->createRootObject<SceneCover>();
     if (cover)
         Application::instance()->setCover(cover);
     else
-        qDebug() << "[App] cover.qml failed";
+        qDebug() << "[App] ActiveFrameCover.qml failed to load";
 }
 
 void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
@@ -106,15 +132,26 @@ void ApplicationUI::onManualExit()
     bb::cascades::Application::instance()->quit();
 }
 
+void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
+{
+    // Called when app is opened from Hub notification.
+    // data format sent by ZaloService: "threadId|isGroup" (isGroup: 1=group, 0=DM)
+    QString raw = QString::fromUtf8(request.data());
+    qDebug() << "[App] onInvoked data:" << raw;
+    if (raw.isEmpty()) return;
+
+    QStringList parts = raw.split("|");
+    QString threadId  = parts.value(0);
+    bool    isGroup   = (parts.value(1) == "1");
+
+    if (threadId.isEmpty()) return;
+
+    emit openThreadRequested(threadId, isGroup);
+}
+
 QString ApplicationUI::appVersion()
 {
-#if defined(APP_VER_MAJOR) && defined(APP_VER_MINOR) && defined(APP_VER_PATCH) && defined(APP_VER_BUILD)
-    return QString("%1.%2.%3.%4")
-           .arg(APP_VER_MAJOR)
-           .arg(APP_VER_MINOR)
-           .arg(APP_VER_PATCH)
-           .arg(APP_VER_BUILD);
-#else
-    return "1.1.0.1";
-#endif
+    // Reads version directly from bar-descriptor.xml at runtime (same pattern as bbtube).
+    // To update the version, only bar-descriptor.xml needs to be changed.
+    return bb::ApplicationInfo().version();
 }

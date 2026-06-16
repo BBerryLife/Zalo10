@@ -1,10 +1,10 @@
 1
-662
+663
 AboutSheet.qml
+ActiveFrameCover.qml
 ChatsTab.qml
 ChatView.qml
 ContactsTab.qml
-cover.qml
 EmojiButton.qml
 EmojiPanel.qml
 GroupsTab.qml
@@ -15,6 +15,9 @@ images/AboutSheet/ic_facebook.png
 images/AboutSheet/ic_sb_network.png
 images/AboutSheet/ic_scan_barcode.png
 images/action_delete.png
+images/ActiveFrame/activeframe_zl10_big.png
+images/ActiveFrame/activeframe_zl10_medium.png
+images/ActiveFrame/Activeframe_zl10_Small.png
 images/bbid.png
 images/Bubble/incoming/bottom.png
 images/Bubble/incoming/bottom.png.amd
@@ -652,7 +655,6 @@ images/ProfileView/blank.png
 images/ProfileView/default_caller.png
 images/ProfileView/ic_bbm.png
 images/Profile_Star_icon.png
-images/SceneCover/cover.png
 images/SettingsSheet/ic_close_white.png
 images/splat.png
 images/Square_badge.png
@@ -660,5 +662,4 @@ InvitesTab.qml
 LoginView.qml
 main.qml
 ProfileView.qml
-SceneCover.qml
 SettingsSheet.qml

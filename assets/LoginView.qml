@@ -11,12 +11,6 @@ Page {
         appearance: TitleBarAppearance.Branded
     }
 
-    onCreationCompleted: {
-        if (!zService.qrReady) {
-            zService.startQRLogin();
-        }
-    }
-
     content: Container {
         layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
         horizontalAlignment: HorizontalAlignment.Fill

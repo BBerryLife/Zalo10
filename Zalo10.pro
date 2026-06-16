@@ -3,11 +3,8 @@ APP_NAME = Zalo10
 CONFIG += qt warn_on cascades10
 
 PKGNAME = com.berrylife.zalo10
-VERSION = 1.1.0
-
-# Inject version as integer components — avoids all string/dot escaping issues on Windows qmake
-# Keep in sync with bar-descriptor.xml: <versionNumber>1.1.0</versionNumber> <buildId>1</buildId>
-DEFINES += APP_VER_MAJOR=1 APP_VER_MINOR=1 APP_VER_PATCH=0 APP_VER_BUILD=1
+# Version is read at runtime from bar-descriptor.xml via bb::ApplicationInfo().version()
+# To release a new version, only update <versionNumber> in bar-descriptor.xml
 
 # Qt modules — tất cả có sẵn trong BB10 NDK 10.3
 QT += network script gui
@@ -23,16 +20,22 @@ INCLUDEPATH += $$(QNX_TARGET)/usr/include/qt4/QtGui
 
 HEADERS += \
     src/applicationui.hpp \
-    src/ZaloService.hpp
+    src/ZaloService.hpp \
+    src/ActiveFrameCover.hpp
 
 SOURCES += \
     src/main.cpp \
     src/applicationui.cpp \
-    src/ZaloService.cpp
+    src/ZaloService.cpp \
+    src/ActiveFrameCover.cpp
 
 OTHER_FILES += \
     bar-descriptor.xml \
     assets/main.qml \
+    assets/ActiveFrameCover.qml \
+    assets/images/ActiveFrame/activeframe_zl10_big.png \
+    assets/images/ActiveFrame/activeframe_zl10_medium.png \
+    assets/images/ActiveFrame/Activeframe_zl10_Small.png \
     assets/ChatList.qml \
     assets/ChatView.qml \
     assets/EmojiPanel.qml \

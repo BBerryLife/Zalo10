@@ -94,4 +94,24 @@
     <env var="LD_LIBRARY_PATH" value="app/native/lib:/usr/lib/qt4/lib"/>
     <env var="CASCADES_THEME" value="default"/>
 
+    <!-- Invocation target for BlackBerry Hub notifications.
+         When the user taps a Hub notification, BB10 invokes this target
+         which wakes/brings the app to foreground and fires InvokeManager::invoked().
+         The data payload is "threadId|isGroup" set by ZaloService. -->
+    <invoke-target id="com.BerryLife.Zalo10.invoke">
+        <invoke-target-type>application</invoke-target-type>
+        <filter>
+            <action>bb.action.OPEN</action>
+            <mime-type>text/plain</mime-type>
+        </filter>
+    </invoke-target>
+
+    <!-- Active frame images (resolution-aware, selected at runtime via DisplayInfo) -->
+    <!-- 720x720  (Q10/Q5)      -> medium -->
+    <!-- 720x1280 (Z10/Z30/Z3)  -> big    -->
+    <!-- 1440x1440 (Passport)   -> big + small -->
+    <asset path="assets/images/ActiveFrame/activeframe_zl10_big.png">assets/images/ActiveFrame/activeframe_zl10_big.png</asset>
+    <asset path="assets/images/ActiveFrame/activeframe_zl10_medium.png">assets/images/ActiveFrame/activeframe_zl10_medium.png</asset>
+    <asset path="assets/images/ActiveFrame/Activeframe_zl10_Small.png">assets/images/ActiveFrame/Activeframe_zl10_Small.png</asset>
+
 </qnx>

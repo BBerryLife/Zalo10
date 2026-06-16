@@ -3983,8 +3983,10 @@ void ZaloService::sendHubNotification(const QString &title, const QString &body,
     notif->setBody(body);
 
     bb::system::InvokeRequest req;
-    req.setTarget("com.BerryLife.Zalo10.testDev");
+    // Must match <invoke-target id> in bar-descriptor.xml
+    req.setTarget("com.BerryLife.Zalo10.invoke");
     req.setAction("bb.action.OPEN");
+    req.setMimeType("text/plain");
     // Encode: "threadId|1" for group, "threadId|0" for DM
     QString data = threadId + "|" + (isGroup ? "1" : "0");
     req.setData(data.toUtf8());

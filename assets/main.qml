@@ -120,6 +120,14 @@ TabbedPane {
     attachedObjects: [
         Sheet {
             id: loginSheet
+            onOpened: {
+                // Guard: don't start QR if session was already restored.
+                // onOpened can fire on BB10 even when sheet is being restored
+                // from a previous state while refreshSessionKey is in progress.
+                if (!zService.loggedIn) {
+                    zService.startQRLogin();
+                }
+            }
             LoginView {
                 onLoginSuccessful: { loginSheet.close(); }
             }
@@ -142,22 +150,12 @@ TabbedPane {
             }
         },
 
-        InvokeManager {
-            id: invokeManager
-            onInvoked: {
-                // data format: "threadId|isGroup" (1=group, 0=DM)
-                var raw = String(request.data);
-                if (raw.length === 0) return;
-
-                var parts = raw.split("|");
-                var threadId = parts[0];
-                var isGroup  = (parts.length > 1 && parts[1] === "1");
-
-                if (threadId.length === 0) return;
-
-                qDebug("InvokeManager: threadId=" + threadId + " isGroup=" + isGroup);
-
-                // Switch to the right tab first
+        Connections {
+            target: app
+            onOpenThreadRequested: {
+                // Called from C++ ApplicationUI::onInvoked when Hub notification is tapped.
+                // threadId: conversation id, isGroup: true=group chat, false=DM
+                console.log("openThreadRequested: threadId=" + threadId + " isGroup=" + isGroup);
                 if (isGroup) {
                     root.activeTab = groupsTab;
                     groupsTabContent.openThread(threadId, isGroup);

@@ -46,15 +46,16 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
-        $$quote($$BASEDIR/assets/SceneCover.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
-        $$quote($$BASEDIR/assets/cover.qml) \
         $$quote($$BASEDIR/assets/images/AboutSheet/barcode.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/berrylife.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/ic_facebook.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/ic_sb_network.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/ic_scan_barcode.png) \
+        $$quote($$BASEDIR/assets/images/ActiveFrame/Activeframe_zl10_Small.png) \
+        $$quote($$BASEDIR/assets/images/ActiveFrame/activeframe_zl10_big.png) \
+        $$quote($$BASEDIR/assets/images/ActiveFrame/activeframe_zl10_medium.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom_flipped.png) \
@@ -179,7 +180,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ProfileView/default_caller.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/Profile_Star_icon.png) \
-        $$quote($$BASEDIR/assets/images/SceneCover/cover.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/Square_badge.png) \
         $$quote($$BASEDIR/assets/images/action_delete.png) \
@@ -702,11 +702,13 @@ config_pri_assets {
 
 config_pri_source_group1 {
     SOURCES += \
+        $$quote($$BASEDIR/src/ActiveFrameCover.cpp) \
         $$quote($$BASEDIR/src/ZaloService.cpp) \
         $$quote($$BASEDIR/src/applicationui.cpp) \
         $$quote($$BASEDIR/src/main.cpp)
 
     HEADERS += \
+        $$quote($$BASEDIR/src/ActiveFrameCover.hpp) \
         $$quote($$BASEDIR/src/ZaloService.hpp) \
         $$quote($$BASEDIR/src/applicationui.hpp)
 }
@@ -767,9 +769,6 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/images/ProfileView/*.qml) \
         $$quote($$BASEDIR/../assets/images/ProfileView/*.js) \
         $$quote($$BASEDIR/../assets/images/ProfileView/*.qs) \
-        $$quote($$BASEDIR/../assets/images/SceneCover/*.qml) \
-        $$quote($$BASEDIR/../assets/images/SceneCover/*.js) \
-        $$quote($$BASEDIR/../assets/images/SceneCover/*.qs) \
         $$quote($$BASEDIR/../assets/images/SettingsSheet/*.qml) \
         $$quote($$BASEDIR/../assets/images/SettingsSheet/*.js) \
         $$quote($$BASEDIR/../assets/images/SettingsSheet/*.qs) \

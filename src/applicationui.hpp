@@ -26,9 +26,13 @@ public slots:
     Q_INVOKABLE bool getDarkTheme();
     Q_INVOKABLE QString appVersion();
 
+signals:
+    void openThreadRequested(const QString &threadId, bool isGroup);
+
 private slots:
     void onSystemLanguageChanged();
     void onManualExit();
+    void onInvoked(const bb::system::InvokeRequest &request);
 
 private:
     QTranslator*                  m_pTranslator;
