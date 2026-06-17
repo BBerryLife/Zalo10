@@ -3,29 +3,29 @@
 
     <id>com.BerryLife.Zalo10</id>
 
-    <configuration name="Device-Debug">
+    <configuration id="com.qnx.qcc.toolChain.666213485" name="Device-Debug">
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm/o.le-v7-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
     </configuration>
-    <configuration name="Device-Release">
+    <configuration id="com.qnx.qcc.toolChain.2137696721" name="Device-Release">
        <entryPointType>Qnx/Cascades</entryPointType>
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm/o.le-v7/Zalo10.so" entry="true" type="Qnx/Elf">Zalo10.so</asset>
     </configuration>
-    <configuration name="Device-Profile">
+    <configuration id="com.qnx.qcc.toolChain.560740241" name="Device-Profile">
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm-p/o.le-v7-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
     </configuration>
-    <configuration name="Simulator-Debug">
+    <configuration id="com.qnx.qcc.toolChain.1655019260" name="Simulator-Debug">
        <platformArchitecture>x86</platformArchitecture>
        <asset path="x86/o-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
     </configuration>
 
     <name>Zalo10</name>
-    <versionNumber>1.1.0</versionNumber>
+    <versionNumber>1.2.0</versionNumber>
     <description>The Zalo10 application for BB10</description>
     <author>BerryLife</author>
-    <buildId>1</buildId>
+    <buildId>0</buildId>
 
     <icon>
        <image>icon86.png</image>

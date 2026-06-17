@@ -17,6 +17,7 @@
 #include <QFile>
 #include <QSslSocket>
 #include <QStringList>
+#include <QSize>
 #include <sqlite3.h>
 
 class ZaloService : public QObject
@@ -62,6 +63,10 @@ public:
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
+    // Returns {"width": w, "height": h} for a local image file (accepts "file://" prefix).
+    // Used by ChatView.qml right after the user picks a photo to send, so the outgoing
+    // bubble can be sized to the real aspect ratio immediately (before upload finishes).
+    Q_INVOKABLE QVariantMap getImageDimensions(const QString &localFilePath) const;
 
 signals:
     void loggedInChanged();
@@ -83,7 +88,9 @@ signals:
     // threadId, localFilePath (file:///tmp/...)
     void avatarReady(const QString &threadId, const QString &localPath);
     // msgId, localFilePath — for image messages downloaded for display
-    void imageMsgReady(const QString &msgId, const QString &localPath);
+    // width/height: actual pixel dimensions of the image (0 if unknown) — used by
+    // ChatView.qml to size the bubble to the real aspect ratio instead of a fixed square.
+    void imageMsgReady(const QString &msgId, const QString &localPath, int width, int height);
     void blockUserDone(const QString &userId, bool success);
     void unblockUserDone(const QString &userId, bool success);
     void muteDone(const QString &threadId, bool muted, bool success);
@@ -164,6 +171,7 @@ private:
     void fetchPhotoViaWs510(const QString &msgId, const QString &threadId);
     void fetchPhotoViaHttp(const QString &msgId, const QString &threadId);
     void fetchPhotoViaHttpAtIndex(const QString &msgId, const QString &threadId, int idx);
+    QSize imageDimensions(const QString &localFileUrlOrPath) const; // strips "file://", reads pixel size
 
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);

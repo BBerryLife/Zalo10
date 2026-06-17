@@ -187,6 +187,28 @@ static QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
 
 static QByteArray aesGcmDecrypt(const QByteArray &keyB64, const QByteArray &cipherBytes);
 
+// Reads the real pixel size of a local image file. Accepts paths with or without
+// the "file://" prefix (both forms are used throughout this file). Returns an
+// invalid QSize() if the file can't be read/decoded.
+QSize ZaloService::imageDimensions(const QString &localFileUrlOrPath) const
+{
+    QString p = localFileUrlOrPath;
+    if (p.startsWith("file://")) p = p.mid(7);
+    if (p.isEmpty()) return QSize();
+    QImage img(p);
+    if (img.isNull()) return QSize();
+    return img.size();
+}
+
+QVariantMap ZaloService::getImageDimensions(const QString &localFilePath) const
+{
+    QSize sz = imageDimensions(localFilePath);
+    QVariantMap m;
+    m["width"]  = (sz.width()  > 0) ? sz.width()  : 0;
+    m["height"] = (sz.height() > 0) ? sz.height() : 0;
+    return m;
+}
+
 ZaloService::ZaloService(QObject *parent)
     : QObject(parent), m_manager(new QNetworkAccessManager(this)),
       m_qrExpireTimer(new QTimer(this)), m_listenTimer(new QTimer(this)),
@@ -217,12 +239,16 @@ ZaloService::ZaloService(QObject *parent)
             "  isMine     INTEGER DEFAULT 0,"
             "  isGroup    INTEGER DEFAULT 0,"
             "  msgType    INTEGER DEFAULT 0,"
-            "  localImage TEXT DEFAULT ''"
+            "  localImage TEXT DEFAULT '',"
+            "  imgWidth   INTEGER DEFAULT 0,"
+            "  imgHeight  INTEGER DEFAULT 0"
             ");";
         sqlite3_exec(m_db, sql, 0, 0, 0);
         // Migrations for existing DBs
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN msgType    INTEGER DEFAULT 0;",  0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN localImage TEXT    DEFAULT '';", 0, 0, 0);
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN imgWidth   INTEGER DEFAULT 0;",  0, 0, 0);
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN imgHeight  INTEGER DEFAULT 0;",  0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
         // Track per-thread clear timestamps so re-fetched server msgs are filtered
         sqlite3_exec(m_db,
@@ -3320,12 +3346,13 @@ void ZaloService::onSendPhotoDone()
     //         oriUrl (group only), normalUrl (DM only),
     //         zsource=-1, ttl=0, jcp
     qint64 ts2 = QDateTime::currentMSecsSinceEpoch();
+    QSize photoDim = imageDimensions(localPath);
     QVariantMap mp;
     mp["photoId"]   = photoId;
     mp["clientId"]  = QString::number(ts2);
     mp["desc"]      = "";
-    mp["width"]     = 0;
-    mp["height"]    = 0;
+    mp["width"]     = photoDim.width();
+    mp["height"]    = photoDim.height();
     mp["rawUrl"]    = normalUrl;
     mp["hdUrl"]     = hdUrl.isEmpty() ? normalUrl : hdUrl;
     mp["thumbUrl"]  = thumbUrl;
@@ -3399,16 +3426,20 @@ void ZaloService::onSendPhotoMsgDone()
                 qDebug() << "[Zalo] sendPhoto: WS already delivered msgId=" << msgId << ", skipping duplicate emit";
                 // Still persist localImage so it shows on reopen
                 if (!localPath.isEmpty() && m_db) {
-                    const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
+                    QSize dim = imageDimensions(localPath);
+                    const char *sql = "UPDATE messages SET localImage=?, imgWidth=?, imgHeight=? WHERE msgId=?";
                     sqlite3_stmt *stmt = 0;
                     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
                         sqlite3_bind_text(stmt, 1, localPath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                        sqlite3_bind_text(stmt, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_int(stmt,  2, dim.width());
+                        sqlite3_bind_int(stmt,  3, dim.height());
+                        sqlite3_bind_text(stmt, 4, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
                         sqlite3_step(stmt);
                         sqlite3_finalize(stmt);
                     }
                 }
             } else {
+                QSize dim = imageDimensions(localPath);
                 QVariantMap out;
                 out["msgId"]      = msgId;
                 out["content"]    = contentJson;
@@ -3419,6 +3450,8 @@ void ZaloService::onSendPhotoMsgDone()
                 out["dName"]      = m_displayName;
                 out["ts"]         = QString::number(QDateTime::currentMSecsSinceEpoch());
                 out["localImage"] = localPath;
+                out["imgWidth"]   = dim.width();
+                out["imgHeight"]  = dim.height();
                 m_seenMsgIds.insert(msgId);
                 dbSaveMessage(out, tid);
                 emit newMessage(tid, out);
@@ -3553,7 +3586,8 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
     // These start with base64 data, not "http"
     if (!url.startsWith("http")) {
         if (m_avatarCache.contains(url)) {
-            emit imageMsgReady(msgId, m_avatarCache[url]);
+            QSize sz = imageDimensions(m_avatarCache[url]);
+            emit imageMsgReady(msgId, m_avatarCache[url], sz.width(), sz.height());
             return;
         }
         QByteArray imgData = QByteArray::fromBase64(url.toUtf8());
@@ -3779,17 +3813,21 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                     }
                     QString filePath = "file://" + tmpPath;
                     m_avatarCache[url] = filePath;
+                    int imgW = qimg.width();
+                    int imgH = qimg.height();
                     if (!msgId.isEmpty() && !threadId.isEmpty() && m_db) {
-                        const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
+                        const char *sql = "UPDATE messages SET localImage=?, imgWidth=?, imgHeight=? WHERE msgId=?";
                         sqlite3_stmt *stmt2 = 0;
                         if (sqlite3_prepare_v2(m_db, sql, -1, &stmt2, 0) == SQLITE_OK) {
                             sqlite3_bind_text(stmt2, 1, filePath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                            sqlite3_bind_text(stmt2, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+                            sqlite3_bind_int(stmt2,  2, imgW);
+                            sqlite3_bind_int(stmt2,  3, imgH);
+                            sqlite3_bind_text(stmt2, 4, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
                             sqlite3_step(stmt2);
                             sqlite3_finalize(stmt2);
                         }
                     }
-                    emit imageMsgReady(msgId, filePath);
+                    emit imageMsgReady(msgId, filePath, imgW, imgH);
                     return;
                 }
                 qDebug() << "[Zalo] downloadImageMessage: unrecognised format, msgId=" << msgId
@@ -3805,19 +3843,22 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                 f.close();
                 QString filePath = "file://" + tmpPath;
                 m_avatarCache[url] = filePath;
+                QSize dim = imageDimensions(filePath);
                 // Persist to DB
                 if (!msgId.isEmpty() && !threadId.isEmpty() && m_db) {
-                    const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
+                    const char *sql = "UPDATE messages SET localImage=?, imgWidth=?, imgHeight=? WHERE msgId=?";
                     sqlite3_stmt *stmt = 0;
                     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
                         sqlite3_bind_text(stmt, 1, filePath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                        sqlite3_bind_text(stmt, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_int(stmt,  2, dim.width());
+                        sqlite3_bind_int(stmt,  3, dim.height());
+                        sqlite3_bind_text(stmt, 4, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
                         sqlite3_step(stmt);
                         sqlite3_finalize(stmt);
                     }
                 }
                 qDebug() << "[Zalo] downloadImageMessage base64 decoded msgId" << msgId << "->" << tmpPath;
-                emit imageMsgReady(msgId, filePath);
+                emit imageMsgReady(msgId, filePath, dim.width(), dim.height());
                 return;
             }
         } // end if(!imgData.isEmpty())
@@ -3826,7 +3867,8 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
     }
 
     if (m_avatarCache.contains(url)) {
-        emit imageMsgReady(msgId, m_avatarCache[url]);
+        QSize sz = imageDimensions(m_avatarCache[url]);
+        emit imageMsgReady(msgId, m_avatarCache[url], sz.width(), sz.height());
         return;
     }
     if (m_pendingAvatars.contains(url)) return;
@@ -3885,20 +3927,23 @@ void ZaloService::onImageMsgDownloaded()
     if (f.open(QIODevice::WriteOnly)) { f.write(finalData); f.close(); }
     QString filePath = "file://" + tmpPath;
     m_avatarCache[url] = filePath;
+    QSize dim = imageDimensions(filePath);
 
     // Persist localImage in DB so it survives chat reopen
     if (!msgId.isEmpty() && !threadId.isEmpty() && m_db) {
-        const char *sql = "UPDATE messages SET localImage=? WHERE msgId=?";
+        const char *sql = "UPDATE messages SET localImage=?, imgWidth=?, imgHeight=? WHERE msgId=?";
         sqlite3_stmt *stmt = 0;
         if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
             sqlite3_bind_text(stmt, 1, filePath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_text(stmt, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int(stmt,  2, dim.width());
+            sqlite3_bind_int(stmt,  3, dim.height());
+            sqlite3_bind_text(stmt, 4, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
             sqlite3_step(stmt);
             sqlite3_finalize(stmt);
         }
     }
 
-    emit imageMsgReady(msgId, filePath);
+    emit imageMsgReady(msgId, filePath, dim.width(), dim.height());
 }
 
 void ZaloService::onQRExpired()
@@ -4668,8 +4713,8 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
 
     const char *sql =
         "INSERT OR REPLACE INTO messages "
-        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)";
+        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
     sqlite3_stmt *stmt = 0;
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
     sqlite3_bind_text(stmt, 1,  msgId.toUtf8().constData(),                       -1, SQLITE_TRANSIENT);
@@ -4682,6 +4727,8 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     sqlite3_bind_int (stmt, 8,  msg["isGroup"].toBool() ? 1 : 0);
     sqlite3_bind_int (stmt, 9,  msg["msgType"].toInt());
     sqlite3_bind_text(stmt, 10, msg["localImage"].toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int (stmt, 11, msg["imgWidth"].toInt());
+    sqlite3_bind_int (stmt, 12, msg["imgHeight"].toInt());
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
 }
@@ -4692,7 +4739,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     if (!m_db || threadId.isEmpty()) return result;
 
     const char *sql =
-        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage "
+        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight "
         "FROM messages WHERE threadId=? "
         "ORDER BY CAST(ts AS INTEGER) ASC LIMIT 200;";
     sqlite3_stmt *stmt = 0;
@@ -4709,6 +4756,8 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
         m["isGroup"]    = (sqlite3_column_int(stmt, 6) == 1);
         m["msgType"]    = sqlite3_column_int(stmt, 7);
         m["localImage"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 8));
+        m["imgWidth"]   = sqlite3_column_int(stmt, 9);
+        m["imgHeight"]  = sqlite3_column_int(stmt, 10);
         result.append(m);
     }
     sqlite3_finalize(stmt);

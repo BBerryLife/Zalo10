@@ -77,6 +77,33 @@ Sheet {
                 Divider { topMargin: 30; bottomMargin: 20 }
 
                 Label {
+                    text: "Support"
+                    textStyle.base: SystemDefaults.TextStyles.TitleText
+                }
+
+                Button {
+                    text: "Export Log"
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topMargin: 20
+                    onClicked: {
+                        var path = app.exportLog();
+                        exportToast.body = (path && path.length > 0)
+                            ? "Log saved to " + path
+                            : "Could not export log. Try again after using the app a bit.";
+                        exportToast.show();
+                    }
+                }
+
+                Label {
+                    text: "If the app has a problem, please export the log and email it to us — don't worry, we don't care about your message data and couldn't do anything with it even if we wanted to."
+                    multiline: true
+                    textStyle.color: Color.Gray
+                    topMargin: 6
+                }
+
+                Divider { topMargin: 30; bottomMargin: 20 }
+
+                Label {
                     text: "Account"
                     textStyle.base: SystemDefaults.TextStyles.TitleText
                 }
@@ -89,6 +116,9 @@ Sheet {
                 }
 
                 attachedObjects: [
+                    SystemToast {
+                        id: exportToast
+                    },
                     SystemDialog {
                         id: logoutDialog
                         title: "Log Out"

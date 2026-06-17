@@ -81,31 +81,38 @@ Page {
 
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(7); preferredHeight: ui.du(7)
-                    defaultImageSource: "asset:///images/ChatView/ic_voice_call.png"
-                    pressedImageSource: "asset:///images/ChatView/ic_voice_call.png"
-                    rightMargin: ui.du(0.3)
+                    preferredWidth: ui.du(8); preferredHeight: ui.du(8)
+                    defaultImageSource: "asset:///images/ChatView/ic_bbm_voice_answer.png"
+                    pressedImageSource: "asset:///images/ChatView/ic_bbm_voice_answer.png"
+                    rightMargin: ui.du(0.8)
                     onClicked: { voiceCallUnderDevDialog.show() }
                 }
                 ImageButton {
                     verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(7); preferredHeight: ui.du(7)
-                    defaultImageSource: "asset:///images/ChatView/ca_video_chat_active.png"
-                    pressedImageSource: "asset:///images/ChatView/ca_video_chat_active.png"
-                    rightMargin: ui.du(0.5)
+                    preferredWidth: ui.du(8); preferredHeight: ui.du(8)
+                    defaultImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
+                    pressedImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
                     onClicked: { videoCallUnderDevDialog.show() }
+                }
+                // Fixed-width spacer — physically pushes the icon pair away from the
+                // screen's right edge. (A plain rightMargin on the last icon wasn't
+                // enough: the spaceQuota title Container reclaims that space first.)
+                Container {
+                    preferredWidth: ui.du(0.2)
                 }
             }
         }
     }
 
-    function applyImageUpdate(msgId, localPath) {
+    function applyImageUpdate(msgId, localPath, imgWidth, imgHeight) {
         var size = msgModel.size();
         if (size === 0) return;
         for (var j = 0; j < size; j++) {
             var d = msgModel.value(j);
             if ((d.msgId || "") === msgId) {
                 d.localImage = localPath;
+                if (imgWidth  > 0) d.imgWidth  = imgWidth;
+                if (imgHeight > 0) d.imgHeight = imgHeight;
                 msgModel.replace(j, d);
                 return;
             }
@@ -116,7 +123,8 @@ Page {
         var pending = chatViewPage.pendingImageUpdates;
         if (!pending || pending.length === 0) return;
         for (var i = 0; i < pending.length; i++) {
-            chatViewPage.applyImageUpdate(pending[i].msgId, pending[i].localPath);
+            chatViewPage.applyImageUpdate(pending[i].msgId, pending[i].localPath,
+                                           pending[i].imgWidth, pending[i].imgHeight);
         }
         chatViewPage.pendingImageUpdates = [];
     }
@@ -202,6 +210,14 @@ Page {
                                              || ListItemData.isMine === 1)
                         property bool grouped: ListItemData.grouped === true
 
+                        // Used to size photo bubbles to the image's real aspect ratio
+                        // without ever exceeding the bubble's own width. 94 = the two
+                        // side spacer Containers below (6+60) + bubble left/right padding (14+14).
+                        attachedObjects: [ LayoutUpdateHandler { id: rowLUH } ]
+                        property real bubbleMaxW: rowLUH.layoutFrame.width > 94
+                                                   ? (rowLUH.layoutFrame.width - 94)
+                                                   : ui.du(40)
+
                         Container {
                             preferredWidth: rowRoot.mine ? 6 : 60
                             minWidth:       rowRoot.mine ? 6 : 60
@@ -285,6 +301,7 @@ Page {
                                 }
 
                                 Container {
+                                    id: photoWrap
                                     visible: (ListItemData.msgType === 2 || ListItemData.msgType === "2")
                                              || (typeof ListItemData.content === "string"
                                                  && ListItemData.content.length > 1
@@ -293,25 +310,39 @@ Page {
                                                      || ListItemData.content.indexOf("thumbUrl") >= 0
                                                      || ListItemData.content.indexOf("thumb") >= 0
                                                      || ListItemData.content.indexOf("href") >= 0))
-                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    horizontalAlignment: HorizontalAlignment.Left
                                     topMargin: 2; bottomMargin: 2
-                                    preferredHeight: (ListItemData.localImage && ListItemData.localImage !== "") ? ui.du(30) : ui.du(5)
-                                    minHeight:       (ListItemData.localImage && ListItemData.localImage !== "") ? ui.du(12) : ui.du(4)
-                                    background: (ListItemData.localImage && ListItemData.localImage !== "")
+
+                                    property bool hasLocal: !!(ListItemData.localImage && ListItemData.localImage !== "")
+                                    // Real pixel size of the photo (0 when not known yet, e.g. legacy
+                                    // cached messages from before this feature existed).
+                                    property real natW: (ListItemData.imgWidth  && ListItemData.imgWidth  > 0) ? ListItemData.imgWidth  : 0
+                                    property real natH: (ListItemData.imgHeight && ListItemData.imgHeight > 0) ? ListItemData.imgHeight : 0
+                                    // Width never exceeds the bubble's content width. Height follows the
+                                    // photo's own ratio (1:1, 4:3, 3:4, 16:9, ...) — never cropped/stretched.
+                                    property real dispW: photoWrap.natW > 0
+                                                          ? Math.min(rowRoot.bubbleMaxW, photoWrap.natW)
+                                                          : Math.min(rowRoot.bubbleMaxW, ui.du(30))
+                                    property real dispH: photoWrap.natW > 0
+                                                          ? (photoWrap.dispW * (photoWrap.natH / photoWrap.natW))
+                                                          : ui.du(30)
+
+                                    preferredWidth:  photoWrap.hasLocal ? photoWrap.dispW : ui.du(30)
+                                    preferredHeight: photoWrap.hasLocal ? photoWrap.dispH : ui.du(5)
+                                    minHeight:       photoWrap.hasLocal ? ui.du(8)        : ui.du(4)
+                                    background: photoWrap.hasLocal
                                                 ? (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0"))
                                                 : Color.Transparent
                                     layout: DockLayout {}
                                     ImageView {
-                                        visible: ListItemData.localImage && ListItemData.localImage !== ""
+                                        visible: photoWrap.hasLocal
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment:   VerticalAlignment.Fill
-                                        preferredWidth:  ui.du(30)
-                                        preferredHeight: ui.du(30)
                                         scalingMethod: ScalingMethod.AspectFit
                                         imageSource: ListItemData.localImage
                                     }
                                     Label {
-                                        visible: !ListItemData.localImage || ListItemData.localImage === ""
+                                        visible: !photoWrap.hasLocal
                                         text: "[Photo]"
                                         horizontalAlignment: HorizontalAlignment.Left
                                         verticalAlignment:   VerticalAlignment.Center
@@ -703,28 +734,60 @@ Page {
                     chatViewPage.dbIsMineCache = updC;
                 }
 
+                var handledInPlace = false;
+
                 if (chatViewPage.normMine(msg.isMine)) {
                     if (msg.msgType === 2 || msg.msgType === "2") {
                         var savedLocalImage = "";
+                        var savedImgWidth = 0, savedImgHeight = 0;
+                        var placeholderIdx = -1;
                         for (var pi = msgModel.size() - 1; pi >= 0; pi--) {
                             var pitem = msgModel.value(pi);
                             if (pitem.msgId && pitem.msgId.indexOf("local_img_") === 0) {
                                 savedLocalImage = pitem.localImage || "";
-                                msgModel.removeAt(pi);
+                                savedImgWidth  = pitem.imgWidth  || 0;
+                                savedImgHeight = pitem.imgHeight || 0;
+                                placeholderIdx = pi;
                                 break;
                             }
                         }
                         if (savedLocalImage.length > 0) msg.localImage = savedLocalImage;
+                        if (!msg.imgWidth  && savedImgWidth  > 0) msg.imgWidth  = savedImgWidth;
+                        if (!msg.imgHeight && savedImgHeight > 0) msg.imgHeight = savedImgHeight;
+
+                        if (placeholderIdx >= 0) {
+                            // Replace the placeholder row in place (same index) instead of
+                            // remove+append — avoids a brief duplicate-looking flicker in the
+                            // ListView when the server confirmation (HTTP + WS can both fire
+                            // close together) lands while the row is still animating in.
+                            msgModel.replace(placeholderIdx, msg);
+                            handledInPlace = true;
+                        } else if (savedLocalImage.length === 0 && msg.localImage && msg.localImage.length > 0) {
+                            // Placeholder already consumed by an earlier confirmation for this
+                            // same photo (e.g. HTTP confirm + WS echo both arriving) — if we
+                            // already have a row with this exact image, update it instead of
+                            // adding a second one, even if msgId happened to differ between
+                            // the two confirmations.
+                            for (var li = msgModel.size() - 1; li >= 0; li--) {
+                                if (msgModel.value(li).localImage === msg.localImage) {
+                                    msgModel.replace(li, msg);
+                                    handledInPlace = true;
+                                    break;
+                                }
+                            }
+                        }
                     } else {
                         chatViewPage.removeLocalPlaceholder(msg.content);
                     }
                 }
 
-                for (var di = 0; di < msgModel.size(); di++) {
-                    if (msgModel.value(di).msgId === msg.msgId) return;
+                if (!handledInPlace) {
+                    for (var di = 0; di < msgModel.size(); di++) {
+                        if (msgModel.value(di).msgId === msg.msgId) return;
+                    }
+                    msgModel.append(msg);
                 }
 
-                msgModel.append(msg);
                 chatViewPage.rebuildGroups();
                 msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
 
@@ -739,10 +802,10 @@ Page {
 
             onImageMsgReady: {
                 if (chatViewPage.pageVisible) {
-                    chatViewPage.applyImageUpdate(msgId, localPath);
+                    chatViewPage.applyImageUpdate(msgId, localPath, width, height);
                 } else {
                     var pending = chatViewPage.pendingImageUpdates;
-                    pending.push({ msgId: msgId, localPath: localPath });
+                    pending.push({ msgId: msgId, localPath: localPath, imgWidth: width, imgHeight: height });
                     chatViewPage.pendingImageUpdates = pending;
                 }
             }
@@ -793,11 +856,14 @@ Page {
                              || ext === "gif" || ext === "webp" || ext === "bmp");
 
                 if (isImg) {
+                    var dim = zService.getImageDimensions(path);
                     var m = {
                         msgId:      "local_img_" + new Date().getTime(),
                         content:    "",
                         msgType:    2,
                         localImage: "file://" + path,
+                        imgWidth:   dim.width  || 0,
+                        imgHeight:  dim.height || 0,
                         isMine:     true,
                         isGroup:    chatViewPage.isGroup,
                         senderId:   "self",

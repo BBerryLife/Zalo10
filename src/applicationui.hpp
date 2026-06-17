@@ -25,6 +25,11 @@ public slots:
     Q_INVOKABLE void setDarkTheme(bool dark);
     Q_INVOKABLE bool getDarkTheme();
     Q_INVOKABLE QString appVersion();
+    // Copies the running session's debug log to the shared Documents folder
+    // (/accounts/1000/shared/documents/zalo10/log_YYYYMMDD_HHmmss.txt) so each
+    // export gets its own timestamped file instead of overwriting the last one.
+    // Returns the exported file path on success, or an empty string on failure.
+    Q_INVOKABLE QString exportLog();
 
 signals:
     void openThreadRequested(const QString &threadId, bool isGroup);

@@ -79,17 +79,18 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png.amd) \
         $$quote($$BASEDIR/assets/images/ChatView/ConversationPaneSend.png) \
         $$quote($$BASEDIR/assets/images/ChatView/attach_icon.png) \
-        $$quote($$BASEDIR/assets/images/ChatView/ca_video_chat_active.png) \
         $$quote($$BASEDIR/assets/images/ChatView/clear_chat.png) \
         $$quote($$BASEDIR/assets/images/ChatView/darkkeyboard.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_attach.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_bbm_video_answer.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_bbm_voice_answer.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_block_contact.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_chat_leave.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled_white.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
-        $$quote($$BASEDIR/assets/images/ChatView/ic_voice_call.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemess.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \

@@ -15,6 +15,9 @@
 #include <QLocale>
 #include <QSettings>
 #include <QDebug>
+#include <QFile>
+#include <QDir>
+#include <QDateTime>
 
 using namespace bb::cascades;
 using namespace bb::system;
@@ -128,4 +131,27 @@ QString ApplicationUI::appVersion()
     // Reads version directly from bar-descriptor.xml at runtime (same pattern as bbtube).
     // To update the version, only bar-descriptor.xml needs to be changed.
     return bb::ApplicationInfo().version();
+}
+
+QString ApplicationUI::exportLog()
+{
+    QString srcPath  = QDir::homePath() + "/zalo10_runtime.log";
+    QString destDir  = "/accounts/1000/shared/documents/zalo10";
+    QString stamp    = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    QString destPath = destDir + "/zalo10_log_" + stamp + ".txt";
+
+    QDir dir;
+    if (!dir.exists(destDir) && !dir.mkpath(destDir)) {
+        qDebug() << "[App] exportLog: failed to create" << destDir;
+        return QString();
+    }
+
+    if (!QFile::exists(srcPath)) {
+        qDebug() << "[App] exportLog: no log file yet at" << srcPath;
+        return QString();
+    }
+
+    bool ok = QFile::copy(srcPath, destPath);
+    qDebug() << "[App] exportLog:" << (ok ? "success ->" : "FAILED ->") << destPath;
+    return ok ? destPath : QString();
 }
