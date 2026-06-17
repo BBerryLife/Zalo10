@@ -39,6 +39,7 @@ Sheet {
 
         onCreationCompleted: {
             darkToggle.checked = app.getDarkTheme();
+            showRecalledToggle.checked = app.getShowRecalledMessages();
         }
 
         ScrollView {
@@ -69,6 +70,36 @@ Sheet {
 
                 Label {
                     text: "Enabling dark mode at night reduces eye strain and saves battery on OLED displays."
+                    multiline: true
+                    textStyle.color: Color.Gray
+                    topMargin: 6
+                }
+
+                Divider { topMargin: 30; bottomMargin: 20 }
+
+                Label {
+                    text: "Messages"
+                    textStyle.base: SystemDefaults.TextStyles.TitleText
+                }
+
+                Container {
+                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                    topMargin: 20
+                    Label {
+                        text: "Show Recalled Messages"
+                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                        verticalAlignment: VerticalAlignment.Center
+                    }
+                    ToggleButton {
+                        id: showRecalledToggle
+                        onCheckedChanged: {
+                            app.setShowRecalledMessages(checked);
+                        }
+                    }
+                }
+
+                Label {
+                    text: "Zalo10 exclusive: when someone recalls a message, keep showing what they originally sent with a \"(This message was recalled)\" tag instead of hiding it."
                     multiline: true
                     textStyle.color: Color.Gray
                     topMargin: 6

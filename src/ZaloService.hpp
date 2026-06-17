@@ -84,6 +84,9 @@ signals:
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
     void newMessage(const QString &threadId, const QVariantMap &message);
+    // Fired when a previously-displayed message gets recalled/unsent by its sender
+    // (Zalo "chat.undo" event). QML should update the existing bubble in place.
+    void messageRecalled(const QString &threadId, const QString &msgId);
     void threadLastMessageChanged(const QString &threadId, const QString &lastMsg, const QString &lastTime);
     // threadId, localFilePath (file:///tmp/...)
     void avatarReady(const QString &threadId, const QString &localPath);
@@ -172,6 +175,7 @@ private:
     void fetchPhotoViaHttp(const QString &msgId, const QString &threadId);
     void fetchPhotoViaHttpAtIndex(const QString &msgId, const QString &threadId, int idx);
     QSize imageDimensions(const QString &localFileUrlOrPath) const; // strips "file://", reads pixel size
+    void markMessageRecalled(const QString &threadId, const QString &msgId); // chat.undo handling
 
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);

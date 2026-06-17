@@ -119,6 +119,20 @@ Page {
         }
     }
 
+    function applyRecall(msgId) {
+        var size = msgModel.size();
+        for (var j = 0; j < size; j++) {
+            var d = msgModel.value(j);
+            if ((d.msgId || "") === msgId) {
+                d.content    = "";
+                d.msgType    = 99;
+                d.localImage = "";
+                msgModel.replace(j, d);
+                return;
+            }
+        }
+    }
+
     function flushPendingImages() {
         var pending = chatViewPage.pendingImageUpdates;
         if (!pending || pending.length === 0) return;
@@ -209,6 +223,7 @@ Page {
                                              || ListItemData.isMine === "true"
                                              || ListItemData.isMine === 1)
                         property bool grouped: ListItemData.grouped === true
+                        property bool recalled: (ListItemData.msgType === 99 || ListItemData.msgType === "99")
 
                         // Used to size photo bubbles to the image's real aspect ratio
                         // without ever exceeding the bubble's own width. 94 = the two
@@ -278,7 +293,19 @@ Page {
                                 topMargin: 0; bottomMargin: 0
 
                                 Label {
-                                    visible: (ListItemData.msgType !== 2 && ListItemData.msgType !== "2")
+                                    visible: rowRoot.recalled
+                                    text: rowRoot.mine ? "You recalled a message" : "This message was recalled"
+                                    textStyle {
+                                        base:       SystemDefaults.TextStyles.BodyText
+                                        fontStyle:  FontStyle.Italic
+                                        color: rowRoot.isDark ? Color.create("#888888") : Color.create("#999999")
+                                    }
+                                    topMargin: 0; bottomMargin: 0
+                                }
+
+                                Label {
+                                    visible: !rowRoot.recalled
+                                             && (ListItemData.msgType !== 2 && ListItemData.msgType !== "2")
                                              && !(typeof ListItemData.content === "string"
                                                   && ListItemData.content.length > 1
                                                   && ListItemData.content.charAt(0) === "{"
@@ -302,14 +329,15 @@ Page {
 
                                 Container {
                                     id: photoWrap
-                                    visible: (ListItemData.msgType === 2 || ListItemData.msgType === "2")
-                                             || (typeof ListItemData.content === "string"
-                                                 && ListItemData.content.length > 1
-                                                 && ListItemData.content.charAt(0) === "{"
-                                                 && (ListItemData.content.indexOf("normalUrl") >= 0
-                                                     || ListItemData.content.indexOf("thumbUrl") >= 0
-                                                     || ListItemData.content.indexOf("thumb") >= 0
-                                                     || ListItemData.content.indexOf("href") >= 0))
+                                    visible: !rowRoot.recalled
+                                             && ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
+                                                 || (typeof ListItemData.content === "string"
+                                                     && ListItemData.content.length > 1
+                                                     && ListItemData.content.charAt(0) === "{"
+                                                     && (ListItemData.content.indexOf("normalUrl") >= 0
+                                                         || ListItemData.content.indexOf("thumbUrl") >= 0
+                                                         || ListItemData.content.indexOf("thumb") >= 0
+                                                         || ListItemData.content.indexOf("href") >= 0)))
                                     horizontalAlignment: HorizontalAlignment.Left
                                     topMargin: 2; bottomMargin: 2
 
@@ -808,6 +836,11 @@ Page {
                     pending.push({ msgId: msgId, localPath: localPath, imgWidth: width, imgHeight: height });
                     chatViewPage.pendingImageUpdates = pending;
                 }
+            }
+
+            onMessageRecalled: {
+                if (threadId !== chatViewPage.threadId) return;
+                chatViewPage.applyRecall(msgId);
             }
 
             onMuteDone: {

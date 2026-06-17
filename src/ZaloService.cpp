@@ -185,6 +185,29 @@ static QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
 }
 
 
+// Zalo sends a separate "chat.undo" event when a message is recalled/unsent.
+// Its content is {"globalMsgId":..., "cliMsgId":..., "deleteMsg":..., "srcId":..., "destId":...}
+// referencing the ORIGINAL message's msgId — it is not a message of its own.
+// Returns the original msgId being recalled, or an empty string if m isn't a recall event.
+static QString extractRecalledMsgId(const QVariantMap &m)
+{
+    QString msgTypeStr = m.value("msgType").toString();
+    if (msgTypeStr.compare("chat.undo", Qt::CaseInsensitive) != 0)
+        return QString();
+
+    // content arrives as a nested QVariantMap (QScriptEngine auto-converts JSON
+    // objects), but may also already be a JSON string depending on the call path.
+    QVariantMap c = m.value("content").toMap();
+    if (c.isEmpty()) {
+        QString cs = m.value("content").toString();
+        if (!cs.isEmpty() && cs.trimmed().startsWith("{"))
+            c = jsonToMap(cs.toUtf8());
+    }
+    QString recalledId = c.value("globalMsgId").toString();
+    if (recalledId.isEmpty()) recalledId = c.value("cliMsgId").toString();
+    return recalledId;
+}
+
 static QByteArray aesGcmDecrypt(const QByteArray &keyB64, const QByteArray &cipherBytes);
 
 // Reads the real pixel size of a local image file. Accepts paths with or without
@@ -1391,6 +1414,14 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 m_seenMsgIds.insert(msgId);
             }
 
+            // chat.undo = recall/unsend notification, not a real message — update the
+            // original message in place instead of appending a stray JSON bubble.
+            QString recalledId = extractRecalledMsgId(m);
+            if (!recalledId.isEmpty()) {
+                markMessageRecalled(threadId, recalledId);
+                continue;
+            }
+
             QVariantMap out;
             out["msgId"]    = msgId;
             out["senderId"] = uidFrom;
@@ -1714,6 +1745,24 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             }
             bool isMine = (rawUidFrom == "0" || rawUidFrom == m_uid);
             QString uidFrom = (rawUidFrom == "0") ? m_uid : rawUidFrom;
+
+            // chat.undo = recall/unsend notification, not a real message. Patch the
+            // original message if it's earlier in this same history batch, persist the
+            // recall to SQLite either way, and skip adding this event as its own bubble.
+            QString recalledIdH = extractRecalledMsgId(m);
+            if (!recalledIdH.isEmpty()) {
+                markMessageRecalled(emitThread, recalledIdH);
+                for (int pj = 0; pj < msgs.size(); ++pj) {
+                    QVariantMap pm = msgs[pj].toMap();
+                    if (pm["msgId"].toString() == recalledIdH) {
+                        pm["content"] = QString();
+                        pm["msgType"] = 99;
+                        msgs[pj] = pm;
+                        break;
+                    }
+                }
+                continue;
+            }
 
             QVariantMap out;
             out["msgId"]    = msgId;
@@ -2886,6 +2935,25 @@ void ZaloService::onFetchMsgDone()
 
     for (int i = 0; i < rawMsgs.size(); ++i) {
         QVariantMap m = rawMsgs[i].toMap();
+
+        // chat.undo = recall/unsend notification, not a real message. Patch the
+        // original message if it's earlier in this same history batch, persist the
+        // recall to SQLite either way, and skip adding this event as its own bubble.
+        QString recalledIdG = extractRecalledMsgId(m);
+        if (!recalledIdG.isEmpty()) {
+            markMessageRecalled(tid, recalledIdG);
+            for (int pj = 0; pj < msgs.size(); ++pj) {
+                QVariantMap pm = msgs[pj].toMap();
+                if (pm["msgId"].toString() == recalledIdG) {
+                    pm["content"] = QString();
+                    pm["msgType"] = 99;
+                    msgs[pj] = pm;
+                    break;
+                }
+            }
+            continue;
+        }
+
         QVariantMap out;
         QString msgId    = m["msgId"].toString();
         QString uidFrom  = m["uidFrom"].toString();
@@ -4688,6 +4756,25 @@ void ZaloService::onRefreshSessionKeyDone()
     } else {
         emit sessionRefreshed();
     }
+}
+
+// Marks an existing message as recalled in SQLite (msgType=99, content cleared)
+// and notifies QML so the already-displayed bubble can update in place instead
+// of a stray "chat.undo" JSON blob appearing as its own message.
+void ZaloService::markMessageRecalled(const QString &threadId, const QString &msgId)
+{
+    if (msgId.isEmpty()) return;
+    if (m_db) {
+        const char *sql = "UPDATE messages SET content='', msgType=99 WHERE msgId=?";
+        sqlite3_stmt *stmt = 0;
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, msgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+    }
+    qDebug() << "[Zalo] message recalled msgId=" << msgId << "thread=" << threadId;
+    emit messageRecalled(threadId, msgId);
 }
 
 void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
