@@ -22,6 +22,7 @@ Page {
     property variant pendingImageUpdates: ([])
     property bool   pageVisible: false
     property bool   isDark: app.getDarkTheme()
+    property bool   showRecalledMessages: app.getShowRecalledMessages()
 
     titleBar: TitleBar {
         scrollBehavior: TitleBarScrollBehavior.Sticky
@@ -124,6 +125,21 @@ Page {
         for (var j = 0; j < size; j++) {
             var d = msgModel.value(j);
             if ((d.msgId || "") === msgId) {
+                // Preserve the original text/photo content so it can still be shown
+                // (with a "(This message was recalled)" tag) when the user has
+                // "Show Recalled Messages" enabled in Settings. msgType=99 still
+                // marks the message as recalled for everything else that checks it.
+                //
+                // Idempotency guard: the server can redeliver the same "chat.undo"
+                // event again (e.g. a resync after reopening the thread replays
+                // both the original message and its recall). If this message was
+                // already recalled once, d.content is already "" — without this
+                // guard, a second call would overwrite the text we already saved
+                // here with that empty string and the bubble would permanently
+                // lose its recovered text. Only capture it the first time.
+                if (!d.recalledOriginalContent || d.recalledOriginalContent.length === 0) {
+                    d.recalledOriginalContent = d.content || "";
+                }
                 d.content    = "";
                 d.msgType    = 99;
                 d.localImage = "";
@@ -201,6 +217,7 @@ Page {
         ListView {
             id: msgList
             property bool isDark: chatViewPage.isDark
+            property bool showRecalledMessages: chatViewPage.showRecalledMessages
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: ArrayDataModel { id: msgModel }
@@ -224,6 +241,21 @@ Page {
                                              || ListItemData.isMine === 1)
                         property bool grouped: ListItemData.grouped === true
                         property bool recalled: (ListItemData.msgType === 99 || ListItemData.msgType === "99")
+                        // "Show Recalled Messages" setting: when on, and the recalled message's
+                        // original content was plain text (not a photo/sticker JSON blob), keep
+                        // showing that original text instead of the generic placeholder banner.
+                        property bool showRecalledSetting: ListItem.view.showRecalledMessages
+                        property string recalledOriginal: ListItemData.recalledOriginalContent || ""
+                        property bool recalledHasOriginalText: rowRoot.recalledOriginal.length > 0
+                                                                 && !(rowRoot.recalledOriginal.charAt(0) === "{"
+                                                                      && (rowRoot.recalledOriginal.indexOf("normalUrl") >= 0
+                                                                          || rowRoot.recalledOriginal.indexOf("thumbUrl") >= 0
+                                                                          || rowRoot.recalledOriginal.indexOf("thumb") >= 0
+                                                                          || rowRoot.recalledOriginal.indexOf("href") >= 0))
+                        // True when we should fall back to the plain "This message was
+                        // recalled" placeholder bubble (setting off, or no recoverable text).
+                        property bool recalledHidden: rowRoot.recalled
+                                                       && !(rowRoot.showRecalledSetting && rowRoot.recalledHasOriginalText)
 
                         // Used to size photo bubbles to the image's real aspect ratio
                         // without ever exceeding the bubble's own width. 94 = the two
@@ -293,7 +325,7 @@ Page {
                                 topMargin: 0; bottomMargin: 0
 
                                 Label {
-                                    visible: rowRoot.recalled
+                                    visible: rowRoot.recalledHidden
                                     text: rowRoot.mine ? "You recalled a message" : "This message was recalled"
                                     textStyle {
                                         base:       SystemDefaults.TextStyles.BodyText
@@ -301,6 +333,30 @@ Page {
                                         color: rowRoot.isDark ? Color.create("#888888") : Color.create("#999999")
                                     }
                                     topMargin: 0; bottomMargin: 0
+                                }
+
+                                Container {
+                                    visible: rowRoot.recalled && !rowRoot.recalledHidden
+                                    topMargin: 0; bottomMargin: 0
+
+                                    Label {
+                                        text: rowRoot.recalledOriginal
+                                        textStyle {
+                                            base:  SystemDefaults.TextStyles.BodyText
+                                            color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
+                                        }
+                                        multiline: true
+                                        topMargin: 0; bottomMargin: 0
+                                    }
+                                    Label {
+                                        text: "(This message was recalled)"
+                                        textStyle {
+                                            base:       SystemDefaults.TextStyles.SmallText
+                                            fontStyle:  FontStyle.Italic
+                                            color: rowRoot.isDark ? Color.create("#888888") : Color.create("#999999")
+                                        }
+                                        topMargin: 2; bottomMargin: 0
+                                    }
                                 }
 
                                 Label {
@@ -457,6 +513,15 @@ Page {
                 }
                 onTextChanging: {
                     sendAction.enabled = (inputField.text.trim().length > 0)
+                }
+                // Without this, Cascades was defaulting initial focus/highlight to the
+                // first focusable control in the title bar (the voice-call button)
+                // whenever this page is pushed from ChatsTab, instead of the message
+                // input. Requesting focus here (the control's own onCreationCompleted,
+                // not the Page's) matches BlackBerry's own documented Cascades sample
+                // pattern for focusing a text field as soon as a page loads.
+                onCreationCompleted: {
+                    requestFocus();
                 }
             }
 
@@ -680,6 +745,14 @@ Page {
             confirmButton.label: "OK"
             cancelButton.label: ""
             cancelButton.enabled: false
+        },
+
+        Connections {
+            target: app
+
+            onShowRecalledMessagesChanged: {
+                chatViewPage.showRecalledMessages = show;
+            }
         },
 
         Connections {

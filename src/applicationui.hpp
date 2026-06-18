@@ -24,6 +24,11 @@ public slots:
     void minimizeApp();
     Q_INVOKABLE void setDarkTheme(bool dark);
     Q_INVOKABLE bool getDarkTheme();
+    // "Show Recalled Messages": when enabled, recalled/unsent messages keep showing
+    // their original content (with a "(This message was recalled)" tag) instead of
+    // being replaced by the generic "This message was recalled" placeholder bubble.
+    Q_INVOKABLE void setShowRecalledMessages(bool show);
+    Q_INVOKABLE bool getShowRecalledMessages();
     Q_INVOKABLE QString appVersion();
     // Copies the running session's debug log to the shared Documents folder
     // (/accounts/1000/shared/documents/zalo10/log_YYYYMMDD_HHmmss.txt) so each
@@ -33,6 +38,9 @@ public slots:
 
 signals:
     void openThreadRequested(const QString &threadId, bool isGroup);
+    // Emitted from setShowRecalledMessages() so any already-open ChatView can
+    // re-evaluate its bubbles immediately, without needing to leave/reopen the thread.
+    void showRecalledMessagesChanged(bool show);
 
 private slots:
     void onSystemLanguageChanged();

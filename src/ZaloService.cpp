@@ -272,6 +272,10 @@ ZaloService::ZaloService(QObject *parent)
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN localImage TEXT    DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN imgWidth   INTEGER DEFAULT 0;",  0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN imgHeight  INTEGER DEFAULT 0;",  0, 0, 0);
+        // Preserves the original text of a recalled message so it can still be
+        // shown (with a "(This message was recalled)" tag) when the user has
+        // "Show Recalled Messages" enabled in Settings.
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN recalledOriginalContent TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
         // Track per-thread clear timestamps so re-fetched server msgs are filtered
         sqlite3_exec(m_db,
@@ -4761,11 +4765,31 @@ void ZaloService::onRefreshSessionKeyDone()
 // Marks an existing message as recalled in SQLite (msgType=99, content cleared)
 // and notifies QML so the already-displayed bubble can update in place instead
 // of a stray "chat.undo" JSON blob appearing as its own message.
+//
+// The original text is preserved in recalledOriginalContent regardless of the
+// current "Show Recalled Messages" setting, so toggling the setting later (or
+// re-fetching the thread) can still recover it instead of it being gone forever.
+//
+// IMPORTANT: this must be idempotent. The server can (and does) redeliver the
+// same "chat.undo" event again later — e.g. when a thread is reopened and the
+// app resyncs from an older lastId checkpoint, both the original message and
+// its recall get replayed. On that replay, `content` in the row may already be
+// '' (already recalled) or may have been momentarily restored by a redelivered
+// dbSaveMessage for the original message — either way, blindly doing
+// "recalledOriginalContent = content" again could clobber the text we already
+// preserved on the first, real recall. The CASE guard below only copies
+// `content` into recalledOriginalContent the first time (while it's still
+// empty), and leaves it untouched on any later, duplicate recall of the same
+// message.
 void ZaloService::markMessageRecalled(const QString &threadId, const QString &msgId)
 {
     if (msgId.isEmpty()) return;
     if (m_db) {
-        const char *sql = "UPDATE messages SET content='', msgType=99 WHERE msgId=?";
+        const char *sql =
+            "UPDATE messages SET "
+            "recalledOriginalContent = CASE WHEN (recalledOriginalContent IS NULL OR recalledOriginalContent = '') "
+            "THEN content ELSE recalledOriginalContent END, "
+            "content='', msgType=99 WHERE msgId=?";
         sqlite3_stmt *stmt = 0;
         if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
             sqlite3_bind_text(stmt, 1, msgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
@@ -4798,8 +4822,38 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         }
     }
 
+    // UPDATE-then-INSERT (rather than INSERT OR REPLACE) so that re-saving an
+    // already-known message (e.g. on re-fetch/re-sync) never wipes the
+    // recalledOriginalContent column back to '' — INSERT OR REPLACE deletes and
+    // recreates the row, resetting any column not listed in VALUES. This also
+    // avoids relying on "ON CONFLICT ... DO UPDATE" (SQLite 3.24+), which older
+    // bundled SQLite builds on BB10 may not support.
+    const char *sqlUpdate =
+        "UPDATE messages SET threadId=?,content=?,senderId=?,dName=?,ts=?,"
+        "isMine=?,isGroup=?,msgType=?,localImage=?,imgWidth=?,imgHeight=? WHERE msgId=?";
+    sqlite3_stmt *upd = 0;
+    bool updated = false;
+    if (sqlite3_prepare_v2(m_db, sqlUpdate, -1, &upd, 0) == SQLITE_OK) {
+        sqlite3_bind_text(upd, 1,  threadId.toUtf8().constData(),                    -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 2,  msg["content"].toString().toUtf8().constData(),   -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 3,  msg["senderId"].toString().toUtf8().constData(),  -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 4,  msg["dName"].toString().toUtf8().constData(),     -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 5,  msg["ts"].toString().toUtf8().constData(),        -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int (upd, 6,  msg["isMine"].toBool() ? 1 : 0);
+        sqlite3_bind_int (upd, 7,  msg["isGroup"].toBool() ? 1 : 0);
+        sqlite3_bind_int (upd, 8,  msg["msgType"].toInt());
+        sqlite3_bind_text(upd, 9,  msg["localImage"].toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int (upd, 10, msg["imgWidth"].toInt());
+        sqlite3_bind_int (upd, 11, msg["imgHeight"].toInt());
+        sqlite3_bind_text(upd, 12, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
+        sqlite3_step(upd);
+        updated = sqlite3_changes(m_db) > 0;
+        sqlite3_finalize(upd);
+    }
+    if (updated) return;
+
     const char *sql =
-        "INSERT OR REPLACE INTO messages "
+        "INSERT INTO messages "
         "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
     sqlite3_stmt *stmt = 0;
@@ -4826,7 +4880,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     if (!m_db || threadId.isEmpty()) return result;
 
     const char *sql =
-        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight "
+        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,recalledOriginalContent "
         "FROM messages WHERE threadId=? "
         "ORDER BY CAST(ts AS INTEGER) ASC LIMIT 200;";
     sqlite3_stmt *stmt = 0;
@@ -4845,6 +4899,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
         m["localImage"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 8));
         m["imgWidth"]   = sqlite3_column_int(stmt, 9);
         m["imgHeight"]  = sqlite3_column_int(stmt, 10);
+        m["recalledOriginalContent"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 11));
         result.append(m);
     }
     sqlite3_finalize(stmt);

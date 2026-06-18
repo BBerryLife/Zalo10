@@ -92,6 +92,20 @@ bool ApplicationUI::getDarkTheme()
     return settings.value("darkTheme", false).toBool();
 }
 
+void ApplicationUI::setShowRecalledMessages(bool show)
+{
+    QSettings settings("BerryLife", "Zalo10");
+    settings.setValue("showRecalledMessages", show);
+    settings.sync();
+    emit showRecalledMessagesChanged(show);
+}
+
+bool ApplicationUI::getShowRecalledMessages()
+{
+    QSettings settings("BerryLife", "Zalo10");
+    return settings.value("showRecalledMessages", false).toBool();
+}
+
 void ApplicationUI::onSystemLanguageChanged()
 {
     QCoreApplication::instance()->removeTranslator(m_pTranslator);
