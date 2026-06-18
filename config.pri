@@ -47,6 +47,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
+        $$quote($$BASEDIR/assets/QuickMessageEditSheet.qml) \
+        $$quote($$BASEDIR/assets/QuickMessagesSheet.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
         $$quote($$BASEDIR/assets/images/AboutSheet/barcode.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/berrylife.png) \
@@ -78,6 +80,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png.amd) \
         $$quote($$BASEDIR/assets/images/ChatView/ConversationPaneSend.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/add.png) \
         $$quote($$BASEDIR/assets/images/ChatView/attach_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/clear_chat.png) \
         $$quote($$BASEDIR/assets/images/ChatView/darkkeyboard.png) \
@@ -87,10 +90,12 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_bbm_voice_answer.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_block_contact.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_chat_leave.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_edit.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled_white.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_replace_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemess.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \

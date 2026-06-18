@@ -283,6 +283,18 @@ ZaloService::ZaloService(QObject *parent)
             "  threadId TEXT PRIMARY KEY,"
             "  clearedAt TEXT NOT NULL"
             ");", 0, 0, 0);
+        // Quick Messages ("/command" canned replies) — global, not per-thread.
+        sqlite3_exec(m_db,
+            "CREATE TABLE IF NOT EXISTS quick_messages ("
+            "  id        INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  name      TEXT NOT NULL,"
+            "  content   TEXT NOT NULL,"
+            "  createdAt TEXT"
+            ");", 0, 0, 0);
+        // Enforces unique commands (case-insensitive) at the DB level — addQuickMessage/
+        // updateQuickMessage rely on the resulting SQLITE_CONSTRAINT to detect duplicates
+        // instead of doing a separate SELECT check first.
+        sqlite3_exec(m_db, "CREATE UNIQUE INDEX IF NOT EXISTS idx_qm_name ON quick_messages(name COLLATE NOCASE);", 0, 0, 0);
         qDebug() << "[Zalo] SQLite DB opened:" << dbPath;
     } else {
         qDebug() << "[Zalo] SQLite open FAILED";
@@ -4905,4 +4917,79 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     sqlite3_finalize(stmt);
     qDebug() << "[Zalo] dbLoadMessages" << threadId << "rows:" << result.size();
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// Quick Messages ("/command" canned replies). Global list, not tied to any
+// one conversation — same SQLite DB used for message history (m_db).
+// ---------------------------------------------------------------------------
+
+QVariantList ZaloService::getQuickMessages() const
+{
+    QVariantList result;
+    if (!m_db) return result;
+
+    const char *sql = "SELECT id,name,content FROM quick_messages ORDER BY name COLLATE NOCASE ASC;";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return result;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        QVariantMap m;
+        m["id"]      = sqlite3_column_int(stmt, 0);
+        m["name"]    = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
+        m["content"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 2));
+        result.append(m);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
+int ZaloService::addQuickMessage(const QString &name, const QString &content)
+{
+    QString trimmedName = name.trimmed();
+    QString trimmedContent = content.trimmed();
+    if (!m_db || trimmedName.isEmpty() || trimmedContent.isEmpty()) return -1;
+
+    const char *sql = "INSERT INTO quick_messages (name,content,createdAt) VALUES (?,?,?);";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, trimmedName.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, trimmedContent.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, QString::number(QDateTime::currentMSecsSinceEpoch()).toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    // SQLITE_CONSTRAINT here means idx_qm_name rejected a duplicate (case-insensitive) name.
+    if (rc != SQLITE_DONE) return -1;
+    return (int)sqlite3_last_insert_rowid(m_db);
+}
+
+bool ZaloService::updateQuickMessage(int id, const QString &name, const QString &content)
+{
+    QString trimmedName = name.trimmed();
+    QString trimmedContent = content.trimmed();
+    if (!m_db || id < 0 || trimmedName.isEmpty() || trimmedContent.isEmpty()) return false;
+
+    const char *sql = "UPDATE quick_messages SET name=?, content=? WHERE id=?;";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, trimmedName.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, trimmedContent.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int (stmt, 3, id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) return false; // duplicate name against another row
+    return sqlite3_changes(m_db) > 0;
+}
+
+bool ZaloService::deleteQuickMessage(int id)
+{
+    if (!m_db || id < 0) return false;
+
+    const char *sql = "DELETE FROM quick_messages WHERE id=?;";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return false;
+    sqlite3_bind_int(stmt, 1, id);
+    sqlite3_step(stmt);
+    bool changed = sqlite3_changes(m_db) > 0;
+    sqlite3_finalize(stmt);
+    return changed;
 }

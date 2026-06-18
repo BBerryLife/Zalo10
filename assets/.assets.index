@@ -1,5 +1,5 @@
 1
-664
+669
 AboutSheet.qml
 ActiveFrameCover.qml
 ChatsTab.qml
@@ -43,6 +43,7 @@ images/ChatsTab/ai_add_task.png
 images/ChatsTab/blank.png
 images/ChatsTab/edit.png
 images/ChatsTab/ic_sync.png
+images/ChatView/add.png
 images/ChatView/attach_icon.png
 images/ChatView/clear_chat.png
 images/ChatView/ConversationPaneSend.png
@@ -53,10 +54,12 @@ images/ChatView/ic_bbm_video_answer.png
 images/ChatView/ic_bbm_voice_answer.png
 images/ChatView/ic_block_contact.png
 images/ChatView/ic_chat_leave.png
+images/ChatView/ic_edit.png
 images/ChatView/ic_emoticon_enabled.png
 images/ChatView/ic_emoticon_enabled_white.png
 images/ChatView/ic_keyboard_enabled.png
 images/ChatView/ic_notifications_off.png
+images/ChatView/ic_replace_message.png
 images/ChatView/timemess.png
 images/ChatView/timemesswhite.png
 images/ContactsTab/blank.png
@@ -663,4 +666,6 @@ InvitesTab.qml
 LoginView.qml
 main.qml
 ProfileView.qml
+QuickMessageEditSheet.qml
+QuickMessagesSheet.qml
 SettingsSheet.qml

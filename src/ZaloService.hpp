@@ -63,6 +63,14 @@ public:
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
+
+    // Quick Messages ("/command" canned replies) — stored locally in SQLite,
+    // shared across every conversation. Replaces the old "Timed Messages"
+    // placeholder feature.
+    Q_INVOKABLE QVariantList getQuickMessages() const;                                        // [{id,name,content}], sorted A-Z by name
+    Q_INVOKABLE int          addQuickMessage(const QString &name, const QString &content);     // returns new id, or -1 on failure/duplicate name
+    Q_INVOKABLE bool         updateQuickMessage(int id, const QString &name, const QString &content); // false on failure/duplicate name
+    Q_INVOKABLE bool         deleteQuickMessage(int id);
     // Returns {"width": w, "height": h} for a local image file (accepts "file://" prefix).
     // Used by ChatView.qml right after the user picks a photo to send, so the outgoing
     // bubble can be sized to the real aspect ratio immediately (before upload finishes).

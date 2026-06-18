@@ -44,4 +44,6 @@ OTHER_FILES += \
     assets/LoginView.qml \
     assets/ProfileView.qml \
     assets/SettingsSheet.qml \
-    assets/AboutSheet.qml
+    assets/AboutSheet.qml \
+    assets/QuickMessagesSheet.qml \
+    assets/QuickMessageEditSheet.qml

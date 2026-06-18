@@ -463,6 +463,64 @@ Page {
         }
 
         Container {
+            id: qmSuggestBar
+            visible: false
+            horizontalAlignment: HorizontalAlignment.Fill
+            background: chatViewPage.isDark ? Color.create("#1c1c1c") : Color.White
+            layout: StackLayout {}
+
+            Divider {}
+
+            ListView {
+                id: qmSuggestList
+                horizontalAlignment: HorizontalAlignment.Fill
+                preferredHeight: ui.du(34)
+                maxHeight: ui.du(34)
+
+                dataModel: ArrayDataModel { id: qmSuggestModel }
+
+                listItemComponents: [
+                    ListItemComponent {
+                        CustomListItem {
+                            id: qmSugRow
+                            highlightAppearance: HighlightAppearance.Full
+                            dividerVisible: true
+
+                            Container {
+                                layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                background: chatViewPage.isDark ? Color.create("#13335c") : Color.create("#eaf1ff")
+                                leftPadding: ui.du(2); rightPadding: ui.du(2)
+                                topPadding: ui.du(1); bottomPadding: ui.du(1)
+
+                                Label {
+                                    text: "/" + ListItemData.name
+                                    textStyle { color: Color.create("#2575fc"); fontWeight: FontWeight.Bold }
+                                    multiline: false
+                                }
+                                Label {
+                                    text: ListItemData.content
+                                    textStyle {
+                                        color: chatViewPage.isDark ? Color.create("#cfd8e3") : Color.create("#444444")
+                                        fontSize: FontSize.Small
+                                    }
+                                    multiline: false
+                                    topMargin: ui.du(0.2)
+                                }
+                            }
+                        }
+                    }
+                ]
+
+                onTriggered: {
+                    var item = dataModel.data(indexPath);
+                    if (item === null || item === undefined) return;
+                    chatViewPage.applyQuickMessage(item.content);
+                }
+            }
+        }
+
+        Container {
             id: blockedBanner
             visible: false
             horizontalAlignment: HorizontalAlignment.Fill
@@ -512,7 +570,8 @@ Page {
                     onSubmitted: { doSend() }
                 }
                 onTextChanging: {
-                    sendAction.enabled = (inputField.text.trim().length > 0)
+                    sendAction.enabled = (text.trim().length > 0);
+                    chatViewPage.refreshQuickMessageSuggestions(text);
                 }
                 // Without this, Cascades was defaulting initial focus/highlight to the
                 // first focusable control in the title bar (the voice-call button)
@@ -531,7 +590,7 @@ Page {
                 leftMargin: ui.du(0.6)
                 defaultImageSource: chatViewPage.isDark ? "asset:///images/ChatView/timemesswhite.png" : "asset:///images/ChatView/timemess.png"
                 pressedImageSource: chatViewPage.isDark ? "asset:///images/ChatView/timemesswhite.png" : "asset:///images/ChatView/timemess.png"
-                onClicked: { timedMsgDialog.show() }
+                onClicked: { quickMsgSheet.open(); }
             }
 
             ImageButton {
@@ -599,12 +658,58 @@ Page {
         }
     ]
 
+    // --- Quick Messages "/command" autocomplete --------------------------
+    // Finds the "active" slash command at the end of the current text, if
+    // any: the LAST "/" that starts the string or follows whitespace, with
+    // no whitespace after it (i.e. the person is still typing that token).
+    function activeSlashToken(text) {
+        var slashIdx = text.lastIndexOf("/");
+        if (slashIdx === -1) return null;
+        if (slashIdx > 0) {
+            var prevCh = text.charAt(slashIdx - 1);
+            if (prevCh !== " " && prevCh !== "\n" && prevCh !== "\t") return null;
+        }
+        var rest = text.substring(slashIdx + 1);
+        if (rest.indexOf(" ") !== -1 || rest.indexOf("\n") !== -1) return null;
+        return { start: slashIdx, token: rest };
+    }
+
+    function refreshQuickMessageSuggestions(text) {
+        var tok = chatViewPage.activeSlashToken(text);
+        if (tok === null) {
+            qmSuggestBar.visible = false;
+            qmSuggestModel.clear();
+            return;
+        }
+        var all = zService.getQuickMessages();
+        var q = tok.token.toLowerCase();
+        var matches = [];
+        for (var i = 0; i < all.length && matches.length < 5; i++) {
+            if (q.length === 0 || all[i].name.toLowerCase().indexOf(q) === 0) {
+                matches.push(all[i]);
+            }
+        }
+        qmSuggestModel.clear();
+        qmSuggestModel.insertList(matches);
+        qmSuggestBar.visible = (matches.length > 0);
+    }
+
+    function applyQuickMessage(content) {
+        var tok = chatViewPage.activeSlashToken(inputField.text);
+        inputField.text = (tok !== null) ? (inputField.text.substring(0, tok.start) + content) : content;
+        qmSuggestBar.visible = false;
+        qmSuggestModel.clear();
+        inputField.requestFocus();
+    }
+
     function doSend() {
         var txt = inputField.text.trim();
         if (txt.length === 0) return;
         if (!chatViewPage.threadId || chatViewPage.threadId === "") return;
         sendAction.enabled = false;
         inputField.text = "";
+        qmSuggestBar.visible = false;
+        qmSuggestModel.clear();
 
         var placeholder = {
             msgId:    "local_" + new Date().getTime(),
@@ -1038,13 +1143,16 @@ Page {
             }
         },
 
-        SystemDialog {
-            id: timedMsgDialog
-            title: "Timed Messages"
-            body: "This feature is still under development."
-            confirmButton.label: "OK"
-            cancelButton.label: ""
-            cancelButton.enabled: false
+        QuickMessagesSheet {
+            id: quickMsgSheet
+            onClosed: {
+                if (quickMsgSheet.insertRequestedContent !== "") {
+                    inputField.text = quickMsgSheet.insertRequestedContent;
+                    quickMsgSheet.insertRequestedContent = "";
+                    sendAction.enabled = (inputField.text.trim().length > 0);
+                    inputField.requestFocus();
+                }
+            }
         }
     ]
 }
