@@ -96,6 +96,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_replace_message.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_save.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemess.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \

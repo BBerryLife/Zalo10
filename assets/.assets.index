@@ -1,5 +1,5 @@
 1
-669
+670
 AboutSheet.qml
 ActiveFrameCover.qml
 ChatsTab.qml
@@ -60,6 +60,7 @@ images/ChatView/ic_emoticon_enabled_white.png
 images/ChatView/ic_keyboard_enabled.png
 images/ChatView/ic_notifications_off.png
 images/ChatView/ic_replace_message.png
+images/ChatView/ic_save.png
 images/ChatView/timemess.png
 images/ChatView/timemesswhite.png
 images/ContactsTab/blank.png

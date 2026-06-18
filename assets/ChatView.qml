@@ -19,6 +19,7 @@ Page {
     property bool   isMuted: false
     property bool   isBlocked: false
     property bool   popRequested: false
+    property bool   qmRequested: false
     property variant pendingImageUpdates: ([])
     property bool   pageVisible: false
     property bool   isDark: app.getDarkTheme()
@@ -590,7 +591,7 @@ Page {
                 leftMargin: ui.du(0.6)
                 defaultImageSource: chatViewPage.isDark ? "asset:///images/ChatView/timemesswhite.png" : "asset:///images/ChatView/timemess.png"
                 pressedImageSource: chatViewPage.isDark ? "asset:///images/ChatView/timemesswhite.png" : "asset:///images/ChatView/timemess.png"
-                onClicked: { quickMsgSheet.open(); }
+                onClicked: { chatViewPage.qmRequested = true; }
             }
 
             ImageButton {
@@ -1140,18 +1141,6 @@ Page {
             onFinished: {
                 if (result === SystemUiResult.ConfirmButtonSelection)
                     zService.leaveGroup(chatViewPage.threadId);
-            }
-        },
-
-        QuickMessagesSheet {
-            id: quickMsgSheet
-            onClosed: {
-                if (quickMsgSheet.insertRequestedContent !== "") {
-                    inputField.text = quickMsgSheet.insertRequestedContent;
-                    quickMsgSheet.insertRequestedContent = "";
-                    sendAction.enabled = (inputField.text.trim().length > 0);
-                    inputField.requestFocus();
-                }
             }
         }
     ]

@@ -1138,14 +1138,14 @@ Container {
     // - Bottom: Category tabs + Backspace -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
-        background: emojiPanel.isDark ? Color.create("#272727") : Color.create("#E0E0E0")
+        background: emojiPanel.isDark ? Color.create("#272727") : Color.create("#C8C8C8")
         preferredHeight: ui.du(5.5)
         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
-            background: categoryIndex === 0 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#FFFFFF")) : Color.Transparent
+            background: categoryIndex === 0 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
@@ -1158,7 +1158,7 @@ Container {
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
-            background: categoryIndex === 1 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#FFFFFF")) : Color.Transparent
+            background: categoryIndex === 1 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
@@ -1171,7 +1171,7 @@ Container {
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
-            background: categoryIndex === 2 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#FFFFFF")) : Color.Transparent
+            background: categoryIndex === 2 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
@@ -1184,7 +1184,7 @@ Container {
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
-            background: categoryIndex === 3 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#FFFFFF")) : Color.Transparent
+            background: categoryIndex === 3 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
@@ -1197,7 +1197,7 @@ Container {
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
-            background: categoryIndex === 4 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#FFFFFF")) : Color.Transparent
+            background: categoryIndex === 4 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center

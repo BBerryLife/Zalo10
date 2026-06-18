@@ -20,6 +20,8 @@ NavigationPane {
     property bool searchVisible: false
     property string searchText: ""
     property bool refreshCooldown: false
+    property variant activeChatPage: null
+    property variant activeQmPage: null
 
     attachedObjects: [
         Timer {
@@ -229,6 +231,7 @@ NavigationPane {
                     var idx = indexPath[0];
                     var d = friendModel.value(idx);
                     if (d) { d.hasUnread = false; friendModel.replace(idx, d); }
+                    chatsNav.activeChatPage = page;
                     chatsNav.push(page);
                 }
             }
@@ -274,6 +277,32 @@ NavigationPane {
             ComponentDefinition {
                 id: chatsDef
                 source: "asset:///ChatView.qml"
+            },
+            ComponentDefinition {
+                id: qmPageDef
+                source: "asset:///QuickMessagesSheet.qml"
+            },
+            Connections {
+                id: chatPageConn
+                target: chatsNav.activeChatPage
+                onQmRequestedChanged: {
+                    if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.qmRequested) return;
+                    chatsNav.activeChatPage.qmRequested = false;
+                    var qmPage = qmPageDef.createObject();
+                    if (!qmPage) return;
+                    chatsNav.activeQmPage = qmPage;
+                    chatsNav.push(qmPage);
+                }
+            },
+            Connections {
+                id: qmPageConn
+                target: chatsNav.activeQmPage
+                onUseInChatRequestedChanged: {
+                    if (!chatsNav.activeQmPage || !chatsNav.activeQmPage.useInChatRequested) return;
+                    var content = chatsNav.activeQmPage.insertRequestedContent;
+                    chatsNav.pop();
+                    if (chatsNav.activeChatPage) chatsNav.activeChatPage.applyQuickMessage(content);
+                }
             },
             Connections {
                 target: zService
@@ -412,6 +441,7 @@ NavigationPane {
         page.avatarUrl  = avatarUrl;
         page.selfName   = chatsNav.selfName;
         page.startChat();
+        chatsNav.activeChatPage = page;
         chatsNav.push(page);
     }
 

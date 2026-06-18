@@ -6,13 +6,8 @@ import QtQuick 1.0
 // QuickMessagesSheet.qml. editId < 0 means "creating a new one";
 // editId >= 0 means "editing the quick message with that id".
 //
-// Styled after SmartList10's AddListSheet.qml: plain system TitleBar with
-// Cancel/Save, a short gray instruction line, then the form fields.
-//
-// Persistence goes straight through zService (global context property,
-// available in every QML file) so this sheet never needs to reach back
-// into QuickMessagesSheet's ids directly — it just closes itself, and the
-// list sheet reloads from zService on this sheet's "closed" signal.
+// Header styled after AboutSheet.qml: ImageButton close on left, title label.
+// Save action moved to action bar with ic_save.png icon.
 Sheet {
     id: qmEditSheetRoot
 
@@ -36,9 +31,6 @@ Sheet {
     }
 
     function doSave() {
-        // Strip a leading "/" in case the person typed it, and collapse
-        // whitespace so the command stays a single "word" (e.g. "hello",
-        // not "hel lo") — it has to be typeable as one token after "/".
         var nm = qmNameField.text.trim().replace(/^\/+/, "").replace(/\s+/g, "_");
         var ct = qmContentArea.text.trim();
 
@@ -78,30 +70,37 @@ Sheet {
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment:   VerticalAlignment.Fill
                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                    leftPadding: ui.du(1); rightPadding: ui.du(1)
+                    leftPadding: ui.du(1)
 
-                    Button {
-                        text: "Cancel"
-                        preferredWidth: ui.du(14)
+                    ImageButton {
                         verticalAlignment: VerticalAlignment.Center
+                        preferredWidth:  ui.du(6); preferredHeight: ui.du(6)
+                        defaultImageSource: "asset:///images/AboutSheet/ic_close_white.png"
+                        pressedImageSource: "asset:///images/AboutSheet/ic_close_white.png"
+                        rightMargin: ui.du(0.5)
                         onClicked: { qmEditSheetRoot.close(); }
                     }
+
                     Label {
-                        text: "Create QM"
+                        text: qmEditSheetRoot.editId < 0 ? "New Quick Message" : "Edit Quick Message"
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        verticalAlignment:   VerticalAlignment.Center
-                        textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold; textAlign: TextAlign.Center }
-                    }
-                    Button {
-                        text: "Save"
-                        preferredWidth: ui.du(14)
                         verticalAlignment: VerticalAlignment.Center
-                        onClicked: { qmEditSheetRoot.doSave(); }
+                        textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
+                        topMargin: 0; bottomMargin: 0
                     }
                 }
             }
         }
+
+        actions: [
+            ActionItem {
+                title: "Save"
+                // TODO: add ic_save.png to assets/images/ChatView/ and update path below
+                imageSource: "asset:///images/ChatView/ic_save.png"
+                ActionBar.placement: ActionBarPlacement.OnBar
+                onTriggered: { qmEditSheetRoot.doSave(); }
+            }
+        ]
 
         ScrollView {
             Container {
@@ -118,7 +117,6 @@ Sheet {
 
                 Container { preferredHeight: 12 }
 
-                // --- Shortcut field: "/" chip + hint text, single card ---
                 Container {
                     horizontalAlignment: HorizontalAlignment.Fill
                     leftPadding: 20; rightPadding: 20; bottomPadding: 10
@@ -155,7 +153,6 @@ Sheet {
                     }
                 }
 
-                // --- Message field ---
                 Container {
                     horizontalAlignment: HorizontalAlignment.Fill
                     leftPadding: 20; rightPadding: 20; topPadding: 10; bottomPadding: 20
