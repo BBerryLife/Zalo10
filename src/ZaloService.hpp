@@ -76,6 +76,37 @@ public:
     // bubble can be sized to the real aspect ratio immediately (before upload finishes).
     Q_INVOKABLE QVariantMap getImageDimensions(const QString &localFilePath) const;
 
+    // ---- Data export / import / cache management (Settings) -----------------
+    // Runs on the UI thread but is kept fast: SQLite reads/writes and one small
+    // file write, so a single SystemProgressToast with indefinite progress (no
+    // QThread) is enough to keep the UI from looking frozen.
+    //
+    // exportData: dumps every locally-known message + quick message into a single
+    // JSON file under <destDir>/zalo10/zalo10_data_<timestamp>.json. Text only —
+    // image files are never copied (they live in a tmp cache that doesn't survive
+    // an app update/reinstall anyway). A message that had a photo keeps its text
+    // content (if any) with a "[Photo]" marker appended so the conversation still
+    // reads naturally; no image data or dimensions are included.
+    // Returns a map: {"success": bool, "path": exported json path,
+    // "messageCount": n, "error": msg}
+    Q_INVOKABLE QVariantMap exportData(const QString &destDir);
+
+    // importData: reads back a JSON file produced by exportData(). Messages whose
+    // msgId already exists locally are skipped (existing data always wins) so importing
+    // is always safe to re-run. Quick messages are matched by name (case-insensitive)
+    // and skipped the same way.
+    // Returns: {"success": bool, "importedMessages": n, "skippedMessages": n,
+    //           "importedQuickMessages": n, "skippedQuickMessages": n, "error": msg}
+    Q_INVOKABLE QVariantMap importData(const QString &jsonFilePath);
+
+    // clearCache: deletes every cached image file Zalo10 writes to the temp folder
+    // (avatars, message photo thumbnails/full images, QR codes) AND wipes the local
+    // message history table (cleared_threads + quick_messages are left intact —
+    // those aren't "cache", they're user data/settings). Conversations themselves
+    // are unaffected server-side and will simply be re-fetched next time they're
+    // opened. Returns the number of files deleted.
+    Q_INVOKABLE int clearCache();
+
 signals:
     void loggedInChanged();
     void loginFailed(const QString &message);
@@ -184,6 +215,10 @@ private:
     void fetchPhotoViaHttpAtIndex(const QString &msgId, const QString &threadId, int idx);
     QSize imageDimensions(const QString &localFileUrlOrPath) const; // strips "file://", reads pixel size
     void markMessageRecalled(const QString &threadId, const QString &msgId); // chat.undo handling
+
+    // Data export/import/cache helpers
+    QVariantList dbLoadAllMessages() const;     // every row, every thread — used by exportData
+    QStringList  cacheFilePatterns() const;     // filename prefixes this app writes under tempPath()
 
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);

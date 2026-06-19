@@ -80,6 +80,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png.amd) \
         $$quote($$BASEDIR/assets/images/ChatView/ConversationPaneSend.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatView/add.png) \
         $$quote($$BASEDIR/assets/images/ChatView/attach_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/clear_chat.png) \
@@ -99,11 +100,15 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_save.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemess.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/blank.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ChatsTab/edit.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/blank.png) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_add_contact.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/File Types/BT  File - Mail.png) \
@@ -168,11 +173,15 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/File Types/File Type - XLS (Spreadsheet).png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - ZIP (Compressed).png) \
         $$quote($$BASEDIR/assets/images/File Types/Thumbs.db) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/blank.png) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/GroupsTab/ic_create_group_disabled.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/InvitesTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/blank.png) \
+        $$quote($$BASEDIR/assets/images/InvitesTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/Message States/delivered.png) \
         $$quote($$BASEDIR/assets/images/Message States/failed.png) \

@@ -1,5 +1,5 @@
 1
-670
+679
 AboutSheet.qml
 ActiveFrameCover.qml
 ChatsTab.qml
@@ -39,10 +39,13 @@ images/Bubble/outgoing/middle.png
 images/Bubble/outgoing/middle.png.amd
 images/Bubble/outgoing/top.png
 images/Bubble/outgoing/top.png.amd
+images/ChatsTab/action_icon_search.png
 images/ChatsTab/ai_add_task.png
 images/ChatsTab/blank.png
+images/ChatsTab/desktop.ini
 images/ChatsTab/edit.png
 images/ChatsTab/ic_sync.png
+images/ChatView/action_icon_search.png
 images/ChatView/add.png
 images/ChatView/attach_icon.png
 images/ChatView/clear_chat.png
@@ -63,7 +66,9 @@ images/ChatView/ic_replace_message.png
 images/ChatView/ic_save.png
 images/ChatView/timemess.png
 images/ChatView/timemesswhite.png
+images/ContactsTab/action_icon_search.png
 images/ContactsTab/blank.png
+images/ContactsTab/desktop.ini
 images/ContactsTab/ic_add_contact.png
 images/ContactsTab/ic_sync.png
 images/cs_spark_small.png
@@ -615,7 +620,9 @@ images/File Types/File Type - Webpage (Hyperlink).png
 images/File Types/File Type - XLS (Spreadsheet).png
 images/File Types/File Type - ZIP (Compressed).png
 images/File Types/Thumbs.db
+images/GroupsTab/action_icon_search.png
 images/GroupsTab/blank.png
+images/GroupsTab/desktop.ini
 images/GroupsTab/ic_create_group_disabled.png
 images/GroupsTab/ic_sync.png
 images/ic_add_comment.png
@@ -643,8 +650,10 @@ images/ic_settings.png
 images/ic_share.png
 images/ic_start_chat.png
 images/ic_video_chat.png
+images/InvitesTab/action_icon_search.png
 images/InvitesTab/ai_add_task.png
 images/InvitesTab/blank.png
+images/InvitesTab/desktop.ini
 images/InvitesTab/ic_sync.png
 images/Message States/delivered.png
 images/Message States/failed.png

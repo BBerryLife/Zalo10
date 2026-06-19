@@ -31,9 +31,10 @@ public slots:
     Q_INVOKABLE bool getShowRecalledMessages();
     Q_INVOKABLE QString appVersion();
     // Copies the running session's debug log to the shared Documents folder
-    // (/accounts/1000/shared/documents/zalo10/log_YYYYMMDD_HHmmss.txt) so each
-    // export gets its own timestamped file instead of overwriting the last one.
-    // Returns the exported file path on success, or an empty string on failure.
+    // (/accounts/1000/shared/documents/zalo10/log/zalo10_log_YYYYMMDD_HHmmss.txt)
+    // so each export gets its own timestamped file instead of overwriting the
+    // last one. Returns the exported file path on success, or an empty string
+    // on failure.
     Q_INVOKABLE QString exportLog();
 
 signals:

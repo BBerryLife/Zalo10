@@ -150,7 +150,11 @@ QString ApplicationUI::appVersion()
 QString ApplicationUI::exportLog()
 {
     QString srcPath  = QDir::homePath() + "/zalo10_runtime.log";
-    QString destDir  = "/accounts/1000/shared/documents/zalo10";
+    // Logs go in zalo10/log/ — a sibling of, but separate from, the data
+    // exports written to zalo10/ by ZaloService::exportData(). Keeping them
+    // apart means attaching a debug log to a support email never accidentally
+    // bundles message history, and vice versa.
+    QString destDir  = "/accounts/1000/shared/documents/zalo10/log";
     QString stamp    = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
     QString destPath = destDir + "/zalo10_log_" + stamp + ".txt";
 
