@@ -1157,7 +1157,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("#e8e8e8")
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
@@ -1176,7 +1176,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("#e8e8e8")
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
@@ -1195,7 +1195,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("#e8e8e8")
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
@@ -1214,7 +1214,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("#e8e8e8")
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
@@ -1233,7 +1233,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("#e8e8e8")
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
