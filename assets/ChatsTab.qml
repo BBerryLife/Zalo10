@@ -120,6 +120,18 @@ NavigationPane {
                 }
             },
             ActionItem {
+                title: "Search"
+                imageSource: "asset:///images/ChatsTab/action_icon_search.png"
+                ActionBar.placement: ActionBarPlacement.InOverflow
+                onTriggered: {
+                    chatsNav.searchVisible = !chatsNav.searchVisible;
+                    if (!chatsNav.searchVisible) {
+                        chatsNav.searchText = "";
+                        chatsNav.filterList();
+                    }
+                }
+            },
+            ActionItem {
                 title: "Mark All as Read"
                 imageSource: "asset:///images/ChatsTab/ai_add_task.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow

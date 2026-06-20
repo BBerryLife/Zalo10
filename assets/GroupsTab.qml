@@ -158,6 +158,18 @@ NavigationPane {
                 }
             },
             ActionItem {
+                title: "Search"
+                imageSource: "asset:///images/GroupsTab/action_icon_search.png"
+                ActionBar.placement: ActionBarPlacement.InOverflow
+                onTriggered: {
+                    groupsNav.searchVisible = !groupsNav.searchVisible;
+                    if (!groupsNav.searchVisible) {
+                        groupsNav.searchText = "";
+                        groupsNav.filterList();
+                    }
+                }
+            },
+            ActionItem {
                 title: "Create Group"
                 imageSource: "asset:///images/GroupsTab/ic_create_group_disabled.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow

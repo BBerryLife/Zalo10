@@ -129,6 +129,18 @@ NavigationPane {
                 }
             },
             ActionItem {
+                title: "Search"
+                imageSource: "asset:///images/ContactsTab/action_icon_search.png"
+                ActionBar.placement: ActionBarPlacement.InOverflow
+                onTriggered: {
+                    contactsNav.searchVisible = !contactsNav.searchVisible;
+                    if (!contactsNav.searchVisible) {
+                        contactsNav.searchText = "";
+                        contactsNav.filterList();
+                    }
+                }
+            },
+            ActionItem {
                 title: "Add Contact"
                 imageSource: "asset:///images/ContactsTab/ic_add_contact.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow

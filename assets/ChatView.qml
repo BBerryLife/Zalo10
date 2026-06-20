@@ -24,8 +24,30 @@ Page {
     property bool   pageVisible: false
     property bool   isDark: app.getDarkTheme()
     property bool   showRecalledMessages: app.getShowRecalledMessages()
+    property bool   searchVisible: false
+    property string searchText: ""
+    property variant searchMatches: []   // indices into msgModel that contain the current query
+    property int      searchMatchPos: -1 // which entry in searchMatches is currently focused
 
     titleBar: TitleBar {
+        // Sticky (hide-on-scroll) behavior intercepts touch input meant for
+        // the search field below, making it untappable. Switch to NonSticky
+        // while search is active so the field reliably gets focus; restore
+        // Sticky for the normal scrolling chat header otherwise.
+        // Always non-sticky: a conditional Sticky/NonSticky toggle (switching to
+        // NonSticky only while searching) still left the bar in whatever
+        // collapsed/hidden position it had scrolled to before search was
+        // opened — the mode change doesn't retroactively re-expand it, so the
+        // search field stayed off-screen/untappable until the list was
+        // manually scrolled back to the top. Keeping it permanently
+        // NonSticky means the title bar (and the search field inside it) is
+        // always fully visible and tappable, regardless of scroll position.
+        // Sticky: title bar stays pinned/visible at the top at all times.
+        // (NonSticky was tried here to fix the search field tap issue, but
+        // NonSticky actually means the title bar scrolls away WITH the
+        // message list and only reappears once scrolled all the way back up
+        // — not what we want. Reverted to Sticky; the search-field tap issue
+        // needs a different fix.)
         scrollBehavior: TitleBarScrollBehavior.Sticky
         kind: TitleBarKind.FreeForm
         kindProperties: FreeFormTitleBarKindProperties {
@@ -33,74 +55,147 @@ Page {
                 background: Color.create("#2575fc")
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment:   VerticalAlignment.Fill
-                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                layout: DockLayout {}
 
+                // Normal header: avatar, thread name, call buttons. Hidden while
+                // the in-chat message search box (below) is active.
                 Container {
-                    id: avatarBlock
-                    verticalAlignment: VerticalAlignment.Fill
-                    layout: DockLayout {}
-                    preferredWidth: titleBarLUH.layoutFrame.height > 0 ? titleBarLUH.layoutFrame.height : ui.du(7)
-                    minWidth:       titleBarLUH.layoutFrame.height > 0 ? titleBarLUH.layoutFrame.height : ui.du(7)
+                    visible: !chatViewPage.searchVisible
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment:   VerticalAlignment.Fill
+                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-                    ImageView {
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        verticalAlignment:   VerticalAlignment.Fill
-                        scalingMethod: ScalingMethod.AspectFill
-                        imageSource: chatViewPage.avatarUrl
-                        visible: chatViewPage.avatarUrl.length > 0
-                    }
                     Container {
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        verticalAlignment:   VerticalAlignment.Fill
-                        background: Color.create("#1a5fc8")
+                        id: avatarBlock
+                        verticalAlignment: VerticalAlignment.Fill
                         layout: DockLayout {}
-                        visible: chatViewPage.avatarUrl.length === 0
+                        preferredWidth: titleBarLUH.layoutFrame.height > 0 ? titleBarLUH.layoutFrame.height : ui.du(7)
+                        minWidth:       titleBarLUH.layoutFrame.height > 0 ? titleBarLUH.layoutFrame.height : ui.du(7)
+
+                        ImageView {
+                            horizontalAlignment: HorizontalAlignment.Fill
+                            verticalAlignment:   VerticalAlignment.Fill
+                            scalingMethod: ScalingMethod.AspectFill
+                            imageSource: chatViewPage.avatarUrl
+                            visible: chatViewPage.avatarUrl.length > 0
+                        }
+                        Container {
+                            horizontalAlignment: HorizontalAlignment.Fill
+                            verticalAlignment:   VerticalAlignment.Fill
+                            background: Color.create("#1a5fc8")
+                            layout: DockLayout {}
+                            visible: chatViewPage.avatarUrl.length === 0
+                            Label {
+                                text: chatViewPage.threadName.length > 0 ? chatViewPage.threadName.charAt(0).toUpperCase() : "?"
+                                horizontalAlignment: HorizontalAlignment.Center
+                                verticalAlignment:   VerticalAlignment.Center
+                                textStyle { color: Color.White; fontSize: FontSize.XXLarge; fontWeight: FontWeight.Bold }
+                            }
+                        }
+                        attachedObjects: [ LayoutUpdateHandler { id: titleBarLUH } ]
+                    }
+
+                    Container {
+                        verticalAlignment: VerticalAlignment.Center
+                        leftPadding: ui.du(1.5)
+                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         Label {
-                            text: chatViewPage.threadName.length > 0 ? chatViewPage.threadName.charAt(0).toUpperCase() : "?"
-                            horizontalAlignment: HorizontalAlignment.Center
-                            verticalAlignment:   VerticalAlignment.Center
-                            textStyle { color: Color.White; fontSize: FontSize.XXLarge; fontWeight: FontWeight.Bold }
+                            text: chatViewPage.threadName.length > 0 ? chatViewPage.threadName : "..."
+                            textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
+                            topMargin: 0; bottomMargin: 0
+                        }
+                        Label {
+                            text: chatViewPage.isGroup ? "Group" : "Zalo Contact"
+                            textStyle { color: Color.create("#b3d4ff"); fontSize: FontSize.XSmall }
+                            topMargin: ui.du(0.2); bottomMargin: 0
                         }
                     }
-                    attachedObjects: [ LayoutUpdateHandler { id: titleBarLUH } ]
+
+                    ImageButton {
+                        verticalAlignment: VerticalAlignment.Center
+                        preferredWidth: ui.du(8); preferredHeight: ui.du(8)
+                        defaultImageSource: "asset:///images/ChatView/ic_bbm_voice_answer.png"
+                        pressedImageSource: "asset:///images/ChatView/ic_bbm_voice_answer.png"
+                        rightMargin: ui.du(0.8)
+                        onClicked: { voiceCallUnderDevDialog.show() }
+                    }
+                    ImageButton {
+                        verticalAlignment: VerticalAlignment.Center
+                        preferredWidth: ui.du(8); preferredHeight: ui.du(8)
+                        defaultImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
+                        pressedImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
+                        onClicked: { videoCallUnderDevDialog.show() }
+                    }
+                    // Fixed-width spacer — physically pushes the icon pair away from the
+                    // screen's right edge. (A plain rightMargin on the last icon wasn't
+                    // enough: the spaceQuota title Container reclaims that space first.)
+                    Container {
+                        preferredWidth: ui.du(0.2)
+                    }
                 }
 
+                // In-chat message search box: toggled on by the search icon above.
+                // Browser-style find: matches are highlighted yellow inline (see
+                // rowRoot.searchHtml() in the delegate below) and the list scrolls
+                // to each match in turn via the Prev/Next arrows, rather than
+                // hiding non-matching messages.
                 Container {
-                    verticalAlignment: VerticalAlignment.Center
+                    visible: chatViewPage.searchVisible
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment:   VerticalAlignment.Center
                     leftPadding: ui.du(1.5)
-                    layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                    Label {
-                        text: chatViewPage.threadName.length > 0 ? chatViewPage.threadName : "..."
-                        textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
-                        topMargin: 0; bottomMargin: 0
-                    }
-                    Label {
-                        text: chatViewPage.isGroup ? "Group" : "Zalo Contact"
-                        textStyle { color: Color.create("#b3d4ff"); fontSize: FontSize.XSmall }
-                        topMargin: ui.du(0.2); bottomMargin: 0
-                    }
-                }
+                    rightPadding: ui.du(1.5)
+                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-                ImageButton {
-                    verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(8); preferredHeight: ui.du(8)
-                    defaultImageSource: "asset:///images/ChatView/ic_bbm_voice_answer.png"
-                    pressedImageSource: "asset:///images/ChatView/ic_bbm_voice_answer.png"
-                    rightMargin: ui.du(0.8)
-                    onClicked: { voiceCallUnderDevDialog.show() }
-                }
-                ImageButton {
-                    verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(8); preferredHeight: ui.du(8)
-                    defaultImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
-                    pressedImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
-                    onClicked: { videoCallUnderDevDialog.show() }
-                }
-                // Fixed-width spacer — physically pushes the icon pair away from the
-                // screen's right edge. (A plain rightMargin on the last icon wasn't
-                // enough: the spaceQuota title Container reclaims that space first.)
-                Container {
-                    preferredWidth: ui.du(0.2)
+                    TextField {
+                        id: chatSearchField
+                        hintText: "Search in this chat..."
+                        verticalAlignment: VerticalAlignment.Center
+                        textStyle { color: Color.White }
+                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                        onTextChanging: {
+                            chatViewPage.searchText = text;
+                            chatViewPage.updateSearchMatches(true);
+                        }
+                        onCreationCompleted: {
+                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        }
+                    }
+                    Label {
+                        text: chatViewPage.searchMatches.length > 0
+                              ? (chatViewPage.searchMatchPos + 1) + "/" + chatViewPage.searchMatches.length
+                              : (chatViewPage.searchText.length > 0 ? "0/0" : "")
+                        verticalAlignment: VerticalAlignment.Center
+                        rightMargin: ui.du(0.8)
+                        textStyle { color: Color.create("#cfe2ff"); fontSize: FontSize.Small }
+                    }
+                    Button {
+                        text: "\u25B2"
+                        preferredWidth: ui.du(7)
+                        verticalAlignment: VerticalAlignment.Center
+                        enabled: chatViewPage.searchMatches.length > 0
+                        onClicked: chatViewPage.gotoSearchMatch(-1)
+                    }
+                    Button {
+                        text: "\u25BC"
+                        preferredWidth: ui.du(7)
+                        verticalAlignment: VerticalAlignment.Center
+                        rightMargin: ui.du(0.8)
+                        enabled: chatViewPage.searchMatches.length > 0
+                        onClicked: chatViewPage.gotoSearchMatch(1)
+                    }
+                    Button {
+                        text: "Cancel"
+                        preferredWidth: ui.du(12)
+                        verticalAlignment: VerticalAlignment.Center
+                        onClicked: {
+                            chatSearchField.text = "";
+                            chatViewPage.searchText = "";
+                            chatViewPage.searchVisible = false;
+                            chatViewPage.searchMatches = [];
+                            chatViewPage.searchMatchPos = -1;
+                        }
+                    }
                 }
             }
         }
@@ -143,11 +238,85 @@ Page {
                 }
                 d.content    = "";
                 d.msgType    = 99;
-                d.localImage = "";
+                // NOTE: localImage is intentionally left untouched here. It's the
+                // path to the already-downloaded photo file on disk; clearing it
+                // would make a recalled photo impossible to show again even when
+                // "Show Recalled Messages" is enabled. The delegate below decides
+                // whether to actually display it based on that setting.
                 msgModel.replace(j, d);
                 return;
             }
         }
+    }
+
+    // In-chat message search ("find in page" style): scans the already-loaded
+    // messages for the query and records which indices match, without hiding
+    // any messages. The delegate (rowRoot.searchHtml) highlights the matched
+    // substring inline; gotoSearchMatch() scrolls the list to each result.
+    function updateSearchMatches(resetToFirst) {
+        var q = (chatViewPage.searchText || "").toLowerCase().trim();
+        var found = [];
+        if (q.length > 0) {
+            var size = msgModel.size();
+            for (var i = 0; i < size; i++) {
+                var d = msgModel.value(i);
+                var hay = "";
+                if (typeof d.content === "string") hay += d.content.toLowerCase();
+                if (typeof d.recalledOriginalContent === "string" && d.recalledOriginalContent.charAt(0) !== "{")
+                    hay += " " + d.recalledOriginalContent.toLowerCase();
+                if (hay.indexOf(q) !== -1) found.push(i);
+            }
+        }
+        chatViewPage.searchMatches = found;
+        if (resetToFirst) {
+            chatViewPage.searchMatchPos = found.length > 0 ? 0 : -1;
+            if (found.length > 0) chatViewPage.scrollToMsgIndex(found[0]);
+        } else if (chatViewPage.searchMatchPos >= found.length) {
+            chatViewPage.searchMatchPos = found.length > 0 ? 0 : -1;
+        }
+    }
+
+    // dir: +1 for next match, -1 for previous (wraps around both ends).
+    function gotoSearchMatch(dir) {
+        var n = chatViewPage.searchMatches.length;
+        if (n === 0) return;
+        var pos = chatViewPage.searchMatchPos + dir;
+        if (pos < 0) pos = n - 1;
+        if (pos >= n) pos = 0;
+        chatViewPage.searchMatchPos = pos;
+        chatViewPage.scrollToMsgIndex(chatViewPage.searchMatches[pos]);
+    }
+
+    function scrollToMsgIndex(idx) {
+        if (idx < 0 || idx >= msgModel.size()) return;
+        msgList.scrollToItem([idx], ScrollAnimation.Default);
+    }
+
+    // Escapes HTML-sensitive characters, then wraps every case-insensitive
+    // occurrence of `query` in a yellow <span>, preserving the original
+    // casing of the matched text. Returns plain (non-html) text unchanged
+    // when there's no active query, so callers can use it unconditionally.
+    function highlightMatches(text, query, color) {
+        var esc = String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        var q = (query || "").trim();
+        if (q.length === 0) return esc;
+        var qEsc = q.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        var lowerEsc = esc.toLowerCase();
+        var lowerQ = qEsc.toLowerCase();
+        var hl = color || "#ffeb3b";
+        var out = "";
+        var pos = 0;
+        var idx;
+        while ((idx = lowerEsc.indexOf(lowerQ, pos)) !== -1) {
+            out += esc.substring(pos, idx);
+            out += "<span style='background-color:" + hl + ";color:#000000;'>" + esc.substring(idx, idx + qEsc.length) + "</span>";
+            pos = idx + qEsc.length;
+        }
+        out += esc.substring(pos);
+        return out;
     }
 
     function flushPendingImages() {
@@ -217,13 +386,20 @@ Page {
 
         ListView {
             id: msgList
-            property bool isDark: chatViewPage.isDark
-            property bool showRecalledMessages: chatViewPage.showRecalledMessages
+            property bool   isDark: chatViewPage.isDark
+            property bool   showRecalledMessages: chatViewPage.showRecalledMessages
+            property string searchQuery: chatViewPage.searchVisible ? chatViewPage.searchText.toLowerCase().trim() : ""
+            property int    searchCurrentMsgIndex: (chatViewPage.searchMatchPos >= 0 && chatViewPage.searchMatchPos < chatViewPage.searchMatches.length)
+                                                     ? chatViewPage.searchMatches[chatViewPage.searchMatchPos] : -1
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-            dataModel: ArrayDataModel { id: msgModel }
+            dataModel: msgModel
             bottomPadding: ui.du(1.5)
             flickMode: FlickMode.Momentum
+
+            attachedObjects: [
+                ArrayDataModel { id: msgModel }
+            ]
 
             listItemComponents: [
                 ListItemComponent {
@@ -237,6 +413,13 @@ Page {
                         property bool isDark: ListItem.view.isDark
                         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
+                        // Browser-style find-in-page: query text and whether this exact
+                        // row is the currently-focused match (for a slightly stronger
+                        // highlight / outline than other, non-focused matches).
+                        property string searchQuery: ListItem.view.searchQuery
+                        property bool   isCurrentSearchMatch: rowRoot.searchQuery.length > 0
+                                                               && ListItem.view.searchCurrentMsgIndex === ListItem.indexPath[0]
+
                         property bool mine: (ListItemData.isMine === true
                                              || ListItemData.isMine === "true"
                                              || ListItemData.isMine === 1)
@@ -247,16 +430,25 @@ Page {
                         // showing that original text instead of the generic placeholder banner.
                         property bool showRecalledSetting: ListItem.view.showRecalledMessages
                         property string recalledOriginal: ListItemData.recalledOriginalContent || ""
-                        property bool recalledHasOriginalText: rowRoot.recalledOriginal.length > 0
-                                                                 && !(rowRoot.recalledOriginal.charAt(0) === "{"
-                                                                      && (rowRoot.recalledOriginal.indexOf("normalUrl") >= 0
-                                                                          || rowRoot.recalledOriginal.indexOf("thumbUrl") >= 0
-                                                                          || rowRoot.recalledOriginal.indexOf("thumb") >= 0
-                                                                          || rowRoot.recalledOriginal.indexOf("href") >= 0))
+                        // Recalled photo/sticker: detected either from the preserved original
+                        // content being a photo JSON blob, or simply from a cached local image
+                        // file still being on disk for this message (localImage is no longer
+                        // cleared on recall — see applyRecall()). Either signal means this was
+                        // an image message, so it should be recoverable as a photo, not text.
+                        property bool recalledIsPhoto: (rowRoot.recalledOriginal.length > 0
+                                                         && rowRoot.recalledOriginal.charAt(0) === "{"
+                                                         && (rowRoot.recalledOriginal.indexOf("normalUrl") >= 0
+                                                             || rowRoot.recalledOriginal.indexOf("thumbUrl") >= 0
+                                                             || rowRoot.recalledOriginal.indexOf("thumb") >= 0
+                                                             || rowRoot.recalledOriginal.indexOf("href") >= 0))
+                                                        || !!(ListItemData.localImage && ListItemData.localImage !== "")
+                        property bool recalledHasOriginalText: rowRoot.recalledOriginal.length > 0 && !rowRoot.recalledIsPhoto
                         // True when we should fall back to the plain "This message was
-                        // recalled" placeholder bubble (setting off, or no recoverable text).
+                        // recalled" placeholder bubble (setting off, or no recoverable
+                        // text/photo).
                         property bool recalledHidden: rowRoot.recalled
-                                                       && !(rowRoot.showRecalledSetting && rowRoot.recalledHasOriginalText)
+                                                       && !(rowRoot.showRecalledSetting
+                                                            && (rowRoot.recalledHasOriginalText || rowRoot.recalledIsPhoto))
 
                         // Used to size photo bubbles to the image's real aspect ratio
                         // without ever exceeding the bubble's own width. 94 = the two
@@ -337,17 +529,49 @@ Page {
                                 }
 
                                 Container {
-                                    visible: rowRoot.recalled && !rowRoot.recalledHidden
+                                    visible: rowRoot.recalled && !rowRoot.recalledHidden && !rowRoot.recalledIsPhoto
                                     topMargin: 0; bottomMargin: 0
 
                                     Label {
-                                        text: rowRoot.recalledOriginal
+                                        text: rowRoot.searchQuery.length > 0
+                                              ? "<html>" + chatViewPage.highlightMatches(rowRoot.recalledOriginal, rowRoot.searchQuery, rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b") + "</html>"
+                                              : rowRoot.recalledOriginal
                                         textStyle {
                                             base:  SystemDefaults.TextStyles.BodyText
                                             color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
                                         }
                                         multiline: true
                                         topMargin: 0; bottomMargin: 0
+                                    }
+                                    Label {
+                                        text: "(This message was recalled)"
+                                        textStyle {
+                                            base:       SystemDefaults.TextStyles.SmallText
+                                            fontStyle:  FontStyle.Italic
+                                            color: rowRoot.isDark ? Color.create("#888888") : Color.create("#999999")
+                                        }
+                                        topMargin: 2; bottomMargin: 0
+                                    }
+                                }
+
+                                // Recovered photo bubble for a recalled image message, shown only
+                                // when "Show Recalled Messages" is on and the cached file is still
+                                // on disk (see recalledIsPhoto / applyRecall()).
+                                Container {
+                                    visible: rowRoot.recalled && !rowRoot.recalledHidden && rowRoot.recalledIsPhoto
+                                    topMargin: 0; bottomMargin: 0
+
+                                    ImageView {
+                                        visible: !!(ListItemData.localImage && ListItemData.localImage !== "")
+                                        horizontalAlignment: HorizontalAlignment.Left
+                                        preferredWidth:  (ListItemData.imgWidth  && ListItemData.imgWidth  > 0)
+                                                         ? Math.min(rowRoot.bubbleMaxW, ListItemData.imgWidth) : Math.min(rowRoot.bubbleMaxW, ui.du(30))
+                                        preferredHeight: (ListItemData.imgWidth  && ListItemData.imgWidth  > 0
+                                                          && ListItemData.imgHeight && ListItemData.imgHeight > 0)
+                                                         ? (Math.min(rowRoot.bubbleMaxW, ListItemData.imgWidth) * (ListItemData.imgHeight / ListItemData.imgWidth))
+                                                         : ui.du(30)
+                                        scalingMethod: ScalingMethod.AspectFit
+                                        imageSource: ListItemData.localImage
                                     }
                                     Label {
                                         text: "(This message was recalled)"
@@ -370,12 +594,19 @@ Page {
                                                       || ListItemData.content.indexOf("thumbUrl") >= 0
                                                       || ListItemData.content.indexOf("thumb") >= 0
                                                       || ListItemData.content.indexOf("href") >= 0))
-                                    text: (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
-                                          ? ListItemData.content
-                                          : ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
-                                             ? "[Photo]"
-                                             : ((ListItemData.msgType === 6 || ListItemData.msgType === "6")
-                                                ? "[Sticker]" : "[Photo]"))
+                                    text: {
+                                        var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
+                                              ? ListItemData.content
+                                              : ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
+                                                 ? "[Photo]"
+                                                 : ((ListItemData.msgType === 6 || ListItemData.msgType === "6")
+                                                    ? "[Sticker]" : "[Photo]"));
+                                        if (rowRoot.searchQuery.length > 0) {
+                                            var hlColor = rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b";
+                                            return "<html>" + chatViewPage.highlightMatches(raw, rowRoot.searchQuery, hlColor) + "</html>";
+                                        }
+                                        return raw;
+                                    }
                                     textStyle {
                                         base:  SystemDefaults.TextStyles.BodyText
                                         color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
@@ -622,6 +853,20 @@ Page {
             ActionBar.placement: ActionBarPlacement.OnBar
             enabled: false
             onTriggered: { doSend() }
+        },
+        ActionItem {
+            id: searchAction
+            title: "Search"
+            imageSource: "asset:///images/ChatView/action_icon_search.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            onTriggered: {
+                chatViewPage.searchVisible = !chatViewPage.searchVisible;
+                if (!chatViewPage.searchVisible) {
+                    chatViewPage.searchText = "";
+                    chatViewPage.searchMatches = [];
+                    chatViewPage.searchMatchPos = -1;
+                }
+            }
         },
         ActionItem {
             id: muteAction

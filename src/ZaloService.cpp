@@ -1637,6 +1637,18 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         fetchPhotoViaWs510(msgId, threadId);
                         fetchPhotoViaHttp(msgId, threadId);
                     }
+                } else if (!nUrl.isEmpty() && nUrl.startsWith("http") && !msgId.isEmpty()) {
+                    // Regular HTTP photo URL: previously this was only fetched lazily
+                    // by ChatView when the user actually opened the thread and the
+                    // bubble was rendered on screen. That meant a photo recalled
+                    // before the user ever viewed the chat had no cached local file
+                    // to fall back on, so "Show Recalled Messages" could only show
+                    // the placeholder, never the actual image. Cache it eagerly here
+                    // instead, as soon as the message arrives over WS, regardless of
+                    // which thread is currently open. downloadImageMessage() is
+                    // idempotent (checks m_avatarCache/m_pendingAvatars first), so
+                    // this is a no-op if ChatView already requested/has it.
+                    downloadImageMessage(msgId, nUrl, threadId);
                 }
             }
             out["content"] = rawContent;
@@ -4886,12 +4898,29 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     // recreates the row, resetting any column not listed in VALUES. This also
     // avoids relying on "ON CONFLICT ... DO UPDATE" (SQLite 3.24+), which older
     // bundled SQLite builds on BB10 may not support.
+    //
+    // localImage/imgWidth/imgHeight use CASE WHEN to preserve the existing DB
+    // value whenever the caller's map doesn't carry them (empty/0): almost
+    // every dbSaveMessage() call site builds its QVariantMap from the raw WS
+    // payload, which never includes these — they're populated separately and
+    // asynchronously by downloadImageMessage()/onImageMsgDownloaded(). Without
+    // this guard, any later re-save of the same msgId (e.g. the cmd=510
+    // history-sync path patching a message to "recalled" in-place, then
+    // re-saving it) would silently null out an already-downloaded photo's
+    // local cache path, even though nothing about the image actually changed.
     const char *sqlUpdate =
         "UPDATE messages SET threadId=?,content=?,senderId=?,dName=?,ts=?,"
-        "isMine=?,isGroup=?,msgType=?,localImage=?,imgWidth=?,imgHeight=? WHERE msgId=?";
+        "isMine=?,isGroup=?,msgType=?,"
+        "localImage = CASE WHEN ?='' THEN localImage ELSE ? END,"
+        "imgWidth   = CASE WHEN ?=0  THEN imgWidth   ELSE ? END,"
+        "imgHeight  = CASE WHEN ?=0  THEN imgHeight  ELSE ? END "
+        "WHERE msgId=?";
     sqlite3_stmt *upd = 0;
     bool updated = false;
     if (sqlite3_prepare_v2(m_db, sqlUpdate, -1, &upd, 0) == SQLITE_OK) {
+        QByteArray localImageUtf8 = msg["localImage"].toString().toUtf8();
+        int imgWidthVal  = msg["imgWidth"].toInt();
+        int imgHeightVal = msg["imgHeight"].toInt();
         sqlite3_bind_text(upd, 1,  threadId.toUtf8().constData(),                    -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(upd, 2,  msg["content"].toString().toUtf8().constData(),   -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(upd, 3,  msg["senderId"].toString().toUtf8().constData(),  -1, SQLITE_TRANSIENT);
@@ -4900,10 +4929,13 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         sqlite3_bind_int (upd, 6,  msg["isMine"].toBool() ? 1 : 0);
         sqlite3_bind_int (upd, 7,  msg["isGroup"].toBool() ? 1 : 0);
         sqlite3_bind_int (upd, 8,  msg["msgType"].toInt());
-        sqlite3_bind_text(upd, 9,  msg["localImage"].toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int (upd, 10, msg["imgWidth"].toInt());
-        sqlite3_bind_int (upd, 11, msg["imgHeight"].toInt());
-        sqlite3_bind_text(upd, 12, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 9,  localImageUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 10, localImageUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int (upd, 11, imgWidthVal);
+        sqlite3_bind_int (upd, 12, imgWidthVal);
+        sqlite3_bind_int (upd, 13, imgHeightVal);
+        sqlite3_bind_int (upd, 14, imgHeightVal);
+        sqlite3_bind_text(upd, 15, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
         sqlite3_step(upd);
         updated = sqlite3_changes(m_db) > 0;
         sqlite3_finalize(upd);

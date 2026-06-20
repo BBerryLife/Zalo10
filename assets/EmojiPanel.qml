@@ -2,6 +2,7 @@ import bb.cascades 1.4
 
 Container {
     id: emojiPanel
+    background: isDark ? Color.create("#1f1f1f") : Color.create("#e8e8e8")
 
     // - Public API -
     signal emojiPicked(string charStr)
@@ -1146,6 +1147,18 @@ Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 0 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
+            // Fixed-tone badge behind the icon itself (independent of the
+            // selection highlight above): several category icons — e.g. the
+            // pale cream-yellow lightbulb for "objects" — are close in
+            // lightness to this bar's own background and nearly disappear
+            // without it. A constant mid-gray backdrop guarantees contrast
+            // in both themes regardless of selection state.
+            Container {
+                horizontalAlignment: HorizontalAlignment.Center
+                verticalAlignment: VerticalAlignment.Center
+                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+            }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
@@ -1159,6 +1172,12 @@ Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 1 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
+            Container {
+                horizontalAlignment: HorizontalAlignment.Center
+                verticalAlignment: VerticalAlignment.Center
+                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+            }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
@@ -1172,6 +1191,12 @@ Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 2 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
+            Container {
+                horizontalAlignment: HorizontalAlignment.Center
+                verticalAlignment: VerticalAlignment.Center
+                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+            }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
@@ -1185,6 +1210,12 @@ Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 3 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
+            Container {
+                horizontalAlignment: HorizontalAlignment.Center
+                verticalAlignment: VerticalAlignment.Center
+                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+            }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
@@ -1198,6 +1229,12 @@ Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 4 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
+            Container {
+                horizontalAlignment: HorizontalAlignment.Center
+                verticalAlignment: VerticalAlignment.Center
+                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
+                background: emojiPanel.isDark ? Color.create("#1f1f1f") : Color.create("")
+            }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center

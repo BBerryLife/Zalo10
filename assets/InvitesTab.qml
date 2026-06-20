@@ -106,6 +106,18 @@ NavigationPane {
                 }
             },
             ActionItem {
+                title: "Search"
+                imageSource: "asset:///images/InvitesTab/action_icon_search.png"
+                ActionBar.placement: ActionBarPlacement.InOverflow
+                onTriggered: {
+                    invitesNav.searchVisible = !invitesNav.searchVisible;
+                    if (!invitesNav.searchVisible) {
+                        invitesNav.searchText = "";
+                        invitesNav.filterList();
+                    }
+                }
+            },
+            ActionItem {
                 title: "Accept All"
                 imageSource: "asset:///images/InvitesTab/ai_add_task.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
