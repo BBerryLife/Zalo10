@@ -95,7 +95,6 @@ Sheet {
         actions: [
             ActionItem {
                 title: "Save"
-                // TODO: add ic_save.png to assets/images/ChatView/ and update path below
                 imageSource: "asset:///images/ChatView/ic_save.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: { qmEditSheetRoot.doSave(); }

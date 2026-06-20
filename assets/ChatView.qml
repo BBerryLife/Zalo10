@@ -30,24 +30,11 @@ Page {
     property int      searchMatchPos: -1 // which entry in searchMatches is currently focused
 
     titleBar: TitleBar {
-        // Sticky (hide-on-scroll) behavior intercepts touch input meant for
-        // the search field below, making it untappable. Switch to NonSticky
-        // while search is active so the field reliably gets focus; restore
-        // Sticky for the normal scrolling chat header otherwise.
-        // Always non-sticky: a conditional Sticky/NonSticky toggle (switching to
-        // NonSticky only while searching) still left the bar in whatever
-        // collapsed/hidden position it had scrolled to before search was
-        // opened — the mode change doesn't retroactively re-expand it, so the
-        // search field stayed off-screen/untappable until the list was
-        // manually scrolled back to the top. Keeping it permanently
-        // NonSticky means the title bar (and the search field inside it) is
-        // always fully visible and tappable, regardless of scroll position.
-        // Sticky: title bar stays pinned/visible at the top at all times.
-        // (NonSticky was tried here to fix the search field tap issue, but
-        // NonSticky actually means the title bar scrolls away WITH the
-        // message list and only reappears once scrolled all the way back up
-        // — not what we want. Reverted to Sticky; the search-field tap issue
-        // needs a different fix.)
+        // Sticky keeps the title bar (and the chat header inside it) pinned and
+        // visible while the message list scrolls. Trade-off: once the user has
+        // scrolled into history, Sticky can intercept touch input meant for
+        // controls inside the title bar, such as the search field — NonSticky
+        // avoids that at the cost of the bar scrolling away with the list.
         scrollBehavior: TitleBarScrollBehavior.Sticky
         kind: TitleBarKind.FreeForm
         kindProperties: FreeFormTitleBarKindProperties {
@@ -1080,22 +1067,16 @@ Page {
     }
 
     attachedObjects: [
-        SystemDialog {
+        InfoDialog {
             id: voiceCallUnderDevDialog
             title: "Voice Call"
             body: "This feature is still under development."
-            confirmButton.label: "OK"
-            cancelButton.label: ""
-            cancelButton.enabled: false
         },
 
-        SystemDialog {
+        InfoDialog {
             id: videoCallUnderDevDialog
             title: "Video Call"
             body: "This feature is still under development."
-            confirmButton.label: "OK"
-            cancelButton.label: ""
-            cancelButton.enabled: false
         },
 
         Connections {
@@ -1353,40 +1334,28 @@ Page {
             }
         },
 
-        SystemDialog {
+        ConfirmDialog {
             id: blockDialog
             title: "Block user"
             body: "Block " + chatViewPage.threadName + "? They won't be able to message you."
-            confirmButton.label: "Block"
-            cancelButton.label: "Cancel"
-            onFinished: {
-                if (result === SystemUiResult.ConfirmButtonSelection)
-                    zService.blockUser(chatViewPage.threadId);
-            }
+            confirmLabel: "Block"
+            onConfirmed: zService.blockUser(chatViewPage.threadId)
         },
 
-        SystemDialog {
+        ConfirmDialog {
             id: clearHistoryDialog
             title: "Clear history"
             body: "Delete all messages in this conversation? This only removes them for you."
-            confirmButton.label: "Clear"
-            cancelButton.label: "Cancel"
-            onFinished: {
-                if (result === SystemUiResult.ConfirmButtonSelection)
-                    zService.clearHistory(chatViewPage.threadId, chatViewPage.isGroup);
-            }
+            confirmLabel: "Clear"
+            onConfirmed: zService.clearHistory(chatViewPage.threadId, chatViewPage.isGroup)
         },
 
-        SystemDialog {
+        ConfirmDialog {
             id: leaveGroupDialog
             title: "Leave group"
             body: "Leave " + chatViewPage.threadName + "? You won't be able to receive messages from this group."
-            confirmButton.label: "Leave"
-            cancelButton.label: "Cancel"
-            onFinished: {
-                if (result === SystemUiResult.ConfirmButtonSelection)
-                    zService.leaveGroup(chatViewPage.threadId);
-            }
+            confirmLabel: "Leave"
+            onConfirmed: zService.leaveGroup(chatViewPage.threadId)
         }
     ]
 }

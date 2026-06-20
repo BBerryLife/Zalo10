@@ -1,0 +1,289 @@
+#ifndef ZALOSERVICEUTILS_HPP
+#define ZALOSERVICEUTILS_HPP
+
+// Small JSON/crypto helpers shared by the ZaloService_*.cpp translation units.
+// Qt4 has no QJson, so JSON (de)serialization is done via QScriptEngine; these
+// wrappers keep that detail in one place instead of repeating it at every call site.
+// Everything here is `inline` since the header is included from multiple .cpp files.
+
+#include <QString>
+#include <QByteArray>
+#include <QVariant>
+#include <QScriptEngine>
+#include <QScriptValue>
+#include <QDebug>
+
+#include <openssl/evp.h>
+
+inline QVariantMap jsonToMap(const QByteArray &raw)
+{
+    QByteArray trimmed = raw.trimmed();
+    if (trimmed.isEmpty() || trimmed.startsWith("<")) return QVariantMap();
+    QScriptEngine eng;
+    eng.evaluate("var __safeJSON = function(s){try{return JSON.parse(s);}catch(e){return null;}}");
+    QScriptValue fn = eng.globalObject().property("__safeJSON");
+    QScriptValue val = fn.call(QScriptValue(), QScriptValueList()
+                               << eng.toScriptValue(QString::fromUtf8(trimmed)));
+    if (!val.isValid() || val.isNull() || val.isUndefined() || val.isError())
+        return QVariantMap();
+    QVariant v = val.toVariant();
+    if (v.type() == QVariant::Map)
+        return v.toMap();
+    return QVariantMap();
+}
+
+inline QVariantList jsonToList(const QByteArray &raw)
+{
+    QByteArray trimmed = raw.trimmed();
+    if (trimmed.isEmpty() || trimmed.startsWith("<")) return QVariantList();
+    QScriptEngine eng;
+    eng.evaluate("var __safeJSON = function(s){try{return JSON.parse(s);}catch(e){return null;}}");
+    QScriptValue fn = eng.globalObject().property("__safeJSON");
+    QScriptValue val = fn.call(QScriptValue(), QScriptValueList()
+                               << eng.toScriptValue(QString::fromUtf8(trimmed)));
+    if (!val.isValid() || val.isNull() || val.isUndefined() || val.isError())
+        return QVariantList();
+    QVariant v = val.toVariant();
+    if (v.type() == QVariant::List)
+        return v.toList();
+    return QVariantList();
+}
+
+inline QByteArray mapToJson(const QVariantMap &map)
+{
+    QScriptEngine eng;
+    QScriptValue obj = eng.newObject();
+    for (QVariantMap::const_iterator it = map.constBegin(); it != map.constEnd(); ++it) {
+        QVariant v = it.value();
+        switch (v.type()) {
+        case QVariant::String:   obj.setProperty(it.key(), v.toString()); break;
+        case QVariant::Int:
+        case QVariant::LongLong: obj.setProperty(it.key(), (double)v.toLongLong()); break;
+        case QVariant::UInt:
+        case QVariant::ULongLong: obj.setProperty(it.key(), (double)v.toULongLong()); break;
+        case QVariant::Bool:     obj.setProperty(it.key(), (bool)v.toBool()); break;
+        case QVariant::Double:   obj.setProperty(it.key(), (double)v.toDouble()); break;
+        case QVariant::List: {
+            QVariantList lst = v.toList();
+            QScriptValue arr = eng.newArray(lst.size());
+            for (int i = 0; i < lst.size(); ++i)
+                arr.setProperty(i, lst[i].toString());
+            obj.setProperty(it.key(), arr);
+            break;
+        }
+        default: obj.setProperty(it.key(), v.toString()); break;
+        }
+    }
+    QScriptValue jsonStringify = eng.evaluate("JSON.stringify");
+    QScriptValue result = jsonStringify.call(QScriptValue(), QScriptValueList() << obj);
+    return result.toString().toUtf8();
+}
+
+// General-purpose recursive QVariant -> QScriptValue conversion, unlike the
+// flat-only mapToJson() above. Needed for exportData()/importData(), whose
+// payload is a root object containing arrays of (flat) message/quickMessage
+// maps plus scalar metadata — e.g. {"exportedAt": "...", "messages": [ {...},
+// {...} ], "quickMessages": [ {...} ]}. Kept separate from mapToJson() rather
+// than rewriting it, since every existing call site of mapToJson() is part of
+// the login/messaging wire protocol and shouldn't change behavior.
+inline QScriptValue variantToScriptValue(QScriptEngine &eng, const QVariant &v)
+{
+    switch (v.type()) {
+    case QVariant::Map: {
+        QVariantMap m = v.toMap();
+        QScriptValue obj = eng.newObject();
+        for (QVariantMap::const_iterator it = m.constBegin(); it != m.constEnd(); ++it)
+            obj.setProperty(it.key(), variantToScriptValue(eng, it.value()));
+        return obj;
+    }
+    case QVariant::List: {
+        QVariantList lst = v.toList();
+        QScriptValue arr = eng.newArray(lst.size());
+        for (int i = 0; i < lst.size(); ++i)
+            arr.setProperty(i, variantToScriptValue(eng, lst[i]));
+        return arr;
+    }
+    case QVariant::Int:
+    case QVariant::LongLong:  return QScriptValue(eng.toScriptValue((double)v.toLongLong()));
+    case QVariant::UInt:
+    case QVariant::ULongLong: return QScriptValue(eng.toScriptValue((double)v.toULongLong()));
+    case QVariant::Double:    return QScriptValue(eng.toScriptValue(v.toDouble()));
+    case QVariant::Bool:      return QScriptValue(v.toBool());
+    default:                  return QScriptValue(v.toString());
+    }
+}
+
+inline QByteArray variantToJsonPretty(const QVariant &root)
+{
+    QScriptEngine eng;
+    QScriptValue val = variantToScriptValue(eng, root);
+    QScriptValue jsonStringify = eng.evaluate("JSON.stringify");
+    // 2-space indent so an exported file is still human-readable if someone opens it.
+    QScriptValue result = jsonStringify.call(QScriptValue(), QScriptValueList()
+                                              << val << QScriptValue() << QScriptValue(2));
+    return result.toString().toUtf8();
+}
+
+inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawContent)
+{
+    QString nUrl, hUrl, tUrl;
+
+    // 1. Try content JSON field first
+    if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
+        QVariantMap cm = jsonToMap(rawContent.toUtf8());
+        // normalUrl can be a protobuf blob instead of a URL, so href/oriUrl is the
+        // more reliable CDN link — only trust normalUrl when it's actually an http URL.
+        QString nu = cm["normalUrl"].toString();
+        if (nu.startsWith("http")) {
+            nUrl = nu;
+        } else {
+            // normalUrl is protobuf blob — use href/oriUrl as real CDN URL instead
+            nUrl = cm["href"].toString();
+            if (nUrl.isEmpty()) nUrl = cm["oriUrl"].toString();
+            if (nUrl.isEmpty() && nu.startsWith("http")) nUrl = nu; // fallback
+        }
+        hUrl = cm["hdUrl"].toString();
+        if (hUrl.isEmpty()) hUrl = cm["oriUrl"].toString();
+        if (hUrl.isEmpty()) hUrl = cm["href"].toString();
+        tUrl = cm["thumbUrl"].toString();
+        if (tUrl.isEmpty()) tUrl = cm["thumb"].toString();
+        // If still empty, use whatever we have
+        if (nUrl.isEmpty()) nUrl = nu;
+    }
+
+    // 2. Try top-level fields on message map
+    if (nUrl.isEmpty()) nUrl = m["normalUrl"].toString();
+    if (hUrl.isEmpty()) hUrl = m["hdUrl"].toString();
+    if (tUrl.isEmpty()) tUrl = m["thumbUrl"].toString();
+    if (nUrl.isEmpty()) nUrl = m["oriUrl"].toString();
+    if (tUrl.isEmpty()) tUrl = m["thumb"].toString();
+
+    // 3. Try paramsExt JSON string (Zalo WS real-time photo delivery)
+    if (nUrl.isEmpty() || !nUrl.startsWith("http")) {
+        QString pe = m["paramsExt"].toString();
+        if (!pe.isEmpty() && pe.trimmed().startsWith("{")) {
+            QVariantMap pm = jsonToMap(pe.toUtf8());
+            QString pnu = pm["normalUrl"].toString();
+            if (pnu.startsWith("http")) nUrl = pnu;
+            if (hUrl.isEmpty()) hUrl = pm["hdUrl"].toString();
+            if (tUrl.isEmpty()) tUrl = pm["thumbUrl"].toString();
+            if (!nUrl.startsWith("http")) {
+                if (!pm["href"].toString().isEmpty()) nUrl = pm["href"].toString();
+                if (!pm["oriUrl"].toString().isEmpty() && nUrl.isEmpty())
+                    nUrl = pm["oriUrl"].toString();
+            }
+            if (tUrl.isEmpty()) tUrl = pm["thumb"].toString();
+        }
+    }
+
+    // 4. Try attach sub-object
+    if (nUrl.isEmpty() || !nUrl.startsWith("http")) {
+        QVariantMap att = m["attach"].toMap();
+        if (att.isEmpty()) {
+            QString attStr = m["attach"].toString();
+            if (!attStr.isEmpty() && attStr.startsWith("{"))
+                att = jsonToMap(attStr.toUtf8());
+        }
+        if (!att.isEmpty()) {
+            QString anu = att["normalUrl"].toString();
+            if (anu.startsWith("http")) nUrl = anu;
+            if (hUrl.isEmpty()) hUrl = att["hdUrl"].toString();
+            if (tUrl.isEmpty()) tUrl = att["thumbUrl"].toString();
+            if (!nUrl.startsWith("http")) {
+                if (!att["href"].toString().isEmpty()) nUrl = att["href"].toString();
+            }
+            if (tUrl.isEmpty()) tUrl = att["thumb"].toString();
+        }
+    }
+
+    // 5. previewThumb as last resort (may be CDN URL or base64)
+    if (nUrl.isEmpty()) {
+        QString pt = m["previewThumb"].toString();
+        if (!pt.isEmpty()) { nUrl = pt; tUrl = pt; }
+    }
+
+    if (nUrl.isEmpty()) nUrl = hUrl; if (nUrl.isEmpty()) nUrl = tUrl;
+    if (tUrl.isEmpty()) tUrl = nUrl; if (hUrl.isEmpty()) hUrl = nUrl;
+    if (nUrl.isEmpty()) return rawContent;
+    return QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
+           .arg(nUrl).arg(tUrl).arg(hUrl);
+}
+
+
+// Zalo sends a separate "chat.undo" event when a message is recalled/unsent.
+// Its content is {"globalMsgId":..., "cliMsgId":..., "deleteMsg":..., "srcId":..., "destId":...}
+// referencing the ORIGINAL message's msgId — it is not a message of its own.
+// Returns the original msgId being recalled, or an empty string if m isn't a recall event.
+inline QString extractRecalledMsgId(const QVariantMap &m)
+{
+    QString msgTypeStr = m.value("msgType").toString();
+    if (msgTypeStr.compare("chat.undo", Qt::CaseInsensitive) != 0)
+        return QString();
+
+    // content arrives as a nested QVariantMap (QScriptEngine auto-converts JSON
+    // objects), but may also already be a JSON string depending on the call path.
+    QVariantMap c = m.value("content").toMap();
+    if (c.isEmpty()) {
+        QString cs = m.value("content").toString();
+        if (!cs.isEmpty() && cs.trimmed().startsWith("{"))
+            c = jsonToMap(cs.toUtf8());
+    }
+    QString recalledId = c.value("globalMsgId").toString();
+    if (recalledId.isEmpty()) recalledId = c.value("cliMsgId").toString();
+    return recalledId;
+}
+
+// AES-GCM decrypt cho WS event data (zca-js decodeEventData, encryptType=2/3)
+// Layout: iv[0:16] + aad[16:32] + ciphertext[32:N-16] + tag[N-16:N]
+// encryptType=2: base64(urlencoded(data)) → inflate(plaintext)
+// encryptType=3: base64(data)            → plaintext trực tiếp (no inflate)
+inline QByteArray aesGcmDecrypt(const QByteArray &keyRaw, const QByteArray &cipherBytes)
+{
+    if (cipherBytes.size() < 48) return QByteArray(); // iv(16)+aad(16)+tag(16) minimum
+    QByteArray key = keyRaw;
+    if (key.size() != 16 && key.size() != 24 && key.size() != 32) {
+        key = QByteArray::fromBase64(keyRaw);
+    }
+    if (key.size() != 16 && key.size() != 24 && key.size() != 32) return QByteArray();
+
+    const unsigned char *iv  = (const unsigned char*)cipherBytes.constData();       // bytes 0-15
+    const unsigned char *aad = (const unsigned char*)cipherBytes.constData() + 16;  // bytes 16-31
+    int cipherLen = cipherBytes.size() - 32 - 16;
+    if (cipherLen <= 0) return QByteArray();
+    const unsigned char *cipher = (const unsigned char*)cipherBytes.constData() + 32;
+    const unsigned char *tag    = (const unsigned char*)cipherBytes.constData() + 32 + cipherLen;
+
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) return QByteArray();
+
+    const EVP_CIPHER *cipher_type = (key.size() == 16) ? EVP_aes_128_gcm()
+                                  : (key.size() == 24) ? EVP_aes_192_gcm()
+                                  :                      EVP_aes_256_gcm();
+    EVP_DecryptInit_ex(ctx, cipher_type, NULL, NULL, NULL);
+    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 16, NULL);
+    EVP_DecryptInit_ex(ctx, NULL, NULL,
+        (const unsigned char*)key.constData(), iv);
+    // AAD
+    int len = 0;
+    EVP_DecryptUpdate(ctx, NULL, &len, aad, 16);
+    // Decrypt
+    QByteArray out(cipherLen + 16, '\0');
+    EVP_DecryptUpdate(ctx, (unsigned char*)out.data(), &len,
+        cipher, cipherLen);
+    int outLen = len;
+    // Set tag
+    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void*)tag);
+    int ret = EVP_DecryptFinal_ex(ctx, (unsigned char*)out.data() + outLen, &len);
+    EVP_CIPHER_CTX_free(ctx);
+    if (ret <= 0) {
+        qDebug() << "[Zalo WS] aesGcmDecrypt: EVP_DecryptFinal FAILED ret=" << ret
+                 << "keyLen=" << key.size() << "cipherLen=" << cipherLen
+                 << "tagHex=" << QByteArray((const char*)tag, 16).toHex();
+        return QByteArray(); // tag mismatch
+    }
+    out.resize(outLen + len);
+    return out;
+}
+
+
+#endif // ZALOSERVICEUTILS_HPP

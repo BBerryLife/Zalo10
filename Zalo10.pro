@@ -21,12 +21,20 @@ INCLUDEPATH += $$(QNX_TARGET)/usr/include/qt4/QtGui
 HEADERS += \
     src/applicationui.hpp \
     src/ZaloService.hpp \
+    src/ZaloServiceUtils.hpp \
     src/ActiveFrameCover.hpp
 
 SOURCES += \
     src/main.cpp \
     src/applicationui.cpp \
     src/ZaloService.cpp \
+    src/ZaloService_Auth.cpp \
+    src/ZaloService_WebSocket.cpp \
+    src/ZaloService_Contacts.cpp \
+    src/ZaloService_Messages.cpp \
+    src/ZaloService_Crypto.cpp \
+    src/ZaloService_Network.cpp \
+    src/ZaloService_Db.cpp \
     src/ActiveFrameCover.cpp
 
 OTHER_FILES += \
@@ -38,6 +46,8 @@ OTHER_FILES += \
     assets/images/ActiveFrame/Activeframe_zl10_Small.png \
     assets/ChatList.qml \
     assets/ChatView.qml \
+    assets/InfoDialog.qml \
+    assets/ConfirmDialog.qml \
     assets/EmojiPanel.qml \
     assets/EmojiButton.qml \
     assets/ContactsTab.qml \
