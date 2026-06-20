@@ -1157,7 +1157,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.create("#808080")
+                background: Color.Transparent
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
@@ -1176,7 +1176,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.create("#808080")
+                background: Color.Transparent
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
@@ -1195,7 +1195,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.create("#808080")
+                background: Color.Transparent
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
@@ -1214,7 +1214,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.create("#808080")
+                background: Color.Transparent
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
@@ -1233,7 +1233,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.create("#808080")
+                background: Color.Transparent
             }
             ImageButton {
                 horizontalAlignment: HorizontalAlignment.Center
