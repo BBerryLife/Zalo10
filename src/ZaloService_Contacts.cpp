@@ -486,6 +486,101 @@ void ZaloService::onFetchFriendsDone()
     m_isFetchingFriends = false;
 }
 
+// Pulls the user's own quick-message list from their real Zalo account
+// (api/quickmessage/list — same GET + AES-encrypted-query-param shape as
+// fetchFriends() above) and merges it into the local quick_messages table.
+// "keyword" -> quick message name, "message.title" -> content. Matched by
+// name (case-insensitive) against what's already saved locally, same
+// "existing wins" rule as importData() in ZaloService_Db.cpp.
+void ZaloService::fetchServerQuickMessages()
+{
+    if (!m_loggedIn) {
+        emit serverQuickMessagesReady(0, 0, "Not logged in");
+        return;
+    }
+
+    QString svcUrl = m_quickMessageServiceUrl;
+    if (svcUrl.isEmpty()) svcUrl = m_profileServiceUrl; // fallback, observed same host in practice
+    if (svcUrl.isEmpty()) {
+        emit serverQuickMessagesReady(0, 0, "Service URL unavailable — try logging in again");
+        return;
+    }
+
+    QVariantMap innerParams;
+    innerParams["version"] = 0;
+    innerParams["lang"]    = 0;
+    innerParams["imei"]    = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
+    QString urlStr = svcUrl + "/api/quickmessage/list"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
+
+    qDebug() << "[Zalo] fetchServerQuickMessages GET" << urlStr.left(100);
+    QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
+    connect(reply, SIGNAL(finished()), this, SLOT(onFetchServerQuickMessagesDone()));
+}
+
+void ZaloService::onFetchServerQuickMessagesDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+
+    qDebug() << "[Zalo] fetchServerQuickMessages raw (first300):" << raw.left(300);
+
+    if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
+        emit serverQuickMessagesReady(0, 0, "Server is busy (429) — try again in a bit");
+        return;
+    }
+
+    QVariantMap root = jsonToMap(raw);
+    if (root["error_code"].toInt() != 0) {
+        QString em = root["error_message"].toString();
+        qDebug() << "[Zalo Error] fetchServerQuickMessages:" << em;
+        emit serverQuickMessagesReady(0, 0, em.isEmpty() ? "Request failed" : em);
+        return;
+    }
+
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    qDebug() << "[Zalo] fetchServerQuickMessages decrypted (first300):" << dec.left(300);
+
+    // Same double-wrap shape as every other Zalo endpoint here (fetchFriends,
+    // fetchInvites, ...): the decrypted blob is itself {error_code, error_message,
+    // data:{...}}, and for quickmessage/list the real payload — {cursor, version,
+    // items} — lives under that inner "data" key, not at the top level.
+    QVariantMap outer = jsonToMap(dec.toUtf8());
+    QVariantMap payload = outer.value("data").toMap();
+    QVariantList items = payload.value("items").toList();
+    if (items.isEmpty() && outer.contains("items"))
+        items = outer.value("items").toList(); // fallback in case the shape ever changes
+    qDebug() << "[Zalo] fetchServerQuickMessages found" << items.size() << "items";
+
+    // Existing local names, same dedup approach as importData().
+    QSet<QString> existingNames;
+    QVariantList localQm = getQuickMessages();
+    for (int i = 0; i < localQm.size(); ++i)
+        existingNames.insert(localQm[i].toMap().value("name").toString().toLower());
+
+    int imported = 0, skipped = 0;
+    for (int i = 0; i < items.size(); ++i) {
+        QVariantMap it = items[i].toMap();
+        QString name = it.value("keyword").toString().trimmed();
+        QString content = it.value("message").toMap().value("title").toString().trimmed();
+        if (name.isEmpty() || content.isEmpty()) { skipped++; continue; }
+        if (existingNames.contains(name.toLower())) { skipped++; continue; }
+
+        int newId = addQuickMessage(name, content);
+        if (newId >= 0) { imported++; existingNames.insert(name.toLower()); }
+        else skipped++;
+    }
+
+    qDebug() << "[Zalo] fetchServerQuickMessages:" << imported << "imported," << skipped << "skipped";
+    emit serverQuickMessagesReady(imported, skipped, "");
+}
+
 void ZaloService::fetchInvites()
 {
     if (!m_loggedIn) return;
@@ -546,15 +641,23 @@ void ZaloService::onFetchInvitesDone()
     QVariantList invites;
     for (int i = 0; i < recommItems.size(); ++i) {
         QVariantMap item = recommItems[i].toMap();
-        int itemType = item["recommItemType"].toInt();
+        QVariantMap info = item["dataInfo"].toMap();
+
+        // zca-js types this two different ways and it's easy to grab the wrong
+        // one: the outer "recommItemType" sibling of dataInfo is just `number`
+        // (untyped), while the field actually typed as FriendRecommendationsType
+        // (1=RecommendedFriend/PYMK, 2=ReceivedFriendRequest) is dataInfo.recommType.
+        // Filtering on the outer field was the bug — it doesn't reliably distinguish
+        // PYMK from real pending requests; dataInfo.recommType does.
+        int itemType = info["recommType"].toInt();
 
         if (i < 5)
-            qDebug() << "[Zalo] fetchInvites item[" << i << "] recommItemType=" << itemType
-                     << "dataInfo keys=" << item["dataInfo"].toMap().keys();
+            qDebug() << "[Zalo] fetchInvites item[" << i << "] outer.recommItemType=" << item["recommItemType"].toInt()
+                     << "dataInfo.recommType=" << itemType
+                     << "dataInfo keys=" << info.keys();
 
-        if (itemType != 1) continue;
+        if (itemType != 2) continue;
 
-        QVariantMap info = item["dataInfo"].toMap();
         if (info.isEmpty()) continue;
 
         // userId is the correct field per zca-js type definition

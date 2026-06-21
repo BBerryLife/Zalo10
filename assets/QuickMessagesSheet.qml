@@ -78,6 +78,16 @@ Page {
                 qmEditSheet.resetFields();
                 qmEditSheet.open();
             }
+        },
+        ActionItem {
+            title: "Get from Zalo"
+            imageSource: "asset:///images/ChatView/ic_replace_message.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            onTriggered: {
+                qmFetchProgressToast.body = "Fetching quick messages from Zalo…";
+                qmFetchProgressToast.show();
+                zService.fetchServerQuickMessages();
+            }
         }
     ]
 
@@ -234,6 +244,28 @@ Page {
                     zService.deleteQuickMessage(qmDeleteDialog.targetId);
                     quickMsgPage.reload();
                 }
+            }
+        },
+        SystemToast {
+            id: qmFetchProgressToast
+            body: ""
+        },
+        SystemToast {
+            id: qmFetchDoneToast
+            body: ""
+        },
+        Connections {
+            target: zService
+            onServerQuickMessagesReady: {
+                qmFetchProgressToast.cancel();
+                if (error.length > 0) {
+                    qmFetchDoneToast.body = "Could not fetch from Zalo: " + error;
+                } else {
+                    qmFetchDoneToast.body = "Got " + imported + " new quick message(s) from Zalo"
+                        + (skipped > 0 ? " (" + skipped + " already had)" : "");
+                    quickMsgPage.reload();
+                }
+                qmFetchDoneToast.show();
             }
         }
     ]

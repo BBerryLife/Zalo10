@@ -124,6 +124,7 @@ void ZaloService::saveSession()
     s.setValue("grpPollUrl", m_groupPollServiceUrl);
     s.setValue("friendUrl",  m_friendServiceUrl);
     s.setValue("fileUrl",    m_fileServiceUrl);
+    s.setValue("quickMsgUrl", m_quickMessageServiceUrl);
     s.setValue("zpwWsUrls",  m_zpwWsUrls);
     s.setValue("mutedThreads", QStringList(m_mutedThreads.toList()));
 
@@ -158,6 +159,7 @@ bool ZaloService::loadSession()
     m_groupPollServiceUrl = s.value("grpPollUrl").toString();
     m_friendServiceUrl    = s.value("friendUrl").toString();
     m_fileServiceUrl      = s.value("fileUrl").toString();
+    m_quickMessageServiceUrl = s.value("quickMsgUrl").toString();
     m_zpwWsUrls           = s.value("zpwWsUrls").toStringList();
     m_mutedThreads        = QSet<QString>::fromList(s.value("mutedThreads").toStringList());
 
@@ -295,11 +297,13 @@ void ZaloService::onRefreshSessionKeyDone()
                     QScriptValue p = svcMap.property("profile");
                     QScriptValue gp= svcMap.property("group_poll");
                     QScriptValue f = svcMap.property("friend");
+                    QScriptValue qm= svcMap.property("quick_message");
                     if (c.isArray())  m_chatServiceUrl      = c.property(0).toString();
                     if (g.isArray())  m_groupServiceUrl     = g.property(0).toString();
                     if (p.isArray())  m_profileServiceUrl   = p.property(0).toString();
                     if (gp.isArray()) m_groupPollServiceUrl = gp.property(0).toString();
                     if (f.isArray())  m_friendServiceUrl    = f.property(0).toString();
+                    if (qm.isArray()) m_quickMessageServiceUrl = qm.property(0).toString();
                 }
 
                 // Update WS URLs

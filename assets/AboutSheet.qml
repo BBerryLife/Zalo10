@@ -1,4 +1,5 @@
 import bb.cascades 1.4
+import bb.system 1.0
 import QtQuick 1.0
 
 Sheet {
@@ -6,6 +7,115 @@ Sheet {
 
     NavigationPane {
         id: aboutNav
+
+        property variant activeChangelogPage: null
+        property string pendingManifestAction: ""
+
+        function isVersionNewer(a, b) {
+            var pa = a.split('.');
+            var pb = b.split('.');
+            var n = Math.max(pa.length, pb.length);
+            for (var i = 0; i < n; i++) {
+                var va = parseInt(pa[i] || "0", 10);
+                var vb = parseInt(pb[i] || "0", 10);
+                if (isNaN(va)) va = 0;
+                if (isNaN(vb)) vb = 0;
+                if (va !== vb) return va > vb;
+            }
+            return false;
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        // Mirrors the look of the BBM-style Help > Change List screen: bold
+        // "Version X.x" header per entry + bullet list. Leading NEW:/IMPROVE:/
+        // FIX:/REMOVED: tags are auto-bolded, and "**word**" markdown pairs
+        // become <b>word</b>, so the manifest's "changelog" array can stay plain text.
+        function buildChangelogHtml(versions) {
+            var tags = ["NEW:", "IMPROVE:", "FIX:", "REMOVED:"];
+            var html = "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+                + "<style>body{font-family:'Slate Pro','Helvetica Neue',Helvetica,sans-serif;margin:0;padding:18px;color:#1a1a1a;background:#ffffff;font-size:16px;}"
+                + "h2{font-size:20px;font-weight:700;margin:0 0 14px 0;padding-bottom:8px;border-bottom:2px solid #2575fc;}"
+                + "h2.notfirst{margin-top:30px;} ul{margin:0;padding-left:22px;} li{margin-bottom:12px;line-height:1.45;} b{font-weight:700;}"
+                + "</style></head><body>";
+            for (var i = 0; i < versions.length; i++) {
+                var v = versions[i] || {};
+                var ver = v.version || "";
+                var items = v.items || [];
+                html += "<h2" + (i === 0 ? "" : " class=\"notfirst\"") + ">Version " + aboutNav.escapeHtml(ver) + ".x</h2><ul>";
+                for (var j = 0; j < items.length; j++) {
+                    var line = aboutNav.escapeHtml(items[j]);
+                    for (var t = 0; t < tags.length; t++) {
+                        if (line.indexOf(tags[t]) === 0) {
+                            line = "<b>" + tags[t] + "</b>" + line.substring(tags[t].length);
+                            break;
+                        }
+                    }
+                    var parts = line.split("**");
+                    var rendered = "";
+                    for (var p = 0; p < parts.length; p++) {
+                        rendered += (p % 2 === 1) ? ("<b>" + parts[p] + "</b>") : parts[p];
+                    }
+                    html += "<li>" + rendered + "</li>";
+                }
+                html += "</ul>";
+            }
+            html += "</body></html>";
+            return html;
+        }
+
+        function onManifestLoaded(manifest) {
+            var action = aboutNav.pendingManifestAction;
+            aboutNav.pendingManifestAction = "";
+
+            if (action === "update") {
+                updateBtn.enabled = true;
+                var latest = manifest.latestVersion || "";
+                var downloadUrl = manifest.downloadUrl || "";
+                if (latest.length === 0) {
+                    updateResultToast.body = "Update info unavailable right now. Try again later.";
+                    updateResultToast.show();
+                    return;
+                }
+                var current = app.appVersion();
+                if (!aboutNav.isVersionNewer(latest, current)) {
+                    updateResultToast.body = "You're already on the latest version (" + current + ").";
+                    updateResultToast.show();
+                } else {
+                    Qt.openUrlExternally(downloadUrl);
+                }
+            } else if (action === "changelog") {
+                var versions = manifest.changelog || [];
+                if (aboutNav.activeChangelogPage) {
+                    if (versions.length === 0) {
+                        aboutNav.activeChangelogPage.htmlContent = "<html><body><p style=\"font-family:sans-serif;padding:20px;\">Changelog is empty right now.</p></body></html>";
+                    } else {
+                        aboutNav.activeChangelogPage.htmlContent = aboutNav.buildChangelogHtml(versions);
+                    }
+                }
+            }
+        }
+
+        function onManifestFailed(message) {
+            var action = aboutNav.pendingManifestAction;
+            aboutNav.pendingManifestAction = "";
+
+            if (action === "update") {
+                updateBtn.enabled = true;
+                updateResultToast.body = message;
+                updateResultToast.show();
+            } else if (action === "changelog") {
+                if (aboutNav.activeChangelogPage) {
+                    aboutNav.activeChangelogPage.htmlContent = "<html><body><p style=\"font-family:sans-serif;padding:20px;\">" + message + "</p></body></html>";
+                }
+            }
+        }
 
         Page {
             titleBar: TitleBar {
@@ -99,6 +209,77 @@ Sheet {
                         horizontalAlignment: HorizontalAlignment.Center
                         textStyle.textAlign: TextAlign.Center
                     }
+
+                    Container {
+                        topMargin: 30
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
+                        Button {
+                            id: updateBtn
+                            text: "Update"
+                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            rightMargin: ui.du(0.8)
+                            onClicked: {
+                                updateBtn.enabled = false;
+                                updateCheckingToast.show();
+                                aboutNav.pendingManifestAction = "update";
+                                manifestFetcher.url = manifestFetcher.manifestUrl;
+                            }
+                        }
+
+                        Button {
+                            id: changeListBtn
+                            text: "Change List"
+                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            leftMargin: ui.du(0.8)
+                            onClicked: {
+                                var changelogPage = changelogPageDef.createObject();
+                                aboutNav.activeChangelogPage = changelogPage;
+                                aboutNav.push(changelogPage);
+                                aboutNav.pendingManifestAction = "changelog";
+                                manifestFetcher.url = manifestFetcher.manifestUrl;
+                            }
+                        }
+                    }
+
+                    // Hidden — used purely to fetch Data/Zalo10-version.json through
+                    // BB10's WebView/browser TLS stack instead of QNetworkAccessManager.
+                    // The bare Qt4 networking stack fails the TLS handshake against
+                    // GitHub's CDN (SslHandshakeFailedError) no matter what
+                    // QSslConfiguration is thrown at it; the WebView's engine is kept
+                    // current through OS updates independently of the frozen NDK Qt/OpenSSL.
+                    WebView {
+                        id: manifestFetcher
+                        visible: false
+                        enabled: false
+                        preferredWidth: 1
+                        preferredHeight: 1
+
+                        property string manifestUrl: "https://raw.githubusercontent.com/BBerryLife/BBerryLife.github.io/main/Data/Zalo10-version.json"
+
+                        onLoadingChanged: {
+                            if (loadRequest.status === WebLoadStatus.Succeeded) {
+                                manifestFetcher.evaluateJavaScript("document.body.textContent || document.body.innerText || ''");
+                            } else if (loadRequest.status === WebLoadStatus.Failed) {
+                                aboutNav.onManifestFailed("Could not load update info. Check your internet connection.");
+                            }
+                        }
+
+                        onJavaScriptResult: {
+                            if (aboutNav.pendingManifestAction.length === 0) return;
+                            try {
+                                var manifest = JSON.parse(result);
+                                aboutNav.onManifestLoaded(manifest);
+                            } catch (e) {
+                                // Surface what we actually got back instead of a generic
+                                // "malformed" message — needed to diagnose why JSON.parse
+                                // is failing (wrong field name? extra wrapper markup? etc).
+                                var preview = (typeof result === "undefined") ? "<undefined>" : String(result).substring(0, 200);
+                                aboutNav.onManifestFailed("Parse failed: " + e + " || got: " + preview);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -174,6 +355,18 @@ Sheet {
                         }
                     }
                 }
+            },
+            ComponentDefinition {
+                id: changelogPageDef
+                source: "asset:///ChangelogPage.qml"
+            },
+            SystemToast {
+                id: updateCheckingToast
+                body: "Checking for updates…"
+            },
+            SystemToast {
+                id: updateResultToast
+                body: ""
             }
         ]
     }

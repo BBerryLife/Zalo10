@@ -71,6 +71,11 @@ public:
     Q_INVOKABLE int          addQuickMessage(const QString &name, const QString &content);     // returns new id, or -1 on failure/duplicate name
     Q_INVOKABLE bool         updateQuickMessage(int id, const QString &name, const QString &content); // false on failure/duplicate name
     Q_INVOKABLE bool         deleteQuickMessage(int id);
+    // Pulls the user's own "Tin nhắn nhanh" (quick message) list straight from their
+    // real Zalo account via api/quickmessage/list, then merges it into the local
+    // quick_messages table — same "match by name, existing wins" rule as importData(),
+    // so it's safe to call repeatedly without creating duplicates.
+    Q_INVOKABLE void         fetchServerQuickMessages();
     // Returns {"width": w, "height": h} for a local image file (accepts "file://" prefix).
     // Used by ChatView.qml right after the user picks a photo to send, so the outgoing
     // bubble can be sized to the real aspect ratio immediately (before upload finishes).
@@ -138,6 +143,8 @@ signals:
     void muteDone(const QString &threadId, bool muted, bool success);
     void clearHistoryDone(const QString &threadId, bool success);
     void leaveGroupDone(const QString &groupId, bool success);
+    // imported/skipped quick messages pulled from the server, or error non-empty on failure
+    void serverQuickMessagesReady(int imported, int skipped, const QString &error);
 
 private slots:
     void onStep1Done();
@@ -156,6 +163,7 @@ private slots:
 
     void onFetchConvoDone();
     void onFetchFriendsDone();
+    void onFetchServerQuickMessagesDone();
     void onFetchInvitesDone();
     void onAcceptFriendDone();
     void onRejectFriendDone();
@@ -291,6 +299,7 @@ private:
     QString m_groupPollServiceUrl; // zpwServiceMap.group_poll[0]
     QString m_friendServiceUrl;    // zpwServiceMap.friend[0]
     QString m_fileServiceUrl;      // zpwServiceMap.file[0]
+    QString m_quickMessageServiceUrl; // zpwServiceMap.quick_message[0]
 
     QSet<QString> m_mutedThreads;  // threadIds currently muted
     QSet<QString> m_blockedUsers;  // userIds currently blocked

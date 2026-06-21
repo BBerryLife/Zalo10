@@ -9,6 +9,7 @@ NavigationPane {
     property string selfName: ""
     signal onUnreadMessage()
     property variant currentPage: null
+    property variant activeQmPage: null
     property bool searchVisible: false
     property string searchText: ""
     property variant allGroups: []
@@ -290,12 +291,40 @@ NavigationPane {
                 id: groupsDef
                 source: "asset:///ChatView.qml"
             },
+            ComponentDefinition {
+                id: qmPageDef
+                source: "asset:///QuickMessagesSheet.qml"
+            },
+            Connections {
+                id: groupQmTriggerConn
+                target: groupsNav.currentPage
+                onQmRequestedChanged: {
+                    if (!groupsNav.currentPage || !groupsNav.currentPage.qmRequested) return;
+                    groupsNav.currentPage.qmRequested = false;
+                    var qmPage = qmPageDef.createObject();
+                    if (!qmPage) return;
+                    groupsNav.activeQmPage = qmPage;
+                    groupsNav.push(qmPage);
+                }
+            },
+            Connections {
+                id: groupQmInsertConn
+                target: groupsNav.activeQmPage
+                onUseInChatRequestedChanged: {
+                    if (!groupsNav.activeQmPage || !groupsNav.activeQmPage.useInChatRequested) return;
+                    var content = groupsNav.activeQmPage.insertRequestedContent;
+                    groupsNav.pop();
+                    if (groupsNav.currentPage) groupsNav.currentPage.applyQuickMessage(content);
+                }
+            },
             Connections {
                 id: popWatcher
                 target: null
                 onPopRequestedChanged: {
-                    if (target && target.popRequested)
+                    if (target && target.popRequested) {
+                        target.popRequested = false;
                         groupsNav.pop();
+                    }
                 }
             },
             Connections {
@@ -394,8 +423,15 @@ NavigationPane {
                     for (var i = 0; i < groupModel.size(); i++) {
                         if (groupModel.value(i).threadId === groupId) {
                             groupModel.removeAt(i);
-                            return;
+                            break;
                         }
+                    }
+                    // Belt-and-braces: if we're still sitting on the ChatView for the
+                    // group we just left, pop back to the list directly here instead
+                    // of relying solely on the ChatView.popRequested -> popWatcher
+                    // chain, which depends on currentPage having stayed in sync.
+                    if (groupsNav.currentPage && groupsNav.currentPage.threadId === groupId) {
+                        groupsNav.pop();
                     }
                 }
             }

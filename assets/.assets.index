@@ -1,9 +1,11 @@
 1
-679
+682
 AboutSheet.qml
 ActiveFrameCover.qml
+ChangelogPage.qml
 ChatsTab.qml
 ChatView.qml
+ConfirmDialog.qml
 ContactsTab.qml
 EmojiButton.qml
 EmojiPanel.qml
@@ -672,6 +674,7 @@ images/Profile_Star_icon.png
 images/SettingsSheet/ic_close_white.png
 images/splat.png
 images/Square_badge.png
+InfoDialog.qml
 InvitesTab.qml
 LoginView.qml
 main.qml

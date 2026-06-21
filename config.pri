@@ -38,12 +38,15 @@ config_pri_assets {
     OTHER_FILES += \
         $$quote($$BASEDIR/assets/AboutSheet.qml) \
         $$quote($$BASEDIR/assets/ActiveFrameCover.qml) \
+        $$quote($$BASEDIR/assets/ChangelogPage.qml) \
         $$quote($$BASEDIR/assets/ChatView.qml) \
         $$quote($$BASEDIR/assets/ChatsTab.qml) \
+        $$quote($$BASEDIR/assets/ConfirmDialog.qml) \
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
         $$quote($$BASEDIR/assets/EmojiButton.qml) \
         $$quote($$BASEDIR/assets/EmojiPanel.qml) \
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
+        $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
@@ -721,12 +724,20 @@ config_pri_source_group1 {
     SOURCES += \
         $$quote($$BASEDIR/src/ActiveFrameCover.cpp) \
         $$quote($$BASEDIR/src/ZaloService.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_Auth.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_Contacts.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_Crypto.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_Db.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_Messages.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_Network.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_WebSocket.cpp) \
         $$quote($$BASEDIR/src/applicationui.cpp) \
         $$quote($$BASEDIR/src/main.cpp)
 
     HEADERS += \
         $$quote($$BASEDIR/src/ActiveFrameCover.hpp) \
         $$quote($$BASEDIR/src/ZaloService.hpp) \
+        $$quote($$BASEDIR/src/ZaloServiceUtils.hpp) \
         $$quote($$BASEDIR/src/applicationui.hpp)
 }
 
