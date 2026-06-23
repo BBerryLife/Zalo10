@@ -11,8 +11,49 @@
 #include <QDir>
 #include <QDateTime>
 #include <cstdio>
+#include <signal.h>
+#include <unistd.h>
+#include <QSocketNotifier>
 
 using namespace bb::cascades;
+
+// ─── SIGTERM handler (self-pipe trick) ─────────────────────────────────────
+// LÝ DO: Application::manualExit() (Cascades) hóa ra KHÔNG bắn khi user vuốt
+// card đóng app trong màn đa nhiệm trên BB10 — đã xác nhận qua log thực tế
+// (process chết, "FilePicker destructor called" được log, nhưng không có
+// dòng "[App] manualExit: saving session" nào trước đó). Khả năng cao
+// manualExit() chỉ dành cho app TỰ gọi exit từ trong code, còn Navigator (OS)
+// kill app từ ngoài thông qua signal POSIX chuẩn (SIGTERM) — bypass hết các
+// signal ở tầng Cascades.
+//
+// Không thể gọi trực tiếp code Qt/network (saveSession, gửi WS Close frame...)
+// ngay trong signal handler — handler chỉ được dùng các hàm "async-signal-safe"
+// (vd write()), không an toàn để chạy logic Qt phức tạp ở đó (có thể deadlock/
+// corrupt state). Giải pháp chuẩn: self-pipe trick — handler chỉ write() 1 byte
+// vào 1 pipe, rồi QSocketNotifier (chạy trong event loop bình thường, an toàn)
+// đọc byte đó và gọi logic cleanup thật (ApplicationUI::onTermSignal -> onManualExit).
+static int g_zalo10TermFd[2] = { -1, -1 };
+
+static void zalo10TermSignalHandler(int)
+{
+    char a = 1;
+    ssize_t ignored = ::write(g_zalo10TermFd[1], &a, sizeof(a));
+    (void)ignored; // không có gì để làm nếu write() lỗi trong signal handler
+}
+
+static bool installZalo10TermHandler()
+{
+    if (::pipe(g_zalo10TermFd) != 0) return false;
+
+    struct sigaction sa;
+    sa.sa_handler = zalo10TermSignalHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    if (::sigaction(SIGTERM, &sa, 0) != 0) return false;
+    ::sigaction(SIGINT, &sa, 0); // phòng trường hợp debug bằng Ctrl+C qua IDE
+
+    return true;
+}
 
 // Runtime log file used by ApplicationUI::exportLog() (Settings -> Export Log).
 // Kept on disk across app restarts (capped) so a crash log from the previous
@@ -55,6 +96,7 @@ static void zalo10MessageHandler(QtMsgType type, const char *msg)
 Q_DECL_EXPORT int main(int argc, char **argv)
 {
     qInstallMsgHandler(zalo10MessageHandler);
+    installZalo10TermHandler();
 
     Application app(argc, argv);
 
@@ -67,6 +109,9 @@ Q_DECL_EXPORT int main(int argc, char **argv)
     }
 
     ApplicationUI appui;
+
+    QSocketNotifier termNotifier(g_zalo10TermFd[0], QSocketNotifier::Read);
+    QObject::connect(&termNotifier, SIGNAL(activated(int)), &appui, SLOT(onTermSignal(int)));
 
     return Application::exec();
 }

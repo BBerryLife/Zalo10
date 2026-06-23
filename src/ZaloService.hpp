@@ -38,6 +38,7 @@ public:
     Q_INVOKABLE void loginWithCookie(const QString &zpsid, const QString &zpwSek, const QString &imei = "", const QString &ua = "", const QString &token = "");
     Q_INVOKABLE bool loadSession();
     Q_INVOKABLE void saveSession();
+    Q_INVOKABLE void closeWebSocketGracefully(); // gửi WS Close frame "sạch" trước khi process bị kill
 
     Q_INVOKABLE void fetchConversations();
     Q_INVOKABLE void fetchFriends();
@@ -187,6 +188,8 @@ private slots:
     void onListenDone();
     void onPollMsgDone();
     void onAvatarDownloaded();
+    void onKeepAliveTimer();
+    void onKeepAliveDone();
 
     // WebSocket (RFC 6455 over QSslSocket) — real-time messages
     void onWsConnected();
@@ -251,6 +254,7 @@ private:
     QTimer *m_qrExpireTimer;
     QTimer *m_listenTimer;
     QTimer *m_wsReconnectTimer;
+    QTimer *m_keepAliveTimer; // gọi /keepalive định kỳ để gia hạn session (issue zca-js #keepalive)
 
     // WebSocket over QSslSocket (RFC 6455) — real-time messages
     QSslSocket *m_webSocket;
@@ -264,6 +268,7 @@ private:
     void connectWebSocket();
     void disconnectWebSocket();
     void refreshSessionKey();
+    void sendKeepAlive();   // GET {chat}/keepalive — gia hạn session, port từ zca-js keepAliveFactory
     void sendWsHandshake(const QUrl &url);
     bool parseWsHandshakeResponse(const QByteArray &data, int &headerEnd);
     void handleWsFrame(int opcode, const QByteArray &payload);
@@ -328,6 +333,7 @@ private:
 
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;
+    static const int KEEPALIVE_INTERVAL_MS = 120000; // 2 phut, theo goi y trong issue zca-js
     static const char *USER_AGENT;
     QString generateRandomUserAgent();
     static const char *AES_FIXED_KEY;

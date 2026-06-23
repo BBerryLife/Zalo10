@@ -67,6 +67,9 @@ signals:
 private slots:
     void onSystemLanguageChanged();
     void onManualExit();
+    // Đọc/xả pipe từ signal handler SIGTERM (xem main.cpp) rồi gọi onManualExit().
+    // Tách riêng vì SIGTERM đến qua 1 fd (self-pipe trick), không qua Cascades signal.
+    void onTermSignal(int fd);
     void onInvoked(const bb::system::InvokeRequest &request);
     void onUpdateCheckFetchDone();
     void onChangelogFetchDone();
@@ -80,6 +83,7 @@ private:
     bb::system::InvokeManager*    m_pInvokeManager;
     ZaloService*                  m_zService;
     QNetworkAccessManager*        m_updateManager;
+    bool                          m_exitHandled; // chống chạy onManualExit() 2 lần nếu cả manualExit/aboutToQuit/SIGTERM đều bắn
 };
 
 #endif

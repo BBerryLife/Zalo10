@@ -94,6 +94,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_bbm_voice_answer.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_block_contact.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_chat_leave.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_download.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_edit.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled_white.png) \

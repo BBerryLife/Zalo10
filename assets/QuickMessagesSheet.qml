@@ -81,7 +81,7 @@ Page {
         },
         ActionItem {
             title: "Get from Zalo"
-            imageSource: "asset:///images/ChatView/ic_replace_message.png"
+            imageSource: "asset:///images/ChatView/ic_download.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: {
                 qmFetchProgressToast.body = "Fetching quick messages from Zalo…";

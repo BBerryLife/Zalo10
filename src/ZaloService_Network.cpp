@@ -337,6 +337,7 @@ void ZaloService::onRefreshSessionKeyDone()
         m_loggedIn = true;
         emit loggedInChanged();
         m_listenTimer->start(8000);
+        m_keepAliveTimer->start(KEEPALIVE_INTERVAL_MS);
     }
     // Chỉ emit loginSuccess lần đầu; các lần refresh dùng sessionRefreshed
     if (!m_loginEmitted) {
@@ -347,7 +348,85 @@ void ZaloService::onRefreshSessionKeyDone()
     }
 }
 
-// Marks an existing message as recalled in SQLite (msgType=99, content cleared)
+// ─── Keep-Alive (HTTP session ping) ────────────────────────────────────────
+// Mục đích: gọi định kỳ endpoint "/keepalive" của chat-service để gia hạn
+// session phía server (cookie zpsid/zpw_sek), TÁCH BIỆT với WS-level ping
+// (cmd=2/1) ở ZaloService_WebSocket.cpp — cái đó chỉ giữ socket khỏi timeout,
+// không liên quan tới tuổi thọ của session/cookie HTTP.
+//
+// Request/response shape port từ zca-js: src/apis/keepAlive.ts
+//   GET {zpwServiceMap.chat[0]}/keepalive?params=<AES(secretKey, {imei})>&zpw_ver=&zpw_type=
+//   → response là JSON THƯỜNG, KHÔNG mã hóa (zca-js gọi resolve(res, undefined, false))
+//
+// Chạy mỗi KEEPALIVE_INTERVAL_MS (2 phút) trong lúc app còn sống (active frame
+// hoặc foreground) — không đảm bảo cookie sống "vĩnh viễn" khi app bị đóng hẳn
+// (process bị kill thì timer cũng chết theo), nhưng theo gợi ý từ tác giả
+// zca-js (issue "cookie sống được trong bao lâu") thì ping liên tục giúp giữ
+// session lâu hơn so với để mặc cho TTL tự hết hạn.
+void ZaloService::onKeepAliveTimer()
+{
+    sendKeepAlive();
+}
+
+void ZaloService::sendKeepAlive()
+{
+    if (!m_loggedIn || m_secretKey.isEmpty() || m_chatServiceUrl.isEmpty()) {
+        qDebug() << "[Zalo] sendKeepAlive: skipped (not logged in or missing secretKey/chatUrl)";
+        return;
+    }
+
+    QVariantMap innerParams;
+    innerParams["imei"] = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
+    QString urlStr = m_chatServiceUrl + "/keepalive"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
+
+    qDebug() << "[Zalo] sendKeepAlive GET" << urlStr.left(100);
+    QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
+    connect(reply, SIGNAL(finished()), this, SLOT(onKeepAliveDone()));
+}
+
+void ZaloService::onKeepAliveDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+
+    // QUAN TRỌNG: đây chính là chỗ mình bỏ sót ở bản trước. zca-js dùng
+    // CookieJar tự động bắt MỌI Set-Cookie từ MỌI response (kể cả keepalive),
+    // nên việc "gia hạn" thực chất nằm ở chỗ Zalo trả Set-Cookie mới (cookie
+    // hết hạn xa hơn) trong chính response /keepalive — không phải do server
+    // tự nhớ "vừa được ping" theo uid/imei. Nếu không đọc + lưu lại Set-Cookie
+    // này, keepAlive chỉ làm request "thành công" trên lý thuyết (error_code=0)
+    // nhưng cookie cũ trong QSettings vẫn y nguyên — vẫn hết hạn đúng giờ cũ.
+    // => mở lại app sau khi đóng, loadSession() nạp cookie CŨ (đã hết hạn) dù
+    // log lúc đang chạy vẫn thấy "keepAlive OK" đều đặn mỗi 2 phút.
+    int cookiesBefore = m_cookies.size();
+    parseCookiesFromReply(reply);
+    int cookiesAfter = m_cookies.size();
+
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+
+    QVariantMap root = jsonToMap(raw);
+    int ec = root["error_code"].toInt();
+    if (ec == 0) {
+        qDebug() << "[Zalo] keepAlive OK, cookies" << cookiesBefore << "->" << cookiesAfter;
+        saveSession(); // Lưu cookie (đã gia hạn, nếu có) xuống QSettings NGAY —
+                        // không chờ tới lần saveSession() kế tiếp, để app bị
+                        // đóng/kill đột ngột ngay sau đó vẫn giữ được session mới nhất.
+    } else {
+        qDebug() << "[Zalo] keepAlive error_code=" << ec
+                 << "msg=" << root["error_message"].toString();
+        // Không tự emit sessionExpired ở đây: keepAlive lỗi có thể chỉ là lỗi
+        // mạng/HTTP tạm thời. Việc phát hiện session chết "chuẩn" (ec=600) đã
+        // được xử lý sẵn ở fetchConversations/fetchFriends — cứ để các API đó
+        // làm nguồn sự thật, keepAlive chỉ là best-effort gia hạn.
+    }
+}
+
 // and notifies QML so the already-displayed bubble can update in place instead
 // of a stray "chat.undo" JSON blob appearing as its own message.
 //

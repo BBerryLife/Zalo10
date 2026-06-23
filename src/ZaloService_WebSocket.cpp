@@ -112,6 +112,35 @@ void ZaloService::connectWebSocket()
     m_webSocket->setProperty("wsUrl", url.toString());
 }
 
+// Đóng WS "sạch" (gửi đúng Close frame chuẩn, opcode 0x8) trước khi process bị
+// kill — thay cho việc abort() trần trụi trong disconnectWebSocket() bên dưới.
+//
+// LÝ DO THÊM HÀM NÀY: log thực tế cho thấy cookie zpw_sek chết RẤT nhanh sau khi
+// app bị đóng (vuốt card) — chỉ ~19s sau lần keepAlive vừa báo "OK". Một khả
+// năng hợp lý: server phân biệt "client tự đóng kết nối đúng chuẩn WS" (Close
+// frame) với "client rớt mạng/bị kill bất ngờ" (TCP reset/abort), và có thể xử
+// lý zpw_sek khác nhau giữa 2 trường hợp (vd: coi rớt-bất-ngờ là dấu hiệu cần
+// revoke session để an toàn). Đây là giả thuyết CHƯA được xác nhận chắc chắn —
+// cần test thực tế mới biết có thật sự giúp ích hay không — nhưng chi phí thử
+// rất thấp và đúng chuẩn giao thức WS, không có gì để mất.
+//
+// Được gọi từ ApplicationUI::onManualExit() ngay trước khi quit() — tại đó
+// process sắp bị OS thu hồi nên không còn event loop để chờ async, do đó dùng
+// waitForBytesWritten() (blocking) để đảm bảo frame thực sự ra khỏi tiến trình
+// trước khi bị kill, thay vì gọi flush() rồi hy vọng kernel gửi kịp.
+void ZaloService::closeWebSocketGracefully()
+{
+    if (!m_webSocket || !m_wsConnected) {
+        qDebug() << "[Zalo WS] closeWebSocketGracefully: no active WS, skip";
+        return;
+    }
+
+    qDebug() << "[Zalo WS] Sending graceful Close frame before exit";
+    m_webSocket->write(maskWsFrame(0x8, QByteArray()));
+    m_webSocket->flush();
+    m_webSocket->waitForBytesWritten(300); // blocking — không còn event loop để chờ async
+}
+
 void ZaloService::disconnectWebSocket()
 {
     if (m_webSocket) {

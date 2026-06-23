@@ -70,6 +70,7 @@ void ZaloService::logout()
     m_loggedIn = false;
     m_listenTimer->stop();
     m_wsReconnectTimer->stop();
+    m_keepAliveTimer->stop();
     disconnectWebSocket();
     m_cookies.clear();
     m_secretKey.clear();
@@ -235,6 +236,7 @@ void ZaloService::onCookieStep2Done()
         emit sessionRefreshed();
     }
     m_listenTimer->start(8000);
+    m_keepAliveTimer->start(KEEPALIVE_INTERVAL_MS);
 }
 
 QByteArray ZaloService::buildFormBody(const QList<QPair<QString,QString> > &fields)
@@ -748,6 +750,7 @@ void ZaloService::onStep9Done()
         emit sessionRefreshed();
     }
     m_listenTimer->start(8000);
+    m_keepAliveTimer->start(KEEPALIVE_INTERVAL_MS);
     connectWebSocket();
 }
 

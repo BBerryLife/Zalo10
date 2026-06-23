@@ -14,6 +14,7 @@
 
 #include <QTranslator>
 #include <QLocale>
+#include <QCoreApplication>
 #include <QSettings>
 #include <QDebug>
 #include <QFile>
@@ -28,6 +29,8 @@
 #include <QSslSocket>
 #include <QSslError>
 #include <QList>
+
+#include <unistd.h> // ::read() trong onTermSignal()
 
 using namespace bb::cascades;
 using namespace bb::system;
@@ -73,7 +76,7 @@ static QString escapeHtmlQt4(const QString &in)
     return out;
 }
 
-ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL)
+ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false)
 {
     m_pInvokeManager = new InvokeManager(this);
     QObject::connect(m_pInvokeManager, SIGNAL(invoked(const bb::system::InvokeRequest&)),
@@ -91,6 +94,12 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     m_zService = zService;
 
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
+                     this, SLOT(onManualExit()));
+    // Lưới an toàn thứ 2: manualExit() (Cascades) có vẻ KHÔNG bắn khi user vuốt
+    // card đóng app trong màn đa nhiệm (đã xác nhận qua log thực tế — không có
+    // dòng "manualExit: saving session" nào xuất hiện trước khi process chết).
+    // aboutToQuit() là signal Qt core chuẩn, nhiều khả năng phổ quát hơn.
+    QObject::connect(QCoreApplication::instance(), SIGNAL(aboutToQuit()),
                      this, SLOT(onManualExit()));
 
     {
@@ -167,11 +176,26 @@ void ApplicationUI::onSystemLanguageChanged()
 
 void ApplicationUI::onManualExit()
 {
+    if (m_exitHandled) return; // manualExit() / aboutToQuit() / SIGTERM có thể trùng nhau
+    m_exitHandled = true;
+
     if (m_zService && m_zService->loggedIn()) {
         qDebug() << "[App] manualExit: saving session";
         m_zService->saveSession();
+        m_zService->closeWebSocketGracefully();
     }
     bb::cascades::Application::instance()->quit();
+}
+
+void ApplicationUI::onTermSignal(int fd)
+{
+    // Xả hết byte trong pipe (self-pipe trick từ signal handler SIGTERM, xem
+    // main.cpp) — không bắt buộc vì process sắp thoát, nhưng dọn cho sạch.
+    char buf[16];
+    while (::read(fd, buf, sizeof(buf)) > 0) {}
+
+    qDebug() << "[App] SIGTERM received, running exit cleanup";
+    onManualExit();
 }
 
 void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)

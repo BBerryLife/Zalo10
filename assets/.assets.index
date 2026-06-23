@@ -1,5 +1,5 @@
 1
-682
+683
 AboutSheet.qml
 ActiveFrameCover.qml
 ChangelogPage.qml
@@ -59,6 +59,7 @@ images/ChatView/ic_bbm_video_answer.png
 images/ChatView/ic_bbm_voice_answer.png
 images/ChatView/ic_block_contact.png
 images/ChatView/ic_chat_leave.png
+images/ChatView/ic_download.png
 images/ChatView/ic_edit.png
 images/ChatView/ic_emoticon_enabled.png
 images/ChatView/ic_emoticon_enabled_white.png

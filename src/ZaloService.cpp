@@ -64,7 +64,7 @@ QVariantMap ZaloService::getImageDimensions(const QString &localFilePath) const
 ZaloService::ZaloService(QObject *parent)
     : QObject(parent), m_manager(new QNetworkAccessManager(this)),
       m_qrExpireTimer(new QTimer(this)), m_listenTimer(new QTimer(this)),
-      m_wsReconnectTimer(new QTimer(this)),
+      m_wsReconnectTimer(new QTimer(this)), m_keepAliveTimer(new QTimer(this)),
       m_webSocket(0), m_wsUrlIndex(0), m_wsConnected(false), m_wsHandshakeSent(false),
       m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false),
       m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),
@@ -75,6 +75,7 @@ ZaloService::ZaloService(QObject *parent)
     connect(m_qrExpireTimer,    SIGNAL(timeout()), this, SLOT(onQRExpired()));
     connect(m_listenTimer,      SIGNAL(timeout()), this, SLOT(onListenTimer()));
     connect(m_wsReconnectTimer, SIGNAL(timeout()), this, SLOT(onWsReconnectTimer()));
+    connect(m_keepAliveTimer,   SIGNAL(timeout()), this, SLOT(onKeepAliveTimer()));
     qsrand((uint)QDateTime::currentMSecsSinceEpoch());
     qDebug() << "[Zalo] ZaloService initialized";
 

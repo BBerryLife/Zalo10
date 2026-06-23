@@ -25,49 +25,42 @@ Sheet {
             return false;
         }
 
-        function escapeHtml(s) {
-            return String(s)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;");
-        }
-
-        // Mirrors the look of the BBM-style Help > Change List screen: bold
-        // "Version X.x" header per entry + bullet list. Leading NEW:/IMPROVE:/
-        // FIX:/REMOVED: tags are auto-bolded, and "**word**" markdown pairs
-        // become <b>word</b>, so the manifest's "changelog" array can stay plain text.
-        function buildChangelogHtml(versions) {
+        // Earlier attempts rendered the changelog as one HTML string in a WebView,
+        // sized either by asking the WebView to measure its own content
+        // (document.body.scrollHeight) or by a hand-estimated pixel height. Both
+        // under-sized the WebView on device and cut the list off partway through —
+        // this WebView engine just isn't a reliable source of its own content height.
+        // This now builds plain row data for a native ListView (same pattern as
+        // ChatsTab/GroupsTab/InvitesTab), whose scrolling already works correctly
+        // everywhere else in this app. The leading NEW:/IMPROVE:/FIX:/REMOVED: tag is
+        // split out so it can be rendered bold via a separate Label (mirrors the
+        // bold-name + plain-preview pattern ChatsTab already uses); markdown "**"
+        // emphasis elsewhere in a line is stripped to plain text rather than guessing
+        // at an unverified rich-text Label API.
+        function buildChangelogRows(versions) {
             var tags = ["NEW:", "IMPROVE:", "FIX:", "REMOVED:"];
-            var html = "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-                + "<style>body{font-family:'Slate Pro','Helvetica Neue',Helvetica,sans-serif;margin:0;padding:18px;color:#1a1a1a;background:#ffffff;font-size:16px;}"
-                + "h2{font-size:20px;font-weight:700;margin:0 0 14px 0;padding-bottom:8px;border-bottom:2px solid #2575fc;}"
-                + "h2.notfirst{margin-top:30px;} ul{margin:0;padding-left:22px;} li{margin-bottom:12px;line-height:1.45;} b{font-weight:700;}"
-                + "</style></head><body>";
+            var rows = [];
             for (var i = 0; i < versions.length; i++) {
                 var v = versions[i] || {};
                 var ver = v.version || "";
                 var items = v.items || [];
-                html += "<h2" + (i === 0 ? "" : " class=\"notfirst\"") + ">Version " + aboutNav.escapeHtml(ver) + ".x</h2><ul>";
+                rows.push({ rowType: "header", version: ver, isFirstHeader: (i === 0) });
                 for (var j = 0; j < items.length; j++) {
-                    var line = aboutNav.escapeHtml(items[j]);
+                    var raw = items[j];
+                    var tag = "";
+                    var rest = raw;
                     for (var t = 0; t < tags.length; t++) {
-                        if (line.indexOf(tags[t]) === 0) {
-                            line = "<b>" + tags[t] + "</b>" + line.substring(tags[t].length);
+                        if (raw.indexOf(tags[t]) === 0) {
+                            tag = tags[t];
+                            rest = raw.substring(tags[t].length);
                             break;
                         }
                     }
-                    var parts = line.split("**");
-                    var rendered = "";
-                    for (var p = 0; p < parts.length; p++) {
-                        rendered += (p % 2 === 1) ? ("<b>" + parts[p] + "</b>") : parts[p];
-                    }
-                    html += "<li>" + rendered + "</li>";
+                    rest = rest.split("**").join("");
+                    rows.push({ rowType: "item", tag: tag, text: rest });
                 }
-                html += "</ul>";
             }
-            html += "</body></html>";
-            return html;
+            return rows;
         }
 
         function onManifestLoaded(manifest) {
@@ -93,11 +86,7 @@ Sheet {
             } else if (action === "changelog") {
                 var versions = manifest.changelog || [];
                 if (aboutNav.activeChangelogPage) {
-                    if (versions.length === 0) {
-                        aboutNav.activeChangelogPage.htmlContent = "<html><body><p style=\"font-family:sans-serif;padding:20px;\">Changelog is empty right now.</p></body></html>";
-                    } else {
-                        aboutNav.activeChangelogPage.htmlContent = aboutNav.buildChangelogHtml(versions);
-                    }
+                    aboutNav.activeChangelogPage.setRows(aboutNav.buildChangelogRows(versions));
                 }
             }
         }
@@ -112,7 +101,7 @@ Sheet {
                 updateResultToast.show();
             } else if (action === "changelog") {
                 if (aboutNav.activeChangelogPage) {
-                    aboutNav.activeChangelogPage.htmlContent = "<html><body><p style=\"font-family:sans-serif;padding:20px;\">" + message + "</p></body></html>";
+                    aboutNav.activeChangelogPage.setRows([{ rowType: "item", tag: "", text: message }]);
                 }
             }
         }
@@ -224,7 +213,12 @@ Sheet {
                                 updateBtn.enabled = false;
                                 updateCheckingToast.show();
                                 aboutNav.pendingManifestAction = "update";
-                                manifestFetcher.url = manifestFetcher.manifestUrl;
+                                // Cache-bust: jsDelivr sends a max-age cache-control header,
+                                // so the device's own WebView/network cache can keep serving an
+                                // old copy long after the CDN side has already been purged.
+                                // A changing query string makes every fetch look like a brand
+                                // new URL the device has never cached.
+                                manifestFetcher.url = manifestFetcher.manifestUrl + "?t=" + new Date().getTime();
                             }
                         }
 
@@ -238,7 +232,7 @@ Sheet {
                                 aboutNav.activeChangelogPage = changelogPage;
                                 aboutNav.push(changelogPage);
                                 aboutNav.pendingManifestAction = "changelog";
-                                manifestFetcher.url = manifestFetcher.manifestUrl;
+                                manifestFetcher.url = manifestFetcher.manifestUrl + "?t=" + new Date().getTime();
                             }
                         }
                     }
@@ -256,7 +250,14 @@ Sheet {
                         preferredWidth: 1
                         preferredHeight: 1
 
-                        property string manifestUrl: "https://raw.githubusercontent.com/BBerryLife/BBerryLife.github.io/main/Data/Zalo10-version.json"
+                        // raw.githubusercontent.com sends a CSP "sandbox" directive on
+                        // every response, which makes BB10's WebKit engine treat the
+                        // loaded document as an opaque origin — evaluateJavaScript then
+                        // can't reliably read document.body, so JSON.parse() gets back
+                        // an empty/garbled string ("Unable to parse JSON string || got:").
+                        // jsDelivr mirrors GitHub repo files without that header, so the
+                        // same WebView approach actually works against it.
+                        property string manifestUrl: "https://cdn.jsdelivr.net/gh/BBerryLife/BBerryLife.github.io@main/Data/Zalo10-version.json"
 
                         onLoadingChanged: {
                             if (loadRequest.status === WebLoadStatus.Succeeded) {

@@ -39,7 +39,7 @@ TabbedPane {
                 onTriggered: { settingsSheet.open(); }
             },
             ActionItem {
-                title: "Email"
+                title: "Feedback"
                 imageSource: "asset:///images/ic_mail.png"
                 onTriggered: { app.invokeEmail("Berrylife2025@gmail.com", "Zalo10 Feedback"); }
             }
