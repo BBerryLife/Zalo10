@@ -99,6 +99,10 @@ signals:
     void clearHistoryDone(const QString &threadId, bool success);
     void leaveGroupDone(const QString &groupId, bool success);
     void serverQuickMessagesReady(int imported, int skipped, const QString &error);
+    // Emitted after headless connects and confirms loggedIn=false.
+    // QML: connect to this and call zService.startQRLogin() — handles the case
+    // where headless starts after UI, so initial startQRLogin was dropped.
+    void headlessReadyNotLoggedIn();
 
 private slots:
     void onSocketConnected();
@@ -123,6 +127,9 @@ private:
     bool          m_loggedIn;
     int           m_callIdCounter;
     QMap<QString, SyncPending*> m_syncPending;
+    // Void calls queued while headless not yet connected — flushed on connect
+    QList<QPair<QString,QVariantList> > m_pendingCalls;
+    bool m_welcomeReceived; // true after first prop message from headless
 
     static const int RECONNECT_MS = 2000;
 };

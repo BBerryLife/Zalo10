@@ -13,6 +13,7 @@ ZaloServiceProxy::ZaloServiceProxy(QObject *parent)
     , m_reconnectTimer(new QTimer(this))
     , m_loggedIn(false)
     , m_callIdCounter(0)
+    , m_welcomeReceived(false)
 {
     m_reconnectTimer->setInterval(RECONNECT_MS);
     m_reconnectTimer->setSingleShot(true);
@@ -32,13 +33,20 @@ void ZaloServiceProxy::connectToHeadless()
 
 void ZaloServiceProxy::onSocketConnected()
 {
-    qDebug() << "[Proxy] connected to headless";
+    qDebug() << "[Proxy] connected to headless, flushing" << m_pendingCalls.size() << "queued calls";
     m_reconnectTimer->stop();
+    m_welcomeReceived = false; // reset — expect fresh welcome state from headless
+    // Flush calls that were queued while disconnected
+    QList<QPair<QString,QVariantList> > pending = m_pendingCalls;
+    m_pendingCalls.clear();
+    for (int i = 0; i < pending.size(); ++i)
+        sendCall(pending[i].first, pending[i].second);
 }
 
 void ZaloServiceProxy::onSocketDisconnected()
 {
     qDebug() << "[Proxy] headless disconnected — retry in" << RECONNECT_MS << "ms";
+    m_welcomeReceived = false;
     m_reconnectTimer->start();
 }
 
@@ -63,7 +71,18 @@ void ZaloServiceProxy::handleMessage(const QVariantMap &msg)
     if (type == "prop") {
         if (msg.value("name").toString() == "loggedIn") {
             bool v = msg.value("value").toBool();
-            if (v != m_loggedIn) { m_loggedIn = v; emit loggedInChanged(); }
+            bool changed = (v != m_loggedIn);
+            m_loggedIn = v;
+            if (changed) emit loggedInChanged();
+            // First prop after (re)connect = welcome state from headless.
+            // If not logged in, tell QML to kick off startQRLogin.
+            if (!m_welcomeReceived) {
+                m_welcomeReceived = true;
+                if (!m_loggedIn) {
+                    qDebug() << "[Proxy] headless ready, not logged in — emitting headlessReadyNotLoggedIn";
+                    emit headlessReadyNotLoggedIn();
+                }
+            }
         }
         return;
     }
@@ -143,7 +162,8 @@ bool ZaloServiceProxy::decodeNext(QByteArray &buf, QVariantMap &out)
 void ZaloServiceProxy::sendCall(const QString &method, const QVariantList &args)
 {
     if (m_socket->state() != QLocalSocket::ConnectedState) {
-        qWarning() << "[Proxy] not connected, drop call:" << method;
+        qDebug() << "[Proxy] not connected, queuing:" << method;
+        m_pendingCalls.append(qMakePair(method, args));
         return;
     }
     QVariantMap m; m["type"]="call"; m["id"]=QString::number(++m_callIdCounter);

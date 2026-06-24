@@ -64,7 +64,15 @@ TabbedPane {
     }
     
     onCreationCompleted: {
-        if (!zService.loadSession()) {
+        // Headless mode: ZaloService runs in background process.
+        // zService (ZaloServiceProxy) may not have connected yet — don't call
+        // loadSession() synchronously here. Instead:
+        //   - If headless is already running & logged in: welcome prop arrives
+        //     immediately → loggedIn becomes true → no login sheet needed.
+        //   - If not logged in: headlessReadyNotLoggedIn fires → open loginSheet.
+        //   - If headless hasn't started yet: proxy queues the call, flushes on connect.
+        // Fallback: open loginSheet right away if proxy already knows loggedIn=false.
+        if (!zService.loggedIn) {
             loginSheet.open();
         }
     }
@@ -137,6 +145,11 @@ TabbedPane {
         
         Connections {
             target: zService
+            onHeadlessReadyNotLoggedIn: {
+                // Headless connected and confirmed not logged in.
+                // startQRLogin was dropped earlier (proxy not connected) — redo it.
+                loginSheet.open();
+            }
             onSessionExpired: { loginSheet.needsQR = true; loginSheet.open(); }
             onLoginFailed:    { loginSheet.needsQR = true; loginSheet.open(); }
             onLoginSuccess: {
