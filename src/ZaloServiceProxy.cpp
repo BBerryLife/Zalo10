@@ -2,6 +2,7 @@
 #include "ZaloServiceUtils.hpp"
 
 #include <QLocalSocket>
+#include <QCoreApplication>
 #include <QTimer>
 #include <QEventLoop>
 #include <QDebug>

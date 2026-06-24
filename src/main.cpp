@@ -108,17 +108,19 @@ Q_DECL_EXPORT int main(int argc, char **argv)
 
     if (isHeadless) {
         qDebug() << "[main] headless mode — starting HeadlessService";
-        // self-pipe SIGTERM handler cho headless
         installZalo10TermHandler();
         QCoreApplication app(argc, argv);
         HeadlessService svc;
-        // Khi SIGTERM: destructor của ZaloService tự saveSession
+        // Qt4: activated(int) là protected, lambda connect không có — dùng SIGNAL/SLOT.
+        // Tái dùng ApplicationUI::onTermSignal không tiện ở đây, dùng wrapper inline.
+        // Wrapper phải là class thật để moc xử lý — định nghĩa ở file riêng không được
+        // (đã ở main.cpp rồi), nên dùng cách đơn giản nhất: reuse ApplicationUI làm
+        // helper không có — thay vào đó kết nối thẳng aboutToQuit và quit() bình thường,
+        // SIGTERM sẽ gọi QCoreApplication::quit() qua ApplicationUI::onTermSignal pattern.
+        // Thực tế: HeadlessService destructor gọi ZaloService destructor gọi saveSession.
+        // QSocketNotifier + SIGNAL/SLOT string dạng Qt4:
         QSocketNotifier termNotifier(g_zalo10TermFd[0], QSocketNotifier::Read);
-        QObject::connect(&termNotifier, &QSocketNotifier::activated, [](int fd){
-            char buf[16]; while(::read(fd,buf,sizeof(buf))>0){}
-            qDebug() << "[HS-main] SIGTERM — exiting (ZaloService destructor will saveSession)";
-            QCoreApplication::quit();
-        });
+        QObject::connect(&termNotifier, SIGNAL(activated(int)), &app, SLOT(quit()));
         return app.exec();
     }
 
