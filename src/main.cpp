@@ -5,6 +5,8 @@
 #include <QLocale>
 #include <QTranslator>
 #include <Qt/qdeclarativedebug.h>
+#include "HeadlessService.hpp"
+#include <QCoreApplication>
 #include <QSettings>
 #include <QFile>
 #include <QFileInfo>
@@ -96,6 +98,31 @@ static void zalo10MessageHandler(QtMsgType type, const char *msg)
 Q_DECL_EXPORT int main(int argc, char **argv)
 {
     qInstallMsgHandler(zalo10MessageHandler);
+
+    // ── Dual-mode: headless service vs UI app ─────────────────────────────
+    // BB10 sets INVOKE_TARGET_KEY when launching via invoke-target.
+    // Headless mode: QCoreApplication + HeadlessService (no UI, no Cascades).
+    // UI mode: bb::cascades::Application + ApplicationUI (như trước).
+    const QString invokeTarget = QString::fromLatin1(qgetenv("INVOKE_TARGET_KEY"));
+    const bool isHeadless = (invokeTarget == QLatin1String("com.BerryLife.Zalo10.headless"));
+
+    if (isHeadless) {
+        qDebug() << "[main] headless mode — starting HeadlessService";
+        // self-pipe SIGTERM handler cho headless
+        installZalo10TermHandler();
+        QCoreApplication app(argc, argv);
+        HeadlessService svc;
+        // Khi SIGTERM: destructor của ZaloService tự saveSession
+        QSocketNotifier termNotifier(g_zalo10TermFd[0], QSocketNotifier::Read);
+        QObject::connect(&termNotifier, &QSocketNotifier::activated, [](int fd){
+            char buf[16]; while(::read(fd,buf,sizeof(buf))>0){}
+            qDebug() << "[HS-main] SIGTERM — exiting (ZaloService destructor will saveSession)";
+            QCoreApplication::quit();
+        });
+        return app.exec();
+    }
+
+    // ── UI mode ───────────────────────────────────────────────────────────
     installZalo10TermHandler();
 
     Application app(argc, argv);

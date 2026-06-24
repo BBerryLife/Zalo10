@@ -1,5 +1,5 @@
 #include "applicationui.hpp"
-#include "ZaloService.hpp"
+#include "ZaloServiceProxy.hpp"
 #include "ZaloServiceUtils.hpp"
 #include "ActiveFrameCover.hpp"
 
@@ -90,7 +90,7 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     Q_ASSERT(res); Q_UNUSED(res);
     onSystemLanguageChanged();
 
-    ZaloService *zService = new ZaloService(this);
+    ZaloServiceProxy *zService = new ZaloServiceProxy(this);
     m_zService = zService;
 
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
@@ -176,14 +176,13 @@ void ApplicationUI::onSystemLanguageChanged()
 
 void ApplicationUI::onManualExit()
 {
-    if (m_exitHandled) return; // manualExit() / aboutToQuit() / SIGTERM có thể trùng nhau
+    if (m_exitHandled) return;
     m_exitHandled = true;
 
-    if (m_zService && m_zService->loggedIn()) {
-        qDebug() << "[App] manualExit: saving session";
-        m_zService->saveSession();
-        m_zService->closeWebSocketGracefully();
-    }
+    // HEADLESS: ZaloService chạy trong headless process riêng.
+    // UI chỉ cần thoát — proxy socket tự đóng, headless giữ WS sống.
+    // Không gọi saveSession/closeWebSocketGracefully ở đây.
+    qDebug() << "[App] manualExit: UI closing, headless keeps session alive";
     bb::cascades::Application::instance()->quit();
 }
 
