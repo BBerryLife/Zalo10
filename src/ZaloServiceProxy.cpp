@@ -2,6 +2,7 @@
 #include "ZaloServiceUtils.hpp"
 
 #include <QLocalSocket>
+#include <QDir>
 #include <QCoreApplication>
 #include <QTimer>
 #include <QEventLoop>
@@ -28,7 +29,7 @@ ZaloServiceProxy::ZaloServiceProxy(QObject *parent)
 
 void ZaloServiceProxy::connectToHeadless()
 {
-    m_socket->connectToServer("/tmp/zalo10_ipc");
+    m_socket->connectToServer(QDir::homePath() + "/zalo10_ipc.sock");
 }
 
 void ZaloServiceProxy::onSocketConnected()

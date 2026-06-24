@@ -28,7 +28,7 @@ class HeadlessService : public QObject
     Q_OBJECT
 
 public:
-    static const char *SOCKET_PATH; // "/tmp/zalo10_ipc"
+    static QString socketPath(); // QDir::homePath() + "/zalo10_ipc.sock"
 
     explicit HeadlessService(QObject *parent = 0);
     virtual ~HeadlessService() {}

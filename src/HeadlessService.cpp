@@ -5,11 +5,17 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QVariantMap>
+#include <QDir>
 #include <QVariantList>
 #include <QStringList>
 #include <QDebug>
 
-const char *HeadlessService::SOCKET_PATH = "/tmp/zalo10_ipc";
+
+// ─── Socket path (in app sandbox home dir, writable by both UI and headless) ──
+QString HeadlessService::socketPath()
+{
+    return QDir::homePath() + "/zalo10_ipc.sock";
+}
 
 // ─── Constructor ──────────────────────────────────────────────────────────
 HeadlessService::HeadlessService(QObject *parent)
@@ -17,12 +23,13 @@ HeadlessService::HeadlessService(QObject *parent)
     , m_server(new QLocalServer(this))
     , m_zService(new ZaloService(this))
 {
-    QLocalServer::removeServer(QString::fromLatin1(SOCKET_PATH));
+    const QString sockPath = socketPath();
+    QLocalServer::removeServer(sockPath);
 
-    if (!m_server->listen(QString::fromLatin1(SOCKET_PATH)))
-        qWarning() << "[HS] listen failed:" << m_server->errorString();
+    if (!m_server->listen(sockPath))
+        qWarning() << "[HS] listen failed:" << m_server->errorString() << "path:" << sockPath;
     else
-        qDebug() << "[HS] listening on" << SOCKET_PATH;
+        qDebug() << "[HS] listening on" << sockPath;
 
     connect(m_server, SIGNAL(newConnection()), this, SLOT(onNewConnection()));
 
