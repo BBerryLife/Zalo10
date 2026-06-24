@@ -93,6 +93,20 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     ZaloServiceProxy *zService = new ZaloServiceProxy(this);
     m_zService = zService;
 
+    // Khởi động headless service ngay lập tức (không chờ bb.action.system.STARTED
+    // tự kích — cái đó chỉ chạy khi device boot, không chạy khi debug qua Momentics
+    // hoặc khi user mở app sau khi tắt màn hình).
+    // InvokeManager::invoke() sẽ start process headless nếu chưa chạy, hoặc là
+    // no-op nếu đã chạy rồi (BB10 không start duplicate service).
+    {
+        InvokeRequest headlessReq;
+        headlessReq.setTarget("com.BerryLife.Zalo10.headless");
+        headlessReq.setAction("bb.action.system.STARTED");
+        headlessReq.setMimeType("application/vnd.blackberry.system.service.started");
+        m_pInvokeManager->invoke(headlessReq);
+        qDebug() << "[App] invoked headless service";
+    }
+
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
                      this, SLOT(onManualExit()));
     // Lưới an toàn thứ 2: manualExit() (Cascades) có vẻ KHÔNG bắn khi user vuốt
