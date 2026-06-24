@@ -104,6 +104,7 @@
         <invoke-target-name>Zalo10 Background Service</invoke-target-name>
         <filter>
             <action>bb.action.system.STARTED</action>
+            <mime-type>application/vnd.blackberry.system.service.started</mime-type>
         </filter>
     </invoke-target>
 
