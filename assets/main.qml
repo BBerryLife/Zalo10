@@ -64,20 +64,9 @@ TabbedPane {
     }
     
     onCreationCompleted: {
-        // Do NOT open login sheet here.
-        //
-        // Headless mode (production):
-        //   - Already logged in  → welcome prop arrives → loggedInChanged(true) → no sheet needed
-        //   - Not logged in      → headlessReadyNotLoggedIn emitted → sheet opens below
-        //
-        // Fallback direct mode (debug, no _sys_run_headless):
-        //   - Session found      → loadSession() → refreshSessionKey() async
-        //                          → loginSuccess fires → tabs visible, no sheet ever opened
-        //   - No session         → headlessReadyNotLoggedIn emitted → sheet opens below
-        //   - Session expired    → sessionExpired emitted → sheet opens below with QR
-        //
-        // Opening the sheet eagerly (while proxy isn't ready) caused a double-QR bug:
-        //   spinner showed, user dismissed, then sessionExpired → sheet reopened with QR.
+        if (!zService.loadSession()) {
+            loginSheet.open();
+        }
     }
     
     Tab {
@@ -148,11 +137,6 @@ TabbedPane {
         
         Connections {
             target: zService
-            onHeadlessReadyNotLoggedIn: {
-                // Headless connected and confirmed not logged in.
-                // startQRLogin was dropped earlier (proxy not connected) — redo it.
-                loginSheet.open();
-            }
             onSessionExpired: { loginSheet.needsQR = true; loginSheet.open(); }
             onLoginFailed:    { loginSheet.needsQR = true; loginSheet.open(); }
             onLoginSuccess: {

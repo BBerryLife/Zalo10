@@ -94,20 +94,6 @@
     <env var="LD_LIBRARY_PATH" value="app/native/lib:/usr/lib/qt4/lib"/>
     <env var="CASCADES_THEME" value="default"/>
 
-    <!-- Headless auto-start service.
-         BB10 launches the same Zalo10 binary with INVOKE_TARGET_KEY=com.BerryLife.Zalo10.headless.
-         main.cpp detects this and runs HeadlessService (no UI) instead of ApplicationUI.
-         Permissions _sys_run_headless + _sys_headless_nostop (already declared below)
-         prevent the OS from killing this process when the UI is closed. -->
-    <invoke-target id="com.BerryLife.Zalo10.headless">
-        <invoke-target-type>service</invoke-target-type>
-        <invoke-target-name>Zalo10 Background Service</invoke-target-name>
-        <filter>
-            <action>bb.action.system.STARTED</action>
-            <mime-type>application/vnd.blackberry.system.service.started</mime-type>
-        </filter>
-    </invoke-target>
-
     <!-- Invocation target for BlackBerry Hub notifications.
          When the user taps a Hub notification, BB10 invokes this target
          which wakes/brings the app to foreground and fires InvokeManager::invoked().

@@ -5,8 +5,6 @@
 #include <QLocale>
 #include <QTranslator>
 #include <Qt/qdeclarativedebug.h>
-#include "HeadlessService.hpp"
-#include <QCoreApplication>
 #include <QSettings>
 #include <QFile>
 #include <QFileInfo>
@@ -98,47 +96,6 @@ static void zalo10MessageHandler(QtMsgType type, const char *msg)
 Q_DECL_EXPORT int main(int argc, char **argv)
 {
     qInstallMsgHandler(zalo10MessageHandler);
-
-    // ── Dual-mode: headless service vs UI app ─────────────────────────────
-    // BB10 sets INVOKE_TARGET_KEY when launching via invoke-target.
-    // Headless mode: QCoreApplication + HeadlessService (no UI, no Cascades).
-    // UI mode: bb::cascades::Application + ApplicationUI (như trước).
-    const QString invokeTarget = QString::fromLatin1(qgetenv("INVOKE_TARGET_KEY"));
-    // Use endsWith(".headless") instead of exact match so debug builds
-    // (which get a testDev_xxx suffix, e.g. com.BerryLife.Zalo10.testDev_xxx.headless)
-    // are detected correctly.
-    const bool isHeadless = invokeTarget.endsWith(QLatin1String(".headless"));
-
-    if (isHeadless) {
-        // ── Diagnostic: write a marker file immediately so we can confirm
-        //    the headless process actually started (visible even without debugger).
-        {
-            QString markerPath = QDir::homePath() + "/headless_alive.txt";
-            QFile mf(markerPath);
-            if (mf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-                mf.write(QString("target=%1\npid=%2\n")
-                    .arg(invokeTarget).arg((int)getpid()).toUtf8());
-                mf.close();
-            }
-        }
-        qDebug() << "[main] headless mode — starting HeadlessService target:" << invokeTarget;
-        installZalo10TermHandler();
-        QCoreApplication app(argc, argv);
-        HeadlessService svc;
-        // Qt4: activated(int) là protected, lambda connect không có — dùng SIGNAL/SLOT.
-        // Tái dùng ApplicationUI::onTermSignal không tiện ở đây, dùng wrapper inline.
-        // Wrapper phải là class thật để moc xử lý — định nghĩa ở file riêng không được
-        // (đã ở main.cpp rồi), nên dùng cách đơn giản nhất: reuse ApplicationUI làm
-        // helper không có — thay vào đó kết nối thẳng aboutToQuit và quit() bình thường,
-        // SIGTERM sẽ gọi QCoreApplication::quit() qua ApplicationUI::onTermSignal pattern.
-        // Thực tế: HeadlessService destructor gọi ZaloService destructor gọi saveSession.
-        // QSocketNotifier + SIGNAL/SLOT string dạng Qt4:
-        QSocketNotifier termNotifier(g_zalo10TermFd[0], QSocketNotifier::Read);
-        QObject::connect(&termNotifier, SIGNAL(activated(int)), &app, SLOT(quit()));
-        return app.exec();
-    }
-
-    // ── UI mode ───────────────────────────────────────────────────────────
     installZalo10TermHandler();
 
     Application app(argc, argv);
