@@ -171,21 +171,32 @@ void HeadlessService::handleMessage(QLocalSocket *client, const QVariantMap &msg
 }
 
 // ─── Signal forwarding ────────────────────────────────────────────────────
+// Helper: PascalCase → camelCase (lowercase first letter)
+// Needed because #name in macros stringifies as PascalCase (e.g. "QrCodeReady")
+// but ZaloServiceProxy expects camelCase (e.g. "qrCodeReady").
+static QString ccName(const char *s)
+{
+    if (!s || !s[0]) return QString();
+    QString r = QString::fromLatin1(s);
+    r[0] = r[0].toLower();
+    return r;
+}
+
 #define SIG0(name) \
 void HeadlessService::on##name() \
-{ QVariantMap m; m["type"]="signal"; m["name"]=#name; m["args"]=QVariantList(); broadcast(m); }
+{ QVariantMap m; m["type"]="signal"; m["name"]=ccName(#name); m["args"]=QVariantList(); broadcast(m); }
 
 #define SIG1(name,t0,a0) \
 void HeadlessService::on##name(t0 a0) \
-{ QVariantList a; a<<a0; QVariantMap m; m["type"]="signal"; m["name"]=#name; m["args"]=a; broadcast(m); }
+{ QVariantList a; a<<a0; QVariantMap m; m["type"]="signal"; m["name"]=ccName(#name); m["args"]=a; broadcast(m); }
 
 #define SIG2(name,t0,a0,t1,a1) \
 void HeadlessService::on##name(t0 a0,t1 a1) \
-{ QVariantList a; a<<a0<<a1; QVariantMap m; m["type"]="signal"; m["name"]=#name; m["args"]=a; broadcast(m); }
+{ QVariantList a; a<<a0<<a1; QVariantMap m; m["type"]="signal"; m["name"]=ccName(#name); m["args"]=a; broadcast(m); }
 
 #define SIG3(name,t0,a0,t1,a1,t2,a2) \
 void HeadlessService::on##name(t0 a0,t1 a1,t2 a2) \
-{ QVariantList a; a<<a0<<a1<<a2; QVariantMap m; m["type"]="signal"; m["name"]=#name; m["args"]=a; broadcast(m); }
+{ QVariantList a; a<<a0<<a1<<a2; QVariantMap m; m["type"]="signal"; m["name"]=ccName(#name); m["args"]=a; broadcast(m); }
 
 void HeadlessService::onLoggedInChanged()
 { QVariantMap m; m["type"]="prop"; m["name"]="loggedIn"; m["value"]=m_zService->loggedIn(); broadcast(m); }

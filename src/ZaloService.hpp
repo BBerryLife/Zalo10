@@ -333,7 +333,7 @@ private:
 
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;
-    static const int KEEPALIVE_INTERVAL_MS = 120000; // 2 phut, theo goi y trong issue zca-js
+    static const int KEEPALIVE_INTERVAL_MS = 15000;  // 15 giay — keepalive nhanh hon de giu session
     static const char *USER_AGENT;
     QString generateRandomUserAgent();
     static const char *AES_FIXED_KEY;

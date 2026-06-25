@@ -4,7 +4,13 @@
 // ─── ZaloServiceProxy ─────────────────────────────────────────────────────
 // Drop-in replacement cho ZaloService trong UI app.
 // Cùng Q_PROPERTY / Q_INVOKABLE / signals → QML không đổi gì.
-// Mọi lệnh được chuyển sang HeadlessService qua QLocalSocket IPC.
+//
+// PRIMARY mode (production, _sys_run_headless granted):
+//   Mọi lệnh được chuyển sang HeadlessService qua QLocalSocket IPC.
+//
+// FALLBACK mode (debug/test builds, _sys_run_headless not granted):
+//   Nếu sau FALLBACK_MS mili giây headless vẫn không connect,
+//   tự tạo ZaloService trực tiếp trong UI process.
 
 #include <QObject>
 #include <QVariant>
@@ -15,6 +21,8 @@
 #include <QTimer>
 #include <QMap>
 #include <QByteArray>
+
+class ZaloService; // forward-declared to avoid circular headers
 
 class ZaloServiceProxy : public QObject
 {
@@ -99,9 +107,6 @@ signals:
     void clearHistoryDone(const QString &threadId, bool success);
     void leaveGroupDone(const QString &groupId, bool success);
     void serverQuickMessagesReady(int imported, int skipped, const QString &error);
-    // Emitted after headless connects and confirms loggedIn=false.
-    // QML: connect to this and call zService.startQRLogin() — handles the case
-    // where headless starts after UI, so initial startQRLogin was dropped.
     void headlessReadyNotLoggedIn();
 
 private slots:
@@ -110,12 +115,16 @@ private slots:
     void onSocketError(QLocalSocket::LocalSocketError);
     void onSocketReadyRead();
     void onReconnectTimer();
+    void onFallbackTimer();          // fires if headless never connects
+    void onDirectLoggedInChanged();  // syncs m_loggedIn from direct ZaloService
 
 private:
     void     connectToHeadless();
     void     sendCall(const QString &method, const QVariantList &args);
     QVariant sendCallSync(const QString &method, const QVariantList &args, int timeoutMs=3000);
     void     handleMessage(const QVariantMap &msg);
+    void     dispatchDirect(const QString &method, const QVariantList &args);
+    QVariant dispatchDirectSync(const QString &method, const QVariantList &args);
     static QByteArray encode(const QVariantMap &payload);
     static bool       decodeNext(QByteArray &buf, QVariantMap &out);
 
@@ -124,14 +133,16 @@ private:
     QLocalSocket *m_socket;
     QByteArray    m_readBuf;
     QTimer       *m_reconnectTimer;
+    QTimer       *m_fallbackTimer;   // cancels when headless connects; fires → direct mode
+    ZaloService  *m_directService;   // non-null in fallback direct mode
     bool          m_loggedIn;
     int           m_callIdCounter;
     QMap<QString, SyncPending*> m_syncPending;
-    // Void calls queued while headless not yet connected — flushed on connect
     QList<QPair<QString,QVariantList> > m_pendingCalls;
-    bool m_welcomeReceived; // true after first prop message from headless
+    bool m_welcomeReceived;
 
     static const int RECONNECT_MS = 2000;
+    static const int FALLBACK_MS  = 3000; // time before giving up on headless
 };
 
 #endif // ZALOSERVICEPROXY_HPP

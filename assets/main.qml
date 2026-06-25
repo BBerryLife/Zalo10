@@ -64,17 +64,20 @@ TabbedPane {
     }
     
     onCreationCompleted: {
-        // Headless mode: ZaloService runs in background process.
-        // zService (ZaloServiceProxy) may not have connected yet — don't call
-        // loadSession() synchronously here. Instead:
-        //   - If headless is already running & logged in: welcome prop arrives
-        //     immediately → loggedIn becomes true → no login sheet needed.
-        //   - If not logged in: headlessReadyNotLoggedIn fires → open loginSheet.
-        //   - If headless hasn't started yet: proxy queues the call, flushes on connect.
-        // Fallback: open loginSheet right away if proxy already knows loggedIn=false.
-        if (!zService.loggedIn) {
-            loginSheet.open();
-        }
+        // Do NOT open login sheet here.
+        //
+        // Headless mode (production):
+        //   - Already logged in  → welcome prop arrives → loggedInChanged(true) → no sheet needed
+        //   - Not logged in      → headlessReadyNotLoggedIn emitted → sheet opens below
+        //
+        // Fallback direct mode (debug, no _sys_run_headless):
+        //   - Session found      → loadSession() → refreshSessionKey() async
+        //                          → loginSuccess fires → tabs visible, no sheet ever opened
+        //   - No session         → headlessReadyNotLoggedIn emitted → sheet opens below
+        //   - Session expired    → sessionExpired emitted → sheet opens below with QR
+        //
+        // Opening the sheet eagerly (while proxy isn't ready) caused a double-QR bug:
+        //   spinner showed, user dismissed, then sessionExpired → sheet reopened with QR.
     }
     
     Tab {

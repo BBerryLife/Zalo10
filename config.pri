@@ -724,7 +724,9 @@ config_pri_assets {
 config_pri_source_group1 {
     SOURCES += \
         $$quote($$BASEDIR/src/ActiveFrameCover.cpp) \
+        $$quote($$BASEDIR/src/HeadlessService.cpp) \
         $$quote($$BASEDIR/src/ZaloService.cpp) \
+        $$quote($$BASEDIR/src/ZaloServiceProxy.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Auth.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Contacts.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Crypto.cpp) \
@@ -737,7 +739,9 @@ config_pri_source_group1 {
 
     HEADERS += \
         $$quote($$BASEDIR/src/ActiveFrameCover.hpp) \
+        $$quote($$BASEDIR/src/HeadlessService.hpp) \
         $$quote($$BASEDIR/src/ZaloService.hpp) \
+        $$quote($$BASEDIR/src/ZaloServiceProxy.hpp) \
         $$quote($$BASEDIR/src/ZaloServiceUtils.hpp) \
         $$quote($$BASEDIR/src/applicationui.hpp)
 }

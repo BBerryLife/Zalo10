@@ -19,6 +19,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QDir>
+#include <QFileInfo>
 #include <QDateTime>
 #include <QNetworkRequest>
 #include <QNetworkReply>
@@ -99,12 +100,31 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     // InvokeManager::invoke() sẽ start process headless nếu chưa chạy, hoặc là
     // no-op nếu đã chạy rồi (BB10 không start duplicate service).
     {
+        // Derive the headless target ID from the current package data path so
+        // debug builds (com.BerryLife.Zalo10.testDev_xxx) work without changes.
+        // QDir::homePath() = /accounts/1000/appdata/<pkgId>/data  → strip /data → pkgId
+        QString homePath  = QDir::homePath();                          // .../pkgId/data
+        QString pkgId     = QFileInfo(homePath).dir().dirName();       // pkgId
+        QString hsTarget  = pkgId + ".headless";
+        qDebug() << "[App] headless target:" << hsTarget;
         InvokeRequest headlessReq;
-        headlessReq.setTarget("com.BerryLife.Zalo10.headless");
+        headlessReq.setTarget(hsTarget);
         headlessReq.setAction("bb.action.system.STARTED");
         headlessReq.setMimeType("application/vnd.blackberry.system.service.started");
         m_pInvokeManager->invoke(headlessReq);
         qDebug() << "[App] invoked headless service";
+    }
+
+    // Diagnostic: check if headless was ever started (marker file from previous run).
+    {
+        QString markerPath = QDir::homePath() + "/headless_alive.txt";
+        QFile mf(markerPath);
+        if (mf.open(QIODevice::ReadOnly)) {
+            qDebug() << "[App] headless_alive.txt found (from prev run):" << mf.readAll().trimmed();
+            mf.close();
+        } else {
+            qDebug() << "[App] headless_alive.txt NOT found — headless never ran";
+        }
     }
 
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
