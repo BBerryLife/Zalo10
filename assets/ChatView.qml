@@ -662,19 +662,37 @@ Page {
                                 // photo — without this, that caption was silently dropped and
                                 // only the bare image ever showed (see normalizePhotoContent()
                                 // on the C++ side, which now preserves it as a "caption" key).
-                                // extractPhotoCaption is inlined here: listItemComponent
-                                // delegates cannot reach outer page IDs in BB10 Cascades.
+                                // Regex literals containing double-quotes crash the QML 1.0
+                                // parser inside a property binding block, so caption is
+                                // extracted with plain indexOf instead.
                                 Label {
                                     id: captionLbl
                                     property string rawCap: {
                                         var c = ListItemData.content || "";
                                         if (c.length === 0 || c.charAt(0) !== "{") return "";
-                                        var re = /"caption"\s*:\s*"((?:[^"\\]|\\.)*)"/;
-                                        var m = c.match(re);
-                                        if (!m || !m[1]) return "";
-                                        return m[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r")
-                                                   .replace(/\\t/g, "\t").replace(/\\"/g, "\"")
-                                                   .replace(/\\\\/g, "\\");
+                                        var marker = '"caption":"';
+                                        var si = c.indexOf(marker);
+                                        if (si < 0) return "";
+                                        si += marker.length;
+                                        var result = "";
+                                        var i = si;
+                                        while (i < c.length) {
+                                            var ch = c.charAt(i);
+                                            if (ch === "\\") {
+                                                var nx = c.charAt(i + 1);
+                                                if (nx === "n") result += "\n";
+                                                else if (nx === "r") result += "\r";
+                                                else if (nx === "t") result += "\t";
+                                                else result += nx;
+                                                i += 2;
+                                            } else if (ch === '"') {
+                                                break;
+                                            } else {
+                                                result += ch;
+                                                i++;
+                                            }
+                                        }
+                                        return result;
                                     }
                                     visible: photoWrap.visible && captionLbl.rawCap.length > 0
                                     text: captionLbl.rawCap
