@@ -125,11 +125,33 @@ ZaloService::ZaloService(QObject *parent)
         // updateQuickMessage rely on the resulting SQLITE_CONSTRAINT to detect duplicates
         // instead of doing a separate SELECT check first.
         sqlite3_exec(m_db, "CREATE UNIQUE INDEX IF NOT EXISTS idx_qm_name ON quick_messages(name COLLATE NOCASE);", 0, 0, 0);
+        // Persistent avatar metadata: survives app restarts AND logout/login —
+        // only clearCache() touches this table. Maps a stable threadId (user or
+        // group id) to the md5 of the avatar URL we last downloaded for it, plus
+        // the local file path. On every downloadAvatar() call we compare the new
+        // URL's hash against urlHash; if it matches and the file is still on disk
+        // we skip the network round-trip entirely. If the hash differs, the user
+        // genuinely changed their profile picture, so we re-download and overwrite
+        // the same file (avatar_<md5(threadId)>.jpg — fixed per-person, not
+        // per-URL, so a changed avatar never leaves an orphaned old file behind).
+        sqlite3_exec(m_db,
+            "CREATE TABLE IF NOT EXISTS avatar_meta ("
+            "  threadId  TEXT PRIMARY KEY,"
+            "  urlHash   TEXT NOT NULL,"
+            "  localPath TEXT NOT NULL,"
+            "  updatedAt TEXT"
+            ");", 0, 0, 0);
         qDebug() << "[Zalo] SQLite DB opened:" << dbPath;
     } else {
         qDebug() << "[Zalo] SQLite open FAILED";
         m_db = 0;
     }
+
+    // Sanity-check the persistent avatar cache at startup: log how many cached
+    // avatar files from a previous session/login are still on disk. The actual
+    // reuse logic lives in downloadAvatar(), which checks avatar_meta fresh on
+    // every call — this is just a startup diagnostic.
+    loadAvatarCacheFromDb();
 }
 
 ZaloService::~ZaloService() {

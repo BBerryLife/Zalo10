@@ -656,6 +656,29 @@ Page {
                                         }
                                     }
                                 }
+
+                                // The official Zalo app lets you attach a text caption to a
+                                // photo — without this, that caption was silently dropped and
+                                // only the bare image ever showed (see normalizePhotoContent()
+                                // on the C++ side, which now preserves it as a "caption" key).
+                                Label {
+                                    visible: photoWrap.visible
+                                             && chatViewPage.extractPhotoCaption(ListItemData.content).length > 0
+                                    text: {
+                                        var cap = chatViewPage.extractPhotoCaption(ListItemData.content);
+                                        if (rowRoot.searchQuery.length > 0) {
+                                            var hlColor = rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b";
+                                            return "<html>" + chatViewPage.highlightMatches(cap, rowRoot.searchQuery, hlColor) + "</html>";
+                                        }
+                                        return cap;
+                                    }
+                                    textStyle {
+                                        base:  SystemDefaults.TextStyles.BodyText
+                                        color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
+                                    }
+                                    multiline: true
+                                    topMargin: 4; bottomMargin: 0
+                                }
                             }
                         }
 
@@ -981,6 +1004,20 @@ Page {
         }
         if (content.indexOf("http") === 0) return content;
         return "";
+    }
+
+    // A photo sent together with a text caption from the official Zalo app
+    // carries that caption as a "caption" key inside the photo's content JSON
+    // (see normalizePhotoContent() on the C++ side). Same regex-extraction
+    // style as extractPhotoUrl() above, kept separate since this one needs to
+    // un-escape \", \\, \n, \r, \t the C++ side escaped when building the JSON.
+    function extractPhotoCaption(content) {
+        if (typeof content !== "string" || content.length === 0) return "";
+        if (content.charAt(0) !== "{") return "";
+        var m = content.match(/"caption"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        if (!m || !m[1]) return "";
+        return m[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r")
+                   .replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
     }
 
     function rebuildGroups() {

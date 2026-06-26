@@ -64,6 +64,14 @@ public:
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
+    // Returns, for every thread that has at least one locally-stored message,
+    // the most recent one: {threadId: {content, dName, isMine, msgType,
+    // recalledOriginalContent, ts}}. Used by ChatsTab.qml/GroupsTab.qml right
+    // after onFriendsReady/onConversationsReady to restore the chat list's
+    // "last message" preview + time from local history immediately on app
+    // launch, instead of showing "No messages yet" until a new message
+    // happens to arrive over the network during that session.
+    Q_INVOKABLE QVariantMap getThreadLastMessages() const;
 
     // Quick Messages ("/command" canned replies) — stored locally in SQLite,
     // shared across every conversation. Replaces the old "Timed Messages"
@@ -230,6 +238,14 @@ private:
     // Data export/import/cache helpers
     QVariantList dbLoadAllMessages() const;     // every row, every thread — used by exportData
     QStringList  cacheFilePatterns() const;     // filename prefixes this app writes under tempPath()
+
+    // Persistent avatar cache (avatar_meta table) — see ZaloService_Db.cpp.
+    // Lets downloadAvatar() recognise "we already have this exact avatar on
+    // disk" across app restarts and logout/login, and only re-fetch when the
+    // person's avatar URL actually changed (or the cached file is gone).
+    void    loadAvatarCacheFromDb();                              // startup diagnostic: logs avatar_meta vs files on disk
+    bool    avatarMetaLookup(const QString &threadId, QString &urlHashOut, QString &localPathOut) const;
+    void    avatarMetaUpsert(const QString &threadId, const QString &urlHash, const QString &localPath);
 
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);

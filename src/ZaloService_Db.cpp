@@ -217,7 +217,52 @@ QVariantList ZaloService::dbLoadAllMessages() const
     return result;
 }
 
-// Filename prefixes Zalo10 writes under QDir::tempPath() for cached images.
+// Most recent locally-stored message per thread, used to restore the chat
+// list's "last message" preview on app launch (see ZaloService.hpp for why:
+// the server's friends/conversations list APIs don't include a last-message
+// field at all, so without this, ChatsTab.qml/GroupsTab.qml have nothing to
+// show until a new message happens to arrive over the network during that
+// session — every restart otherwise looks like "No messages yet" even though
+// full history is sitting right there in SQLite).
+//
+// Relies on SQLite's documented bare-column behaviour: when a query has
+// exactly one MIN()/MAX() aggregate and a GROUP BY, the non-aggregated
+// columns are taken from the row that produced that MIN/MAX value — so this
+// single pass gives us, per threadId, the content/dName/isMine/msgType of
+// whichever row actually has the largest ts. No window functions or
+// correlated subqueries needed (keeps this portable to older bundled SQLite
+// builds, same constraint noted elsewhere in this file).
+QVariantMap ZaloService::getThreadLastMessages() const
+{
+    QVariantMap result;
+    if (!m_db) return result;
+
+    const char *sql =
+        "SELECT threadId, content, dName, isMine, msgType, recalledOriginalContent, "
+        "MAX(CAST(ts AS INTEGER)) AS maxTs "
+        "FROM messages GROUP BY threadId;";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return result;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        QString threadId = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
+        if (threadId.isEmpty()) continue;
+        QVariantMap m;
+        m["content"]                 = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
+        m["dName"]                   = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 2));
+        m["isMine"]                  = (sqlite3_column_int(stmt, 3) == 1);
+        m["msgType"]                 = sqlite3_column_int(stmt, 4);
+        m["recalledOriginalContent"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 5));
+        m["ts"]                      = QString::number((qint64)sqlite3_column_int64(stmt, 6));
+        result[threadId] = m;
+    }
+    sqlite3_finalize(stmt);
+    qDebug() << "[Zalo] getThreadLastMessages: found last message for" << result.size() << "threads";
+    return result;
+}
+
+// Filename prefixes Zalo10 writes under the persistent "/tmp" directory for
+// cached images (see clearCache()'s comment for why this is literal "/tmp"
+// and not QDir::tempPath()).
 // Centralized here so exportData()'s "include images" option and clearCache()
 // agree on exactly what counts as a cache file — see ZaloService.hpp for the
 // full list of call sites that create these (avatar download, photo thumbnail
@@ -227,6 +272,93 @@ QStringList ZaloService::cacheFilePatterns() const
     QStringList pats;
     pats << "avatar_" << "msgthumb_" << "msgimg_" << "zalo_img_" << "qr.png";
     return pats;
+}
+
+// ---------------------------------------------------------------------------
+// Persistent avatar cache (avatar_meta table)
+// ---------------------------------------------------------------------------
+// threadId -> (urlHash, localPath). This is what makes avatar caching survive
+// app restarts and logout/login: m_avatarCache (RAM, keyed by URL) is rebuilt
+// from this table at startup, and every downloadAvatar() call consults it
+// before touching the network. Only clearCache() empties this table, so a
+// person's avatar is downloaded at most once per actual change, no matter how
+// many times the app restarts, the user logs out/back in, or "Show Recalled
+// Messages" gets toggled (that setting never touches images at all).
+
+bool ZaloService::avatarMetaLookup(const QString &threadId, QString &urlHashOut, QString &localPathOut) const
+{
+    if (!m_db || threadId.isEmpty()) return false;
+    const char *sql = "SELECT urlHash, localPath FROM avatar_meta WHERE threadId=?";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        urlHashOut   = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
+        localPathOut = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
+        found = true;
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+void ZaloService::avatarMetaUpsert(const QString &threadId, const QString &urlHash, const QString &localPath)
+{
+    if (!m_db || threadId.isEmpty()) return;
+    // UPDATE-then-INSERT, same pattern as dbSaveMessage(), to avoid relying on
+    // SQLite's "ON CONFLICT ... DO UPDATE" (newer than what some bundled BB10
+    // SQLite builds support).
+    const char *sqlUpdate = "UPDATE avatar_meta SET urlHash=?, localPath=?, updatedAt=? WHERE threadId=?";
+    sqlite3_stmt *upd = 0;
+    bool updated = false;
+    QString now = QString::number(QDateTime::currentMSecsSinceEpoch());
+    if (sqlite3_prepare_v2(m_db, sqlUpdate, -1, &upd, 0) == SQLITE_OK) {
+        sqlite3_bind_text(upd, 1, urlHash.toUtf8().constData(),   -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 2, localPath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 3, now.toUtf8().constData(),       -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 4, threadId.toUtf8().constData(),  -1, SQLITE_TRANSIENT);
+        sqlite3_step(upd);
+        updated = sqlite3_changes(m_db) > 0;
+        sqlite3_finalize(upd);
+    }
+    if (updated) return;
+
+    const char *sqlInsert = "INSERT INTO avatar_meta (threadId, urlHash, localPath, updatedAt) VALUES (?,?,?,?)";
+    sqlite3_stmt *ins = 0;
+    if (sqlite3_prepare_v2(m_db, sqlInsert, -1, &ins, 0) == SQLITE_OK) {
+        sqlite3_bind_text(ins, 1, threadId.toUtf8().constData(),  -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(ins, 2, urlHash.toUtf8().constData(),   -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(ins, 3, localPath.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(ins, 4, now.toUtf8().constData(),       -1, SQLITE_TRANSIENT);
+        sqlite3_step(ins);
+        sqlite3_finalize(ins);
+    }
+}
+
+// Called once from the ZaloService constructor. Walks every row of avatar_meta
+// and logs how many cached avatars are still valid on disk vs. how many went
+// stale (file removed, e.g. by "Clear Cache" or the OS reclaiming tmp). The
+// actual reuse decision happens per-call in downloadAvatar() via
+// avatarMetaLookup() + QFile::exists(), which is cheap (single indexed SELECT
+// by threadId) and always reflects the current filesystem state — so there's
+// no need to preload every row into m_avatarCache here.
+void ZaloService::loadAvatarCacheFromDb()
+{
+    if (!m_db) return;
+    const char *sql = "SELECT localPath FROM avatar_meta";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
+    int warmed = 0, stale = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        QString localPath = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
+        QString fsPath = localPath;
+        if (fsPath.startsWith("file://")) fsPath = fsPath.mid(7);
+        if (!fsPath.isEmpty() && QFile::exists(fsPath)) warmed++;
+        else stale++;
+    }
+    sqlite3_finalize(stmt);
+    qDebug() << "[Zalo] loadAvatarCacheFromDb:" << warmed << "cached avatars still on disk,"
+             << stale << "stale entries (will be re-fetched on demand)";
 }
 
 // ---------------------------------------------------------------------------
@@ -509,12 +641,18 @@ QVariantMap ZaloService::importData(const QString &jsonFilePath)
 
 int ZaloService::clearCache()
 {
-    // 1. Delete every cached image file this app writes to tempPath().
-    //    NOTE: once deleted, any localImage path stored in the messages table
-    //    now points at a file that no longer exists — that's expected (it's
+    // 1. Delete every cached image file this app writes under "/tmp/".
+    //    NOTE: this scans literal "/tmp", not QDir::tempPath() — on this BB10
+    //    device those are two different directories (QDir::tempPath() is a
+    //    per-launch scratch dir the OS wipes on every app restart; "/tmp" is
+    //    the persistent, device-wide location every cache writer in this app
+    //    actually targets — see downloadAvatar()/onAvatarDownloaded(),
+    //    onImageMsgDownloaded(), and downloadImageMessage()'s base64 branches).
+    //    Once deleted, any localImage path stored in the messages table now
+    //    points at a file that no longer exists — that's expected (it's
     //    exactly why exportData() checks QFile::exists() before bundling an
     //    image, and why Settings warns the user upfront).
-    QDir tmp(QDir::tempPath());
+    QDir tmp("/tmp");
     QStringList patterns = cacheFilePatterns();
     int deleted = 0;
     QStringList allFiles = tmp.entryList(QDir::Files);
@@ -536,8 +674,13 @@ int ZaloService::clearCache()
     // 2. Wipe local message history. cleared_threads and quick_messages are
     //    left alone on purpose: a per-thread "cleared at" marker and the
     //    user's saved canned replies are settings/preferences, not cache.
+    //    avatar_meta IS wiped here — it's the persistent record of "which
+    //    avatar file belongs to which person", and its files were just
+    //    deleted above, so keeping stale rows around would make downloadAvatar()
+    //    think a (now-gone) file still matches the current avatar URL.
     if (m_db) {
         sqlite3_exec(m_db, "DELETE FROM messages;", 0, 0, 0);
+        sqlite3_exec(m_db, "DELETE FROM avatar_meta;", 0, 0, 0);
         sqlite3_exec(m_db, "VACUUM;", 0, 0, 0);
     }
 

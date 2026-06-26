@@ -21,6 +21,19 @@ NavigationPane {
             interval: 11000
             repeat: false
             onTriggered: groupsNav.refreshCooldown = false
+        },
+        // Same reasoning as ChatsTab.qml's chatViewWarmupTimer: forces the
+        // ChatView.qml component to be parsed/cached once in the background
+        // instead of on the user's first real tap into a group.
+        Timer {
+            id: groupViewWarmupTimer
+            interval: 800
+            repeat: false
+            running: true
+            onTriggered: {
+                var w = groupsDef.createObject();
+                if (w) w.destroy();
+            }
         }
     ]
 
@@ -217,19 +230,13 @@ NavigationPane {
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
 
-                                    Label {
-                                        text: ListItemData.name || "Unknown Group"
-                                        textStyle { base: SystemDefaults.TextStyles.TitleText }
-                                    }
-
                                     Container {
                                         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                        horizontalAlignment: HorizontalAlignment.Fill
+
                                         Label {
-                                            text: ListItemData.lastMessage || "No messages yet"
-                                            textStyle {
-                                                base: SystemDefaults.TextStyles.SubtitleText
-                                                color: Color.DarkGray
-                                            }
+                                            text: ListItemData.name || "Unknown Group"
+                                            textStyle { base: SystemDefaults.TextStyles.TitleText }
                                             multiline: false
                                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         }
@@ -240,7 +247,27 @@ NavigationPane {
                                                 color: Color.Gray
                                                 fontSize: FontSize.Small
                                             }
+                                            horizontalAlignment: HorizontalAlignment.Right
                                         }
+                                    }
+
+                                    Label {
+                                        text: {
+                                            var lm = ListItemData.lastMessage || "";
+                                            if (lm.length === 0) return "No messages yet";
+                                            var prefix = "";
+                                            if (ListItemData.lastMsgIsMine === true || ListItemData.lastMsgIsMine === "true") {
+                                                prefix = "You: ";
+                                            } else if (ListItemData.lastSenderName && ListItemData.lastSenderName.length > 0) {
+                                                prefix = ListItemData.lastSenderName.split(" ")[0] + ": ";
+                                            }
+                                            return prefix + lm;
+                                        }
+                                        textStyle {
+                                            base: SystemDefaults.TextStyles.SubtitleText
+                                            color: Color.DarkGray
+                                        }
+                                        multiline: false
                                     }
                                 }
                             }
@@ -249,8 +276,10 @@ NavigationPane {
                 ]
 
                 onTriggered: {
+                    var t0 = Date.now();
                     var item = dataModel.data(indexPath);
                     var page = groupsDef.createObject();
+                    console.log("[GroupsTab] createObject took " + (Date.now() - t0) + "ms");
                     if (!page) return;
                     page.threadId   = item.threadId || "";
                     page.threadName = item.name || "Group";
@@ -259,9 +288,11 @@ NavigationPane {
                     if (av.length === 0) av = "asset:///images/GroupsTab/blank.png";
                     page.avatarUrl  = av;
                     page.selfName   = groupsNav.selfName;
-                    page.startChat();
+                    var t1 = Date.now();
                     groupsNav.push(page);
+                    console.log("[GroupsTab] push() took " + (Date.now() - t1) + "ms, total tap-to-push " + (Date.now() - t0) + "ms");
                     groupsNav.currentPage = page;
+                    page.startChat();
                 }
             }
 
@@ -334,10 +365,35 @@ NavigationPane {
                     groupsLoading.visible = false;
                     groupModel.clear();
                     var arr = [];
+                    // Same restore-from-local-history fix as ChatsTab.qml's
+                    // onFriendsReady — the server's group list never includes a
+                    // last-message field, so every restart would otherwise show
+                    // "No messages yet" for every group until a fresh message
+                    // happens to arrive over the network during that session.
+                    var lastMsgs = zService.getThreadLastMessages();
                     for (var i = 0; i < threads.length; i++) {
                         if (!threads[i].isGroup) continue;
                         var g = threads[i];
-                        g.localAvatar = "";
+                        g.localAvatar    = "";
+                        g.lastMsgIsMine  = false;
+                        g.lastSenderName = "";
+                        var lm = lastMsgs[g.threadId || ""];
+                        if (lm) {
+                            var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
+                            var mt = lm.msgType;
+                            var snippet;
+                            if (mt === 99 || mt === "99") {
+                                snippet = isMine ? "You recalled a message" : "This message was recalled";
+                            } else if (mt === 2 || mt === "2") {
+                                snippet = "[Photo]";
+                            } else {
+                                snippet = (lm.content || "").substring(0, 60);
+                            }
+                            g.lastMessage    = snippet;
+                            g.lastMsgIsMine  = isMine;
+                            g.lastSenderName = lm.dName || "";
+                            g.lastTime       = lm.ts || "";
+                        }
                         if (g.lastTime && g.lastTime !== "") {
                             var ts = parseInt(g.lastTime);
                             if (!isNaN(ts)) g.lastTime = groupsNav.formatTime(ts);
@@ -396,6 +452,10 @@ NavigationPane {
                                 d.lastMsgIsMine  = isMine;
                                 d.lastSenderName = message.dName || "";
                                 d.hasUnread      = !isMine;
+                                // Was missing entirely — same bug as ChatsTab.qml:
+                                // the displayed time never advanced past whatever
+                                // was last loaded from disk/server.
+                                if (message.ts) d.lastTime = groupsNav.formatTime(message.ts);
                                 groupModel.removeAt(i);
                                 groupModel.insert(0, d);
                                 break;
@@ -458,8 +518,8 @@ NavigationPane {
         page.isGroup    = true;
         page.avatarUrl  = avatarUrl;
         page.selfName   = groupsNav.selfName;
-        page.startChat();
         groupsNav.push(page);
         groupsNav.currentPage = page;
+        page.startChat();
     }
 }

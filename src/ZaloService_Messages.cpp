@@ -984,7 +984,13 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
 
                     // Use msgId in filename — unique path avoids BB10 image cache stale data.
                     // Always save as .png — BB10 ImageView is more reliable with PNG than JPEG.
-                    QString tmpPath = QDir::tempPath() + "/msgthumb_" +
+                    // NOTE: hardcoded "/tmp/" (NOT QDir::tempPath()) — on this BB10 device
+                    // QDir::tempPath() resolves to a per-launch sandboxed scratch dir that gets
+                    // wiped every time the app restarts, while plain "/tmp/" is the same
+                    // device-wide location avatars use and is confirmed to survive app restarts
+                    // (see avatar_meta persistence). See onImageMsgDownloaded() below for the
+                    // same fix applied to full-size photos.
+                    QString tmpPath = "/tmp/msgthumb_" +
                                       msgId + ".png";
                     QFile::remove(tmpPath);
 
@@ -1081,7 +1087,9 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                 return;
             } // end if(ext.isEmpty())
 
-            QString tmpPath = QDir::tempPath() + "/msgimg_" +
+            // Hardcoded "/tmp/" — same reasoning as msgthumb_ above: QDir::tempPath()
+            // does not survive an app restart on this device, plain "/tmp/" does.
+            QString tmpPath = "/tmp/msgimg_" +
                               QString::number(qHash(url)) + "." + ext;
             QFile f(tmpPath);
             if (f.open(QIODevice::WriteOnly)) {
@@ -1117,6 +1125,35 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
         emit imageMsgReady(msgId, m_avatarCache[url], sz.width(), sz.height());
         return;
     }
+
+    // Persistent check: this msgId may already have a downloaded image from a
+    // previous session (logout/login, app restart, etc.) — dbLoadMessages()
+    // already returns localImage for display, but downloadImageMessage() can
+    // also get called directly (e.g. re-sync, search jump-to-message) without
+    // going through that path first. If the file is still on disk, reuse it
+    // instead of re-fetching over the network.
+    if (!msgId.isEmpty() && m_db) {
+        const char *sqlChk = "SELECT localImage, imgWidth, imgHeight FROM messages WHERE msgId=?";
+        sqlite3_stmt *chk = 0;
+        if (sqlite3_prepare_v2(m_db, sqlChk, -1, &chk, 0) == SQLITE_OK) {
+            sqlite3_bind_text(chk, 1, msgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(chk) == SQLITE_ROW) {
+                QString existingPath = QString::fromUtf8((const char*)sqlite3_column_text(chk, 0));
+                int existingW = sqlite3_column_int(chk, 1);
+                int existingH = sqlite3_column_int(chk, 2);
+                QString fsPath = existingPath;
+                if (fsPath.startsWith("file://")) fsPath = fsPath.mid(7);
+                if (!fsPath.isEmpty() && QFile::exists(fsPath)) {
+                    sqlite3_finalize(chk);
+                    m_avatarCache[url] = existingPath;
+                    emit imageMsgReady(msgId, existingPath, existingW, existingH);
+                    return;
+                }
+            }
+            sqlite3_finalize(chk);
+        }
+    }
+
     if (m_pendingAvatars.contains(url)) return;
     m_pendingAvatars.insert(url);
 
@@ -1168,7 +1205,23 @@ void ZaloService::onImageMsgDownloaded()
         }
     }
 
-    QString tmpPath = QDir::tempPath() + "/zalo_img_" + md5Hex(url) + "." + ext;
+    // Fixed filename per-message (by msgId, NOT by md5(url)): the URL Zalo
+    // returns for the same photo can change between fetches (signed CDN URLs,
+    // query params, etc.) even though the underlying image hasn't. Keying the
+    // filename off msgId means re-fetching the same message always overwrites
+    // the same file instead of leaving the old one behind as an orphan, and
+    // lets the QFile::exists() check above in downloadImageMessage() reliably
+    // recognise "we already have this one" on the next call.
+    //
+    // Hardcoded "/tmp/" (NOT QDir::tempPath()): on this BB10 device,
+    // QDir::tempPath() resolves to a per-app-launch scratch directory that the
+    // OS wipes on every app restart, whereas plain "/tmp/" is the same
+    // device-wide, persistent location avatars already use successfully (see
+    // avatar_meta — confirmed to survive restarts in the field). Using the
+    // same persistent root here is what makes downloaded chat photos actually
+    // survive logout/login and app restarts instead of vanishing every time.
+    QString stableKey = msgId.isEmpty() ? md5Hex(url) : msgId;
+    QString tmpPath = "/tmp/zalo_img_" + stableKey + "." + ext;
     QFile f(tmpPath);
     if (f.open(QIODevice::WriteOnly)) { f.write(finalData); f.close(); }
     QString filePath = "file://" + tmpPath;

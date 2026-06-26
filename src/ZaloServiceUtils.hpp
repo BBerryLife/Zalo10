@@ -128,6 +128,21 @@ inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
 {
     QString nUrl, hUrl, tUrl;
 
+    // Capture the caption BEFORE the logic below discards everything except
+    // the photo URLs. Zalo's real client lets you attach a text caption to a
+    // photo — it arrives as "title" inside the photo's content object (with
+    // "description" used by a few message shapes instead). Without this, a
+    // photo sent together with a caption shows only the image and silently
+    // drops the text everywhere downstream.
+    QString caption;
+    {
+        QVariantMap rawCm = m["content"].toMap();
+        if (rawCm.isEmpty() && !rawContent.isEmpty() && rawContent.trimmed().startsWith("{"))
+            rawCm = jsonToMap(rawContent.toUtf8());
+        caption = rawCm["title"].toString();
+        if (caption.isEmpty()) caption = rawCm["description"].toString();
+    }
+
     // 1. Try content JSON field first
     if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
         QVariantMap cm = jsonToMap(rawContent.toUtf8());
@@ -205,6 +220,13 @@ inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
     if (nUrl.isEmpty()) nUrl = hUrl; if (nUrl.isEmpty()) nUrl = tUrl;
     if (tUrl.isEmpty()) tUrl = nUrl; if (hUrl.isEmpty()) hUrl = nUrl;
     if (nUrl.isEmpty()) return rawContent;
+    if (!caption.isEmpty()) {
+        QString esc = caption;
+        esc.replace("\\", "\\\\").replace("\"", "\\\"")
+           .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+        return QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\",\"caption\":\"%4\"}")
+               .arg(nUrl).arg(tUrl).arg(hUrl).arg(esc);
+    }
     return QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
            .arg(nUrl).arg(tUrl).arg(hUrl);
 }

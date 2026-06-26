@@ -256,7 +256,7 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
 {
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
 
-    // Check cache theo cả full URL và base URL
+    // Check cache theo cả full URL và base URL (fast path within this session)
     if (m_avatarCache.contains(url)) {
         emit avatarReady(threadId, m_avatarCache[url]);
         return;
@@ -264,6 +264,30 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
     if (m_avatarCache.contains(baseUrl)) {
         emit avatarReady(threadId, m_avatarCache[baseUrl]);
         return;
+    }
+
+    // Persistent dedup check: compare the new URL's hash against what we
+    // already have on disk for this exact threadId (a stable per-person key —
+    // background avatars are passed in as "bg_"+threadId, so they never collide
+    // with the main avatar). This is what makes the cache survive app restarts,
+    // logout/login, and toggling "Show Recalled Messages" (which never touches
+    // images): if the person hasn't actually changed their picture, we reuse
+    // the file already sitting in tmp instead of re-downloading it.
+    QString newHash = md5Hex(baseUrl);
+    QString storedHash, storedPath;
+    if (avatarMetaLookup(threadId, storedHash, storedPath)) {
+        QString fsPath = storedPath;
+        if (fsPath.startsWith("file://")) fsPath = fsPath.mid(7);
+        if (storedHash == newHash && !fsPath.isEmpty() && QFile::exists(fsPath)) {
+            // Same avatar URL as last time, and the cached file is still there
+            // (i.e. the user hasn't run "Clear Cache") — reuse it, no network call.
+            m_avatarCache[url] = storedPath;
+            m_avatarCache[baseUrl] = storedPath;
+            emit avatarReady(threadId, storedPath);
+            return;
+        }
+        // Either the URL hash changed (genuinely a new profile picture) or the
+        // file went missing — fall through and re-download below.
     }
 
     // Check cả full URL và base URL
@@ -315,7 +339,11 @@ void ZaloService::onAvatarDownloaded()
         return;
     }
 
-    QString fname = "/tmp/avatar_" + md5Hex(url) + ".jpg";
+    // Fixed filename per-person (md5 of threadId, NOT of the URL): this means
+    // a changed profile picture overwrites the same file in place instead of
+    // leaving the old image as an orphaned file in tmp every time the CDN
+    // hands back a different URL for an unchanged picture.
+    QString fname = "/tmp/avatar_" + md5Hex(threadId) + ".jpg";
     QFile f(fname);
     if (f.open(QIODevice::WriteOnly)) {
         f.write(data);
@@ -325,6 +353,12 @@ void ZaloService::onAvatarDownloaded()
     m_avatarCache[url] = localPath;
     int qmark = url.indexOf('?');
     if (qmark > 0) m_avatarCache[url.left(qmark)] = localPath;
+
+    // Persist the threadId -> urlHash -> localPath mapping so next launch (or
+    // next refresh after logout/login) can recognise this exact avatar again
+    // without re-downloading it.
+    avatarMetaUpsert(threadId, md5Hex(baseUrl), localPath);
+
     qDebug() << "[Zalo] avatar saved:" << threadId << "->" << fname;
     foreach (const QString &wid, waiters)
         emit avatarReady(wid, localPath);

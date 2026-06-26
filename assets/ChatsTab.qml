@@ -29,6 +29,24 @@ NavigationPane {
             interval: 11000
             repeat: false
             onTriggered: chatsNav.refreshCooldown = false
+        },
+        // Forces the (large, ~1400-line) ChatView.qml document to be parsed
+        // and its component type cached by the QML engine once, in the
+        // background, instead of paying that cost on the user's first real
+        // tap into a conversation. Creates a throwaway instance and destroys
+        // it immediately — it's never pushed, never given a threadId, and
+        // startChat() is never called on it, so it has no visible effect and
+        // never touches zService. Delayed so it doesn't compete with the
+        // friend list's own initial render.
+        Timer {
+            id: chatViewWarmupTimer
+            interval: 800
+            repeat: false
+            running: true
+            onTriggered: {
+                var w = chatsDef.createObject();
+                if (w) w.destroy();
+            }
         }
     ]
 
@@ -189,29 +207,13 @@ NavigationPane {
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
 
-                                    Label {
-                                        text: ListItemData.name || ListItemData.displayName || "Unknown User"
-                                        textStyle { base: SystemDefaults.TextStyles.TitleText }
-                                    }
-
                                     Container {
                                         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                        horizontalAlignment: HorizontalAlignment.Fill
+
                                         Label {
-                                            text: {
-                                                var lm = ListItemData.lastMessage || ListItemData.lastMsg || "";
-                                                if (lm.length === 0) return "No messages yet";
-                                                var prefix = "";
-                                                if (ListItemData.lastMsgIsMine === true || ListItemData.lastMsgIsMine === "true") {
-                                                    prefix = "Me: ";
-                                                } else if (ListItemData.lastSenderName && ListItemData.lastSenderName.length > 0) {
-                                                    prefix = ListItemData.lastSenderName.split(" ")[0] + ": ";
-                                                }
-                                                return prefix + lm;
-                                            }
-                                            textStyle {
-                                                base: SystemDefaults.TextStyles.SubtitleText
-                                                color: Color.DarkGray
-                                            }
+                                            text: ListItemData.name || ListItemData.displayName || "Unknown User"
+                                            textStyle { base: SystemDefaults.TextStyles.TitleText }
                                             multiline: false
                                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         }
@@ -222,7 +224,27 @@ NavigationPane {
                                                 color: Color.Gray
                                                 fontSize: FontSize.Small
                                             }
+                                            horizontalAlignment: HorizontalAlignment.Right
                                         }
+                                    }
+
+                                    Label {
+                                        text: {
+                                            var lm = ListItemData.lastMessage || ListItemData.lastMsg || "";
+                                            if (lm.length === 0) return "No messages yet";
+                                            var prefix = "";
+                                            if (ListItemData.lastMsgIsMine === true || ListItemData.lastMsgIsMine === "true") {
+                                                prefix = "Me: ";
+                                            } else if (ListItemData.lastSenderName && ListItemData.lastSenderName.length > 0) {
+                                                prefix = ListItemData.lastSenderName.split(" ")[0] + ": ";
+                                            }
+                                            return prefix + lm;
+                                        }
+                                        textStyle {
+                                            base: SystemDefaults.TextStyles.SubtitleText
+                                            color: Color.DarkGray
+                                        }
+                                        multiline: false
                                     }
                                 }
                             }
@@ -231,20 +253,27 @@ NavigationPane {
                 ]
 
                 onTriggered: {
+                    var t0 = Date.now();
                     var item = dataModel.data(indexPath);
                     var page = chatsDef.createObject();
+                    console.log("[ChatsTab] createObject took " + (Date.now() - t0) + "ms");
                     if (!page) return;
                     page.threadId   = item.threadId || item.uid || "";
                     page.threadName = item.name || "Chat";
                     page.isGroup    = false;
                     page.avatarUrl  = item.localAvatar || item.avatar || "";
                     page.selfName   = chatsNav.selfName;
-                    page.startChat();
                     var idx = indexPath[0];
                     var d = friendModel.value(idx);
                     if (d) { d.hasUnread = false; friendModel.replace(idx, d); }
                     chatsNav.activeChatPage = page;
+                    // Push first, load second: navigation should never wait on
+                    // dbLoadMessages()/fetchMessages() — the conversation opens
+                    // immediately and its messages populate right after.
+                    var t1 = Date.now();
                     chatsNav.push(page);
+                    console.log("[ChatsTab] push() took " + (Date.now() - t1) + "ms, total tap-to-push " + (Date.now() - t0) + "ms");
+                    page.startChat();
                 }
             }
 
@@ -322,6 +351,12 @@ NavigationPane {
                 onFriendsReady: {
                     chatsLoading.visible = false;
                     friendModel.clear();
+                    // The server's friends-list API never includes a last-message
+                    // field, so without this, every restart shows "No messages yet"
+                    // for everyone until a fresh message happens to arrive over the
+                    // network. Pull the last message we already have locally for
+                    // each thread and merge it in before the model is even built.
+                    var lastMsgs = zService.getThreadLastMessages();
                     for (var i = 0; i < friends.length; i++) {
                         var f = friends[i];
                         f.localAvatar    = "";
@@ -329,13 +364,30 @@ NavigationPane {
                         f.lastMsgIsMine  = false;
                         f.lastSenderName = "";
                         f.lastMessage    = f.lastMessage || f.lastMsg || "";
+                        var tid = f.threadId || f.uid || "";
+                        var lm = lastMsgs[tid];
+                        if (lm) {
+                            var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
+                            var mt = lm.msgType;
+                            var snippet;
+                            if (mt === 99 || mt === "99") {
+                                snippet = isMine ? "You recalled a message" : "This message was recalled";
+                            } else if (mt === 2 || mt === "2") {
+                                snippet = "[Photo]";
+                            } else {
+                                snippet = (lm.content || "").substring(0, 60);
+                            }
+                            f.lastMessage    = snippet;
+                            f.lastMsgIsMine  = isMine;
+                            f.lastSenderName = lm.dName || "";
+                            f.lastTime       = lm.ts || "";
+                        }
                         if (f.lastTime && f.lastTime !== "") {
                             var ts = parseInt(f.lastTime);
                             if (!isNaN(ts)) f.lastTime = chatsNav.formatTime(ts);
                         }
                         friendModel.append(f);
                         var url = f.avatar || "";
-                        var tid = f.threadId || f.uid || "";
                         if (url.length > 0 && tid.length > 0)
                             zService.downloadAvatar(tid, url);
                     }
@@ -388,6 +440,11 @@ NavigationPane {
                             d.lastMsgIsMine  = isMine;
                             d.lastSenderName = senderName;
                             d.hasUnread      = !isMine;
+                            // Was missing entirely — the list previously froze on
+                            // whatever time was last loaded from disk/server and
+                            // never advanced as new messages came in (or went
+                            // out), no matter how much later they actually arrived.
+                            if (message.ts) d.lastTime = chatsNav.formatTime(message.ts);
                             friendModel.removeAt(i);
                             friendModel.insert(0, d);
                             return;
@@ -452,9 +509,9 @@ NavigationPane {
         page.isGroup    = isGroup;
         page.avatarUrl  = avatarUrl;
         page.selfName   = chatsNav.selfName;
-        page.startChat();
         chatsNav.activeChatPage = page;
         chatsNav.push(page);
+        page.startChat();
     }
 
     function formatTime(timestamp) {
