@@ -225,6 +225,7 @@ NavigationPane {
                                                 fontSize: FontSize.Small
                                             }
                                             horizontalAlignment: HorizontalAlignment.Right
+                                            verticalAlignment: VerticalAlignment.Center
                                         }
                                     }
 

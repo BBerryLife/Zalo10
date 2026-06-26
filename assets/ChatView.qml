@@ -14,6 +14,7 @@ Page {
     property string pendingMsg:  ""
     property bool   initialized: false
     property bool   emojiPanelOpen: false
+    property variant emojiPanelRef: null
     property string pendingAttachPath: ""
     property variant dbIsMineCache: ({})
     property bool   isMuted: false
@@ -661,17 +662,22 @@ Page {
                                 // photo — without this, that caption was silently dropped and
                                 // only the bare image ever showed (see normalizePhotoContent()
                                 // on the C++ side, which now preserves it as a "caption" key).
+                                // extractPhotoCaption is inlined here: listItemComponent
+                                // delegates cannot reach outer page IDs in BB10 Cascades.
                                 Label {
-                                    visible: photoWrap.visible
-                                             && chatViewPage.extractPhotoCaption(ListItemData.content).length > 0
-                                    text: {
-                                        var cap = chatViewPage.extractPhotoCaption(ListItemData.content);
-                                        if (rowRoot.searchQuery.length > 0) {
-                                            var hlColor = rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b";
-                                            return "<html>" + chatViewPage.highlightMatches(cap, rowRoot.searchQuery, hlColor) + "</html>";
-                                        }
-                                        return cap;
+                                    id: captionLbl
+                                    property string rawCap: {
+                                        var c = ListItemData.content || "";
+                                        if (c.length === 0 || c.charAt(0) !== "{") return "";
+                                        var re = /"caption"\s*:\s*"((?:[^"\\]|\\.)*)"/;
+                                        var m = c.match(re);
+                                        if (!m || !m[1]) return "";
+                                        return m[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r")
+                                                   .replace(/\\t/g, "\t").replace(/\\"/g, "\"")
+                                                   .replace(/\\\\/g, "\\");
                                     }
+                                    visible: photoWrap.visible && captionLbl.rawCap.length > 0
+                                    text: captionLbl.rawCap
                                     textStyle {
                                         base:  SystemDefaults.TextStyles.BodyText
                                         color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
@@ -692,16 +698,13 @@ Page {
             ]
         }
 
-        EmojiPanel {
-            id: emojiPanel
+        // EmojiPanel is created lazily on first open to avoid its ~800ms
+        // object-creation cost delaying every chat tap. The slot container
+        // is always in the layout so the panel snaps into the correct position.
+        Container {
+            id: emojiPanelSlot
             horizontalAlignment: HorizontalAlignment.Fill
-            preferredHeight: ui.du(19)
-            minHeight: ui.du(16)
             visible: false
-            isDark: chatViewPage.isDark
-            onEmojiPicked: {
-                inputField.text = inputField.text + charStr
-            }
         }
 
         Container {
@@ -848,7 +851,17 @@ Page {
                     : (chatViewPage.isDark ? "asset:///images/ChatView/ic_emoticon_enabled_white.png" : "asset:///images/ChatView/ic_emoticon_enabled.png")
                 onClicked: {
                     emojiPanelOpen = !emojiPanelOpen;
-                    emojiPanel.visible = emojiPanelOpen;
+                    if (emojiPanelOpen && !chatViewPage.emojiPanelRef) {
+                        var ep = emojiPanelDef.createObject();
+                        ep.isDark = chatViewPage.isDark;
+                        ep.horizontalAlignment = HorizontalAlignment.Fill;
+                        ep.preferredHeight = ui.du(19);
+                        ep.minHeight = ui.du(16);
+                        emojiPanelSlot.add(ep);
+                        emojiSignalCon.target = ep;
+                        chatViewPage.emojiPanelRef = ep;
+                    }
+                    emojiPanelSlot.visible = emojiPanelOpen;
                 }
             }
         }
@@ -1104,6 +1117,21 @@ Page {
     }
 
     attachedObjects: [
+        ComponentDefinition {
+            id: emojiPanelDef
+            source: "EmojiPanel.qml"
+        },
+
+        // Receives emojiPicked from the lazily-created EmojiPanel instance.
+        // target is set explicitly (not via .connect()) to avoid the BB10
+        // dynamic-signal-connection reliability issue.
+        Connections {
+            id: emojiSignalCon
+            onEmojiPicked: {
+                inputField.text = inputField.text + charStr
+            }
+        },
+
         InfoDialog {
             id: voiceCallUnderDevDialog
             title: "Voice Call"

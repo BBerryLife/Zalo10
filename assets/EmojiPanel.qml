@@ -1147,101 +1147,70 @@ Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 0 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-            // Fixed-tone badge behind the icon itself (independent of the
-            // selection highlight above): several category icons — e.g. the
-            // pale cream-yellow lightbulb for "objects" — are close in
-            // lightness to this bar's own background and nearly disappear
-            // without it. A constant mid-gray backdrop guarantees contrast
-            // in both themes regardless of selection state.
-            Container {
-                horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.Transparent
+            onTouch: {
+                if (event.isUp()) categoryIndex = 0;
             }
-            ImageButton {
+            ImageView {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                defaultImageSource: "asset:///images/emoji/emoji_category_people.png"
-                pressedImageSource: "asset:///images/emoji/emoji_category_people.png"
-                onClicked: { categoryIndex = 0 }
+                imageSource: "asset:///images/emoji/emoji_category_people.png"
             }
         }
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 1 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-            Container {
-                horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.Transparent
+            onTouch: {
+                if (event.isUp()) categoryIndex = 1;
             }
-            ImageButton {
+            ImageView {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                defaultImageSource: "asset:///images/emoji/emoji_category_nature.png"
-                pressedImageSource: "asset:///images/emoji/emoji_category_nature.png"
-                onClicked: { categoryIndex = 1 }
+                imageSource: "asset:///images/emoji/emoji_category_nature.png"
             }
         }
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 2 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-            Container {
-                horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.Transparent
+            onTouch: {
+                if (event.isUp()) categoryIndex = 2;
             }
-            ImageButton {
+            ImageView {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                defaultImageSource: "asset:///images/emoji/emoji_category_objects.png"
-                pressedImageSource: "asset:///images/emoji/emoji_category_objects.png"
-                onClicked: { categoryIndex = 2 }
+                imageSource: "asset:///images/emoji/emoji_category_objects.png"
             }
         }
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 3 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-            Container {
-                horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.Transparent
+            onTouch: {
+                if (event.isUp()) categoryIndex = 3;
             }
-            ImageButton {
+            ImageView {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                defaultImageSource: "asset:///images/emoji/emoji_category_places.png"
-                pressedImageSource: "asset:///images/emoji/emoji_category_places.png"
-                onClicked: { categoryIndex = 3 }
+                imageSource: "asset:///images/emoji/emoji_category_places.png"
             }
         }
         Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: DockLayout {}
             background: categoryIndex === 4 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-            Container {
-                horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(4.2); preferredHeight: ui.du(4.2)
-                background: Color.Transparent
+            onTouch: {
+                if (event.isUp()) categoryIndex = 4;
             }
-            ImageButton {
+            ImageView {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                defaultImageSource: "asset:///images/emoji/emoji_category_symbols.png"
-                pressedImageSource: "asset:///images/emoji/emoji_category_symbols.png"
-                onClicked: { categoryIndex = 4 }
+                imageSource: "asset:///images/emoji/emoji_category_symbols.png"
             }
         }
     }
