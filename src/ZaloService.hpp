@@ -51,6 +51,7 @@ public:
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId = QString());
+    Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
     // Update downloader — called from AboutSheet when user confirms update.
     // Saves to /accounts/1000/shared/downloads/<filename>.
     Q_INVOKABLE void downloadUpdate(const QString &url, const QString &filename);
@@ -163,6 +164,8 @@ signals:
     void updateDownloadFinished(const QString &localPath);
     void updateDownloadFailed(const QString &errorMsg);
 
+private slots:
+    void onStep1Done();
     void onUpdateDownloadProgress(qint64 received, qint64 total);
     void onUpdateDownloadFinished();
 
