@@ -463,7 +463,7 @@ void ZaloService::downloadUpdate(const QString &url, const QString &filename)
     QString dest = QString("/accounts/1000/shared/downloads/") + filename;
     m_updateDestPath = dest;
 
-    QNetworkRequest req(QUrl(url));
+    QNetworkRequest req = QNetworkRequest(QUrl(url));
     req.setRawHeader("User-Agent", m_userAgent.toUtf8());
     m_updateReply = m_manager->get(req);
 
