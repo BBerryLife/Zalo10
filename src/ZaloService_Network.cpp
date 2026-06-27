@@ -445,3 +445,68 @@ void ZaloService::onKeepAliveDone()
 // `content` into recalledOriginalContent the first time (while it's still
 // empty), and leaves it untouched on any later, duplicate recall of the same
 // message.
+
+// ── In-app update downloader ──────────────────────────────────────────────
+// Called from AboutSheet.qml after the user confirms they want to update.
+// Downloads `url` to /accounts/1000/shared/downloads/<filename>, emitting
+// updateDownloadProgress(0-100), then updateDownloadFinished(localPath) or
+// updateDownloadFailed(errorMsg).
+
+void ZaloService::downloadUpdate(const QString &url, const QString &filename)
+{
+    if (m_updateReply) {
+        m_updateReply->abort();
+        m_updateReply->deleteLater();
+        m_updateReply = 0;
+    }
+
+    QString dest = QString("/accounts/1000/shared/downloads/") + filename;
+    m_updateDestPath = dest;
+
+    QNetworkRequest req(QUrl(url));
+    req.setRawHeader("User-Agent", m_userAgent.toUtf8());
+    m_updateReply = m_manager->get(req);
+
+    connect(m_updateReply, SIGNAL(downloadProgress(qint64,qint64)),
+            this, SLOT(onUpdateDownloadProgress(qint64,qint64)));
+    connect(m_updateReply, SIGNAL(finished()),
+            this, SLOT(onUpdateDownloadFinished()));
+}
+
+void ZaloService::onUpdateDownloadProgress(qint64 received, qint64 total)
+{
+    if (total <= 0) {
+        emit updateDownloadProgress(0);
+        return;
+    }
+    int pct = (int)((received * 100) / total);
+    emit updateDownloadProgress(pct);
+}
+
+void ZaloService::onUpdateDownloadFinished()
+{
+    if (!m_updateReply) return;
+
+    if (m_updateReply->error() != QNetworkReply::NoError) {
+        QString err = m_updateReply->errorString();
+        m_updateReply->deleteLater();
+        m_updateReply = 0;
+        emit updateDownloadFailed(err);
+        return;
+    }
+
+    QByteArray data = m_updateReply->readAll();
+    m_updateReply->deleteLater();
+    m_updateReply = 0;
+
+    QFile f(m_updateDestPath);
+    if (!f.open(QIODevice::WriteOnly)) {
+        emit updateDownloadFailed("Cannot write to " + m_updateDestPath);
+        return;
+    }
+    f.write(data);
+    f.close();
+
+    emit updateDownloadProgress(100);
+    emit updateDownloadFinished(m_updateDestPath);
+}

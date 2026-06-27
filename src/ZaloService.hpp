@@ -51,7 +51,11 @@ public:
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId = QString());
-    Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
+    // Update downloader — called from AboutSheet when user confirms update.
+    // Saves to /accounts/1000/shared/downloads/<filename>.
+    Q_INVOKABLE void downloadUpdate(const QString &url, const QString &filename);
+
+
     Q_INVOKABLE void setActiveThread(const QString &threadId, bool isGroup);
     Q_INVOKABLE void clearActiveThread();
     Q_INVOKABLE void blockUser(const QString &userId);
@@ -154,9 +158,14 @@ signals:
     void leaveGroupDone(const QString &groupId, bool success);
     // imported/skipped quick messages pulled from the server, or error non-empty on failure
     void serverQuickMessagesReady(int imported, int skipped, const QString &error);
+    // Update download progress (0-100), finished (localPath), or failed (errorMsg)
+    void updateDownloadProgress(int percent);
+    void updateDownloadFinished(const QString &localPath);
+    void updateDownloadFailed(const QString &errorMsg);
 
-private slots:
-    void onStep1Done();
+    void onUpdateDownloadProgress(qint64 received, qint64 total);
+    void onUpdateDownloadFinished();
+
     void onStep2Done();
     void onStep3Done();
     void onStep4Done();
@@ -346,6 +355,9 @@ private:
     QVariantList m_pendingFriends;
     int m_pendingFriendAvatarCount;
     int m_loadedFriendAvatarCount;
+
+    QNetworkReply *m_updateReply;
+    QString        m_updateDestPath;
 
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;

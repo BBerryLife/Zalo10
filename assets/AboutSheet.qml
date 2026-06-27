@@ -10,6 +10,8 @@ Sheet {
 
         property variant activeChangelogPage: null
         property string pendingManifestAction: ""
+        property string pendingDownloadUrl: ""
+        property string pendingDownloadVersion: ""
 
         function isVersionNewer(a, b) {
             var pa = a.split('.');
@@ -81,7 +83,12 @@ Sheet {
                     updateResultToast.body = "You're already on the latest version (" + current + ").";
                     updateResultToast.show();
                 } else {
-                    Qt.openUrlExternally(downloadUrl);
+                    // Store pending download info and show confirmation dialog
+                    aboutNav.pendingDownloadUrl = downloadUrl;
+                    aboutNav.pendingDownloadVersion = latest;
+                    updateConfirmDialog.title = "New Update Available";
+                    updateConfirmDialog.body = "New version " + latest + " detected. Would you like to download it?";
+                    updateConfirmDialog.show();
                 }
             } else if (action === "changelog") {
                 var versions = manifest.changelog || [];
@@ -286,6 +293,23 @@ Sheet {
         }
 
         attachedObjects: [
+            // Wire up ZaloService download signals for the in-app update downloader
+            Connections {
+                target: service
+                onUpdateDownloadProgress: {
+                    updateProgressDialog.progress = percent;
+                }
+                onUpdateDownloadFinished: {
+                    updateProgressDialog.cancel();
+                    updateResultToast.body = "Update downloaded. Check your Downloads folder.";
+                    updateResultToast.show();
+                }
+                onUpdateDownloadFailed: {
+                    updateProgressDialog.cancel();
+                    updateResultToast.body = "Download failed: " + errorMsg;
+                    updateResultToast.show();
+                }
+            },
             ComponentDefinition {
                 id: donatePageDef
                 Page {
@@ -368,6 +392,43 @@ Sheet {
             SystemToast {
                 id: updateResultToast
                 body: ""
+            },
+            // Confirmation dialog: shown when a newer version is found.
+            // User can choose to download or cancel.
+            SystemDialog {
+                id: updateConfirmDialog
+                title: "New Update Available"
+                body: ""
+                confirmButton.label: "Update"
+                cancelButton.label: "Cancel"
+                onFinished: {
+                    if (value === SystemUiResult.ConfirmButtonSelection) {
+                        // Work out a safe filename from the URL
+                        var urlStr = aboutNav.pendingDownloadUrl;
+                        var parts = urlStr.split("/");
+                        var fname = parts[parts.length - 1] || ("Zalo10_" + aboutNav.pendingDownloadVersion + ".bar");
+                        // Strip any query string from filename
+                        var qi = fname.indexOf("?");
+                        if (qi >= 0) fname = fname.substring(0, qi);
+                        updateProgressDialog.body = "Downloading Zalo10 " + aboutNav.pendingDownloadVersion + "…";
+                        updateProgressDialog.progress = 0;
+                        updateProgressDialog.show();
+                        service.downloadUpdate(urlStr, fname);
+                    }
+                }
+            },
+            // Progress dialog: shown while the BAR file is being downloaded.
+            SystemProgressDialog {
+                id: updateProgressDialog
+                title: "Downloading Update"
+                body: ""
+                progress: 0
+                cancelButton.label: "Cancel"
+                onFinished: {
+                    // If user taps Cancel mid-download, abort (just let it finish silently)
+                    // QML has no direct abort hook here; the download will complete in bg
+                    // but the file will be present in Downloads regardless.
+                }
             }
         ]
     }

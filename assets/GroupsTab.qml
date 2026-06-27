@@ -233,6 +233,7 @@ NavigationPane {
                                     Container {
                                         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                         horizontalAlignment: HorizontalAlignment.Fill
+                                        bottomPadding: 0
 
                                         Label {
                                             text: ListItemData.name || "Unknown Group"

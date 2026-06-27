@@ -1143,8 +1143,10 @@ Page {
         // Receives emojiPicked from the lazily-created EmojiPanel instance.
         // target is set explicitly (not via .connect()) to avoid the BB10
         // dynamic-signal-connection reliability issue.
+        // target: null disables validation until we assign the real instance.
         Connections {
             id: emojiSignalCon
+            target: null
             onEmojiPicked: {
                 inputField.text = inputField.text + charStr
             }
