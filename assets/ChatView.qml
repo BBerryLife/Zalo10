@@ -658,44 +658,35 @@ Page {
                                     }
                                 }
 
-                                // The official Zalo app lets you attach a text caption to a
-                                // photo — without this, that caption was silently dropped and
-                                // only the bare image ever showed (see normalizePhotoContent()
-                                // on the C++ side, which now preserves it as a "caption" key).
-                                // Regex literals containing double-quotes crash the QML 1.0
-                                // parser inside a property binding block, so caption is
-                                // extracted with plain indexOf instead.
+                                // Caption for photo messages. extractPhotoCaption() can't be
+                                // called here (outer page id not in listItemComponent scope),
+                                // and 'property string foo: { block }' is invalid QML 1.0 for
+                                // custom property declarations. Logic inlined into visible/text
+                                // bindings using charCodeAt to avoid double-quote parser issues.
                                 Label {
                                     id: captionLbl
-                                    property string rawCap: {
+                                    visible: {
+                                        if (!photoWrap.visible) return false;
                                         var c = ListItemData.content || "";
-                                        if (c.length === 0 || c.charAt(0) !== "{") return "";
-                                        var marker = '"caption":"';
-                                        var si = c.indexOf(marker);
-                                        if (si < 0) return "";
-                                        si += marker.length;
-                                        var result = "";
-                                        var i = si;
-                                        while (i < c.length) {
-                                            var ch = c.charAt(i);
-                                            if (ch === "\\") {
-                                                var nx = c.charAt(i + 1);
-                                                if (nx === "n") result += "\n";
-                                                else if (nx === "r") result += "\r";
-                                                else if (nx === "t") result += "\t";
-                                                else result += nx;
-                                                i += 2;
-                                            } else if (ch === '"') {
-                                                break;
-                                            } else {
-                                                result += ch;
-                                                i++;
-                                            }
-                                        }
-                                        return result;
+                                        if (c.length === 0 || c.charCodeAt(0) !== 123) return false;
+                                        return c.indexOf('"caption":"') >= 0;
                                     }
-                                    visible: photoWrap.visible && captionLbl.rawCap.length > 0
-                                    text: captionLbl.rawCap
+                                    text: {
+                                        var c = ListItemData.content || "";
+                                        if (c.length === 0) return "";
+                                        var key = '"caption":"';
+                                        var si = c.indexOf(key);
+                                        if (si < 0) return "";
+                                        si += key.length;
+                                        var ei = si;
+                                        while (ei < c.length) {
+                                            var code = c.charCodeAt(ei);
+                                            if (code === 92) { ei += 2; continue; }
+                                            if (code === 34) break;
+                                            ei++;
+                                        }
+                                        return c.substring(si, ei);
+                                    }
                                     textStyle {
                                         base:  SystemDefaults.TextStyles.BodyText
                                         color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")

@@ -293,9 +293,13 @@ Sheet {
         }
 
         attachedObjects: [
-            // Wire up ZaloService download signals for the in-app update downloader
+            // Wire up ZaloService download signals for the in-app update downloader.
+            // target starts as null — service is a C++ context property that isn't
+            // resolvable as a QML binding at Sheet init time. It IS accessible in
+            // JS function bodies, so we set the target explicitly there instead.
             Connections {
-                target: service
+                id: svcDownloadCon
+                target: null
                 onUpdateDownloadProgress: {
                     updateProgressDialog.progress = percent;
                 }
@@ -403,15 +407,16 @@ Sheet {
                 cancelButton.label: "Cancel"
                 onFinished: {
                     if (value === SystemUiResult.ConfirmButtonSelection) {
-                        // Work out a safe filename from the URL
                         var urlStr = aboutNav.pendingDownloadUrl;
                         var parts = urlStr.split("/");
                         var fname = parts[parts.length - 1] || ("Zalo10_" + aboutNav.pendingDownloadVersion + ".bar");
-                        // Strip any query string from filename
                         var qi = fname.indexOf("?");
                         if (qi >= 0) fname = fname.substring(0, qi);
+                        // service is accessible here in JS scope (C++ context property)
+                        svcDownloadCon.target = service;
                         updateProgressDialog.body = "Downloading Zalo10 " + aboutNav.pendingDownloadVersion + "…";
                         updateProgressDialog.progress = 0;
+                        updateProgressDialog.state = SystemUiProgressDialogState.Progress;
                         updateProgressDialog.show();
                         service.downloadUpdate(urlStr, fname);
                     }

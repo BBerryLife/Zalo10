@@ -233,7 +233,6 @@ NavigationPane {
                                     Container {
                                         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                         horizontalAlignment: HorizontalAlignment.Fill
-                                        bottomPadding: 0
 
                                         Label {
                                             text: ListItemData.name || "Unknown Group"
@@ -269,14 +268,12 @@ NavigationPane {
                                             base: SystemDefaults.TextStyles.SubtitleText
                                             color: Color.DarkGray
                                         }
-                                        topMargin: 0
                                         multiline: false
                                     }
                                 }
                             }
                         }
-                    }
-                ]
+                    ]
 
                 onTriggered: {
                     var t0 = Date.now();
