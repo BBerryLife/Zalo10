@@ -273,7 +273,8 @@ NavigationPane {
                                 }
                             }
                         }
-                    ]
+                    }
+                ]
 
                 onTriggered: {
                     var t0 = Date.now();
