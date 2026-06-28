@@ -417,7 +417,6 @@ Sheet {
                         svcDownloadCon.target = aboutSheetRoot.zService;
                         updateProgressDialog.body = "Downloading Zalo10 " + aboutNav.pendingDownloadVersion + "…";
                         updateProgressDialog.progress = 0;
-                        updateProgressDialog.state = SystemUiProgressDialogState.Progress;
                         updateProgressDialog.show();
                         aboutSheetRoot.zService.downloadUpdate(urlStr, fname);
                     }
