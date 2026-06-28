@@ -298,23 +298,6 @@ Sheet {
             // target starts as null — service is a C++ context property that isn't
             // resolvable as a QML binding at Sheet init time. It IS accessible in
             // JS function bodies, so we set the target explicitly there instead.
-            Connections {
-                id: svcDownloadCon
-                target: null
-                onUpdateDownloadProgress: {
-                    updateProgressDialog.progress = percent;
-                }
-                onUpdateDownloadFinished: {
-                    updateProgressDialog.cancel();
-                    updateResultToast.body = "Update downloaded. Check your Downloads folder.";
-                    updateResultToast.show();
-                }
-                onUpdateDownloadFailed: {
-                    updateProgressDialog.cancel();
-                    updateResultToast.body = "Download failed: " + errorMsg;
-                    updateResultToast.show();
-                }
-            },
             ComponentDefinition {
                 id: donatePageDef
                 Page {
@@ -408,33 +391,14 @@ Sheet {
                 cancelButton.label: "Cancel"
                 onFinished: {
                     if (value === SystemUiResult.ConfirmButtonSelection) {
-                        var urlStr = aboutNav.pendingDownloadUrl;
-                        var parts = urlStr.split("/");
-                        var fname = parts[parts.length - 1] || ("Zalo10_" + aboutNav.pendingDownloadVersion + ".bar");
-                        var qi = fname.indexOf("?");
-                        if (qi >= 0) fname = fname.substring(0, qi);
-                        // zService is a property passed in from main.qml
-                        svcDownloadCon.target = aboutSheetRoot.zService;
-                        updateProgressDialog.body = "Downloading Zalo10 " + aboutNav.pendingDownloadVersion + "…";
-                        updateProgressDialog.progress = 0;
-                        updateProgressDialog.show();
-                        aboutSheetRoot.zService.downloadUpdate(urlStr, fname);
+                        // BB10's Qt4 TLS stack only supports TLS 1.0/1.1; GitHub/CDN require
+                        // TLS 1.2+ which causes SSL handshake failures on QNetworkAccessManager.
+                        // Delegate the download to the BB10 Browser which has a newer TLS stack.
+                        Qt.openUrlExternally(aboutNav.pendingDownloadUrl);
+                        updateResultToast.body = "Opening download in Browser. Check your Downloads folder when done.";
+                        updateResultToast.show();
                     }
                 }
-            },
-            // Progress dialog: shown while the BAR file is being downloaded.
-            SystemProgressDialog {
-                id: updateProgressDialog
-                title: "Downloading Update"
-                body: ""
-                progress: 0
-                cancelButton.label: "Cancel"
-                onFinished: {
-                    // If user taps Cancel mid-download, abort (just let it finish silently)
-                    // QML has no direct abort hook here; the download will complete in bg
-                    // but the file will be present in Downloads regardless.
-                }
-            }
         ]
     }
 }

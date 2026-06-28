@@ -238,6 +238,7 @@ NavigationPane {
                                             text: ListItemData.name || "Unknown Group"
                                             textStyle { base: SystemDefaults.TextStyles.TitleText }
                                             multiline: false
+                                            bottomMargin: 0
                                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         }
                                         Label {
@@ -268,7 +269,6 @@ NavigationPane {
                                             base: SystemDefaults.TextStyles.SubtitleText
                                             color: Color.DarkGray
                                         }
-                                        topMargin: ui.du(0.3)
                                         multiline: false
                                     }
                                 }
