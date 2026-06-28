@@ -202,7 +202,7 @@ NavigationPane {
                                 Container {
                                     leftPadding: ui.du(13.0)
                                     rightPadding: ui.du(2.0)
-                                    verticalAlignment: VerticalAlignment.Center
+                                    verticalAlignment: VerticalAlignment.Top
                                     layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -214,8 +214,7 @@ NavigationPane {
                                         Label {
                                             text: ListItemData.name || ListItemData.displayName || "Unknown User"
                                             textStyle { base: SystemDefaults.TextStyles.TitleText }
-                                            multiline: false
-                                            bottomMargin: 0
+                                            verticalAlignment: VerticalAlignment.Center
                                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         }
                                         Label {
@@ -225,7 +224,6 @@ NavigationPane {
                                                 color: Color.Gray
                                                 fontSize: FontSize.Small
                                             }
-                                            horizontalAlignment: HorizontalAlignment.Right
                                             verticalAlignment: VerticalAlignment.Center
                                         }
                                     }
@@ -245,7 +243,9 @@ NavigationPane {
                                         textStyle {
                                             base: SystemDefaults.TextStyles.SubtitleText
                                             color: Color.DarkGray
+                                            fontSize: FontSize.Small
                                         }
+                                        topMargin: ui.du(1.0)
                                         multiline: false
                                     }
                                 }

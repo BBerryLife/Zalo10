@@ -55,6 +55,9 @@ public:
     // Update downloader — called from AboutSheet when user confirms update.
     // Saves to /accounts/1000/shared/downloads/<filename>.
     Q_INVOKABLE void downloadUpdate(const QString &url, const QString &filename);
+    // Aborts an in-flight downloadUpdate() (e.g. user tapped Cancel on the
+    // SystemProgressDialog). Safe to call when nothing is downloading.
+    Q_INVOKABLE void cancelUpdateDownload();
 
 
     Q_INVOKABLE void setActiveThread(const QString &threadId, bool isGroup);
@@ -168,6 +171,7 @@ private slots:
     void onStep1Done();
     void onUpdateDownloadProgress(qint64 received, qint64 total);
     void onUpdateDownloadFinished();
+    void onUpdateSslErrors(const QList<QSslError> &errors);
 
     void onStep2Done();
     void onStep3Done();

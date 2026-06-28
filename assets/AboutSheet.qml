@@ -69,6 +69,7 @@ Sheet {
         function onManifestLoaded(manifest) {
             var action = aboutNav.pendingManifestAction;
             aboutNav.pendingManifestAction = "";
+            manifestTimeoutTimer.stop();
 
             if (action === "update") {
                 updateBtn.enabled = true;
@@ -102,6 +103,7 @@ Sheet {
         function onManifestFailed(message) {
             var action = aboutNav.pendingManifestAction;
             aboutNav.pendingManifestAction = "";
+            manifestTimeoutTimer.stop();
 
             if (action === "update") {
                 updateBtn.enabled = true;
@@ -221,6 +223,7 @@ Sheet {
                                 updateBtn.enabled = false;
                                 updateCheckingToast.show();
                                 aboutNav.pendingManifestAction = "update";
+                                manifestTimeoutTimer.restart();
                                 // Cache-bust: jsDelivr sends a max-age cache-control header,
                                 // so the device's own WebView/network cache can keep serving an
                                 // old copy long after the CDN side has already been purged.
@@ -240,6 +243,7 @@ Sheet {
                                 aboutNav.activeChangelogPage = changelogPage;
                                 aboutNav.push(changelogPage);
                                 aboutNav.pendingManifestAction = "changelog";
+                                manifestTimeoutTimer.restart();
                                 manifestFetcher.url = manifestFetcher.manifestUrl + "?t=" + new Date().getTime();
                             }
                         }
@@ -271,7 +275,11 @@ Sheet {
                             if (loadRequest.status === WebLoadStatus.Succeeded) {
                                 manifestFetcher.evaluateJavaScript("document.body.textContent || document.body.innerText || ''");
                             } else if (loadRequest.status === WebLoadStatus.Failed) {
-                                aboutNav.onManifestFailed("Could not load update info. Check your internet connection.");
+                                if (aboutNav.pendingManifestAction.length === 0) return; // already handled (e.g. by the timeout)
+                                // Include the URL so it can be pasted into the Browser to check
+                                // whether this is a real connectivity issue or specific to the
+                                // WebView/CDN — loadRequest itself doesn't expose an error code.
+                                aboutNav.onManifestFailed("Could not load update info from " + manifestFetcher.manifestUrl + ". Try opening that link in Browser to check.");
                             }
                         }
 
@@ -294,10 +302,20 @@ Sheet {
         }
 
         attachedObjects: [
-            // Wire up ZaloService download signals for the in-app update downloader.
-            // target starts as null — service is a C++ context property that isn't
-            // resolvable as a QML binding at Sheet init time. It IS accessible in
-            // JS function bodies, so we set the target explicitly there instead.
+            // Safety net: if the WebView never reports back (no Succeeded, no
+            // Failed — e.g. the request just hangs), pendingManifestAction would
+            // stay set forever and updateBtn would stay disabled forever with
+            // zero feedback to the user. This guarantees a result within 15s.
+            Timer {
+                id: manifestTimeoutTimer
+                interval: 15000
+                repeat: false
+                onTriggered: {
+                    if (aboutNav.pendingManifestAction.length > 0) {
+                        aboutNav.onManifestFailed("Request timed out. Check your internet connection and try again.");
+                    }
+                }
+            },
             ComponentDefinition {
                 id: donatePageDef
                 Page {
@@ -391,9 +409,10 @@ Sheet {
                 cancelButton.label: "Cancel"
                 onFinished: {
                     if (value === SystemUiResult.ConfirmButtonSelection) {
-                        // BB10's Qt4 TLS stack only supports TLS 1.0/1.1; GitHub/CDN require
-                        // TLS 1.2+ which causes SSL handshake failures on QNetworkAccessManager.
-                        // Delegate the download to the BB10 Browser which has a newer TLS stack.
+                        // BB10's Qt4 TLS stack can't complete the handshake against this
+                        // CDN via QNetworkAccessManager — confirmed on real hardware, even
+                        // with QSslConfiguration set to QSsl::AnyProtocol. Delegate to the
+                        // Browser, which has its own independently-updated TLS stack.
                         Qt.openUrlExternally(aboutNav.pendingDownloadUrl);
                         updateResultToast.body = "Opening download in Browser. Check your Downloads folder when done.";
                         updateResultToast.show();

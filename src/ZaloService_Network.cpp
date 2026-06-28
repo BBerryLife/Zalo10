@@ -465,12 +465,45 @@ void ZaloService::downloadUpdate(const QString &url, const QString &filename)
 
     QNetworkRequest req = QNetworkRequest(QUrl(url));
     req.setRawHeader("User-Agent", m_userAgent.toUtf8());
+
+    // The update file is hosted on the same GitHub-backed CDN as the version
+    // manifest (raw.githubusercontent.com / jsDelivr / Fastly), which requires
+    // TLS1.2+. BB10's bundled OpenSSL/Qt4 stack defaults to an older protocol
+    // pin that fails that handshake (SslHandshakeFailedError) — same root
+    // cause AboutSheet.qml's manifest fetch originally hit, and the same fix
+    // as ApplicationUI::buildManifestRequest(): force AnyProtocol so OpenSSL
+    // negotiates the highest version both sides support.
+    QSslConfiguration sslConf = req.sslConfiguration();
+    sslConf.setPeerVerifyMode(QSslSocket::VerifyNone);
+    sslConf.setProtocol(QSsl::AnyProtocol);
+    req.setSslConfiguration(sslConf);
+
     m_updateReply = m_manager->get(req);
 
+    connect(m_updateReply, SIGNAL(sslErrors(const QList<QSslError>&)),
+            this, SLOT(onUpdateSslErrors(const QList<QSslError>&)));
     connect(m_updateReply, SIGNAL(downloadProgress(qint64,qint64)),
             this, SLOT(onUpdateDownloadProgress(qint64,qint64)));
     connect(m_updateReply, SIGNAL(finished()),
             this, SLOT(onUpdateDownloadFinished()));
+}
+
+void ZaloService::cancelUpdateDownload()
+{
+    if (!m_updateReply) return;
+    m_updateReply->abort(); // triggers finished() -> onUpdateDownloadFinished() with an error, which emits updateDownloadFailed()
+}
+
+// sslErrors() only fires for problems found *after* the handshake completes
+// (unknown/self-signed cert chain etc). A bare SslHandshakeFailedError usually
+// won't reach here since it happens during the handshake itself, but this is
+// cheap insurance — mirrors ApplicationUI::onManifestSslErrors().
+void ZaloService::onUpdateSslErrors(const QList<QSslError> &errors)
+{
+    for (int i = 0; i < errors.size(); ++i)
+        qDebug() << "[Zalo] update download SSL error:" << errors.at(i).errorString();
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (reply) reply->ignoreSslErrors();
 }
 
 void ZaloService::onUpdateDownloadProgress(qint64 received, qint64 total)
