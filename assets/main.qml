@@ -117,6 +117,10 @@ TabbedPane {
         }
     }
     
+    onCreationCompleted: {
+        aboutSheet.zService = zService;
+    }
+
     attachedObjects: [
         Sheet {
             id: loginSheet
@@ -133,7 +137,7 @@ TabbedPane {
         },
         
         SettingsSheet { id: settingsSheet },
-        AboutSheet    { id: aboutSheet; zService: zService },
+        AboutSheet    { id: aboutSheet },
         
         Connections {
             target: zService
