@@ -64,6 +64,7 @@ TabbedPane {
     }
     
     onCreationCompleted: {
+        aboutSheet.zService = zService;
         if (!zService.loadSession()) {
             loginSheet.open();
         }
@@ -117,10 +118,6 @@ TabbedPane {
         }
     }
     
-    onCreationCompleted: {
-        aboutSheet.zService = zService;
-    }
-
     attachedObjects: [
         Sheet {
             id: loginSheet
