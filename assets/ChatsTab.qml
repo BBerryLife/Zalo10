@@ -245,6 +245,7 @@ NavigationPane {
                                             base: SystemDefaults.TextStyles.SubtitleText
                                             color: Color.DarkGray
                                         }
+                                        topMargin: ui.du(0.5)
                                         multiline: false
                                     }
                                 }

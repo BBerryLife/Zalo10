@@ -133,7 +133,7 @@ TabbedPane {
         },
         
         SettingsSheet { id: settingsSheet },
-        AboutSheet    { id: aboutSheet },
+        AboutSheet    { id: aboutSheet; zService: zService },
         
         Connections {
             target: zService

@@ -607,8 +607,34 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (hUrl.isEmpty()) hUrl = nUrl;
 
                 if (!nUrl.isEmpty()) {
-                    rawContent = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
-                                 .arg(nUrl).arg(tUrl).arg(hUrl);
+                    // Extract caption from normalizePhotoContent result (it was called above
+                    // and may have put a "caption" key in rawContent) before we overwrite it.
+                    QString caption;
+                    if (!rawContent.isEmpty() && rawContent.contains("\"caption\":\"")) {
+                        QVariantMap prevCm = jsonToMap(rawContent.toUtf8());
+                        caption = prevCm["caption"].toString();
+                    }
+                    // Also try extracting directly from message map (title field)
+                    if (caption.isEmpty()) {
+                        QVariantMap cm = jsonToMap(m["content"].toString().toUtf8());
+                        if (!cm.isEmpty()) {
+                            caption = cm["title"].toString();
+                            if (caption.isEmpty()) caption = cm["description"].toString();
+                        }
+                    }
+                    if (caption.isEmpty()) caption = m["title"].toString();
+
+                    if (!caption.isEmpty()) {
+                        // Escape caption for JSON embedding
+                        caption.replace("\\", "\\\\").replace("\"", "\\\"")
+                               .replace("\n", "\\n").replace("\r", "\\r")
+                               .replace("\t", "\\t");
+                        rawContent = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\",\"caption\":\"%4\"}")
+                                     .arg(nUrl).arg(tUrl).arg(hUrl).arg(caption);
+                    } else {
+                        rawContent = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
+                                     .arg(nUrl).arg(tUrl).arg(hUrl);
+                    }
                 }
                 // Log the full key set when no URL was found, to help diagnose
                 // payload shapes the parsing above doesn't handle yet.

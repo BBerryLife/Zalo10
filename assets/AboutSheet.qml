@@ -4,6 +4,7 @@ import QtQuick 1.0
 
 Sheet {
     id: aboutSheetRoot
+    property variant zService: null
 
     NavigationPane {
         id: aboutNav
@@ -412,13 +413,13 @@ Sheet {
                         var fname = parts[parts.length - 1] || ("Zalo10_" + aboutNav.pendingDownloadVersion + ".bar");
                         var qi = fname.indexOf("?");
                         if (qi >= 0) fname = fname.substring(0, qi);
-                        // service is accessible here in JS scope (C++ context property)
-                        svcDownloadCon.target = service;
+                        // zService is a property passed in from main.qml
+                        svcDownloadCon.target = aboutSheetRoot.zService;
                         updateProgressDialog.body = "Downloading Zalo10 " + aboutNav.pendingDownloadVersion + "…";
                         updateProgressDialog.progress = 0;
                         updateProgressDialog.state = SystemUiProgressDialogState.Progress;
                         updateProgressDialog.show();
-                        service.downloadUpdate(urlStr, fname);
+                        aboutSheetRoot.zService.downloadUpdate(urlStr, fname);
                     }
                 }
             },
