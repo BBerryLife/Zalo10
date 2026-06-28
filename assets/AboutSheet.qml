@@ -399,6 +399,7 @@ Sheet {
                         updateResultToast.show();
                     }
                 }
+            }
         ]
     }
 }
