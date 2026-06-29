@@ -325,6 +325,9 @@ Page {
         if (chatViewPage.selfName === "") chatViewPage.selfName = "Me";
         chatViewPage.initialized = true;
 
+        // Wire the photo-tap Connections to the ListView now that it exists.
+        if (photoTapCon.target === null) photoTapCon.target = msgList;
+
         chatViewPage.isBlocked = zService.isBlocked(chatViewPage.threadId);
         chatViewPage.isMuted   = zService.isMutedThread(chatViewPage.threadId);
         blockedBanner.visible  = chatViewPage.isBlocked;
@@ -379,6 +382,9 @@ Page {
             property string searchQuery: chatViewPage.searchVisible ? chatViewPage.searchText.toLowerCase().trim() : ""
             property int    searchCurrentMsgIndex: (chatViewPage.searchMatchPos >= 0 && chatViewPage.searchMatchPos < chatViewPage.searchMatches.length)
                                                      ? chatViewPage.searchMatches[chatViewPage.searchMatchPos] : -1
+            // Set by photo attachment tap handler inside the delegate; watched by
+            // the Connections block in attachedObjects to open PhotoViewerSheet.
+            property string tappedPhotoPath: ""
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -603,8 +609,11 @@ Page {
                                     topMargin: 0; bottomMargin: 0
                                 }
 
+                                // BBM-style photo attachment bubble.
+                                // Layout: caption (if any) → dashed separator → thumbnail + file info row.
+                                // Tapping the row opens PhotoViewerSheet via msgList.tappedPhotoPath.
                                 Container {
-                                    id: photoWrap
+                                    id: photoBubble
                                     visible: !rowRoot.recalled
                                              && ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
                                                  || (typeof ListItemData.content === "string"
@@ -614,85 +623,178 @@ Page {
                                                          || ListItemData.content.indexOf("thumbUrl") >= 0
                                                          || ListItemData.content.indexOf("thumb") >= 0
                                                          || ListItemData.content.indexOf("href") >= 0)))
-                                    horizontalAlignment: HorizontalAlignment.Left
+                                    horizontalAlignment: HorizontalAlignment.Fill
                                     topMargin: 2; bottomMargin: 2
 
-                                    property bool hasLocal: !!(ListItemData.localImage && ListItemData.localImage !== "")
-                                    // Real pixel size of the photo (0 when not known yet, e.g. legacy
-                                    // cached messages from before this feature existed).
-                                    property real natW: (ListItemData.imgWidth  && ListItemData.imgWidth  > 0) ? ListItemData.imgWidth  : 0
-                                    property real natH: (ListItemData.imgHeight && ListItemData.imgHeight > 0) ? ListItemData.imgHeight : 0
-                                    // Width never exceeds the bubble's content width. Height follows the
-                                    // photo's own ratio (1:1, 4:3, 3:4, 16:9, ...) — never cropped/stretched.
-                                    property real dispW: photoWrap.natW > 0
-                                                          ? Math.min(rowRoot.bubbleMaxW, photoWrap.natW)
-                                                          : Math.min(rowRoot.bubbleMaxW, ui.du(30))
-                                    property real dispH: photoWrap.natW > 0
-                                                          ? (photoWrap.dispW * (photoWrap.natH / photoWrap.natW))
-                                                          : ui.du(30)
-
-                                    preferredWidth:  photoWrap.hasLocal ? photoWrap.dispW : ui.du(30)
-                                    preferredHeight: photoWrap.hasLocal ? photoWrap.dispH : ui.du(5)
-                                    minHeight:       photoWrap.hasLocal ? ui.du(8)        : ui.du(4)
-                                    background: photoWrap.hasLocal
-                                                ? (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0"))
-                                                : Color.Transparent
-                                    layout: DockLayout {}
-                                    ImageView {
-                                        visible: photoWrap.hasLocal
-                                        horizontalAlignment: HorizontalAlignment.Fill
-                                        verticalAlignment:   VerticalAlignment.Fill
-                                        scalingMethod: ScalingMethod.AspectFit
-                                        imageSource: ListItemData.localImage
-                                    }
+                                    // Caption label — sits above the separator line.
+                                    // Only shown when the photo content JSON contains a "caption" key.
                                     Label {
-                                        visible: !photoWrap.hasLocal
-                                        text: "[Photo]"
-                                        horizontalAlignment: HorizontalAlignment.Left
-                                        verticalAlignment:   VerticalAlignment.Center
+                                        id: photoCaptionLbl
+                                        visible: {
+                                            var c = ListItemData.content || "";
+                                            if (c.length === 0 || c.charCodeAt(0) !== 123) return false;
+                                            return c.indexOf('"caption":"') >= 0;
+                                        }
+                                        text: {
+                                            var c = ListItemData.content || "";
+                                            if (c.length === 0) return "";
+                                            var key = '"caption":"';
+                                            var si = c.indexOf(key);
+                                            if (si < 0) return "";
+                                            si += key.length;
+                                            var ei = si;
+                                            while (ei < c.length) {
+                                                var code = c.charCodeAt(ei);
+                                                if (code === 92) { ei += 2; continue; }
+                                                if (code === 34) break;
+                                                ei++;
+                                            }
+                                            return c.substring(si, ei);
+                                        }
                                         textStyle {
-                                            color: rowRoot.isDark ? Color.create("#7ab3f5") : Color.create("#1a73e8")
-                                            fontSize: FontSize.Small
-                                            fontStyle: FontStyle.Italic
+                                            base:  SystemDefaults.TextStyles.BodyText
+                                            color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
                                         }
+                                        multiline: true
+                                        topMargin: 0; bottomMargin: 4
                                     }
-                                }
 
-                                // Caption for photo messages. extractPhotoCaption() can't be
-                                // called here (outer page id not in listItemComponent scope),
-                                // and 'property string foo: { block }' is invalid QML 1.0 for
-                                // custom property declarations. Logic inlined into visible/text
-                                // bindings using charCodeAt to avoid double-quote parser issues.
-                                Label {
-                                    id: captionLbl
-                                    visible: {
-                                        if (!photoWrap.visible) return false;
-                                        var c = ListItemData.content || "";
-                                        if (c.length === 0 || c.charCodeAt(0) !== 123) return false;
-                                        return c.indexOf('"caption":"') >= 0;
+                                    // Separator line — only present when caption is showing.
+                                    Container {
+                                        visible: photoCaptionLbl.visible
+                                        horizontalAlignment: HorizontalAlignment.Fill
+                                        preferredHeight: 1
+                                        background: rowRoot.isDark ? Color.create("#555555") : Color.create("#cccccc")
+                                        bottomMargin: 6
                                     }
-                                    text: {
-                                        var c = ListItemData.content || "";
-                                        if (c.length === 0) return "";
-                                        var key = '"caption":"';
-                                        var si = c.indexOf(key);
-                                        if (si < 0) return "";
-                                        si += key.length;
-                                        var ei = si;
-                                        while (ei < c.length) {
-                                            var code = c.charCodeAt(ei);
-                                            if (code === 92) { ei += 2; continue; }
-                                            if (code === 34) break;
-                                            ei++;
+
+                                    // Tappable row: thumbnail on the left, file info on the right.
+                                    Container {
+                                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                        horizontalAlignment: HorizontalAlignment.Fill
+                                        gestureHandlers: [
+                                            TapHandler {
+                                                onTapped: {
+                                                    var lp = ListItemData.localImage || "";
+                                                    if (lp.length > 0) {
+                                                        ListItem.view.tappedPhotoPath = lp;
+                                                    }
+                                                }
+                                            }
+                                        ]
+
+                                        // Square thumbnail (fixed 60 × 60 dp).
+                                        Container {
+                                            preferredWidth:  ui.du(9)
+                                            preferredHeight: ui.du(9)
+                                            minWidth:        ui.du(9)
+                                            minHeight:       ui.du(9)
+                                            maxWidth:        ui.du(9)
+                                            maxHeight:       ui.du(9)
+                                            background: rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
+                                            layout: DockLayout {}
+
+                                            ImageView {
+                                                visible: !!(ListItemData.localImage && ListItemData.localImage !== "")
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment:   VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFill
+                                                imageSource: ListItemData.localImage || ""
+                                            }
+                                            Label {
+                                                visible: !(ListItemData.localImage && ListItemData.localImage !== "")
+                                                text: "..."
+                                                horizontalAlignment: HorizontalAlignment.Center
+                                                verticalAlignment:   VerticalAlignment.Center
+                                                textStyle {
+                                                    fontSize: FontSize.XSmall
+                                                    color: rowRoot.isDark ? Color.create("#888888") : Color.Gray
+                                                }
+                                            }
                                         }
-                                        return c.substring(si, ei);
+
+                                        // File info column: filename, size, status.
+                                        Container {
+                                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+                                            verticalAlignment: VerticalAlignment.Center
+                                            leftPadding: ui.du(1.5)
+
+                                            // Filename extracted from normalUrl / hdUrl in the JSON.
+                                            Label {
+                                                text: {
+                                                    var c = ListItemData.content || "";
+                                                    if (c.length === 0 || c.charCodeAt(0) !== 123) return "Photo";
+                                                    var urlKeys = ['"normalUrl":"', '"hdUrl":"', '"thumbUrl":"'];
+                                                    for (var ki = 0; ki < urlKeys.length; ki++) {
+                                                        var uIdx = c.indexOf(urlKeys[ki]);
+                                                        if (uIdx < 0) continue;
+                                                        var us = uIdx + urlKeys[ki].length;
+                                                        var ue = us;
+                                                        while (ue < c.length && c.charCodeAt(ue) !== 34) ue++;
+                                                        if (ue > us) {
+                                                            var url = c.substring(us, ue);
+                                                            var sl = url.lastIndexOf('/');
+                                                            var fn = sl >= 0 ? url.substring(sl + 1) : url;
+                                                            var qi = fn.indexOf('?');
+                                                            if (qi >= 0) fn = fn.substring(0, qi);
+                                                            if (fn.length > 0) return fn;
+                                                        }
+                                                    }
+                                                    return "Photo";
+                                                }
+                                                textStyle {
+                                                    fontSize: FontSize.Small
+                                                    fontWeight: FontWeight.Bold
+                                                    color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
+                                                }
+                                                multiline: false
+                                                topMargin: 0; bottomMargin: 0
+                                            }
+
+                                            // File size — hidden when the JSON has no fileSize field.
+                                            Label {
+                                                visible: {
+                                                    var c = ListItemData.content || "";
+                                                    if (c.length === 0 || c.charCodeAt(0) !== 123) return false;
+                                                    return c.indexOf('"fileSize":') >= 0;
+                                                }
+                                                text: {
+                                                    var c = ListItemData.content || "";
+                                                    var key2 = '"fileSize":';
+                                                    var fsi = c.indexOf(key2);
+                                                    if (fsi < 0) return "";
+                                                    var fss = fsi + key2.length;
+                                                    var fse = fss;
+                                                    while (fse < c.length) {
+                                                        var dc = c.charCodeAt(fse);
+                                                        if (dc < 48 || dc > 57) break;
+                                                        fse++;
+                                                    }
+                                                    var fsize = parseInt(c.substring(fss, fse)) || 0;
+                                                    if (fsize <= 0) return "";
+                                                    if (fsize >= 1048576) return (Math.round(fsize / 1048576 * 10) / 10) + " MB";
+                                                    return (Math.round(fsize / 1024 * 10) / 10) + " KB";
+                                                }
+                                                textStyle {
+                                                    fontSize: FontSize.XSmall
+                                                    color: rowRoot.isDark ? Color.create("#aaaaaa") : Color.create("#666666")
+                                                }
+                                                topMargin: 2; bottomMargin: 0
+                                            }
+
+                                            // Status text.
+                                            Label {
+                                                text: rowRoot.mine ? "Picture sent" : "Photo"
+                                                textStyle {
+                                                    fontSize: FontSize.XSmall
+                                                    fontStyle: FontStyle.Italic
+                                                    color: rowRoot.isDark ? Color.create("#888888") : Color.create("#999999")
+                                                }
+                                                topMargin: 2; bottomMargin: 0
+                                            }
+                                        }
                                     }
-                                    textStyle {
-                                        base:  SystemDefaults.TextStyles.BodyText
-                                        color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
-                                    }
-                                    multiline: true
-                                    topMargin: 4; bottomMargin: 0
                                 }
                             }
                         }
@@ -1051,6 +1153,13 @@ Page {
             items.push(msgModel.value(i));
         }
 
+        // Normalise a Zalo timestamp (may be seconds or ms) to milliseconds.
+        function toMs(ts) {
+            var n = (ts || 0) * 1;
+            if (n > 0 && n < 1e12) n *= 1000;
+            return n;
+        }
+
         for (var i = 0; i < size; i++) {
             var cur  = items[i];
             var prev = (i > 0)        ? items[i - 1] : null;
@@ -1064,9 +1173,25 @@ Page {
             var prevSender = prev ? (prev.senderId  || "") : "";
             var nextSender = next ? (next.senderId  || "") : "";
 
-            var samePrev = (prev !== null) && (prevMine === curMine)
+            // Photo messages (msgType 2) always stand alone — never merged into
+            // an adjacent text bubble regardless of sender or timing.
+            var curIsPhoto  = (cur.msgType  === 2 || cur.msgType  === "2");
+            var prevIsPhoto = prev ? (prev.msgType === 2 || prev.msgType === "2") : false;
+            var nextIsPhoto = next ? (next.msgType === 2 || next.msgType === "2") : false;
+
+            // 5-minute grouping window: messages more than 5 min apart from the
+            // same sender start a fresh bubble even with no reply in between.
+            var curTs  = toMs(cur.ts);
+            var prevTs = toMs(prev ? prev.ts : null);
+            var nextTs = toMs(next ? next.ts : null);
+            var withinPrev = prev !== null && (Math.abs(curTs - prevTs) < 300000);
+            var withinNext = next !== null && (Math.abs(nextTs - curTs) < 300000);
+
+            var samePrev = !curIsPhoto && !prevIsPhoto && (prev !== null)
+                           && (prevMine === curMine) && withinPrev
                            && (!chatViewPage.isGroup || curMine || curSender === prevSender);
-            var sameNext = (next !== null) && (nextMine === curMine)
+            var sameNext = !curIsPhoto && !nextIsPhoto && (next !== null)
+                           && (nextMine === curMine) && withinNext
                            && (!chatViewPage.isGroup || curMine || curSender === nextSender);
 
             var pos;
@@ -1079,13 +1204,18 @@ Page {
             cur.grouped   = samePrev;
             cur.isMine    = curMine;
 
+            // latestTs: the timestamp shown on the group header is always the
+            // time of the last message in the group. Back-propagate to the
+            // group start, stopping at the group boundary (grouped === false).
             if (!sameNext) {
                 cur.latestTs = cur.ts;
-                var k = i - 1;
-                while (k >= 0) {
-                    if (chatViewPage.normMine(items[k].isMine) !== curMine) break;
-                    items[k].latestTs = cur.ts;
-                    k--;
+                if (cur.grouped) {
+                    var k = i - 1;
+                    while (k >= 0) {
+                        items[k].latestTs = cur.ts;
+                        if (!items[k].grouped) break;
+                        k--;
+                    }
                 }
             }
         }
@@ -1140,6 +1270,27 @@ Page {
             target: null
             onEmojiPicked: {
                 inputField.text = inputField.text + charStr
+            }
+        },
+
+        // Full-screen photo viewer — opened when the user taps a photo attachment.
+        PhotoViewerSheet {
+            id: photoViewerSheet
+        },
+
+        // Watches msgList.tappedPhotoPath set by the delegate's TapHandler and
+        // opens the viewer. Connections target must be assigned after creation
+        // (onCreationCompleted of the Page) to avoid construction-time issues.
+        Connections {
+            id: photoTapCon
+            target: null
+            onTappedPhotoPathChanged: {
+                var p = msgList.tappedPhotoPath;
+                if (p.length > 0) {
+                    photoViewerSheet.imagePath = p;
+                    photoViewerSheet.open();
+                    msgList.tappedPhotoPath = "";
+                }
             }
         },
 
