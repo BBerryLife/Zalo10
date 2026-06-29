@@ -16,6 +16,7 @@ Page {
     property bool   emojiPanelOpen: false
     property variant emojiPanelRef: null
     property string pendingAttachPath: ""
+    property string pendingAttachName: ""
     property variant dbIsMineCache: ({})
     property bool   isMuted: false
     property bool   isBlocked: false
@@ -453,9 +454,9 @@ Page {
                                                    : ui.du(40)
 
                         Container {
-                            preferredWidth: rowRoot.mine ? 6 : 60
-                            minWidth:       rowRoot.mine ? 6 : 60
-                            maxWidth:       rowRoot.mine ? 6 : 60
+                            preferredWidth: rowRoot.mine ? 10 : 60
+                            minWidth:       rowRoot.mine ? 10 : 60
+                            maxWidth:       rowRoot.mine ? 10 : 60
                         }
 
                         Container {
@@ -677,7 +678,7 @@ Page {
                                                 onTapped: {
                                                     var lp = ListItemData.localImage || "";
                                                     if (lp.length > 0) {
-                                                        ListItem.view.tappedPhotoPath = lp;
+                                                        rowRoot.ListItem.view.tappedPhotoPath = lp;
                                                     }
                                                 }
                                             }
@@ -720,9 +721,16 @@ Page {
                                             verticalAlignment: VerticalAlignment.Center
                                             leftPadding: ui.du(1.5)
 
-                                            // Filename extracted from normalUrl / hdUrl in the JSON.
+                                            // Filename: prefer local path (real name), fallback to CDN URL.
                                             Label {
                                                 text: {
+                                                    var limg = ListItemData.localImage || "";
+                                                    if (limg.length > 0) {
+                                                        var lp2 = limg.indexOf("file://") === 0 ? limg.substring(7) : limg;
+                                                        var ls = lp2.lastIndexOf('/');
+                                                        var lf = ls >= 0 ? lp2.substring(ls + 1) : lp2;
+                                                        if (lf.length > 0) return lf;
+                                                    }
                                                     var c = ListItemData.content || "";
                                                     if (c.length === 0 || c.charCodeAt(0) !== 123) return "Photo";
                                                     var urlKeys = ['"normalUrl":"', '"hdUrl":"', '"thumbUrl":"'];
@@ -800,9 +808,9 @@ Page {
                         }
 
                         Container {
-                            preferredWidth: rowRoot.mine ? 60 : 6
-                            minWidth:       rowRoot.mine ? 60 : 6
-                            maxWidth:       rowRoot.mine ? 60 : 6
+                            preferredWidth: rowRoot.mine ? 60 : 10
+                            minWidth:       rowRoot.mine ? 60 : 10
+                            maxWidth:       rowRoot.mine ? 60 : 10
                         }
                     }
                 }
@@ -893,6 +901,83 @@ Page {
             }
         }
 
+        // Attachment preview bar — shown when an image is staged for sending.
+        // Layout: [X]  [thumbnail]  [filename]
+        // User can optionally type a caption in the input field before pressing Send.
+        Container {
+            id: attachPreviewBar
+            visible: chatViewPage.pendingAttachPath.length > 0
+            horizontalAlignment: HorizontalAlignment.Fill
+            background: chatViewPage.isDark ? Color.create("#1e2a38") : Color.create("#dce8f5")
+            topPadding:    ui.du(1.0)
+            bottomPadding: ui.du(1.0)
+            leftPadding:   ui.du(1.0)
+            rightPadding:  ui.du(1.5)
+            layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
+            // X — cancel pending attachment
+            Container {
+                verticalAlignment: VerticalAlignment.Center
+                preferredWidth:  ui.du(6)
+                preferredHeight: ui.du(6)
+                layout: DockLayout {}
+                gestureHandlers: [
+                    TapHandler {
+                        onTapped: {
+                            chatViewPage.pendingAttachPath = "";
+                            chatViewPage.pendingAttachName = "";
+                            sendAction.enabled = (inputField.text.trim().length > 0);
+                        }
+                    }
+                ]
+                Label {
+                    text: "✕"
+                    horizontalAlignment: HorizontalAlignment.Center
+                    verticalAlignment:   VerticalAlignment.Center
+                    textStyle {
+                        fontSize: FontSize.Medium
+                        fontWeight: FontWeight.Bold
+                        color: chatViewPage.isDark ? Color.create("#aaaaaa") : Color.create("#555555")
+                    }
+                }
+            }
+
+            // Thumbnail preview
+            Container {
+                verticalAlignment: VerticalAlignment.Center
+                preferredWidth:  ui.du(7)
+                preferredHeight: ui.du(7)
+                minWidth:        ui.du(7)
+                minHeight:       ui.du(7)
+                maxWidth:        ui.du(7)
+                maxHeight:       ui.du(7)
+                leftMargin:  ui.du(0.5)
+                rightMargin: ui.du(1.0)
+                background: chatViewPage.isDark ? Color.create("#3a3a3a") : Color.create("#cccccc")
+                layout: DockLayout {}
+                ImageView {
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment:   VerticalAlignment.Fill
+                    scalingMethod: ScalingMethod.AspectFill
+                    imageSource: chatViewPage.pendingAttachPath.length > 0
+                                 ? ("file://" + chatViewPage.pendingAttachPath) : ""
+                }
+            }
+
+            // Filename
+            Label {
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                verticalAlignment: VerticalAlignment.Center
+                text: chatViewPage.pendingAttachName.length > 0
+                      ? chatViewPage.pendingAttachName : "Photo"
+                multiline: false
+                textStyle {
+                    fontSize: FontSize.Small
+                    color: chatViewPage.isDark ? Color.create("#dddddd") : Color.create("#222222")
+                }
+            }
+        }
+
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             background: chatViewPage.isDark ? Color.create("#272727") : Color.White
@@ -926,7 +1011,7 @@ Page {
                     onSubmitted: { doSend() }
                 }
                 onTextChanging: {
-                    sendAction.enabled = (text.trim().length > 0);
+                    sendAction.enabled = (text.trim().length > 0 || chatViewPage.pendingAttachPath.length > 0);
                     chatViewPage.refreshQuickMessageSuggestions(text);
                 }
                 // Without this, Cascades was defaulting initial focus/highlight to the
@@ -1084,12 +1169,40 @@ Page {
 
     function doSend() {
         var txt = inputField.text.trim();
-        if (txt.length === 0) return;
+        var hasPhoto = (chatViewPage.pendingAttachPath.length > 0);
+        if (txt.length === 0 && !hasPhoto) return;
         if (!chatViewPage.threadId || chatViewPage.threadId === "") return;
         sendAction.enabled = false;
+        var caption = txt;
         inputField.text = "";
         qmSuggestBar.visible = false;
         qmSuggestModel.clear();
+
+        if (hasPhoto) {
+            var imgPath = chatViewPage.pendingAttachPath;
+            chatViewPage.pendingAttachPath = "";
+            chatViewPage.pendingAttachName = "";
+            var dim = zService.getImageDimensions(imgPath);
+            var imgPlaceholder = {
+                msgId:      "local_img_" + new Date().getTime(),
+                content:    caption.length > 0 ? JSON.stringify({caption: caption}) : "",
+                msgType:    2,
+                localImage: "file://" + imgPath,
+                imgWidth:   dim.width  || 0,
+                imgHeight:  dim.height || 0,
+                isMine:     true,
+                isGroup:    chatViewPage.isGroup,
+                senderId:   "self",
+                dName:      chatViewPage.selfName,
+                ts:         String(new Date().getTime()),
+                selfName:   chatViewPage.selfName
+            };
+            msgModel.append(imgPlaceholder);
+            chatViewPage.rebuildGroups();
+            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+            zService.sendPhoto(chatViewPage.threadId, imgPath, chatViewPage.isGroup, caption);
+            return;
+        }
 
         var placeholder = {
             msgId:    "local_" + new Date().getTime(),
@@ -1398,6 +1511,23 @@ Page {
 
                 if (chatViewPage.normMine(msg.isMine)) {
                     if (msg.msgType === 2 || msg.msgType === "2") {
+                        // Early dedup: if the model already has a confirmed row for this
+                        // msgId, skip entirely (HTTP confirm + WS echo can both fire).
+                        if (msg.msgId) {
+                            for (var di0 = 0; di0 < msgModel.size(); di0++) {
+                                var dv0 = msgModel.value(di0);
+                                if (dv0.msgId === msg.msgId && dv0.msgId.indexOf("local_") !== 0) {
+                                    // Already stored — only patch localImage if newly available.
+                                    if (msg.localImage && msg.localImage.length > 0
+                                        && (!dv0.localImage || dv0.localImage.length === 0)) {
+                                        dv0.localImage = msg.localImage;
+                                        msgModel.replace(di0, dv0);
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+
                         var savedLocalImage = "";
                         var savedImgWidth = 0, savedImgHeight = 0;
                         var placeholderIdx = -1;
@@ -1514,32 +1644,18 @@ Page {
             title: "Select File"
             onFileSelected: {
                 var path = selectedFiles[0];
-                chatViewPage.pendingAttachPath = path;
 
                 var ext = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
                 var isImg = (ext === "jpg" || ext === "jpeg" || ext === "png"
                              || ext === "gif" || ext === "webp" || ext === "bmp");
 
                 if (isImg) {
-                    var dim = zService.getImageDimensions(path);
-                    var m = {
-                        msgId:      "local_img_" + new Date().getTime(),
-                        content:    "",
-                        msgType:    2,
-                        localImage: "file://" + path,
-                        imgWidth:   dim.width  || 0,
-                        imgHeight:  dim.height || 0,
-                        isMine:     true,
-                        isGroup:    chatViewPage.isGroup,
-                        senderId:   "self",
-                        dName:      chatViewPage.selfName,
-                        ts:         String(new Date().getTime()),
-                        selfName:   chatViewPage.selfName
-                    };
-                    msgModel.append(m);
-                    chatViewPage.rebuildGroups();
-                    msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
-                    zService.sendPhoto(chatViewPage.threadId, path, chatViewPage.isGroup);
+                    // Stage the image — user can type a caption then press Send.
+                    var fname = path.substring(path.lastIndexOf('/') + 1);
+                    chatViewPage.pendingAttachPath = path;
+                    chatViewPage.pendingAttachName = fname;
+                    inputField.requestFocus();
+                    sendAction.enabled = true;
                 } else {
                     var fname = path.substring(path.lastIndexOf('/') + 1);
                     var mf = {

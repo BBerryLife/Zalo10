@@ -460,7 +460,7 @@ void ZaloService::onSendMsgDone()
 // ─── Send Photo ──────────────────────────────────────────────────────────────
 // Two-step: 1) upload to file[0]/api/{message|group}/photo_original/upload
 //           2) send message via {chat|group}/api/{message|group}/photo
-void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup)
+void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption)
 {
     if (!m_loggedIn) return;
 
@@ -531,6 +531,7 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     reply->setProperty("threadId",  threadId);
     reply->setProperty("localPath", "file://" + path);
     reply->setProperty("isGroup",   isGroup);
+    reply->setProperty("caption",   caption);
     connect(reply, SIGNAL(finished()), this, SLOT(onSendPhotoDone()));
 }
 
@@ -542,6 +543,7 @@ void ZaloService::onSendPhotoDone()
     QString tid     = reply->property("threadId").toString();
     QString localPath = reply->property("localPath").toString();
     bool isGroup    = reply->property("isGroup").toBool();
+    QString caption = reply->property("caption").toString();
     QByteArray raw  = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] sendPhoto upload response:" << raw.left(300);
@@ -596,7 +598,7 @@ void ZaloService::onSendPhotoDone()
     QVariantMap mp;
     mp["photoId"]   = photoId;
     mp["clientId"]  = QString::number(ts2);
-    mp["desc"]      = "";
+    mp["desc"]      = caption;
     mp["width"]     = photoDim.width();
     mp["height"]    = photoDim.height();
     mp["rawUrl"]    = normalUrl;
@@ -633,9 +635,18 @@ void ZaloService::onSendPhotoDone()
     QNetworkRequest req2 = buildRequest(msgUrl, "https://chat.zalo.me/");
     req2.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
-    QString contentJson = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
-                          .arg(normalUrl).arg(thumbUrl)
-                          .arg(hdUrl.isEmpty() ? normalUrl : hdUrl);
+    // Build the content JSON that QML will store and display.
+    // Caption (desc) is included so the QML photo bubble can render it.
+    QString captionEsc = caption;
+    captionEsc.replace("\\", "\\\\").replace("\"", "\\\"")
+              .replace("\n", "\\n").replace("\r", "\\r");
+    QString contentJson = captionEsc.isEmpty()
+        ? QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
+              .arg(normalUrl).arg(thumbUrl)
+              .arg(hdUrl.isEmpty() ? normalUrl : hdUrl)
+        : QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\",\"caption\":\"%4\"}")
+              .arg(normalUrl).arg(thumbUrl)
+              .arg(hdUrl.isEmpty() ? normalUrl : hdUrl).arg(captionEsc);
 
     qDebug() << "[Zalo] sendPhoto send-msg POST" << msgUrl.left(100);
     QNetworkReply *r2 = m_manager->post(req2, body2);
@@ -643,6 +654,7 @@ void ZaloService::onSendPhotoDone()
     r2->setProperty("localPath",   localPath);
     r2->setProperty("isGroup",     isGroup);
     r2->setProperty("contentJson", contentJson);
+    r2->setProperty("caption",     caption);
     connect(r2, SIGNAL(finished()), this, SLOT(onSendPhotoMsgDone()));
 }
 

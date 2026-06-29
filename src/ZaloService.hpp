@@ -48,7 +48,7 @@ public:
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
-    Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup);
+    Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption = QString());
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId = QString());
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
