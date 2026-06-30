@@ -97,6 +97,7 @@ public:
     // Used by ChatView.qml right after the user picks a photo to send, so the outgoing
     // bubble can be sized to the real aspect ratio immediately (before upload finishes).
     Q_INVOKABLE QVariantMap getImageDimensions(const QString &localFilePath) const;
+    Q_INVOKABLE qint64 getFileSize(const QString &localFilePath) const;
 
     // ---- Data export / import / cache management (Settings) -----------------
     // Runs on the UI thread but is kept fast: SQLite reads/writes and one small

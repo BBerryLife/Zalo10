@@ -61,6 +61,13 @@ QVariantMap ZaloService::getImageDimensions(const QString &localFilePath) const
     return m;
 }
 
+qint64 ZaloService::getFileSize(const QString &localFilePath) const
+{
+    QString path = localFilePath;
+    if (path.startsWith("file://")) path = path.mid(7);
+    return QFileInfo(path).size();
+}
+
 ZaloService::ZaloService(QObject *parent)
     : QObject(parent), m_manager(new QNetworkAccessManager(this)),
       m_qrExpireTimer(new QTimer(this)), m_listenTimer(new QTimer(this)),

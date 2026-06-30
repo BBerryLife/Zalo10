@@ -399,14 +399,12 @@ Page {
             listItemComponents: [
                 ListItemComponent {
                     type: ""
-                    Container {
+                    CustomListItem {
                         id: rowRoot
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        topPadding:    ListItemData.grouped === true ? 0 : 6
-                        bottomPadding: 0
+                        highlightAppearance: HighlightAppearance.None
+                        dividerVisible: false
 
                         property bool isDark: ListItem.view.isDark
-                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
                         // Browser-style find-in-page: query text and whether this exact
                         // row is the currently-focused match (for a slightly stronger
@@ -448,10 +446,20 @@ Page {
                         // Used to size photo bubbles to the image's real aspect ratio
                         // without ever exceeding the bubble's own width. 94 = the two
                         // side spacer Containers below (6+60) + bubble left/right padding (14+14).
-                        attachedObjects: [ LayoutUpdateHandler { id: rowLUH } ]
+                        property string bubblePos: ListItemData.bubblePos || "full"
+                        property string bubbleImage: rowRoot.mine
+                            ? ("asset:///images/Bubble/outgoing/" + rowRoot.bubblePos + ".png")
+                            : ("asset:///images/Bubble/incoming/" + rowRoot.bubblePos + ".png")
                         property real bubbleMaxW: rowLUH.layoutFrame.width > 94
                                                    ? (rowLUH.layoutFrame.width - 94)
                                                    : ui.du(40)
+
+                        Container {
+                            horizontalAlignment: HorizontalAlignment.Fill
+                            topPadding:    rowRoot.grouped ? 0 : 6
+                            bottomPadding: 0
+                            layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                            attachedObjects: [ LayoutUpdateHandler { id: rowLUH } ]
 
                         Container {
                             preferredWidth: rowRoot.mine ? 10 : 60
@@ -461,11 +469,20 @@ Page {
 
                         Container {
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            background: rowRoot.isDark ? Color.create("#2a2a2a") : Color.White
+                            background: rowRoot.isDark
+                                ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
+                                : bubblePaint.imagePaint
                             topPadding:    rowRoot.grouped ? 6 : 10
                             bottomPadding: 10
                             leftPadding:   14
                             rightPadding:  14
+                            attachedObjects: [
+                                ImagePaintDefinition {
+                                    id: bubblePaint
+                                    imageSource: rowRoot.bubbleImage
+                                    repeatPattern: RepeatPattern.Fill
+                                }
+                            ]
 
                             Container {
                                 visible: !rowRoot.grouped
@@ -684,14 +701,14 @@ Page {
                                             }
                                         ]
 
-                                        // Square thumbnail (fixed 60 × 60 dp).
+                                        // Square thumbnail (~66 × 66 dp).
                                         Container {
-                                            preferredWidth:  ui.du(9)
-                                            preferredHeight: ui.du(9)
-                                            minWidth:        ui.du(9)
-                                            minHeight:       ui.du(9)
-                                            maxWidth:        ui.du(9)
-                                            maxHeight:       ui.du(9)
+                                            preferredWidth:  ui.du(11)
+                                            preferredHeight: ui.du(11)
+                                            minWidth:        ui.du(11)
+                                            minHeight:       ui.du(11)
+                                            maxWidth:        ui.du(11)
+                                            maxHeight:       ui.du(11)
                                             background: rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
                                             layout: DockLayout {}
 
@@ -781,6 +798,7 @@ Page {
                                                     }
                                                     var fsize = parseInt(c.substring(fss, fse)) || 0;
                                                     if (fsize <= 0) return "";
+                                                    if (fsize >= 1073741824) return (Math.round(fsize / 1073741824 * 10) / 10) + " GB";
                                                     if (fsize >= 1048576) return (Math.round(fsize / 1048576 * 10) / 10) + " MB";
                                                     return (Math.round(fsize / 1024 * 10) / 10) + " KB";
                                                 }
@@ -791,13 +809,17 @@ Page {
                                                 topMargin: 2; bottomMargin: 0
                                             }
 
-                                            // Status text.
+                                            // Status text: gray, shows "Sending..." for unconfirmed outgoing.
                                             Label {
-                                                text: rowRoot.mine ? "Picture sent" : "Photo"
+                                                text: {
+                                                    var mid = ListItemData.msgId || "";
+                                                    if (rowRoot.mine && mid.indexOf("local_img_") === 0) return "Sending...";
+                                                    return rowRoot.mine ? "Picture sent" : "Photo";
+                                                }
                                                 textStyle {
                                                     fontSize: FontSize.XSmall
                                                     fontStyle: FontStyle.Italic
-                                                    color: rowRoot.isDark ? Color.create("#888888") : Color.create("#999999")
+                                                    color: Color.create("#888888")
                                                 }
                                                 topMargin: 2; bottomMargin: 0
                                             }
@@ -812,6 +834,7 @@ Page {
                             minWidth:       rowRoot.mine ? 60 : 10
                             maxWidth:       rowRoot.mine ? 60 : 10
                         }
+                        } // inner row Container
                     }
                 }
             ]
@@ -1183,9 +1206,18 @@ Page {
             chatViewPage.pendingAttachPath = "";
             chatViewPage.pendingAttachName = "";
             var dim = zService.getImageDimensions(imgPath);
+            var fsize = zService.getFileSize(imgPath);
+            var baseContent = caption.length > 0 ? JSON.stringify({caption: caption}) : "";
+            var localContent = baseContent;
+            if (fsize > 0) {
+                if (localContent.length > 0)
+                    localContent = localContent.slice(0, -1) + ',"fileSize":' + fsize + '}';
+                else
+                    localContent = '{"fileSize":' + fsize + '}';
+            }
             var imgPlaceholder = {
                 msgId:      "local_img_" + new Date().getTime(),
-                content:    caption.length > 0 ? JSON.stringify({caption: caption}) : "",
+                content:    localContent,
                 msgType:    2,
                 localImage: "file://" + imgPath,
                 imgWidth:   dim.width  || 0,
