@@ -481,7 +481,6 @@ Page {
                                 visible: !rowRoot.isDark
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 verticalAlignment:   VerticalAlignment.Fill
-                                scalingMethod: ScalingMethod.Fill
                                 imageSource: rowRoot.bubbleImage
                             }
 
@@ -711,14 +710,14 @@ Page {
                                             }
                                         ]
 
-                                        // Square thumbnail (~80 × 80 dp).
+                                        // Square thumbnail (~100 × 100 dp).
                                         Container {
-                                            preferredWidth:  ui.du(14)
-                                            preferredHeight: ui.du(14)
-                                            minWidth:        ui.du(14)
-                                            minHeight:       ui.du(14)
-                                            maxWidth:        ui.du(14)
-                                            maxHeight:       ui.du(14)
+                                            preferredWidth:  ui.du(18)
+                                            preferredHeight: ui.du(18)
+                                            minWidth:        ui.du(18)
+                                            minHeight:       ui.du(18)
+                                            maxWidth:        ui.du(18)
+                                            maxHeight:       ui.du(18)
                                             background: rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
                                             layout: DockLayout {}
 
@@ -1607,6 +1606,33 @@ Page {
                                     handledInPlace = true;
                                     break;
                                 }
+                            }
+                        }
+
+                        // Last-resort dedup: the HTTP send-msg confirmation and the WS echo
+                        // for the SAME photo can carry two different msgId values (the HTTP
+                        // response's id field is occasionally 0/missing, so the C++ side falls
+                        // back to a locally-generated id) — neither the msgId nor localImage
+                        // match above would catch that case, since the WS copy never carries
+                        // a localImage. Treat any other already-stored mine/photo row sent
+                        // within the last 8s with the same caption as the same physical send
+                        // and merge into it instead of appending a visual duplicate.
+                        if (!handledInPlace) {
+                            var myTs = parseInt(msg.ts || "0", 10);
+                            var myCap = chatViewPage.extractPhotoCaption(msg.content || "");
+                            for (var di2 = msgModel.size() - 1; di2 >= 0; di2--) {
+                                var dv2 = msgModel.value(di2);
+                                if (!dv2.isMine) continue;
+                                if (dv2.msgType !== 2 && dv2.msgType !== "2") continue;
+                                if (dv2.msgId === msg.msgId) continue;
+                                var otherTs = parseInt(dv2.ts || "0", 10);
+                                if (Math.abs(otherTs - myTs) > 8000) continue;
+                                if (chatViewPage.extractPhotoCaption(dv2.content || "") !== myCap) continue;
+                                if ((!msg.localImage || msg.localImage.length === 0) && dv2.localImage && dv2.localImage.length > 0)
+                                    msg.localImage = dv2.localImage;
+                                msgModel.replace(di2, msg);
+                                handledInPlace = true;
+                                break;
                             }
                         }
                     } else {
