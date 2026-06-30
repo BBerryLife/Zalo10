@@ -470,30 +470,9 @@ Page {
                         Container {
                             id: bubbleWrap
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            layout: DockLayout {}
-                            // Flat-color base layer — guarantees a visible bubble even
-                            // if the nine-patch ImageView below fails to size/render.
-                            // Sits underneath both the image and the content, so it
-                            // only shows through where the PNG has no opaque pixels.
                             background: rowRoot.mine
                                 ? (rowRoot.isDark ? Color.create("#1e3a5f") : Color.create("#dceeff"))
                                 : (rowRoot.isDark ? Color.create("#2a2a2a") : Color.create("#f0f0f0"))
-                            attachedObjects: [ LayoutUpdateHandler { id: bubbleLUH } ]
-
-                            // Nine-patch bubble background attempt. Binding ImageView's
-                            // size explicitly to the wrapper's own measured layoutFrame
-                            // (rather than horizontalAlignment/verticalAlignment: Fill)
-                            // avoids a 0×0 resolve that Fill-in-DockLayout can hit when
-                            // nested this deep inside a CustomListItem under a
-                            // virtualized ListView. ImageView still honors the .amd
-                            // sliceMargins next to the PNG once it has a real size to
-                            // stretch into. Drawn on top of the flat-color layer above.
-                            ImageView {
-                                visible: !rowRoot.isDark && bubbleLUH.layoutFrame.width > 0
-                                preferredWidth:  bubbleLUH.layoutFrame.width
-                                preferredHeight: bubbleLUH.layoutFrame.height
-                                imageSource: rowRoot.bubbleImage
-                            }
 
                             Container {
                                 background: Color.Transparent
@@ -846,7 +825,20 @@ Page {
                                 }
                             }
                         } // bubble content Container
-                        } // bubbleWrap (DockLayout)
+
+                            // Thin two-tone accent strip along the bottom edge of the
+                            // bubble (gray then blue), matching the BBM reference look.
+                            Container {
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                preferredHeight: ui.du(0.3)
+                                background: Color.create("#cccccc")
+                            }
+                            Container {
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                preferredHeight: ui.du(0.3)
+                                background: Color.create("#0073BC")
+                            }
+                        } // bubbleWrap
 
                         Container {
                             preferredWidth: rowRoot.mine ? 60 : 10
