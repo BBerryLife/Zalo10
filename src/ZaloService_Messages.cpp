@@ -677,8 +677,21 @@ void ZaloService::onSendPhotoMsgDone()
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             QVariantMap data = jsonToMap(dec.toUtf8());
             qint64 msgIdInt = data["msgId"].toLongLong();
-            QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt)
-                                            : QString::number(QDateTime::currentMSecsSinceEpoch());
+
+            if (msgIdInt == 0) {
+                // photo_original/send doesn't return a real server msgId — only
+                // a locally-fabricated one would be available here, and saving
+                // that to the DB creates a SECOND, permanent row once the WS
+                // echo (cmd=501) lands a moment later with the real msgId,
+                // since dbSaveMessage() keys strictly on msgId. Skip persisting
+                // from this HTTP confirm entirely: leave the QML "local_img_"
+                // placeholder as-is (still showing "Sending...") and let the
+                // WS echo be the single source of truth that both saves the
+                // row and replaces the placeholder in place.
+                qDebug() << "[Zalo] sendPhoto: no real msgId in send-msg response, "
+                            "deferring save to WS echo to avoid a duplicate row";
+            } else {
+            QString msgId = QString::number(msgIdInt);
             // If WS cmd=501 already delivered this message, skip emit but still save localImage to DB
             if (m_seenMsgIds.contains(msgId)) {
                 qDebug() << "[Zalo] sendPhoto: WS already delivered msgId=" << msgId << ", skipping duplicate emit";
@@ -713,6 +726,7 @@ void ZaloService::onSendPhotoMsgDone()
                 m_seenMsgIds.insert(msgId);
                 dbSaveMessage(out, tid);
                 emit newMessage(tid, out);
+            }
             }
         } else {
             ok = false;

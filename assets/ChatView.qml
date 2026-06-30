@@ -469,29 +469,13 @@ Page {
 
                         Container {
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            layout: DockLayout {}
-
-                            // Nine-patch bubble background. ImageView (unlike
-                            // ImagePaintDefinition) honors the .amd sliceMargins
-                            // metadata next to each bubble PNG, so the rounded
-                            // corner + tail stay crisp while the middle stretches
-                            // to fit the message — this is the same nine-patch
-                            // mechanism BB10 buttons rely on for their .amd assets.
-                            ImageView {
-                                visible: !rowRoot.isDark
-                                horizontalAlignment: HorizontalAlignment.Fill
-                                verticalAlignment:   VerticalAlignment.Fill
-                                imageSource: rowRoot.bubbleImage
-                            }
-
-                            Container {
-                                background: rowRoot.isDark
-                                    ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
-                                    : Color.Transparent
-                                topPadding:    rowRoot.grouped ? 6 : 10
-                                bottomPadding: 10
-                                leftPadding:   14
-                                rightPadding:  14
+                            background: rowRoot.mine
+                                ? (rowRoot.isDark ? Color.create("#1e3a5f") : Color.create("#dceeff"))
+                                : (rowRoot.isDark ? Color.create("#2a2a2a") : Color.create("#f0f0f0"))
+                            topPadding:    rowRoot.grouped ? 6 : 10
+                            bottomPadding: 10
+                            leftPadding:   14
+                            rightPadding:  14
 
                             Container {
                                 visible: !rowRoot.grouped
@@ -836,8 +820,7 @@ Page {
                                     }
                                 }
                             }
-                            } // bubble content Container
-                        } // bubble background DockLayout Container
+                        } // bubble background Container
 
                         Container {
                             preferredWidth: rowRoot.mine ? 60 : 10
@@ -1571,7 +1554,7 @@ Page {
                         }
 
                         var savedLocalImage = "";
-                        var savedImgWidth = 0, savedImgHeight = 0;
+                        var savedImgWidth = 0, savedImgHeight = 0, savedFileSize = 0;
                         var placeholderIdx = -1;
                         for (var pi = msgModel.size() - 1; pi >= 0; pi--) {
                             var pitem = msgModel.value(pi);
@@ -1579,6 +1562,8 @@ Page {
                                 savedLocalImage = pitem.localImage || "";
                                 savedImgWidth  = pitem.imgWidth  || 0;
                                 savedImgHeight = pitem.imgHeight || 0;
+                                var fsM = (pitem.content || "").match(/"fileSize"\s*:\s*(\d+)/);
+                                savedFileSize = fsM ? parseInt(fsM[1], 10) : 0;
                                 placeholderIdx = pi;
                                 break;
                             }
@@ -1586,6 +1571,16 @@ Page {
                         if (savedLocalImage.length > 0) msg.localImage = savedLocalImage;
                         if (!msg.imgWidth  && savedImgWidth  > 0) msg.imgWidth  = savedImgWidth;
                         if (!msg.imgHeight && savedImgHeight > 0) msg.imgHeight = savedImgHeight;
+                        // The server confirmation (HTTP contentJson / WS normalizePhotoContent)
+                        // never carries a file-size field — only the QML-built placeholder did —
+                        // so re-inject it here or the size disappears from the bubble the moment
+                        // "Sending..." flips to "Picture sent".
+                        if (savedFileSize > 0 && (msg.content || "").indexOf('"fileSize"') < 0) {
+                            if (msg.content && msg.content.charAt(0) === "{")
+                                msg.content = msg.content.slice(0, -1) + ',"fileSize":' + savedFileSize + '}';
+                            else
+                                msg.content = '{"fileSize":' + savedFileSize + '}';
+                        }
 
                         if (placeholderIdx >= 0) {
                             // Replace the placeholder row in place (same index) instead of
