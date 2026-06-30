@@ -470,9 +470,9 @@ Page {
                         Container {
                             id: bubbleWrap
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            background: rowRoot.mine
-                                ? (rowRoot.isDark ? Color.create("#1e3a5f") : Color.create("#dceeff"))
-                                : (rowRoot.isDark ? Color.create("#2a2a2a") : Color.create("#f0f0f0"))
+                            background: rowRoot.isDark
+                                ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
+                                : Color.White
 
                             Container {
                                 background: Color.Transparent
@@ -826,17 +826,12 @@ Page {
                             }
                         } // bubble content Container
 
-                            // Thin two-tone accent strip along the bottom edge of the
-                            // bubble (gray then blue), matching the BBM reference look.
+                            // Accent strip along the bottom edge of the bubble —
+                            // gray for my own messages, blue for incoming ones.
                             Container {
                                 horizontalAlignment: HorizontalAlignment.Fill
-                                preferredHeight: ui.du(0.3)
-                                background: Color.create("#cccccc")
-                            }
-                            Container {
-                                horizontalAlignment: HorizontalAlignment.Fill
-                                preferredHeight: ui.du(0.3)
-                                background: Color.create("#0073BC")
+                                preferredHeight: ui.du(0.8)
+                                background: rowRoot.mine ? Color.create("#999999") : Color.create("#0073BC")
                             }
                         } // bubbleWrap
 
