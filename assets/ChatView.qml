@@ -469,20 +469,30 @@ Page {
 
                         Container {
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            background: rowRoot.isDark
-                                ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
-                                : bubblePaint.imagePaint
-                            topPadding:    rowRoot.grouped ? 6 : 10
-                            bottomPadding: 10
-                            leftPadding:   14
-                            rightPadding:  14
-                            attachedObjects: [
-                                ImagePaintDefinition {
-                                    id: bubblePaint
-                                    imageSource: rowRoot.bubbleImage
-                                    repeatPattern: RepeatPattern.Fill
-                                }
-                            ]
+                            layout: DockLayout {}
+
+                            // Nine-patch bubble background. ImageView (unlike
+                            // ImagePaintDefinition) honors the .amd sliceMargins
+                            // metadata next to each bubble PNG, so the rounded
+                            // corner + tail stay crisp while the middle stretches
+                            // to fit the message — this is the same nine-patch
+                            // mechanism BB10 buttons rely on for their .amd assets.
+                            ImageView {
+                                visible: !rowRoot.isDark
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                verticalAlignment:   VerticalAlignment.Fill
+                                scalingMethod: ScalingMethod.Fill
+                                imageSource: rowRoot.bubbleImage
+                            }
+
+                            Container {
+                                background: rowRoot.isDark
+                                    ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
+                                    : Color.Transparent
+                                topPadding:    rowRoot.grouped ? 6 : 10
+                                bottomPadding: 10
+                                leftPadding:   14
+                                rightPadding:  14
 
                             Container {
                                 visible: !rowRoot.grouped
@@ -701,14 +711,14 @@ Page {
                                             }
                                         ]
 
-                                        // Square thumbnail (~66 × 66 dp).
+                                        // Square thumbnail (~80 × 80 dp).
                                         Container {
-                                            preferredWidth:  ui.du(11)
-                                            preferredHeight: ui.du(11)
-                                            minWidth:        ui.du(11)
-                                            minHeight:       ui.du(11)
-                                            maxWidth:        ui.du(11)
-                                            maxHeight:       ui.du(11)
+                                            preferredWidth:  ui.du(14)
+                                            preferredHeight: ui.du(14)
+                                            minWidth:        ui.du(14)
+                                            minHeight:       ui.du(14)
+                                            maxWidth:        ui.du(14)
+                                            maxHeight:       ui.du(14)
                                             background: rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
                                             layout: DockLayout {}
 
@@ -827,7 +837,8 @@ Page {
                                     }
                                 }
                             }
-                        }
+                            } // bubble content Container
+                        } // bubble background DockLayout Container
 
                         Container {
                             preferredWidth: rowRoot.mine ? 60 : 10
