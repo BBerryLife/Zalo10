@@ -468,14 +468,34 @@ Page {
                         }
 
                         Container {
+                            id: bubbleWrap
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            background: rowRoot.mine
-                                ? (rowRoot.isDark ? Color.create("#1e3a5f") : Color.create("#dceeff"))
-                                : (rowRoot.isDark ? Color.create("#2a2a2a") : Color.create("#f0f0f0"))
-                            topPadding:    rowRoot.grouped ? 6 : 10
-                            bottomPadding: 10
-                            leftPadding:   14
-                            rightPadding:  14
+                            layout: DockLayout {}
+                            attachedObjects: [ LayoutUpdateHandler { id: bubbleLUH } ]
+
+                            // Nine-patch bubble background. Binding ImageView's size
+                            // explicitly to the wrapper's own measured layoutFrame
+                            // (rather than horizontalAlignment/verticalAlignment: Fill)
+                            // avoids a 0×0 resolve that Fill-in-DockLayout can hit when
+                            // nested this deep inside a CustomListItem under a
+                            // virtualized ListView. ImageView still honors the .amd
+                            // sliceMargins next to the PNG once it has a real size to
+                            // stretch into.
+                            ImageView {
+                                visible: !rowRoot.isDark && bubbleLUH.layoutFrame.width > 0
+                                preferredWidth:  bubbleLUH.layoutFrame.width
+                                preferredHeight: bubbleLUH.layoutFrame.height
+                                imageSource: rowRoot.bubbleImage
+                            }
+
+                            Container {
+                                background: rowRoot.isDark
+                                    ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
+                                    : Color.Transparent
+                                topPadding:    rowRoot.grouped ? 6 : 10
+                                bottomPadding: 10
+                                leftPadding:   14
+                                rightPadding:  14
 
                             Container {
                                 visible: !rowRoot.grouped
@@ -820,7 +840,8 @@ Page {
                                     }
                                 }
                             }
-                        } // bubble background Container
+                        } // bubble content Container
+                        } // bubbleWrap (DockLayout)
 
                         Container {
                             preferredWidth: rowRoot.mine ? 60 : 10
