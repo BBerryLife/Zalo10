@@ -379,6 +379,7 @@ NavigationPane {
                         g.localAvatar    = "";
                         g.lastMsgIsMine  = false;
                         g.lastSenderName = "";
+                        g.sortTs         = 0;
                         var lm = lastMsgs[g.threadId || ""];
                         if (lm) {
                             var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
@@ -398,14 +399,25 @@ NavigationPane {
                         }
                         if (g.lastTime && g.lastTime !== "") {
                             var ts = parseInt(g.lastTime);
-                            if (!isNaN(ts)) g.lastTime = groupsNav.formatTime(ts);
+                            if (!isNaN(ts)) {
+                                g.sortTs = ts;
+                                g.lastTime = groupsNav.formatTime(ts);
+                            }
                         }
                         arr.push(g);
-                        groupModel.append(g);
-                        var url = g.avatar || "";
-                        var tid = g.threadId || "";
-                        if (url.length > 0 && tid.length > 0)
-                            zService.downloadAvatar(tid, url);
+                    }
+                    // Same recency-sort fix as ChatsTab.qml's onFriendsReady: the
+                    // server's thread order is fixed, not by recency, so without
+                    // this every logout/login reset groups back to their original
+                    // position instead of keeping the most recently active one on top.
+                    arr.sort(function(a, b) { return (b.sortTs || 0) - (a.sortTs || 0); });
+                    for (var j = 0; j < arr.length; j++) {
+                        var gg = arr[j];
+                        groupModel.append(gg);
+                        var gurl = gg.avatar || "";
+                        var gtid = gg.threadId || "";
+                        if (gurl.length > 0 && gtid.length > 0)
+                            zService.downloadAvatar(gtid, gurl);
                     }
                     groupsNav.allGroups = arr;
                 }

@@ -49,6 +49,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
+        $$quote($$BASEDIR/assets/PhotoViewerSheet.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/QuickMessageEditSheet.qml) \
         $$quote($$BASEDIR/assets/QuickMessagesSheet.qml) \
@@ -62,26 +63,126 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ActiveFrame/Activeframe_zl10_Small.png) \
         $$quote($$BASEDIR/assets/images/ActiveFrame/activeframe_zl10_big.png) \
         $$quote($$BASEDIR/assets/images/ActiveFrame/activeframe_zl10_medium.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/0/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/0/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/0/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/0/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/0/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/0/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/0/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/0/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/1/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/1/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/1/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/1/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/1/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/1/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/1/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/1/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/2/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/2/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/2/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/2/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/2/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/2/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/2/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/2/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/3/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/3/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/3/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/3/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/3/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/3/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/3/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/3/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/4/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/4/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/4/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/4/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/4/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/4/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/4/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/4/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/5/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/5/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/5/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/5/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/5/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/5/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/5/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/5/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/6/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/6/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/6/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/6/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/6/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/6/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/6/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/6/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/7/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/7/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/7/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/7/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/7/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/7/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/7/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/7/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/8/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/8/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/8/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/8/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/8/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/8/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/8/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/8/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/9/bottom.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/9/bottom.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/9/full.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/9/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/9/middle.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/9/middle.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/9/top.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/color/9/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/desktop.ini) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/cal_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/doc_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/generic_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/music_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/pdf_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/pic_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/ppt_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/vcf_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/video_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/voicenote_160x160.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/file_transfer/xls_160x160.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom.png.amd) \
-        $$quote($$BASEDIR/assets/images/Bubble/incoming/bottom_flipped.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/full.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/full.png.amd) \
-        $$quote($$BASEDIR/assets/images/Bubble/incoming/full_flipped.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/fullPrio.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/incoming/fullPrio.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/middle.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/middle.png.amd) \
-        $$quote($$BASEDIR/assets/images/Bubble/incoming/middle_flipped.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/top.png) \
         $$quote($$BASEDIR/assets/images/Bubble/incoming/top.png.amd) \
-        $$quote($$BASEDIR/assets/images/Bubble/incoming/top_flipped.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/bottom.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/bottom.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/full.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/full.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/fullPrio.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/outgoing/fullPrio.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/middle.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/middle.png.amd) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png) \
         $$quote($$BASEDIR/assets/images/Bubble/outgoing/top.png.amd) \
+        $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_video_chat_inactive.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_video_chat_incoming.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_video_chat_missed.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_video_chat_outgoing.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_voice_chat_inactive.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_voice_chat_incoming.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_voice_chat_missed.png) \
+        $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_voice_chat_outgoing.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ConversationPaneSend.png) \
         $$quote($$BASEDIR/assets/images/ChatView/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatView/add.png) \
@@ -768,12 +869,51 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/images/Bubble/*.qml) \
         $$quote($$BASEDIR/../assets/images/Bubble/*.js) \
         $$quote($$BASEDIR/../assets/images/Bubble/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/0/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/0/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/0/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/1/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/1/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/1/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/2/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/2/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/2/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/3/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/3/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/3/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/4/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/4/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/4/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/5/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/5/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/5/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/6/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/6/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/6/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/7/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/7/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/7/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/8/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/8/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/8/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/9/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/9/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/color/9/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/file_transfer/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/file_transfer/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/file_transfer/*.qs) \
         $$quote($$BASEDIR/../assets/images/Bubble/incoming/*.qml) \
         $$quote($$BASEDIR/../assets/images/Bubble/incoming/*.js) \
         $$quote($$BASEDIR/../assets/images/Bubble/incoming/*.qs) \
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.qml) \
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.js) \
         $$quote($$BASEDIR/../assets/images/Bubble/outgoing/*.qs) \
+        $$quote($$BASEDIR/../assets/images/Bubble/video_voice/*.qml) \
+        $$quote($$BASEDIR/../assets/images/Bubble/video_voice/*.js) \
+        $$quote($$BASEDIR/../assets/images/Bubble/video_voice/*.qs) \
         $$quote($$BASEDIR/../assets/images/ChatView/*.qml) \
         $$quote($$BASEDIR/../assets/images/ChatView/*.js) \
         $$quote($$BASEDIR/../assets/images/ChatView/*.qs) \

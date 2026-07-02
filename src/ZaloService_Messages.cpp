@@ -460,6 +460,35 @@ void ZaloService::onSendMsgDone()
 // ─── Send Photo ──────────────────────────────────────────────────────────────
 // Two-step: 1) upload to file[0]/api/{message|group}/photo_original/upload
 //           2) send message via {chat|group}/api/{message|group}/photo
+// Copies a picker-provided image (which may live in a transient/sandboxed location,
+// e.g. a Camera share-card path) into the persistent "/tmp/zalo_img_local_<ts>.<ext>"
+// cache. Uses the same "zalo_img_" prefix as downloadImageMessage()'s cache files so
+// clearCache() already picks it up via cacheFilePatterns() — nothing else deletes it,
+// including app close/restart (plain "/tmp/", not QDir::tempPath() — see notes on
+// downloadImageMessage() for why).
+QString ZaloService::cacheLocalImage(const QString &sourcePath)
+{
+    QString path = sourcePath;
+    if (path.startsWith("file://")) path = path.mid(7);
+    if (path.isEmpty() || !QFile::exists(path)) {
+        qDebug() << "[Zalo] cacheLocalImage: source missing" << path;
+        return sourcePath;
+    }
+
+    QString ext = path.section('.', -1).toLower();
+    if (ext.isEmpty() || ext.length() > 4) ext = "jpg";
+    qint64 ts = QDateTime::currentMSecsSinceEpoch();
+    QString destPath = "/tmp/zalo_img_local_" + QString::number(ts) + "." + ext;
+
+    if (!QFile::copy(path, destPath)) {
+        qDebug() << "[Zalo] cacheLocalImage: copy failed" << path << "->" << destPath
+                  << "- falling back to original path";
+        return path;
+    }
+    qDebug() << "[Zalo] cacheLocalImage:" << path << "->" << destPath;
+    return destPath;
+}
+
 void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption)
 {
     if (!m_loggedIn) return;
@@ -480,6 +509,18 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     QString filename = path.section('/', -1);
     qint64  ts       = QDateTime::currentMSecsSinceEpoch();
     QString boundary = "----ZaloBoundary" + QString::number(ts);
+
+    // clientId doubles as the "clientId"/"cliMsgId" param sent to Zalo below, which the
+    // server echoes back verbatim on the WS cmd=501 push. Stashing the local file info
+    // here — before the upload network call even starts — means it's available no matter
+    // how fast that WS echo comes back (device logs show it can arrive before the HTTP
+    // send-msg response completes).
+    QString clientId = QString::number(ts);
+    QVariantMap pendingInfo;
+    pendingInfo["localPath"] = "file://" + path;
+    pendingInfo["fileSize"]  = (qint64)fileData.size();
+    pendingInfo["fileName"]  = filename;
+    m_pendingSentPhotoInfo[clientId] = pendingInfo;
 
     // Params in query string (AES-encrypted) per zca-js uploadAttachment.ts
     // Note: imei goes in multipart body, NOT in AES params
@@ -532,6 +573,7 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     reply->setProperty("localPath", "file://" + path);
     reply->setProperty("isGroup",   isGroup);
     reply->setProperty("caption",   caption);
+    reply->setProperty("clientId",  clientId);
     connect(reply, SIGNAL(finished()), this, SLOT(onSendPhotoDone()));
 }
 
@@ -544,16 +586,18 @@ void ZaloService::onSendPhotoDone()
     QString localPath = reply->property("localPath").toString();
     bool isGroup    = reply->property("isGroup").toBool();
     QString caption = reply->property("caption").toString();
+    QString clientId = reply->property("clientId").toString();
     QByteArray raw  = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] sendPhoto upload response:" << raw.left(300);
 
-    if (!ok) { emit messageSent(false, tid); return; }
+    if (!ok) { m_pendingSentPhotoInfo.remove(clientId); emit messageSent(false, tid); return; }
 
     // Upload response: {"error_code":0,"data":"AES_ENCRYPTED"} — same pattern as other APIs
     QVariantMap outer = jsonToMap(raw);
     if (outer["error_code"].toInt() != 0) {
         qDebug() << "[Zalo] sendPhoto upload error:" << outer["error_message"].toString();
+        m_pendingSentPhotoInfo.remove(clientId);
         emit messageSent(false, tid);
         return;
     }
@@ -583,6 +627,7 @@ void ZaloService::onSendPhotoDone()
 
     if (normalUrl.isEmpty()) {
         qDebug() << "[Zalo] sendPhoto: upload OK but no normalUrl, raw:" << raw.left(200);
+        m_pendingSentPhotoInfo.remove(clientId);
         emit messageSent(false, tid);
         return;
     }
@@ -593,11 +638,12 @@ void ZaloService::onSendPhotoDone()
     //         rawUrl=normalUrl, hdUrl, thumbUrl, hdSize=totalSize,
     //         oriUrl (group only), normalUrl (DM only),
     //         zsource=-1, ttl=0, jcp
-    qint64 ts2 = QDateTime::currentMSecsSinceEpoch();
     QSize photoDim = imageDimensions(localPath);
     QVariantMap mp;
     mp["photoId"]   = photoId;
-    mp["clientId"]  = QString::number(ts2);
+    // Reuse the same clientId generated in sendPhoto() (rather than a fresh timestamp)
+    // so it matches the m_pendingSentPhotoInfo key and the WS cmd=501 echo's cliMsgId.
+    mp["clientId"]  = clientId;
     mp["desc"]      = caption;
     mp["width"]     = photoDim.width();
     mp["height"]    = photoDim.height();
@@ -637,16 +683,24 @@ void ZaloService::onSendPhotoDone()
 
     // Build the content JSON that QML will store and display.
     // Caption (desc) is included so the QML photo bubble can render it.
+    // fileSize/fileName are pulled from the info stashed at send-time (see
+    // m_pendingSentPhotoInfo in sendPhoto()) so the filename/filesize row in the
+    // photo bubble has real data instead of being derived from the CDN hash URL.
     QString captionEsc = caption;
     captionEsc.replace("\\", "\\\\").replace("\"", "\\\"")
               .replace("\n", "\\n").replace("\r", "\\r");
-    QString contentJson = captionEsc.isEmpty()
-        ? QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
-              .arg(normalUrl).arg(thumbUrl)
-              .arg(hdUrl.isEmpty() ? normalUrl : hdUrl)
-        : QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\",\"caption\":\"%4\"}")
-              .arg(normalUrl).arg(thumbUrl)
-              .arg(hdUrl.isEmpty() ? normalUrl : hdUrl).arg(captionEsc);
+    QVariantMap pInfo = m_pendingSentPhotoInfo.value(clientId);
+    qint64 origFileSize = pInfo.value("fileSize", 0).toLongLong();
+    QString origFileName = pInfo.value("fileName").toString();
+    origFileName.replace("\\", "\\\\").replace("\"", "\\\"");
+
+    QString contentJson = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"")
+                               .arg(normalUrl).arg(thumbUrl)
+                               .arg(hdUrl.isEmpty() ? normalUrl : hdUrl);
+    if (origFileSize > 0) contentJson += QString(",\"fileSize\":%1").arg(origFileSize);
+    if (!origFileName.isEmpty()) contentJson += QString(",\"fileName\":\"%1\"").arg(origFileName);
+    if (!captionEsc.isEmpty()) contentJson += QString(",\"caption\":\"%1\"").arg(captionEsc);
+    contentJson += "}";
 
     qDebug() << "[Zalo] sendPhoto send-msg POST" << msgUrl.left(100);
     QNetworkReply *r2 = m_manager->post(req2, body2);
@@ -655,6 +709,7 @@ void ZaloService::onSendPhotoDone()
     r2->setProperty("isGroup",     isGroup);
     r2->setProperty("contentJson", contentJson);
     r2->setProperty("caption",     caption);
+    r2->setProperty("clientId",    clientId);
     connect(r2, SIGNAL(finished()), this, SLOT(onSendPhotoMsgDone()));
 }
 
@@ -667,6 +722,7 @@ void ZaloService::onSendPhotoMsgDone()
     QString localPath   = reply->property("localPath").toString();
     bool isGroup        = reply->property("isGroup").toBool();
     QString contentJson = reply->property("contentJson").toString();
+    QString clientId    = reply->property("clientId").toString();
     QByteArray raw      = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] sendPhoto send-msg response:" << raw.left(300);
@@ -727,12 +783,18 @@ void ZaloService::onSendPhotoMsgDone()
                 dbSaveMessage(out, tid);
                 emit newMessage(tid, out);
             }
+            // We already resolved localImage via this HTTP confirm path — no need for
+            // the WS echo to fall back on a CDN download for this photo anymore.
+            if (!clientId.isEmpty()) m_pendingSentPhotoInfo.remove(clientId);
             }
         } else {
             ok = false;
             qDebug() << "[Zalo] sendPhoto send-msg error_code:" << outer["error_code"].toInt()
                      << outer["error_message"].toString();
+            if (!clientId.isEmpty()) m_pendingSentPhotoInfo.remove(clientId);
         }
+    } else if (!clientId.isEmpty()) {
+        m_pendingSentPhotoInfo.remove(clientId);
     }
     emit messageSent(ok, tid);
 }

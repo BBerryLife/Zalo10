@@ -463,6 +463,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (m_seenMsgIds.contains(msgId)) continue;
                 m_seenMsgIds.insert(msgId);
             }
+            QString cliMsgId = m["cliMsgId"].toString();
 
             // chat.undo = recall/unsend notification, not a real message — update the
             // original message in place instead of appending a stray JSON bubble.
@@ -550,7 +551,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             if (mt == 2) {
                 // Normalize photo content to {"normalUrl":"...","thumbUrl":"...","hdUrl":"..."}
                 // WS may deliver via content JSON (href/thumb), top-level, or in "attach" sub-object
-                QString nUrl, hUrl, tUrl;
+                QString nUrl, hUrl, tUrl, fSizeStr;
                 if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
                     QVariantMap cm = jsonToMap(rawContent.toUtf8());
                     nUrl = cm["normalUrl"].toString();
@@ -559,6 +560,8 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     if (nUrl.isEmpty()) nUrl = cm["href"].toString();
                     if (hUrl.isEmpty()) hUrl = cm["oriUrl"].toString();
                     if (tUrl.isEmpty()) tUrl = cm["thumb"].toString();
+                    if (fSizeStr.isEmpty()) fSizeStr = cm["hdSize"].toString();
+                    if (fSizeStr.isEmpty()) fSizeStr = cm["fileSize"].toString();
                 }
                 // Check top-level fields
                 if (nUrl.isEmpty()) nUrl = m["normalUrl"].toString();
@@ -566,6 +569,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (tUrl.isEmpty()) tUrl = m["thumbUrl"].toString();
                 if (nUrl.isEmpty()) nUrl = m["oriUrl"].toString();
                 if (tUrl.isEmpty()) tUrl = m["thumb"].toString();
+                if (fSizeStr.isEmpty()) fSizeStr = m["hdSize"].toString();
                 // Check "attach" sub-object (Zalo WS real-time delivery)
                 if (nUrl.isEmpty()) {
                     QVariantMap att = m["attach"].toMap();
@@ -582,6 +586,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         if (nUrl.isEmpty()) nUrl = att["href"].toString();
                         if (nUrl.isEmpty()) nUrl = att["normalUrl"].toString();
                         if (tUrl.isEmpty()) tUrl = att["thumb"].toString();
+                        if (fSizeStr.isEmpty()) fSizeStr = att["hdSize"].toString();
                     }
                 }
                 // Check "params" sub-object
@@ -598,6 +603,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         if (tUrl.isEmpty()) tUrl = prm["thumbUrl"].toString();
                         if (nUrl.isEmpty()) nUrl = prm["href"].toString();
                         if (tUrl.isEmpty()) tUrl = prm["thumb"].toString();
+                        if (fSizeStr.isEmpty()) fSizeStr = prm["hdSize"].toString();
                     }
                 }
 
@@ -629,11 +635,50 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         caption.replace("\\", "\\\\").replace("\"", "\\\"")
                                .replace("\n", "\\n").replace("\r", "\\r")
                                .replace("\t", "\\t");
-                        rawContent = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\",\"caption\":\"%4\"}")
-                                     .arg(nUrl).arg(tUrl).arg(hUrl).arg(caption);
-                    } else {
-                        rawContent = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"}")
+                    }
+
+                    // If this is the WS echo of a photo we JUST sent ourselves, we already
+                    // know the exact original fileSize/fileName from sendPhoto() — prefer
+                    // that over whatever (possibly absent) hdSize the server echoed back.
+                    QVariantMap sentInfo;
+                    bool haveSentInfo = false;
+                    if (isSelf && !cliMsgId.isEmpty() && m_pendingSentPhotoInfo.contains(cliMsgId)) {
+                        sentInfo = m_pendingSentPhotoInfo.value(cliMsgId);
+                        haveSentInfo = true;
+                    }
+
+                    qint64 fSize = haveSentInfo ? sentInfo.value("fileSize", 0).toLongLong()
+                                                 : fSizeStr.toLongLong();
+                    QString fName = haveSentInfo ? sentInfo.value("fileName").toString() : QString();
+                    if (!fName.isEmpty()) fName.replace("\\", "\\\\").replace("\"", "\\\"");
+
+                    rawContent = QString("{\"normalUrl\":\"%1\",\"thumbUrl\":\"%2\",\"hdUrl\":\"%3\"")
                                      .arg(nUrl).arg(tUrl).arg(hUrl);
+                    if (fSize > 0) rawContent += QString(",\"fileSize\":%1").arg(fSize);
+                    if (!fName.isEmpty()) rawContent += QString(",\"fileName\":\"%1\"").arg(fName);
+                    if (!caption.isEmpty()) rawContent += QString(",\"caption\":\"%1\"").arg(caption);
+                    rawContent += "}";
+
+                    // Self-echo of our own just-sent photo: reuse the already-cached local
+                    // file instead of re-downloading from the CDN. Fetching the CDN copy
+                    // moments after upload is a race — the file can still 404/return empty
+                    // server-side, which previously left "my" sent photo as a permanent gray
+                    // box once the in-memory placeholder was replaced by this DB row. The
+                    // local file was copied into the persistent "/tmp" cache at pick-time
+                    // (see cacheLocalImage()) and is never deleted except by clearCache().
+                    if (haveSentInfo) {
+                        QString localP = sentInfo.value("localPath").toString();
+                        QString fsPath = localP.startsWith("file://") ? localP.mid(7) : localP;
+                        if (!fsPath.isEmpty() && QFile::exists(fsPath)) {
+                            QSize dim = imageDimensions(localP);
+                            out["localImage"] = localP;
+                            out["imgWidth"]   = dim.width();
+                            out["imgHeight"]  = dim.height();
+                            m_avatarCache[nUrl] = localP;
+                            qDebug() << "[Zalo WS] self photo echo: reusing cached local file"
+                                      << localP << "for msgId" << msgId;
+                        }
+                        m_pendingSentPhotoInfo.remove(cliMsgId);
                     }
                 }
                 // Log the full key set when no URL was found, to help diagnose
@@ -645,7 +690,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // If nUrl is NOT a real HTTP URL (it's a Zalo protobuf thumbnail):
                 // 1. Decode thumbnail immediately for fast preview.
                 // 2. Fetch full-res via WS cmd=510 history to get real HTTP URL.
-                if (!nUrl.isEmpty() && !nUrl.startsWith("http") && !msgId.isEmpty()) {
+                if (!nUrl.isEmpty() && !nUrl.startsWith("http") && !msgId.isEmpty() && out["localImage"].toString().isEmpty()) {
                     qDebug() << "[Zalo WS] photo has protobuf thumb (not HTTP URL), decoding thumbnail msgId=" << msgId;
                     downloadImageMessage(msgId, nUrl, threadId);
                     // Fetch full-res via WS cmd=510 AND HTTP API in parallel
@@ -653,7 +698,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         fetchPhotoViaWs510(msgId, threadId);
                         fetchPhotoViaHttp(msgId, threadId);
                     }
-                } else if (!nUrl.isEmpty() && nUrl.startsWith("http") && !msgId.isEmpty()) {
+                } else if (!nUrl.isEmpty() && nUrl.startsWith("http") && !msgId.isEmpty() && out["localImage"].toString().isEmpty()) {
                     // Regular HTTP photo URL: previously this was only fetched lazily
                     // by ChatView when the user actually opened the thread and the
                     // bubble was rendered on screen. That meant a photo recalled

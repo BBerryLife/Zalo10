@@ -735,33 +735,51 @@ Page {
                                             verticalAlignment: VerticalAlignment.Center
                                             leftPadding: ui.du(1.5)
 
-                                            // Filename: prefer local path (real name), fallback to CDN URL.
+                                            // Filename: prefer the real fileName saved in content JSON
+                                            // (self-sent photos: exact original name; received photos with
+                                            // a server-provided name), then fall back to deriving one from
+                                            // the CDN URL, then the local cache path, then "Photo".
                                             Label {
                                                 text: {
+                                                    var c = ListItemData.content || "";
+                                                    if (c.length > 0 && c.charCodeAt(0) === 123) {
+                                                        var fnKey = '"fileName":"';
+                                                        var fnIdx = c.indexOf(fnKey);
+                                                        if (fnIdx >= 0) {
+                                                            var fs = fnIdx + fnKey.length;
+                                                            var fe = fs;
+                                                            while (fe < c.length) {
+                                                                var fc = c.charCodeAt(fe);
+                                                                if (fc === 92) { fe += 2; continue; }
+                                                                if (fc === 34) break;
+                                                                fe++;
+                                                            }
+                                                            var realName = c.substring(fs, fe).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                                                            if (realName.length > 0) return realName;
+                                                        }
+                                                        var urlKeys = ['"normalUrl":"', '"hdUrl":"', '"thumbUrl":"'];
+                                                        for (var ki = 0; ki < urlKeys.length; ki++) {
+                                                            var uIdx = c.indexOf(urlKeys[ki]);
+                                                            if (uIdx < 0) continue;
+                                                            var us = uIdx + urlKeys[ki].length;
+                                                            var ue = us;
+                                                            while (ue < c.length && c.charCodeAt(ue) !== 34) ue++;
+                                                            if (ue > us) {
+                                                                var url = c.substring(us, ue);
+                                                                var sl = url.lastIndexOf('/');
+                                                                var fn = sl >= 0 ? url.substring(sl + 1) : url;
+                                                                var qi = fn.indexOf('?');
+                                                                if (qi >= 0) fn = fn.substring(0, qi);
+                                                                if (fn.length > 0) return fn;
+                                                            }
+                                                        }
+                                                    }
                                                     var limg = ListItemData.localImage || "";
                                                     if (limg.length > 0) {
                                                         var lp2 = limg.indexOf("file://") === 0 ? limg.substring(7) : limg;
                                                         var ls = lp2.lastIndexOf('/');
                                                         var lf = ls >= 0 ? lp2.substring(ls + 1) : lp2;
                                                         if (lf.length > 0) return lf;
-                                                    }
-                                                    var c = ListItemData.content || "";
-                                                    if (c.length === 0 || c.charCodeAt(0) !== 123) return "Photo";
-                                                    var urlKeys = ['"normalUrl":"', '"hdUrl":"', '"thumbUrl":"'];
-                                                    for (var ki = 0; ki < urlKeys.length; ki++) {
-                                                        var uIdx = c.indexOf(urlKeys[ki]);
-                                                        if (uIdx < 0) continue;
-                                                        var us = uIdx + urlKeys[ki].length;
-                                                        var ue = us;
-                                                        while (ue < c.length && c.charCodeAt(ue) !== 34) ue++;
-                                                        if (ue > us) {
-                                                            var url = c.substring(us, ue);
-                                                            var sl = url.lastIndexOf('/');
-                                                            var fn = sl >= 0 ? url.substring(sl + 1) : url;
-                                                            var qi = fn.indexOf('?');
-                                                            if (qi >= 0) fn = fn.substring(0, qi);
-                                                            if (fn.length > 0) return fn;
-                                                        }
                                                     }
                                                     return "Photo";
                                                 }
@@ -1209,6 +1227,7 @@ Page {
 
         if (hasPhoto) {
             var imgPath = chatViewPage.pendingAttachPath;
+            var imgName = chatViewPage.pendingAttachName;
             chatViewPage.pendingAttachPath = "";
             chatViewPage.pendingAttachName = "";
             var dim = zService.getImageDimensions(imgPath);
@@ -1220,6 +1239,12 @@ Page {
                     localContent = localContent.slice(0, -1) + ',"fileSize":' + fsize + '}';
                 else
                     localContent = '{"fileSize":' + fsize + '}';
+            }
+            if (imgName.length > 0) {
+                if (localContent.length > 0)
+                    localContent = localContent.slice(0, -1) + ',"fileName":' + JSON.stringify(imgName) + '}';
+                else
+                    localContent = '{"fileName":' + JSON.stringify(imgName) + '}';
             }
             var imgPlaceholder = {
                 msgId:      "local_img_" + new Date().getTime(),
@@ -1727,9 +1752,14 @@ Page {
                              || ext === "gif" || ext === "webp" || ext === "bmp");
 
                 if (isImg) {
+                    // Copy into the persistent "/tmp/zalo_img_local_<ts>.<ext>" cache right away
+                    // (not just on Send) so the original picked photo survives even if the
+                    // picker's own path is transient/sandboxed, and is never lost regardless
+                    // of what happens with the upload/WS echo afterwards.
+                    var cachedPath = zService.cacheLocalImage(path);
                     // Stage the image — user can type a caption then press Send.
                     var fname = path.substring(path.lastIndexOf('/') + 1);
-                    chatViewPage.pendingAttachPath = path;
+                    chatViewPage.pendingAttachPath = cachedPath;
                     chatViewPage.pendingAttachName = fname;
                     inputField.requestFocus();
                     sendAction.enabled = true;

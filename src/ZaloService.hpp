@@ -49,6 +49,11 @@ public:
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption = QString());
+    // Copies a picker-provided (potentially transient) image path into the persistent
+    // "/tmp/zalo_img_local_<ts>.<ext>" cache immediately, before upload starts, so the
+    // original picked photo is never lost even if the WS echo / CDN round-trip fails.
+    // Returns the new path (no "file://" prefix), or the original path if the copy fails.
+    Q_INVOKABLE QString cacheLocalImage(const QString &sourcePath);
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId = QString());
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
@@ -352,6 +357,14 @@ private:
     QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
     QString m_pending510Toid; // Thread đang chờ WS cmd=510 response (chỉ 1 tại 1 thời điểm)
     QMap<QString, QString> m_pendingPhotoMsgIds; // msgId -> threadId, waiting for photo URL via WS cmd=510
+    // clientId (cliMsgId) -> {"localPath","fileSize","fileName"} for a photo we just sent.
+    // Populated in sendPhoto() before the upload even starts, so that when the WS cmd=501
+    // echo lands (often BEFORE the HTTP send-msg response, per device logs) we can attach
+    // the already-cached local file directly instead of racing a CDN re-download that can
+    // return empty/fail moments after upload (this is what caused "my sent photo" to turn
+    // into a gray box after logout/login). Entry is removed once consumed by either the
+    // WS echo path or the HTTP send-msg confirm path, whichever resolves the real msgId first.
+    QMap<QString, QVariantMap> m_pendingSentPhotoInfo;
 
     // Cache avatar: url -> localPath (file:///tmp/avatar_<md5>.jpg)
     QMap<QString, QString> m_avatarCache;

@@ -359,14 +359,26 @@ NavigationPane {
                     // network. Pull the last message we already have locally for
                     // each thread and merge it in before the model is even built.
                     var lastMsgs = zService.getThreadLastMessages();
+                    // Build a fresh plain JS array instead of writing merged fields
+                    // back into `friends[i]` in place — `friends` here is backed by
+                    // a QVariantList marshalled over from the C++ signal, and this
+                    // codebase has hit multiple cases (see Qt4 QScriptEngine notes)
+                    // where that bridge doesn't reliably persist array-element
+                    // reassignment. Writing back silently no-opped, so the last
+                    // message/time (and the sort key) were computed correctly but
+                    // then lost before ever reaching friendModel.
+                    var outArr = [];
                     for (var i = 0; i < friends.length; i++) {
                         var f = friends[i];
-                        f.localAvatar    = "";
-                        f.hasUnread      = false;
-                        f.lastMsgIsMine  = false;
-                        f.lastSenderName = "";
-                        f.lastMessage    = f.lastMessage || f.lastMsg || "";
-                        var tid = f.threadId || f.uid || "";
+                        var out = {};
+                        for (var key in f) out[key] = f[key];
+                        out.localAvatar    = "";
+                        out.hasUnread      = false;
+                        out.lastMsgIsMine  = false;
+                        out.lastSenderName = "";
+                        out.lastMessage    = f.lastMessage || f.lastMsg || "";
+                        out.sortTs         = 0;
+                        var tid = out.threadId || out.uid || "";
                         var lm = lastMsgs[tid];
                         if (lm) {
                             var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
@@ -379,21 +391,40 @@ NavigationPane {
                             } else {
                                 snippet = (lm.content || "").substring(0, 60);
                             }
-                            f.lastMessage    = snippet;
-                            f.lastMsgIsMine  = isMine;
-                            f.lastSenderName = lm.dName || "";
-                            f.lastTime       = lm.ts || "";
+                            out.lastMessage    = snippet;
+                            out.lastMsgIsMine  = isMine;
+                            out.lastSenderName = lm.dName || "";
+                            out.lastTime       = lm.ts || "";
                         }
-                        if (f.lastTime && f.lastTime !== "") {
-                            var ts = parseInt(f.lastTime);
-                            if (!isNaN(ts)) f.lastTime = chatsNav.formatTime(ts);
+                        if (out.lastTime && out.lastTime !== "") {
+                            var ts = parseInt(out.lastTime);
+                            if (!isNaN(ts)) {
+                                // Keep the raw numeric timestamp around under its own
+                                // key so we can still sort threads by recency below,
+                                // even after lastTime itself gets overwritten with a
+                                // human-readable string ("11:37 PM") on the next line.
+                                out.sortTs = ts;
+                                out.lastTime = chatsNav.formatTime(ts);
+                            }
                         }
-                        friendModel.append(f);
-                        var url = f.avatar || "";
-                        if (url.length > 0 && tid.length > 0)
-                            zService.downloadAvatar(tid, url);
+                        outArr.push(out);
                     }
-                    chatsEmpty.visible = (friends.length === 0);
+                    // The friends-list API returns threads in a fixed server-side
+                    // order, not by recency. Without re-sorting here, every
+                    // logout/login (or cold app restart) reset each thread back to
+                    // that original position instead of keeping the most recently
+                    // active conversation at the top, which is what onNewMessage
+                    // below maintains while the app stays running.
+                    outArr.sort(function(a, b) { return (b.sortTs || 0) - (a.sortTs || 0); });
+                    for (var j = 0; j < outArr.length; j++) {
+                        var ff = outArr[j];
+                        friendModel.append(ff);
+                        var furl = ff.avatar || "";
+                        var ftid = ff.threadId || ff.uid || "";
+                        if (furl.length > 0 && ftid.length > 0)
+                            zService.downloadAvatar(ftid, furl);
+                    }
+                    chatsEmpty.visible = (outArr.length === 0);
                 }
 
                 onAvatarReady: {
