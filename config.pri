@@ -184,6 +184,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_voice_chat_missed.png) \
         $$quote($$BASEDIR/assets/images/Bubble/video_voice/ca_voice_chat_outgoing.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ConversationPaneSend.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/action_delete.png) \
         $$quote($$BASEDIR/assets/images/ChatView/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatView/add.png) \
         $$quote($$BASEDIR/assets/images/ChatView/attach_icon.png) \
@@ -195,14 +196,23 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_bbm_voice_answer.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_block_contact.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_chat_leave.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_copy.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_create_event.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_download.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_edit.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled_white.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_forward_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_pin.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_quote_message.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_recall.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_replace_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_save.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_save_image.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_select_more.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_share.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemess.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/action_icon_search.png) \
@@ -288,25 +298,28 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/InvitesTab/blank.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/Message States/Official.png) \
+        $$quote($$BASEDIR/assets/images/Message States/Official_White.png) \
+        $$quote($$BASEDIR/assets/images/Message States/Owner.png) \
+        $$quote($$BASEDIR/assets/images/Message States/Square_badge.png) \
+        $$quote($$BASEDIR/assets/images/Message States/cs_spark_small.png) \
         $$quote($$BASEDIR/assets/images/Message States/delivered.png) \
+        $$quote($$BASEDIR/assets/images/Message States/desktop.ini) \
         $$quote($$BASEDIR/assets/images/Message States/failed.png) \
         $$quote($$BASEDIR/assets/images/Message States/grey_pellet.png) \
+        $$quote($$BASEDIR/assets/images/Message States/ii_bbm_ping.png) \
+        $$quote($$BASEDIR/assets/images/Message States/indicator_list_pin.png) \
         $$quote($$BASEDIR/assets/images/Message States/read.png) \
         $$quote($$BASEDIR/assets/images/Message States/sending.png) \
         $$quote($$BASEDIR/assets/images/Message States/sent.png) \
+        $$quote($$BASEDIR/assets/images/Message States/splat.png) \
         $$quote($$BASEDIR/assets/images/Message States/yellow_pellet.png) \
-        $$quote($$BASEDIR/assets/images/Official.png) \
-        $$quote($$BASEDIR/assets/images/Official_White.png) \
-        $$quote($$BASEDIR/assets/images/Owner.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/blank.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/default_caller.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/Profile_Star_icon.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_close_white.png) \
-        $$quote($$BASEDIR/assets/images/Square_badge.png) \
-        $$quote($$BASEDIR/assets/images/action_delete.png) \
         $$quote($$BASEDIR/assets/images/bbid.png) \
-        $$quote($$BASEDIR/assets/images/cs_spark_small.png) \
         $$quote($$BASEDIR/assets/images/default_caller1.png) \
         $$quote($$BASEDIR/assets/images/desktop.ini) \
         $$quote($$BASEDIR/assets/images/emoji/activePageDot.png) \
@@ -793,32 +806,21 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/emoji/symbols/emoji_38_20e3_64.png) \
         $$quote($$BASEDIR/assets/images/emoji/symbols/emoji_39_20e3_64.png) \
         $$quote($$BASEDIR/assets/images/emoji/symbols/order.txt) \
-        $$quote($$BASEDIR/assets/images/ic_add_comment.png) \
         $$quote($$BASEDIR/assets/images/ic_add_contact.png) \
         $$quote($$BASEDIR/assets/images/ic_back_white.png) \
         $$quote($$BASEDIR/assets/images/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/ic_call.png) \
         $$quote($$BASEDIR/assets/images/ic_contact.png) \
-        $$quote($$BASEDIR/assets/images/ic_copy.png) \
         $$quote($$BASEDIR/assets/images/ic_copy_chat.png) \
-        $$quote($$BASEDIR/assets/images/ic_create_event.png) \
-        $$quote($$BASEDIR/assets/images/ic_forward_message.png) \
         $$quote($$BASEDIR/assets/images/ic_groups_white.png) \
         $$quote($$BASEDIR/assets/images/ic_info.png) \
         $$quote($$BASEDIR/assets/images/ic_invite_to_bbm.png) \
-        $$quote($$BASEDIR/assets/images/ic_like.png) \
         $$quote($$BASEDIR/assets/images/ic_mail.png) \
         $$quote($$BASEDIR/assets/images/ic_microphone.png) \
-        $$quote($$BASEDIR/assets/images/ic_quote_message.png) \
         $$quote($$BASEDIR/assets/images/ic_save.png) \
-        $$quote($$BASEDIR/assets/images/ic_save_image.png) \
         $$quote($$BASEDIR/assets/images/ic_sb_textmessage.png) \
-        $$quote($$BASEDIR/assets/images/ic_select_more.png) \
         $$quote($$BASEDIR/assets/images/ic_settings.png) \
-        $$quote($$BASEDIR/assets/images/ic_share.png) \
         $$quote($$BASEDIR/assets/images/ic_start_chat.png) \
-        $$quote($$BASEDIR/assets/images/ic_video_chat.png) \
-        $$quote($$BASEDIR/assets/images/splat.png) \
         $$quote($$BASEDIR/assets/main.qml)
 }
 
