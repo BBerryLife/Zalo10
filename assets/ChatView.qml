@@ -326,8 +326,6 @@ Page {
         if (chatViewPage.selfName === "") chatViewPage.selfName = "Me";
         chatViewPage.initialized = true;
 
-        // Wire the photo-tap Connections to the ListView now that it exists.
-        if (photoTapCon.target === null) photoTapCon.target = msgList;
 
         chatViewPage.isBlocked = zService.isBlocked(chatViewPage.threadId);
         chatViewPage.isMuted   = zService.isMutedThread(chatViewPage.threadId);
@@ -383,9 +381,6 @@ Page {
             property string searchQuery: chatViewPage.searchVisible ? chatViewPage.searchText.toLowerCase().trim() : ""
             property int    searchCurrentMsgIndex: (chatViewPage.searchMatchPos >= 0 && chatViewPage.searchMatchPos < chatViewPage.searchMatches.length)
                                                      ? chatViewPage.searchMatches[chatViewPage.searchMatchPos] : -1
-            // Set by photo attachment tap handler inside the delegate; watched by
-            // the Connections block in attachedObjects to open PhotoViewerSheet.
-            property string tappedPhotoPath: ""
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -624,9 +619,10 @@ Page {
                                     topMargin: 0; bottomMargin: 0
                                 }
 
-                                // BBM-style photo attachment bubble.
-                                // Layout: caption (if any) → dashed separator → thumbnail + file info row.
-                                // Tapping the row opens PhotoViewerSheet via msgList.tappedPhotoPath.
+                                // Photo attachment bubble.
+                                // Layout: caption (if any) → dashed separator → inline photo (capped
+                                // to bubbleMaxW, real aspect ratio) → status text. Shown directly in
+                                // the bubble, no separate full-screen viewer page.
                                 Container {
                                     id: photoBubble
                                     visible: !rowRoot.recalled
@@ -683,144 +679,53 @@ Page {
                                         bottomMargin: 6
                                     }
 
-                                    // Tappable row: thumbnail on the left, file info on the right.
+                                    // Inline photo — shown at real (capped) size directly in the
+                                    // bubble, same sizing pattern as the recalled-photo preview
+                                    // above (bubbleMaxW + aspect ratio). No tap-to-open viewer,
+                                    // no filename/filesize row — just the picture.
                                     Container {
-                                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                                        horizontalAlignment: HorizontalAlignment.Fill
-                                        gestureHandlers: [
-                                            TapHandler {
-                                                onTapped: {
-                                                    var lp = ListItemData.localImage || "";
-                                                    if (lp.length > 0) {
-                                                        rowRoot.ListItem.view.tappedPhotoPath = lp;
-                                                    }
-                                                }
-                                            }
-                                        ]
+                                        horizontalAlignment: HorizontalAlignment.Left
+                                        preferredWidth:  (ListItemData.imgWidth  && ListItemData.imgWidth  > 0)
+                                                         ? Math.min(rowRoot.bubbleMaxW, ListItemData.imgWidth) : Math.min(rowRoot.bubbleMaxW, ui.du(30))
+                                        preferredHeight: (ListItemData.imgWidth  && ListItemData.imgWidth  > 0
+                                                          && ListItemData.imgHeight && ListItemData.imgHeight > 0)
+                                                         ? (Math.min(rowRoot.bubbleMaxW, ListItemData.imgWidth) * (ListItemData.imgHeight / ListItemData.imgWidth))
+                                                         : ui.du(30)
+                                        background: rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
+                                        layout: DockLayout {}
 
-                                        // Square thumbnail (~100 × 100 dp).
-                                        Container {
-                                            preferredWidth:  ui.du(18)
-                                            preferredHeight: ui.du(18)
-                                            minWidth:        ui.du(18)
-                                            minHeight:       ui.du(18)
-                                            maxWidth:        ui.du(18)
-                                            maxHeight:       ui.du(18)
-                                            background: rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
-                                            layout: DockLayout {}
-
-                                            ImageView {
-                                                visible: !!(ListItemData.localImage && ListItemData.localImage !== "")
-                                                horizontalAlignment: HorizontalAlignment.Fill
-                                                verticalAlignment:   VerticalAlignment.Fill
-                                                scalingMethod: ScalingMethod.AspectFill
-                                                imageSource: ListItemData.localImage || ""
-                                            }
-                                            Label {
-                                                visible: !(ListItemData.localImage && ListItemData.localImage !== "")
-                                                text: "..."
-                                                horizontalAlignment: HorizontalAlignment.Center
-                                                verticalAlignment:   VerticalAlignment.Center
-                                                textStyle {
-                                                    fontSize: FontSize.XSmall
-                                                    color: rowRoot.isDark ? Color.create("#888888") : Color.Gray
-                                                }
+                                        ImageView {
+                                            visible: !!(ListItemData.localImage && ListItemData.localImage !== "")
+                                            horizontalAlignment: HorizontalAlignment.Fill
+                                            verticalAlignment:   VerticalAlignment.Fill
+                                            scalingMethod: ScalingMethod.AspectFit
+                                            imageSource: ListItemData.localImage || ""
+                                        }
+                                        Label {
+                                            visible: !(ListItemData.localImage && ListItemData.localImage !== "")
+                                            text: "..."
+                                            horizontalAlignment: HorizontalAlignment.Center
+                                            verticalAlignment:   VerticalAlignment.Center
+                                            textStyle {
+                                                fontSize: FontSize.Small
+                                                color: rowRoot.isDark ? Color.create("#888888") : Color.Gray
                                             }
                                         }
+                                    }
 
-                                        // File info column: filename, size, status.
-                                        Container {
-                                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                                            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                                            verticalAlignment: VerticalAlignment.Center
-                                            leftPadding: ui.du(1.5)
-
-                                            // Filename: prefer local path (real name), fallback to CDN URL.
-                                            Label {
-                                                text: {
-                                                    var limg = ListItemData.localImage || "";
-                                                    if (limg.length > 0) {
-                                                        var lp2 = limg.indexOf("file://") === 0 ? limg.substring(7) : limg;
-                                                        var ls = lp2.lastIndexOf('/');
-                                                        var lf = ls >= 0 ? lp2.substring(ls + 1) : lp2;
-                                                        if (lf.length > 0) return lf;
-                                                    }
-                                                    var c = ListItemData.content || "";
-                                                    if (c.length === 0 || c.charCodeAt(0) !== 123) return "Photo";
-                                                    var urlKeys = ['"normalUrl":"', '"hdUrl":"', '"thumbUrl":"'];
-                                                    for (var ki = 0; ki < urlKeys.length; ki++) {
-                                                        var uIdx = c.indexOf(urlKeys[ki]);
-                                                        if (uIdx < 0) continue;
-                                                        var us = uIdx + urlKeys[ki].length;
-                                                        var ue = us;
-                                                        while (ue < c.length && c.charCodeAt(ue) !== 34) ue++;
-                                                        if (ue > us) {
-                                                            var url = c.substring(us, ue);
-                                                            var sl = url.lastIndexOf('/');
-                                                            var fn = sl >= 0 ? url.substring(sl + 1) : url;
-                                                            var qi = fn.indexOf('?');
-                                                            if (qi >= 0) fn = fn.substring(0, qi);
-                                                            if (fn.length > 0) return fn;
-                                                        }
-                                                    }
-                                                    return "Photo";
-                                                }
-                                                textStyle {
-                                                    fontSize: FontSize.Small
-                                                    fontWeight: FontWeight.Bold
-                                                    color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
-                                                }
-                                                multiline: false
-                                                topMargin: 0; bottomMargin: 0
-                                            }
-
-                                            // File size — hidden when the JSON has no fileSize field.
-                                            Label {
-                                                visible: {
-                                                    var c = ListItemData.content || "";
-                                                    if (c.length === 0 || c.charCodeAt(0) !== 123) return false;
-                                                    return c.indexOf('"fileSize":') >= 0;
-                                                }
-                                                text: {
-                                                    var c = ListItemData.content || "";
-                                                    var key2 = '"fileSize":';
-                                                    var fsi = c.indexOf(key2);
-                                                    if (fsi < 0) return "";
-                                                    var fss = fsi + key2.length;
-                                                    var fse = fss;
-                                                    while (fse < c.length) {
-                                                        var dc = c.charCodeAt(fse);
-                                                        if (dc < 48 || dc > 57) break;
-                                                        fse++;
-                                                    }
-                                                    var fsize = parseInt(c.substring(fss, fse)) || 0;
-                                                    if (fsize <= 0) return "";
-                                                    if (fsize >= 1073741824) return (Math.round(fsize / 1073741824 * 10) / 10) + " GB";
-                                                    if (fsize >= 1048576) return (Math.round(fsize / 1048576 * 10) / 10) + " MB";
-                                                    return (Math.round(fsize / 1024 * 10) / 10) + " KB";
-                                                }
-                                                textStyle {
-                                                    fontSize: FontSize.XSmall
-                                                    color: rowRoot.isDark ? Color.create("#aaaaaa") : Color.create("#666666")
-                                                }
-                                                topMargin: 2; bottomMargin: 0
-                                            }
-
-                                            // Status text: gray, shows "Sending..." for unconfirmed outgoing.
-                                            Label {
-                                                text: {
-                                                    var mid = ListItemData.msgId || "";
-                                                    if (rowRoot.mine && mid.indexOf("local_img_") === 0) return "Sending...";
-                                                    return rowRoot.mine ? "Picture sent" : "Photo";
-                                                }
-                                                textStyle {
-                                                    fontSize: FontSize.XSmall
-                                                    fontStyle: FontStyle.Italic
-                                                    color: Color.create("#888888")
-                                                }
-                                                topMargin: 2; bottomMargin: 0
-                                            }
+                                    // Status text: gray, shows "Sending..." for unconfirmed outgoing.
+                                    Label {
+                                        text: {
+                                            var mid = ListItemData.msgId || "";
+                                            if (rowRoot.mine && mid.indexOf("local_img_") === 0) return "Sending...";
+                                            return rowRoot.mine ? "Picture sent" : "Photo";
                                         }
+                                        textStyle {
+                                            fontSize: FontSize.XSmall
+                                            fontStyle: FontStyle.Italic
+                                            color: Color.create("#888888")
+                                        }
+                                        topMargin: 4; bottomMargin: 0
                                     }
                                 }
                             }
@@ -1209,6 +1114,7 @@ Page {
 
         if (hasPhoto) {
             var imgPath = chatViewPage.pendingAttachPath;
+            var imgName = chatViewPage.pendingAttachName;
             chatViewPage.pendingAttachPath = "";
             chatViewPage.pendingAttachName = "";
             var dim = zService.getImageDimensions(imgPath);
@@ -1220,6 +1126,12 @@ Page {
                     localContent = localContent.slice(0, -1) + ',"fileSize":' + fsize + '}';
                 else
                     localContent = '{"fileSize":' + fsize + '}';
+            }
+            if (imgName.length > 0) {
+                if (localContent.length > 0)
+                    localContent = localContent.slice(0, -1) + ',"fileName":' + JSON.stringify(imgName) + '}';
+                else
+                    localContent = '{"fileName":' + JSON.stringify(imgName) + '}';
             }
             var imgPlaceholder = {
                 msgId:      "local_img_" + new Date().getTime(),
@@ -1421,27 +1333,6 @@ Page {
             target: null
             onEmojiPicked: {
                 inputField.text = inputField.text + charStr
-            }
-        },
-
-        // Full-screen photo viewer — opened when the user taps a photo attachment.
-        PhotoViewerSheet {
-            id: photoViewerSheet
-        },
-
-        // Watches msgList.tappedPhotoPath set by the delegate's TapHandler and
-        // opens the viewer. Connections target must be assigned after creation
-        // (onCreationCompleted of the Page) to avoid construction-time issues.
-        Connections {
-            id: photoTapCon
-            target: null
-            onTappedPhotoPathChanged: {
-                var p = msgList.tappedPhotoPath;
-                if (p.length > 0) {
-                    photoViewerSheet.imagePath = p;
-                    photoViewerSheet.open();
-                    msgList.tappedPhotoPath = "";
-                }
             }
         },
 
@@ -1727,9 +1618,14 @@ Page {
                              || ext === "gif" || ext === "webp" || ext === "bmp");
 
                 if (isImg) {
+                    // Copy into the persistent "/tmp/zalo_img_local_<ts>.<ext>" cache right away
+                    // (not just on Send) so the original picked photo survives even if the
+                    // picker's own path is transient/sandboxed, and is never lost regardless
+                    // of what happens with the upload/WS echo afterwards.
+                    var cachedPath = zService.cacheLocalImage(path);
                     // Stage the image — user can type a caption then press Send.
                     var fname = path.substring(path.lastIndexOf('/') + 1);
-                    chatViewPage.pendingAttachPath = path;
+                    chatViewPage.pendingAttachPath = cachedPath;
                     chatViewPage.pendingAttachName = fname;
                     inputField.requestFocus();
                     sendAction.enabled = true;
