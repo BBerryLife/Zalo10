@@ -130,6 +130,30 @@ Container {
                     ? "asset:///images/emoji/activePageDot.png"
                     : "asset:///images/emoji/inactivePageDot.png"
             }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pagePeople === 9
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pagePeople === 10
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pagePeople === 11
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
         }
 
         ScrollView {
@@ -143,7 +167,7 @@ Container {
                 if (pageWidth > 0) {
                     var pg = Math.round(viewableArea.x / pageWidth);
                     if (pg < 0) pg = 0;
-                    if (pg >= 9) pg = 9 - 1;
+                    if (pg >= 12) pg = 12 - 1;
                     pagePeople = pg;
                 }
             }
@@ -151,7 +175,7 @@ Container {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f604_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -166,16 +190,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f633_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f601_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f614_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f60c_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f612_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f61e_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f623_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f622_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f602_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f62d_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -184,6 +208,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f630_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f613_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f629_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f62b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f628_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f631_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -192,16 +222,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f624_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f616_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f606_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f60b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f637_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f635_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f632_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f47f_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f60f_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f472_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -217,7 +247,7 @@ Container {
                 }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f474_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -232,16 +262,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f63c_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f640_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f63f_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f639_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f480_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f47d_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4a9_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f525_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2728_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f31f_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -250,6 +280,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f4a7_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4a4_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4a8_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f442_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f440_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f443_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -258,16 +294,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f44d_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f44e_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f44c_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f44a_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_270a_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_270c_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f44b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f64b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f450_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f446_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -283,7 +319,7 @@ Container {
                 }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f46b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -298,16 +334,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f452_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f45f_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f461_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f460_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f462_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f455_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f454_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f457_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f458_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f459_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -316,6 +352,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f380_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f302_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f484_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f49b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f499_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f49c_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -324,16 +366,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f494_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f497_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f493_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f496_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f49e_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f498_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48c_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f48b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48d_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48e_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -385,6 +427,14 @@ Container {
                     ? "asset:///images/emoji/activePageDot.png"
                     : "asset:///images/emoji/inactivePageDot.png"
             }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pageNature === 4
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
         }
 
         ScrollView {
@@ -398,7 +448,7 @@ Container {
                 if (pageWidth > 0) {
                     var pg = Math.round(viewableArea.x / pageWidth);
                     if (pg < 0) pg = 0;
-                    if (pg >= 4) pg = 4 - 1;
+                    if (pg >= 5) pg = 5 - 1;
                     pageNature = pg;
                 }
             }
@@ -406,7 +456,7 @@ Container {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f436_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -421,16 +471,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f43b_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f437_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f42e_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f417_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f435_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f412_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f434_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f411_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f418_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f427_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -439,6 +489,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f414_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f40d_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f41b_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f419_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f41a_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f420_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -447,16 +503,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f433_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f40e_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f421_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f42b_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f429_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f43e_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f490_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f338_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f337_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f340_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -472,7 +528,7 @@ Container {
                 }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f331_64.png"; emojiCategory: "nature"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -566,6 +622,22 @@ Container {
                     ? "asset:///images/emoji/activePageDot.png"
                     : "asset:///images/emoji/inactivePageDot.png"
             }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pageObjects === 8
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pageObjects === 9
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
         }
 
         ScrollView {
@@ -579,7 +651,7 @@ Container {
                 if (pageWidth > 0) {
                     var pg = Math.round(viewableArea.x / pageWidth);
                     if (pg < 0) pg = 0;
-                    if (pg >= 8) pg = 8 - 1;
+                    if (pg >= 10) pg = 10 - 1;
                     pageObjects = pg;
                 }
             }
@@ -587,7 +659,7 @@ Container {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f38d_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -602,16 +674,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f385_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f384_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f381_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f389_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f388_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f38c_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3a5_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f4f7_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4fc_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4bf_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -620,6 +692,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f4be_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4bb_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4f1_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_260e_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4de_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4e0_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -628,16 +706,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f4fb_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f508_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f514_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f4e2_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4e3_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f513_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f512_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f50f_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f510_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f511_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -653,7 +731,7 @@ Container {
                 }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f48a_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -668,16 +746,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f4eb_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4ea_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4ec_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f4ed_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4ee_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4dd_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2702_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f4d6_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3a8_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3ac_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -686,6 +764,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f3bc_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3b5_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3b6_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f3ba_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3b7_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3b8_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -694,16 +778,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f3af_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3c8_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3c0_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_26bd_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_26be_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3be_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3b1_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_26f3_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3c1_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3c6_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -719,7 +803,7 @@ Container {
                 }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f35f_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -734,16 +818,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f372_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f362_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f361_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f373_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f35e_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f366_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f367_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f370_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f34e_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f34a_64.png"; emojiCategory: "objects"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -807,6 +891,14 @@ Container {
                     ? "asset:///images/emoji/activePageDot.png"
                     : "asset:///images/emoji/inactivePageDot.png"
             }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pagePlaces === 5
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
         }
 
         ScrollView {
@@ -820,7 +912,7 @@ Container {
                 if (pageWidth > 0) {
                     var pg = Math.round(viewableArea.x / pageWidth);
                     if (pg < 0) pg = 0;
-                    if (pg >= 5) pg = 5 - 1;
+                    if (pg >= 6) pg = 6 - 1;
                     pagePlaces = pg;
                 }
             }
@@ -828,7 +920,7 @@ Container {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f3e0_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -843,16 +935,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f3e8_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f492_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_26ea_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f3ec_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f307_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f306_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3ef_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f3f0_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_26fa_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3ed_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -861,6 +953,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f304_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f305_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f303_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f5fd_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f3a1_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_26f2_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -869,16 +967,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_26f5_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f6a4_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f680_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_2708_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4ba_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f689_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f684_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f685_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f683_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f68c_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -894,7 +992,7 @@ Container {
                 }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f68f_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -909,16 +1007,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f1ef_1f1f5_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f1f0_1f1f7_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f1e9_1f1ea_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f1e8_1f1f3_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f1fa_1f1f8_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f1eb_1f1f7_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f1ea_1f1f8_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f1ee_1f1f9_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f1f7_1f1fa_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f1ec_1f1e7_64.png"; emojiCategory: "places"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -986,6 +1084,22 @@ Container {
                     ? "asset:///images/emoji/activePageDot.png"
                     : "asset:///images/emoji/inactivePageDot.png"
             }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pageSymbols === 6
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
+            ImageView {
+                preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
+                verticalAlignment: VerticalAlignment.Center
+                leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
+                imageSource: pageSymbols === 7
+                    ? "asset:///images/emoji/activePageDot.png"
+                    : "asset:///images/emoji/inactivePageDot.png"
+            }
         }
 
         ScrollView {
@@ -999,7 +1113,7 @@ Container {
                 if (pageWidth > 0) {
                     var pg = Math.round(viewableArea.x / pageWidth);
                     if (pg < 0) pg = 0;
-                    if (pg >= 6) pg = 6 - 1;
+                    if (pg >= 8) pg = 8 - 1;
                     pageSymbols = pg;
                 }
             }
@@ -1007,7 +1121,7 @@ Container {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_31_20e3_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -1022,16 +1136,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_30_20e3_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_23_20e3_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2b06_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_2b07_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2b05_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_27a1_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2197_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_2196_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2198_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2199_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -1040,6 +1154,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f199_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f192_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4f6_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f3a6_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f201_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f22f_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -1048,16 +1168,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f250_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f239_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f23a_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f236_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f21a_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f6bb_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f6b9_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f6ba_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f6bc_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f6be_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -1073,7 +1193,7 @@ Container {
                 }
                 Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
+                    layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_2733_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -1088,16 +1208,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f3e7_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f4b2_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_303d_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_274c_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2b55_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2757_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2753_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_2755_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2754_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2716_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -1106,6 +1226,12 @@ Container {
                     EmojiButton { emojiFile: "emoji_2663_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2666_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f531_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f532_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f533_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_25fc_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
@@ -1114,16 +1240,16 @@ Container {
                     EmojiButton { emojiFile: "emoji_25fd_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_25aa_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_25ab_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                }
-                Container {
-                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
-                    layout: GridLayout { columnCount: 8 }
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_2b1c_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_2b1b_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_26ab_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_26aa_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                }
+                Container {
+                    preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
+                    layout: GridLayout { columnCount: 6 }
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f534_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f535_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f536_64.png"; emojiCategory: "symbols"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }

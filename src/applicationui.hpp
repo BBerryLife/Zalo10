@@ -52,6 +52,18 @@ public slots:
     // **word** turned into bold); result comes back via changelogReady().
     Q_INVOKABLE void fetchChangelog();
 
+    // ---- Copy & Share (ChatView bubble hold-menu) -----------------------------
+    // Copy: plain OS clipboard write.
+    Q_INVOKABLE void copyToClipboard(const QString &text);
+    // Share: queries every app on the device registered for bb.action.SHARE +
+    // text/plain, grouped/ordered the same way as SmartList10's share picker
+    // (BBM contact -> BBM group -> BBM channel -> Text -> Email -> Meeting ->
+    // Bluetooth/NFC -> Remember -> other native -> third-party). Result comes
+    // back async via shareTargetsReady(); QML shows a picker sheet and calls
+    // invokeShareTarget() with whichever one the user taps.
+    Q_INVOKABLE void queryShareTargets(const QString &text);
+    Q_INVOKABLE void invokeShareTarget(const QString &target, const QString &action, const QString &text);
+
 signals:
     void openThreadRequested(const QString &threadId, bool isGroup);
     // Emitted from setShowRecalledMessages() so any already-open ChatView can
@@ -63,6 +75,8 @@ signals:
     void updateCheckResult(bool isLatest, const QString &latestVersion, const QString &downloadUrl, const QString &error);
     // html: ready to hand to a WebView's loadHtml(). error non-empty on failure.
     void changelogReady(const QString &html, const QString &error);
+    // Result of queryShareTargets() — list of {label, target, action, icon, isNative}
+    void shareTargetsReady(const QVariantList &targets);
 
 private slots:
     void onSystemLanguageChanged();
@@ -74,6 +88,7 @@ private slots:
     void onUpdateCheckFetchDone();
     void onChangelogFetchDone();
     void onManifestSslErrors(const QList<QSslError> &errors);
+    void onQueryTargetsFinished();
 
 private:
     QString buildChangelogHtml(const QVariantList &versions) const;

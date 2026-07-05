@@ -269,6 +269,7 @@ NavigationPane {
                     var d = friendModel.value(idx);
                     if (d) { d.hasUnread = false; friendModel.replace(idx, d); }
                     chatsNav.activeChatPage = page;
+                    chatPageConn.target = page;
                     // Push first, load second: navigation should never wait on
                     // dbLoadMessages()/fetchMessages() — the conversation opens
                     // immediately and its messages populate right after.
@@ -326,20 +327,28 @@ NavigationPane {
                 source: "asset:///QuickMessagesSheet.qml"
             },
             Connections {
+                // target starts null — binding directly to chatsNav.activeChatPage
+                // (which is null until a page is pushed) makes Cascades try to
+                // validate onQmRequestedChanged against a null target at
+                // construction time, which is what caused the "Cannot assign to
+                // non-existent property" warning on every launch. Assigned
+                // explicitly in JS instead (see openThread() and onTriggered
+                // below) once the real page instance exists.
                 id: chatPageConn
-                target: chatsNav.activeChatPage
+                target: null
                 onQmRequestedChanged: {
                     if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.qmRequested) return;
                     chatsNav.activeChatPage.qmRequested = false;
                     var qmPage = qmPageDef.createObject();
                     if (!qmPage) return;
                     chatsNav.activeQmPage = qmPage;
+                    qmPageConn.target = qmPage;
                     chatsNav.push(qmPage);
                 }
             },
             Connections {
                 id: qmPageConn
-                target: chatsNav.activeQmPage
+                target: null
                 onUseInChatRequestedChanged: {
                     if (!chatsNav.activeQmPage || !chatsNav.activeQmPage.useInChatRequested) return;
                     var content = chatsNav.activeQmPage.insertRequestedContent;
@@ -543,6 +552,7 @@ NavigationPane {
         page.avatarUrl  = avatarUrl;
         page.selfName   = chatsNav.selfName;
         chatsNav.activeChatPage = page;
+        chatPageConn.target = page;
         chatsNav.push(page);
         page.startChat();
     }

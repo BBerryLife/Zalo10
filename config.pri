@@ -49,11 +49,11 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
-        $$quote($$BASEDIR/assets/PhotoViewerSheet.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/QuickMessageEditSheet.qml) \
         $$quote($$BASEDIR/assets/QuickMessagesSheet.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
+        $$quote($$BASEDIR/assets/SharePickerSheet.qml) \
         $$quote($$BASEDIR/assets/images/AboutSheet/barcode.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/berrylife.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/ic_close_white.png) \
@@ -298,6 +298,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/InvitesTab/blank.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/Message States/Admin.png) \
         $$quote($$BASEDIR/assets/images/Message States/Official.png) \
         $$quote($$BASEDIR/assets/images/Message States/Official_White.png) \
         $$quote($$BASEDIR/assets/images/Message States/Owner.png) \
@@ -856,6 +857,9 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../src/*.cc) \
         $$quote($$BASEDIR/../src/*.cpp) \
         $$quote($$BASEDIR/../src/*.cxx) \
+        $$quote($$BASEDIR/..//*.qml) \
+        $$quote($$BASEDIR/..//*.js) \
+        $$quote($$BASEDIR/..//*.qs) \
         $$quote($$BASEDIR/../assets/*.qml) \
         $$quote($$BASEDIR/../assets/*.js) \
         $$quote($$BASEDIR/../assets/*.qs) \

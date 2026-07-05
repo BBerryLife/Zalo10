@@ -9,6 +9,11 @@ Page {
     property string threadId:    ""
     property string threadName:  ""
     property bool   isGroup:     false
+    // TODO: no group-role data source exists yet anywhere in this project
+    // (no admin/owner list is fetched/stored for group members). Wired as
+    // false for now so "Delete" (delete-for-everyone) stays hidden for
+    // everyone until real role data is available — see chat note to Jim.
+    property bool   isCurrentUserAdminOrOwner: false
     property string avatarUrl:   ""
     property string selfName:    ""
     property string pendingMsg:  ""
@@ -17,6 +22,7 @@ Page {
     property variant emojiPanelRef: null
     property string pendingAttachPath: ""
     property string pendingAttachName: ""
+    property variant qmMatch: null
     property variant dbIsMineCache: ({})
     property bool   isMuted: false
     property bool   isBlocked: false
@@ -378,6 +384,7 @@ Page {
             id: msgList
             property bool   isDark: chatViewPage.isDark
             property bool   showRecalledMessages: chatViewPage.showRecalledMessages
+            property bool   isAdminOrOwner: chatViewPage.isCurrentUserAdminOrOwner
             property string searchQuery: chatViewPage.searchVisible ? chatViewPage.searchText.toLowerCase().trim() : ""
             property int    searchCurrentMsgIndex: (chatViewPage.searchMatchPos >= 0 && chatViewPage.searchMatchPos < chatViewPage.searchMatches.length)
                                                      ? chatViewPage.searchMatches[chatViewPage.searchMatchPos] : -1
@@ -391,6 +398,28 @@ Page {
                 ArrayDataModel { id: msgModel }
             ]
 
+            // Bubble hold-menu action stubs. Wired to individual functions
+            // (not one generic dispatcher) so each can be implemented and
+            // tested independently later. Copy/Share are implemented below;
+            // the rest are still no-op besides a console.log.
+            function doCopy(content) {
+                app.copyToClipboard(content);
+                copyToast.show();
+            }
+            function doReply(msgId)        { console.log("[bubble] Reply " + msgId); }
+            function doReaction(msgId)     { console.log("[bubble] Reaction " + msgId); }
+            function doRecallMsg(msgId)    { console.log("[bubble] Recall " + msgId); }
+            function doForward(msgId)      { console.log("[bubble] Forward " + msgId); }
+            function doPin(msgId)          { console.log("[bubble] Pin " + msgId); }
+            function doDownload(msgId)     { console.log("[bubble] Download " + msgId); }
+            function doShare(content) {
+                sharePicker.pendingShareText = content;
+                shareDimDialog.open();
+            }
+            function doCreateEvent(msgId)  { console.log("[bubble] Create event " + msgId); }
+            function doDeleteForMe(msgId)  { console.log("[bubble] Delete for me only " + msgId); }
+            function doDeleteMsg(msgId)    { console.log("[bubble] Delete " + msgId); }
+
             listItemComponents: [
                 ListItemComponent {
                     type: ""
@@ -399,7 +428,134 @@ Page {
                         highlightAppearance: HighlightAppearance.None
                         dividerVisible: false
 
+                        // Cascades ActionItem/DeleteActionItem has no "visible" property
+                        // (they extend UIObject, not Control) — assigning one is a hard
+                        // QML parse error that fails the WHOLE document load, which is
+                        // why ChatView.qml refused to open entirely. Fix: build two full
+                        // ActionSets (member vs admin/owner) and pick one, instead of
+                        // trying to toggle visibility on a single item.
+                        contextActions: [
+                            rowRoot.isAdminOrOwner ? bubbleActionsAdmin : bubbleActionsMember
+                        ]
+
+                        attachedObjects: [
+                            ActionSet {
+                                id: bubbleActionsMember
+                                title: "Message"
+                                ActionItem {
+                                    title: "Copy"
+                                    imageSource: "asset:///images/ChatView/ic_copy.png"
+                                    onTriggered: { rowRoot.ListItem.view.doCopy(ListItemData.content); }
+                                }
+                                ActionItem {
+                                    title: "Reply"
+                                    imageSource: "asset:///images/ChatView/ic_quote_message.png"
+                                    onTriggered: { rowRoot.ListItem.view.doReply(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Reaction"
+                                    imageSource: "asset:///images/ChatView/ic_emoticon_enabled_white.png"
+                                    onTriggered: { rowRoot.ListItem.view.doReaction(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Recall"
+                                    imageSource: "asset:///images/ChatView/ic_recall.png"
+                                    onTriggered: { rowRoot.ListItem.view.doRecallMsg(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Forward"
+                                    imageSource: "asset:///images/ChatView/ic_forward_message.png"
+                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Pin message"
+                                    imageSource: "asset:///images/ChatView/ic_pin.png"
+                                    onTriggered: { rowRoot.ListItem.view.doPin(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Download"
+                                    imageSource: "asset:///images/ChatView/ic_download.png"
+                                    onTriggered: { rowRoot.ListItem.view.doDownload(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Share"
+                                    imageSource: "asset:///images/ChatView/ic_share.png"
+                                    onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content); }
+                                }
+                                ActionItem {
+                                    title: "Create event"
+                                    imageSource: "asset:///images/ChatView/ic_create_event.png"
+                                    onTriggered: { rowRoot.ListItem.view.doCreateEvent(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Delete for me only"
+                                    imageSource: "asset:///images/ChatView/action_delete.png"
+                                    onTriggered: { rowRoot.ListItem.view.doDeleteForMe(ListItemData.msgId); }
+                                }
+                            },
+                            ActionSet {
+                                id: bubbleActionsAdmin
+                                title: "Message"
+                                ActionItem {
+                                    title: "Copy"
+                                    imageSource: "asset:///images/ChatView/ic_copy.png"
+                                    onTriggered: { rowRoot.ListItem.view.doCopy(ListItemData.content); }
+                                }
+                                ActionItem {
+                                    title: "Reply"
+                                    imageSource: "asset:///images/ChatView/ic_quote_message.png"
+                                    onTriggered: { rowRoot.ListItem.view.doReply(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Reaction"
+                                    imageSource: "asset:///images/ChatView/ic_emoticon_enabled_white.png"
+                                    onTriggered: { rowRoot.ListItem.view.doReaction(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Recall"
+                                    imageSource: "asset:///images/ChatView/ic_recall.png"
+                                    onTriggered: { rowRoot.ListItem.view.doRecallMsg(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Forward"
+                                    imageSource: "asset:///images/ChatView/ic_forward_message.png"
+                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Pin message"
+                                    imageSource: "asset:///images/ChatView/ic_pin.png"
+                                    onTriggered: { rowRoot.ListItem.view.doPin(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Download"
+                                    imageSource: "asset:///images/ChatView/ic_download.png"
+                                    onTriggered: { rowRoot.ListItem.view.doDownload(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Share"
+                                    imageSource: "asset:///images/ChatView/ic_share.png"
+                                    onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content); }
+                                }
+                                ActionItem {
+                                    title: "Create event"
+                                    imageSource: "asset:///images/ChatView/ic_create_event.png"
+                                    onTriggered: { rowRoot.ListItem.view.doCreateEvent(ListItemData.msgId); }
+                                }
+                                ActionItem {
+                                    title: "Delete for me only"
+                                    imageSource: "asset:///images/ChatView/action_delete.png"
+                                    onTriggered: { rowRoot.ListItem.view.doDeleteForMe(ListItemData.msgId); }
+                                }
+                                DeleteActionItem {
+                                    title: "Delete"
+                                    imageSource: "asset:///images/ChatView/action_delete.png"
+                                    onTriggered: { rowRoot.ListItem.view.doDeleteMsg(ListItemData.msgId); }
+                                }
+                            }
+                        ]
+
                         property bool isDark: ListItem.view.isDark
+                        property bool isAdminOrOwner: ListItem.view.isAdminOrOwner
 
                         // Browser-style find-in-page: query text and whether this exact
                         // row is the currently-focused match (for a slightly stronger
@@ -457,9 +613,9 @@ Page {
                             attachedObjects: [ LayoutUpdateHandler { id: rowLUH } ]
 
                         Container {
-                            preferredWidth: rowRoot.mine ? 10 : 60
-                            minWidth:       rowRoot.mine ? 10 : 60
-                            maxWidth:       rowRoot.mine ? 10 : 60
+                            preferredWidth: rowRoot.mine ? 18 : 60
+                            minWidth:       rowRoot.mine ? 18 : 60
+                            maxWidth:       rowRoot.mine ? 18 : 60
                         }
 
                         Container {
@@ -733,17 +889,23 @@ Page {
 
                             // Accent strip along the bottom edge of the bubble —
                             // gray for my own messages, blue for incoming ones.
+                            // Only the LAST bubble of a grouped cluster ("bottom")
+                            // or a standalone message ("full") gets the strip —
+                            // otherwise every message in a group drew its own
+                            // line, making a single grouped cluster look like it
+                            // kept splitting into separate bubbles.
                             Container {
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 preferredHeight: ui.du(0.8)
                                 background: rowRoot.mine ? Color.create("#999999") : Color.create("#0073BC")
+                                visible: rowRoot.bubblePos === "bottom" || rowRoot.bubblePos === "full"
                             }
                         } // bubbleWrap
 
                         Container {
-                            preferredWidth: rowRoot.mine ? 60 : 10
-                            minWidth:       rowRoot.mine ? 60 : 10
-                            maxWidth:       rowRoot.mine ? 60 : 10
+                            preferredWidth: rowRoot.mine ? 60 : 18
+                            minWidth:       rowRoot.mine ? 60 : 18
+                            maxWidth:       rowRoot.mine ? 60 : 18
                         }
                         } // inner row Container
                     }
@@ -760,61 +922,46 @@ Page {
             visible: false
         }
 
+        // Thin single-row quick-message suggestion bar — mirrors
+        // attachPreviewBar's structure/height instead of the old tall
+        // scrollable list. Only the single best match is shown; typing
+        // more narrows which one that is.
         Container {
             id: qmSuggestBar
-            visible: false
+            visible: !!chatViewPage.qmMatch
             horizontalAlignment: HorizontalAlignment.Fill
-            background: chatViewPage.isDark ? Color.create("#1c1c1c") : Color.White
-            layout: StackLayout {}
+            background: chatViewPage.isDark ? Color.create("#1e2a38") : Color.create("#dce8f5")
+            topPadding:    ui.du(1.0)
+            bottomPadding: ui.du(1.0)
+            leftPadding:   ui.du(1.5)
+            rightPadding:  ui.du(1.5)
+            layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-            Divider {}
-
-            ListView {
-                id: qmSuggestList
-                horizontalAlignment: HorizontalAlignment.Fill
-                preferredHeight: ui.du(34)
-                maxHeight: ui.du(34)
-
-                dataModel: ArrayDataModel { id: qmSuggestModel }
-
-                listItemComponents: [
-                    ListItemComponent {
-                        CustomListItem {
-                            id: qmSugRow
-                            highlightAppearance: HighlightAppearance.Full
-                            dividerVisible: true
-
-                            Container {
-                                layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                                horizontalAlignment: HorizontalAlignment.Fill
-                                background: chatViewPage.isDark ? Color.create("#13335c") : Color.create("#eaf1ff")
-                                leftPadding: ui.du(2); rightPadding: ui.du(2)
-                                topPadding: ui.du(1); bottomPadding: ui.du(1)
-
-                                Label {
-                                    text: "/" + ListItemData.name
-                                    textStyle { color: Color.create("#2575fc"); fontWeight: FontWeight.Bold }
-                                    multiline: false
-                                }
-                                Label {
-                                    text: ListItemData.content
-                                    textStyle {
-                                        color: chatViewPage.isDark ? Color.create("#cfd8e3") : Color.create("#444444")
-                                        fontSize: FontSize.Small
-                                    }
-                                    multiline: false
-                                    topMargin: ui.du(0.2)
-                                }
-                            }
-                        }
+            gestureHandlers: [
+                TapHandler {
+                    onTapped: {
+                        if (chatViewPage.qmMatch)
+                            chatViewPage.applyQuickMessage(chatViewPage.qmMatch.content);
                     }
-                ]
-
-                onTriggered: {
-                    var item = dataModel.data(indexPath);
-                    if (item === null || item === undefined) return;
-                    chatViewPage.applyQuickMessage(item.content);
                 }
+            ]
+
+            Label {
+                verticalAlignment: VerticalAlignment.Center
+                text: chatViewPage.qmMatch ? ("/" + chatViewPage.qmMatch.name) : ""
+                textStyle { color: Color.create("#2575fc"); fontWeight: FontWeight.Bold }
+                multiline: false
+                rightMargin: ui.du(1.5)
+            }
+
+            Label {
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                verticalAlignment: VerticalAlignment.Center
+                text: chatViewPage.qmMatch ? chatViewPage.qmMatch.content : ""
+                textStyle {
+                    color: chatViewPage.isDark ? Color.create("#cfd8e3") : Color.create("#444444")
+                }
+                multiline: false
             }
         }
 
@@ -985,7 +1132,7 @@ Page {
                         var ep = emojiPanelDef.createObject();
                         ep.isDark = chatViewPage.isDark;
                         ep.horizontalAlignment = HorizontalAlignment.Fill;
-                        ep.preferredHeight = ui.du(19);
+                        ep.preferredHeight = ui.du(28);
                         ep.minHeight = ui.du(16);
                         emojiPanelSlot.add(ep);
                         emojiSignalCon.target = ep;
@@ -1076,28 +1223,32 @@ Page {
     function refreshQuickMessageSuggestions(text) {
         var tok = chatViewPage.activeSlashToken(text);
         if (tok === null) {
-            qmSuggestBar.visible = false;
-            qmSuggestModel.clear();
+            chatViewPage.qmMatch = null;
             return;
         }
         var all = zService.getQuickMessages();
         var q = tok.token.toLowerCase();
-        var matches = [];
-        for (var i = 0; i < all.length && matches.length < 5; i++) {
-            if (q.length === 0 || all[i].name.toLowerCase().indexOf(q) === 0) {
-                matches.push(all[i]);
+        if (q.length === 0) {
+            chatViewPage.qmMatch = null;
+            return;
+        }
+        // Pick the single best match: an exact name match wins outright;
+        // otherwise the shortest prefix match (closest to what's typed).
+        var best = null;
+        for (var i = 0; i < all.length; i++) {
+            var name = all[i].name.toLowerCase();
+            if (name === q) { best = all[i]; break; }
+            if (name.indexOf(q) === 0) {
+                if (best === null || name.length < best.name.length) best = all[i];
             }
         }
-        qmSuggestModel.clear();
-        qmSuggestModel.insertList(matches);
-        qmSuggestBar.visible = (matches.length > 0);
+        chatViewPage.qmMatch = best;
     }
 
     function applyQuickMessage(content) {
         var tok = chatViewPage.activeSlashToken(inputField.text);
         inputField.text = (tok !== null) ? (inputField.text.substring(0, tok.start) + content) : content;
-        qmSuggestBar.visible = false;
-        qmSuggestModel.clear();
+        chatViewPage.qmMatch = null;
         inputField.requestFocus();
     }
 
@@ -1109,8 +1260,7 @@ Page {
         sendAction.enabled = false;
         var caption = txt;
         inputField.text = "";
-        qmSuggestBar.visible = false;
-        qmSuggestModel.clear();
+        chatViewPage.qmMatch = null;
 
         if (hasPhoto) {
             var imgPath = chatViewPage.pendingAttachPath;
@@ -1334,6 +1484,51 @@ Page {
             onEmojiPicked: {
                 inputField.text = inputField.text + charStr
             }
+        },
+
+        // ---- Copy & Share (bubble hold-menu) — ported from SmartList10 ----
+        SystemToast {
+            id: copyToast
+            body: "Copied to clipboard"
+            position: SystemUiPosition.MiddleCenter
+        },
+
+        SharePickerSheet { id: sharePicker },
+
+        // "app" is a stable context property set once at startup (unlike
+        // chatsNav.activeChatPage/etc. in ChatsTab.qml, which start null) —
+        // safe to bind target directly here, no target:null dance needed.
+        Connections {
+            target: app
+            onShareTargetsReady: {
+                shareDimFadeOut.play();
+                sharePicker.openWithTargets(targets);
+            }
+        },
+
+        // Dim overlay shown while querying share targets — same pattern as
+        // SmartList10's main.qml dimDialog.
+        Dialog {
+            id: shareDimDialog
+            Container {
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment:   VerticalAlignment.Fill
+                background: Color.create(0, 0, 0, 0.5)
+                opacity: 0.0
+                animations: [
+                    FadeTransition {
+                        id: shareDimFadeIn
+                        duration: 150; toOpacity: 1.0
+                        onEnded: { app.queryShareTargets(sharePicker.pendingShareText); }
+                    },
+                    FadeTransition {
+                        id: shareDimFadeOut
+                        duration: 150; toOpacity: 0.0
+                        onEnded: { shareDimDialog.close(); }
+                    }
+                ]
+            }
+            onOpened: { shareDimFadeIn.play(); }
         },
 
         InfoDialog {

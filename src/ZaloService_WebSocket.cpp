@@ -100,14 +100,28 @@ void ZaloService::connectWebSocket()
     connect(m_webSocket, SIGNAL(disconnected()),       this, SLOT(onWsDisconnected()));
     connect(m_webSocket, SIGNAL(sslErrors(QList<QSslError>)),
             this, SLOT(onWsSslErrors(QList<QSslError>)));
+    connect(m_webSocket, SIGNAL(error(QAbstractSocket::SocketError)),
+            this, SLOT(onWsSocketError(QAbstractSocket::SocketError)));
 
     bool useSsl = (url.scheme() == "wss" || url.scheme() == "https");
     int  port   = url.port(useSsl ? 443 : 80);
 
-    if (useSsl)
+    if (useSsl) {
+        // Same root cause/fix as buildRequest()'s update-check request
+        // (see ZaloService_Network.cpp): BB10's bundled OpenSSL/Qt4 stack
+        // defaults to an old protocol pin. Some Zalo WS hosts (e.g.
+        // ws12-msg) reject that with "tlsv1 alert protocol version" —
+        // confirmed via the onWsSocketError logging added earlier
+        // (error:1407742E ... reason(1070) = TLS protocol_version alert).
+        // Force AnyProtocol so OpenSSL negotiates the highest version both
+        // sides support, instead of leaving this QSslSocket on its default.
+        QSslConfiguration wsSslConf = m_webSocket->sslConfiguration();
+        wsSslConf.setProtocol(QSsl::AnyProtocol);
+        m_webSocket->setSslConfiguration(wsSslConf);
         m_webSocket->connectToHostEncrypted(url.host(), port);
-    else
+    } else {
         m_webSocket->connectToHost(url.host(), port);
+    }
 
     m_webSocket->setProperty("wsUrl", url.toString());
 }
@@ -209,8 +223,21 @@ void ZaloService::sendWsHandshake(const QUrl &url)
 
 void ZaloService::onWsSslErrors(const QList<QSslError> &errors)
 {
-    Q_UNUSED(errors);
+    for (int i = 0; i < errors.size(); ++i)
+        qDebug() << "[Zalo WS] SSL error:" << errors[i].errorString();
+    // Vẫn ignore để không chặn kết nối (self-signed / chain issues thường gặp
+    // trên BB10), nhưng giờ có log để biết CHÍNH XÁC lỗi gì trước khi ignore.
     m_webSocket->ignoreSslErrors();
+}
+
+void ZaloService::onWsSocketError(QAbstractSocket::SocketError err)
+{
+    // Log lỗi socket cấp thấp (TCP refused, host not found, timeout, SSL
+    // handshake failure, v.v.) — trước đây onWsDisconnected() chỉ in
+    // "Disconnected" suông, không có cách nào biết WS fail vì lý do gì.
+    if (!m_webSocket) return;
+    qDebug() << "[Zalo WS] Socket error:" << err
+              << m_webSocket->errorString();
 }
 
 void ZaloService::onWsReadyRead()
@@ -1069,7 +1096,8 @@ QByteArray ZaloService::maskWsFrame(int opcode, const QByteArray &data)
 
 void ZaloService::onWsDisconnected()
 {
-    qDebug() << "[Zalo WS] Disconnected";
+    qDebug() << "[Zalo WS] Disconnected"
+              << (m_webSocket ? m_webSocket->errorString() : QString("(socket already gone)"));
     m_wsConnected = false;
     m_wsCipherKey.clear();
     if (!m_loggedIn) return;

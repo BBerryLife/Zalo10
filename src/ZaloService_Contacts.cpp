@@ -503,7 +503,21 @@ void ZaloService::onFetchFriendsDone()
     m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch();
 
     if (!threads.isEmpty()) {
-        emit friendsReady(threads);
+        // IMPORTANT: compute needDownload and set m_pendingFriends/
+        // m_pendingFriendAvatarCount BEFORE emit friendsReady() below, not
+        // after. emit is synchronous here — QML's onFriendsReady handler
+        // runs to completion (including up to ~87 back-to-back
+        // zService.downloadAvatar() calls) on top of this very call stack
+        // before control ever returns to this function. Previously the
+        // bookkeeping below ran AFTER the emit, so for the entire duration
+        // of that reentrant QML loop, m_pendingFriends was still the OLD
+        // (possibly stale/empty) value — a real ordering hazard on top of
+        // heavy QSet churn in downloadAvatar()/onAvatarDownloaded(). This
+        // crashed with SIGSEGV inside Qt's own QHash internals
+        // (QHash<QString,QHashDummyValue>::duplicateNode) on a fresh-login
+        // run where the avatar cache was empty and all 87 friends hit that
+        // pending-avatar bookkeeping path back-to-back in one synchronous
+        // burst — the exact conditions this reordering removes.
         int needDownload = 0;
         for (int i = 0; i < threads.size(); ++i) {
             QVariantMap t = threads[i].toMap();
@@ -516,6 +530,7 @@ void ZaloService::onFetchFriendsDone()
             m_pendingFriendAvatarCount = needDownload;
             m_loadedFriendAvatarCount  = 0;
         }
+        emit friendsReady(threads);
     }
     m_isFetchingFriends = false;
 }

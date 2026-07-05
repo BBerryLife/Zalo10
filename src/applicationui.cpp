@@ -10,6 +10,11 @@
 #include <bb/cascades/ThemeSupport>
 #include <bb/system/InvokeManager>
 #include <bb/system/InvokeRequest>
+#include <bb/system/InvokeQueryTargetsRequest>
+#include <bb/system/InvokeQueryTargetsReply>
+#include <bb/system/InvokeAction>
+#include <bb/system/InvokeTarget>
+#include <bb/system/Clipboard>
 #include <bb/ApplicationInfo>
 
 #include <QTranslator>
@@ -129,6 +134,111 @@ void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
     req.setAction("bb.action.COMPOSE");
     req.setMimeType("message/rfc822");
     req.setUri(QString("mailto:%1?subject=%2").arg(to).arg(subject));
+    m_pInvokeManager->invoke(req);
+}
+
+void ApplicationUI::copyToClipboard(const QString &text)
+{
+    bb::system::Clipboard clipboard;
+    clipboard.clear();
+    clipboard.insert("text/plain", text.toUtf8());
+}
+
+// Ported from SmartList10's ApplicationUI::queryShareTargets/onQueryTargetsFinished —
+// same bb.action.SHARE query + same category ordering (BBM contact -> BBM group ->
+// BBM channel -> Text -> Email -> Meeting -> Bluetooth/NFC -> Remember -> other
+// native -> third-party), which is the order Jim wants for the share picker.
+void ApplicationUI::queryShareTargets(const QString &text)
+{
+    Q_UNUSED(text);
+    InvokeQueryTargetsRequest req;
+    req.setAction("bb.action.SHARE");
+    req.setMimeType("text/plain");
+    InvokeQueryTargetsReply *reply = m_pInvokeManager->queryTargets(req);
+    connect(reply, SIGNAL(finished()), this, SLOT(onQueryTargetsFinished()));
+}
+
+void ApplicationUI::onQueryTargetsFinished()
+{
+    InvokeQueryTargetsReply *reply = qobject_cast<InvokeQueryTargetsReply*>(sender());
+    if (!reply) return;
+
+    QString tmpDir = QDir::homePath() + "/tmp/icons/";
+    QDir().mkpath(tmpDir);
+
+    QStringList nativePfx;
+    nativePfx << "sys." << "com.rim.";
+
+    QVariantList bbmMain, bbmGroup, bbmChannel;
+    QVariantList textList, emailList, meetingList, connList, rememberList, otherNatList, thirdList;
+
+    foreach (const InvokeAction &action, reply->actions()) {
+        foreach (const InvokeTarget &tgt, action.targets()) {
+            QVariantMap m;
+            m["label"]  = tgt.label();
+            m["target"] = tgt.name();
+            m["action"] = action.name();
+
+            QString src = tgt.icon().toLocalFile();
+            if (!src.isEmpty() && QFile::exists(src)) {
+                QString dst = tmpDir + tgt.name().replace("/", "_") + ".png";
+                if (!QFile::exists(dst)) QFile::copy(src, dst);
+                m["icon"] = "file://" + dst;
+            } else {
+                m["icon"] = "";
+            }
+
+            bool isNat = false;
+            QString name = tgt.name().toLower();
+            foreach (const QString &pfx, nativePfx) {
+                if (name.startsWith(pfx)) { isNat = true; break; }
+            }
+            m["isNative"] = isNat;
+
+            if (isNat) {
+                if (name.contains("bbgroups") || (name.contains("bbm") && name.contains("group")))
+                    bbmGroup.append(m);
+                else if (name.contains("channel") || name.contains("channels"))
+                    bbmChannel.append(m);
+                else if (name.contains("bbm"))
+                    bbmMain.append(m);
+                else if (name.contains("text") || name.contains("sms") || name.contains("mms"))
+                    textList.append(m);
+                else if (name.contains("email"))
+                    emailList.append(m);
+                else if (name.contains("meeting") || name.contains("calendar"))
+                    meetingList.append(m);
+                else if (name.contains("bluetooth") || name.contains("nfc"))
+                    connList.append(m);
+                else if (name.contains("remember"))
+                    rememberList.append(m);
+                else
+                    otherNatList.append(m);
+            } else {
+                thirdList.append(m);
+            }
+        }
+    }
+    reply->deleteLater();
+
+    QVariantList result;
+    QList<QVariantList*> ordered;
+    ordered << &bbmMain << &bbmGroup << &bbmChannel << &textList << &emailList
+            << &meetingList << &connList << &rememberList << &otherNatList << &thirdList;
+    foreach (QVariantList *lst, ordered)
+        foreach (const QVariant &v, *lst)
+            result.append(v);
+
+    emit shareTargetsReady(result);
+}
+
+void ApplicationUI::invokeShareTarget(const QString &target, const QString &action, const QString &text)
+{
+    InvokeRequest req;
+    req.setTarget(target);
+    req.setAction(action.isEmpty() ? "bb.action.SHARE" : action);
+    req.setMimeType("text/plain");
+    req.setData(text.toUtf8());
     m_pInvokeManager->invoke(req);
 }
 

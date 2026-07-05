@@ -294,6 +294,7 @@ NavigationPane {
                     groupsNav.push(page);
                     console.log("[GroupsTab] push() took " + (Date.now() - t1) + "ms, total tap-to-push " + (Date.now() - t0) + "ms");
                     groupsNav.currentPage = page;
+                    groupQmTriggerConn.target = page;
                     page.startChat();
                 }
             }
@@ -329,20 +330,28 @@ NavigationPane {
                 source: "asset:///QuickMessagesSheet.qml"
             },
             Connections {
+                // target starts null (see chatPageConn in ChatsTab.qml for why:
+                // binding directly to groupsNav.currentPage, which is null
+                // until a page is pushed, made Cascades validate
+                // onQmRequestedChanged against a null target at construction
+                // time — that's the "Cannot assign to non-existent property"
+                // warning seen on every launch). Assigned explicitly once the
+                // real page instance exists (see onTriggered below / openThread()).
                 id: groupQmTriggerConn
-                target: groupsNav.currentPage
+                target: null
                 onQmRequestedChanged: {
                     if (!groupsNav.currentPage || !groupsNav.currentPage.qmRequested) return;
                     groupsNav.currentPage.qmRequested = false;
                     var qmPage = qmPageDef.createObject();
                     if (!qmPage) return;
                     groupsNav.activeQmPage = qmPage;
+                    groupQmInsertConn.target = qmPage;
                     groupsNav.push(qmPage);
                 }
             },
             Connections {
                 id: groupQmInsertConn
-                target: groupsNav.activeQmPage
+                target: null
                 onUseInChatRequestedChanged: {
                     if (!groupsNav.activeQmPage || !groupsNav.activeQmPage.useInChatRequested) return;
                     var content = groupsNav.activeQmPage.insertRequestedContent;
@@ -534,6 +543,7 @@ NavigationPane {
         page.selfName   = groupsNav.selfName;
         groupsNav.push(page);
         groupsNav.currentPage = page;
+        groupQmTriggerConn.target = page;
         page.startChat();
     }
 }

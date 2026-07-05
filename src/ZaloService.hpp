@@ -227,6 +227,7 @@ private slots:
     void onWsReadyRead();
     void onWsDisconnected();
     void onWsSslErrors(const QList<QSslError> &errors);
+    void onWsSocketError(QAbstractSocket::SocketError err);
     void onWsReconnectTimer();
 
 private:
