@@ -295,6 +295,7 @@ private:
     QSize imageDimensions(const QString &localFileUrlOrPath) const; // strips "file://", reads pixel size
     void markMessageRecalled(const QString &threadId, const QString &msgId); // chat.undo handling
     void markMessageDeletedForMe(const QString &threadId, const QString &msgId); // chat.delete handling — local-only, hard delete
+    bool isMessageDeletedForMe(const QString &msgId) const; // tombstone lookup — must be checked before handing any resynced msg to the UI, not just before writing to DB
 
     // Data export/import/cache helpers
     QVariantList dbLoadAllMessages() const;     // every row, every thread — used by exportData

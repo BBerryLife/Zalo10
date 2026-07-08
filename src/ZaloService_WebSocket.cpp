@@ -492,6 +492,14 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             }
             QString cliMsgId = m["cliMsgId"].toString();
 
+            // Same tombstone guard as the cmd=510 history path below: if this
+            // msgId was already hard-deleted via "delete for me", never let it
+            // reach the UI or DB again, even on a duplicate/retried push.
+            if (isMessageDeletedForMe(msgId)) {
+                qDebug() << "[Zalo WS] cmd=501/521: skip msg" << msgId << "(tombstoned, deleted-for-me)";
+                continue;
+            }
+
             // chat.undo = recall/unsend notification, not a real message — update the
             // original message in place instead of appending a stray JSON bubble.
             QString recalledId = extractRecalledMsgId(m);
@@ -760,6 +768,18 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             qDebug() << "[Zalo WS] new msg from" << uidFrom
                      << "thread" << threadId << "content=" << out["content"].toString().left(60);
             dbSaveMessage(out, threadId);
+            // Keep m_threadLastMsgId current for real-time (cmd=501/521) messages
+            // too, not just cmd=510 history responses — otherwise fetchMessages()
+            // (ZaloService_Messages.cpp) always falls back to lastId="0" the next
+            // time this thread is reopened and re-fetches the ENTIRE history from
+            // the server instead of just what changed. (dbSaveMessage() is now
+            // also tombstone-safe against deleted-for-me messages regardless of
+            // this, but keeping this in sync avoids the wasteful full refetch.)
+            if (!msgId.isEmpty()) {
+                qint64 numH = msgId.toLongLong();
+                if (numH > m_threadLastMsgId.value(threadId, "0").toLongLong())
+                    m_threadLastMsgId[threadId] = msgId;
+            }
             emit newMessage(threadId, out);
             if (!isSelf && threadId != m_activeThreadId && !m_mutedThreads.contains(threadId)) {
                 QString senderName = out["dName"].toString();
@@ -924,6 +944,22 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             }
             bool isMine = (rawUidFrom == "0" || rawUidFrom == m_uid);
             QString uidFrom = (rawUidFrom == "0") ? m_uid : rawUidFrom;
+
+            // Drop any message the user already hard-deleted via "delete for me"
+            // in a previous session/visit. The removeAt() loop below (chat.delete
+            // handling) only catches the case where the delete NOTIFICATION event
+            // is itself present in this same history batch — but once the thread
+            // is closed and reopened, the server keeps replaying the original
+            // "webchat" message on every full resync without necessarily
+            // replaying that notification alongside it. dbSaveMessage() already
+            // refuses to persist a tombstoned msgId, but that alone doesn't stop
+            // it from being included in the `msgs` list handed to the UI via
+            // messagesReady — so it would still flash on screen even though it's
+            // correctly absent from the DB. Skip it here too.
+            if (isMessageDeletedForMe(msgId)) {
+                qDebug() << "[Zalo WS] old_messages: skip msg" << msgId << "(tombstoned, deleted-for-me)";
+                continue;
+            }
 
             // chat.undo = recall/unsend notification, not a real message. Patch the
             // original message if it's earlier in this same history batch, persist the

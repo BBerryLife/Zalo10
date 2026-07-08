@@ -375,11 +375,36 @@ Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
                     layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
-                    verticalAlignment: VerticalAlignment.Top
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f48b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48d_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48e_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
+                    // This is the LAST page of the FIRST category and only has 3
+                    // real emojis. Every other page in this panel has a full (or
+                    // near-full, anchored by a preceding full row) 6-item row, so
+                    // GridLayout keeps a fixed per-column width. A lone partial row
+                    // with nothing to anchor it instead gets evenly redistributed
+                    // across the entire Fill-width container, which is exactly the
+                    // "emojis pulled far apart" bug on this page. Padding the row
+                    // out to 6 cells with invisible, non-interactive spacers (same
+                    // footprint as EmojiButton) makes GridLayout treat it like any
+                    // other full row, so the 3 real emojis pack tightly on the left
+                    // instead of stretching across the whole width.
+                    Container {
+                        preferredHeight: ui.du(7); maxHeight: ui.du(7); maxWidth: ui.du(7.5)
+                        opacity: 0
+                        touchPropagationMode: TouchPropagationMode.None
+                    }
+                    Container {
+                        preferredHeight: ui.du(7); maxHeight: ui.du(7); maxWidth: ui.du(7.5)
+                        opacity: 0
+                        touchPropagationMode: TouchPropagationMode.None
+                    }
+                    Container {
+                        preferredHeight: ui.du(7); maxHeight: ui.du(7); maxWidth: ui.du(7.5)
+                        opacity: 0
+                        touchPropagationMode: TouchPropagationMode.None
+                    }
                 }
             }
         }

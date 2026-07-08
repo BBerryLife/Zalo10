@@ -76,9 +76,38 @@ void ZaloService::markMessageDeletedForMe(const QString &threadId, const QString
             sqlite3_step(stmt);
             sqlite3_finalize(stmt);
         }
+        // Tombstone this msgId so it can never be silently re-inserted by a later
+        // dbSaveMessage() call (e.g. the next cmd=510 history resync when the
+        // thread is reopened — see deleted_messages' CREATE TABLE comment in
+        // ZaloService.cpp for the full bug this fixes). Without this, "delete for
+        // me" only removed the LOCAL row; the server still hands the message back
+        // on the very next full/partial resync, and it would silently reappear.
+        const char *sqlTomb = "INSERT OR REPLACE INTO deleted_messages (msgId, threadId, deletedAt) VALUES (?, ?, ?)";
+        sqlite3_stmt *stmtTomb = 0;
+        if (sqlite3_prepare_v2(m_db, sqlTomb, -1, &stmtTomb, 0) == SQLITE_OK) {
+            sqlite3_bind_text(stmtTomb, 1, msgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmtTomb, 2, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmtTomb, 3, QString::number(QDateTime::currentMSecsSinceEpoch()).toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmtTomb);
+            sqlite3_finalize(stmtTomb);
+        }
     }
-    qDebug() << "[Zalo] message deleted-for-me msgId=" << msgId << "thread=" << threadId;
+    qDebug() << "[Zalo] message deleted-for-me msgId=" << msgId << "thread=" << threadId << "(tombstoned)";
     emit messageDeletedLocally(threadId, msgId);
+}
+
+bool ZaloService::isMessageDeletedForMe(const QString &msgId) const
+{
+    if (!m_db || msgId.isEmpty()) return false;
+    const char *sql = "SELECT 1 FROM deleted_messages WHERE msgId=?";
+    sqlite3_stmt *stmt = 0;
+    bool found = false;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, msgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        found = (sqlite3_step(stmt) == SQLITE_ROW);
+        sqlite3_finalize(stmt);
+    }
+    return found;
 }
 
 void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
@@ -86,6 +115,16 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     if (!m_db || threadId.isEmpty()) return;
     QString msgId = msg["msgId"].toString();
     if (msgId.isEmpty()) return;
+
+    // Never resurrect a message the user hard-deleted via "delete for me": the
+    // server keeps handing it back on every history resync (chat.delete is
+    // local-only server-side), so without this check it would silently
+    // reappear every time the thread is reopened. See deleted_messages'
+    // CREATE TABLE comment in ZaloService.cpp for the full explanation.
+    if (isMessageDeletedForMe(msgId)) {
+        qDebug() << "[Zalo] dbSaveMessage: skipping tombstoned (deleted-for-me) msgId=" << msgId;
+        return;
+    }
 
     // Skip messages older than the last clear timestamp for this thread
     const char *sqlCheck = "SELECT clearedAt FROM cleared_threads WHERE threadId=?";

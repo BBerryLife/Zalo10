@@ -675,7 +675,7 @@ Page {
 
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
-                            topPadding:    rowRoot.grouped ? 0 : 6
+                            topPadding:    rowRoot.grouped ? 0 : 10
                             bottomPadding: 0
                             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                             attachedObjects: [ LayoutUpdateHandler { id: rowLUH } ]

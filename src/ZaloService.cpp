@@ -154,6 +154,22 @@ ZaloService::ZaloService(QObject *parent)
             "  localPath TEXT NOT NULL,"
             "  updatedAt TEXT"
             ");", 0, 0, 0);
+        // Tombstone of msgIds the user hard-deleted via "delete for me" (chat.delete,
+        // onlyMe=true). Delete-for-me never removes the message server-side, so any
+        // later cmd=510 history re-sync (e.g. re-entering the thread, or app restart —
+        // m_threadLastMsgId in ZaloService.hpp is in-memory only and always starts
+        // empty, forcing a lastId=0 full re-fetch) will happily hand the "deleted"
+        // message straight back to dbSaveMessage(), which would otherwise re-insert
+        // it and make it reappear in the UI. Every msgId here must be permanently
+        // skipped by dbSaveMessage() regardless of how many times it resurfaces from
+        // the server. Deliberately NOT wiped by clearCache() (same reasoning as
+        // cleared_threads: this is a durable user choice, not disposable cache).
+        sqlite3_exec(m_db,
+            "CREATE TABLE IF NOT EXISTS deleted_messages ("
+            "  msgId     TEXT PRIMARY KEY,"
+            "  threadId  TEXT NOT NULL,"
+            "  deletedAt TEXT"
+            ");", 0, 0, 0);
         qDebug() << "[Zalo] SQLite DB opened:" << dbPath;
     } else {
         qDebug() << "[Zalo] SQLite open FAILED";
