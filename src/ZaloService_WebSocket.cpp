@@ -500,8 +500,24 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 continue;
             }
 
+            // chat.delete = "delete for me" notification. Zalo delivers this to
+            // BOTH participants regardless of who actually pressed delete, but
+            // the action itself must only ever affect the deleter's own screen
+            // (see extractDeleteInfo()'s comment in ZaloServiceUtils.hpp for the
+            // full reasoning + the bug this fixes). So: only hard-delete our
+            // local row if WE are the one who did the deleting; otherwise this
+            // is someone else's local-only deletion and must be a no-op here.
+            QString delMsgId, deleterUid;
+            if (extractDeleteInfo(m, delMsgId, deleterUid)) {
+                if (deleterUid == m_uid) {
+                    markMessageDeletedForMe(threadId, delMsgId);
+                }
+                continue;
+            }
+
             QVariantMap out;
             out["msgId"]    = msgId;
+            out["cliMsgId"] = cliMsgId;
             out["senderId"] = uidFrom;
             out["dName"]    = m["dName"].toString();
             out["ts"]       = m["ts"].toString();
@@ -922,6 +938,25 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         pm["msgType"] = 99;
                         msgs[pj] = pm;
                         break;
+                    }
+                }
+                continue;
+            }
+
+            // chat.delete = "delete for me" notification, same self-only guard as
+            // the real-time path above (see extractDeleteInfo()'s comment for why
+            // this must never affect the other participant's screen). If this
+            // history batch also contains the original message, drop it from
+            // the batch entirely so it's not resurrected on next thread open.
+            QString delMsgIdH, deleterUidH;
+            if (extractDeleteInfo(m, delMsgIdH, deleterUidH)) {
+                if (deleterUidH == m_uid) {
+                    markMessageDeletedForMe(emitThread, delMsgIdH);
+                    for (int pj = 0; pj < msgs.size(); ++pj) {
+                        if (msgs[pj].toMap()["msgId"].toString() == delMsgIdH) {
+                            msgs.removeAt(pj);
+                            break;
+                        }
                     }
                 }
                 continue;

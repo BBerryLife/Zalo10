@@ -55,6 +55,32 @@ void ZaloService::markMessageRecalled(const QString &threadId, const QString &ms
     emit messageRecalled(threadId, msgId);
 }
 
+// "Delete for me" (chat.delete), as opposed to markMessageRecalled's "chat.undo"
+// (recall/unsend). The two must never share behavior:
+//   - Recall: message is gone for BOTH sides, and a "(this message was
+//     recalled)" placeholder is shown in its place — hence the UPDATE + tag.
+//   - Delete for me: message simply vanishes from OUR OWN local view, with no
+//     placeholder, and the other participant's copy is completely unaffected.
+//     That's a hard DELETE of our local row, not an UPDATE/tag.
+// Caller (ZaloService_WebSocket.cpp's chat.delete handling) is responsible for
+// only invoking this when the deletion was actually performed by us — see
+// extractDeleteInfo()'s outDeleterUid check.
+void ZaloService::markMessageDeletedForMe(const QString &threadId, const QString &msgId)
+{
+    if (msgId.isEmpty()) return;
+    if (m_db) {
+        const char *sql = "DELETE FROM messages WHERE msgId=?";
+        sqlite3_stmt *stmt = 0;
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, msgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+    }
+    qDebug() << "[Zalo] message deleted-for-me msgId=" << msgId << "thread=" << threadId;
+    emit messageDeletedLocally(threadId, msgId);
+}
+
 void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
 {
     if (!m_db || threadId.isEmpty()) return;
@@ -97,12 +123,14 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         "isMine=?,isGroup=?,msgType=?,"
         "localImage = CASE WHEN ?='' THEN localImage ELSE ? END,"
         "imgWidth   = CASE WHEN ?=0  THEN imgWidth   ELSE ? END,"
-        "imgHeight  = CASE WHEN ?=0  THEN imgHeight  ELSE ? END "
+        "imgHeight  = CASE WHEN ?=0  THEN imgHeight  ELSE ? END,"
+        "cliMsgId   = CASE WHEN ?='' THEN cliMsgId   ELSE ? END "
         "WHERE msgId=?";
     sqlite3_stmt *upd = 0;
     bool updated = false;
     if (sqlite3_prepare_v2(m_db, sqlUpdate, -1, &upd, 0) == SQLITE_OK) {
         QByteArray localImageUtf8 = msg["localImage"].toString().toUtf8();
+        QByteArray cliMsgIdUtf8   = msg["cliMsgId"].toString().toUtf8();
         int imgWidthVal  = msg["imgWidth"].toInt();
         int imgHeightVal = msg["imgHeight"].toInt();
         sqlite3_bind_text(upd, 1,  threadId.toUtf8().constData(),                    -1, SQLITE_TRANSIENT);
@@ -119,7 +147,9 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         sqlite3_bind_int (upd, 12, imgWidthVal);
         sqlite3_bind_int (upd, 13, imgHeightVal);
         sqlite3_bind_int (upd, 14, imgHeightVal);
-        sqlite3_bind_text(upd, 15, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 15, cliMsgIdUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 16, cliMsgIdUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 17, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
         sqlite3_step(upd);
         updated = sqlite3_changes(m_db) > 0;
         sqlite3_finalize(upd);
@@ -128,8 +158,8 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
 
     const char *sql =
         "INSERT INTO messages "
-        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
+        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,cliMsgId) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
     sqlite3_stmt *stmt = 0;
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
     sqlite3_bind_text(stmt, 1,  msgId.toUtf8().constData(),                       -1, SQLITE_TRANSIENT);
@@ -144,6 +174,7 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     sqlite3_bind_text(stmt, 10, msg["localImage"].toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int (stmt, 11, msg["imgWidth"].toInt());
     sqlite3_bind_int (stmt, 12, msg["imgHeight"].toInt());
+    sqlite3_bind_text(stmt, 13, msg["cliMsgId"].toString().toUtf8().constData(),   -1, SQLITE_TRANSIENT);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
 }
@@ -154,7 +185,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     if (!m_db || threadId.isEmpty()) return result;
 
     const char *sql =
-        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,recalledOriginalContent "
+        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,recalledOriginalContent,cliMsgId "
         "FROM messages WHERE threadId=? "
         "ORDER BY CAST(ts AS INTEGER) ASC LIMIT 200;";
     sqlite3_stmt *stmt = 0;
@@ -174,6 +205,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
         m["imgWidth"]   = sqlite3_column_int(stmt, 9);
         m["imgHeight"]  = sqlite3_column_int(stmt, 10);
         m["recalledOriginalContent"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 11));
+        m["cliMsgId"]   = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 12));
         result.append(m);
     }
     sqlite3_finalize(stmt);

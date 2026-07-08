@@ -11,6 +11,12 @@ Sheet {
 
     property variant targets: []
     property string pendingShareText: ""   // set by ChatView before opening
+    // Set by ChatView instead of pendingShareText when the bubble being
+    // shared is a photo message with a locally cached copy — routes the
+    // onTriggered handler below to invokeShareTargetForImage() so the
+    // receiving app gets the actual picture, not the JSON URL text.
+    property bool   pendingShareIsImage: false
+    property string pendingShareImagePath: ""
 
     function openWithTargets(tgts) {
         targets = tgts;
@@ -75,7 +81,11 @@ Sheet {
             onTriggered: {
                 var item = dataModel.data(indexPath);
                 sharePickerSheetRoot.close();
-                app.invokeShareTarget(item.target, item.action, sharePickerSheetRoot.pendingShareText);
+                if (sharePickerSheetRoot.pendingShareIsImage && sharePickerSheetRoot.pendingShareImagePath.length > 0) {
+                    app.invokeShareTargetForImage(item.target, item.action, sharePickerSheetRoot.pendingShareImagePath);
+                } else {
+                    app.invokeShareTarget(item.target, item.action, sharePickerSheetRoot.pendingShareText);
+                }
             }
         }
     }

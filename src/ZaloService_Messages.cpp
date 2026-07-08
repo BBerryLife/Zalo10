@@ -132,6 +132,25 @@ void ZaloService::onFetchMsgDone()
             continue;
         }
 
+        // chat.delete = "delete for me" notification. Same self-only guard as
+        // every other call site — Zalo delivers this to both participants, but
+        // it must only ever remove the message from the screen of whoever
+        // actually pressed delete. See extractDeleteInfo()'s comment in
+        // ZaloServiceUtils.hpp for the full reasoning + the bug this fixes.
+        QString delMsgIdG, deleterUidG;
+        if (extractDeleteInfo(m, delMsgIdG, deleterUidG)) {
+            if (deleterUidG == m_uid) {
+                markMessageDeletedForMe(tid, delMsgIdG);
+                for (int pj = 0; pj < msgs.size(); ++pj) {
+                    if (msgs[pj].toMap()["msgId"].toString() == delMsgIdG) {
+                        msgs.removeAt(pj);
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+
         QVariantMap out;
         QString msgId    = m["msgId"].toString();
         QString uidFrom  = m["uidFrom"].toString();
@@ -403,6 +422,9 @@ void ZaloService::sendMessage(const QString &threadId, const QString &content, b
     reply->setProperty("threadId", threadId);
     reply->setProperty("content",  content);
     reply->setProperty("isGroup",  isGroup);
+    // clientId is what we sent as cliMsgId; stash it so onSendMsgDone can save
+    // it into the DB row for this message (needed by deleteMessage/undo later).
+    reply->setProperty("cliMsgId", msgData["clientId"].toString());
     connect(reply, SIGNAL(finished()), this, SLOT(onSendMsgDone()));
 }
 
@@ -414,6 +436,7 @@ void ZaloService::onSendMsgDone()
     QString tid     = reply->property("threadId").toString();
     QString content = reply->property("content").toString();
     bool isGroup    = reply->property("isGroup").toBool();
+    QString outCliMsgId = reply->property("cliMsgId").toString();
     QByteArray raw  = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] sendMessage response:" << raw.left(200);
@@ -435,6 +458,7 @@ void ZaloService::onSendMsgDone()
             if (!m_seenMsgIds.contains(msgId)) {
                 QVariantMap out;
                 out["msgId"]    = msgId;
+                out["cliMsgId"] = outCliMsgId;
                 out["content"]  = content;
                 out["msgType"]  = 1;
                 out["isMine"]   = true;
@@ -455,6 +479,162 @@ void ZaloService::onSendMsgDone()
         }
     }
     emit messageSent(!hasError, tid);
+}
+
+// ---- Delete & Recall (ported from zca-js deleteMessage.ts / undo.ts) ---------
+
+void ZaloService::deleteMessage(const QString &threadId, bool isGroup, const QString &msgId,
+                                 const QString &cliMsgId, const QString &senderId, bool onlyMe)
+{
+    if (!m_loggedIn) return;
+
+    // Mirrors zca-js's guard: your OWN message can only be removed for
+    // everyone via undo/recall, never via "delete" — the server rejects that
+    // combination anyway, so we short-circuit with a clear error rather than
+    // round-tripping to find out.
+    bool isSelf = (senderId == m_uid);
+    if (isSelf && !onlyMe) {
+        emit messageDeleted(threadId, msgId, false, "To delete your message for everyone, use Recall instead");
+        return;
+    }
+    // Mirrors zca-js: "delete for everyone" is a group-only operation; in a
+    // 1-1 chat only the sender can remove a message for both sides (Recall).
+    if (!isGroup && !onlyMe) {
+        emit messageDeleted(threadId, msgId, false, "Can't delete this message for everyone in a direct chat");
+        return;
+    }
+
+    QVariantMap msgEntry;
+    msgEntry["cliMsgId"]   = cliMsgId;
+    msgEntry["globalMsgId"] = msgId;
+    msgEntry["ownerId"]    = senderId;
+    msgEntry["destId"]     = threadId;
+    QVariantList msgList;
+    msgList << msgEntry;
+
+    QVariantMap params;
+    params[isGroup ? "grid" : "toid"] = threadId;
+    params["cliMsgId"] = QString::number(QDateTime::currentMSecsSinceEpoch());
+    params["msgs"]     = msgList;
+    params["onlyMe"]   = onlyMe ? 1 : 0;
+    if (!isGroup) params["imei"] = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(variantToJsonCompact(params)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString base = isGroup ? m_groupServiceUrl + "/api/group/deletemsg"
+                           : m_chatServiceUrl  + "/api/message/delete";
+    QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
+                          + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] deleteMessage POST" << urlStr << "msgId=" << msgId << "onlyMe=" << onlyMe;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("threadId", threadId);
+    reply->setProperty("msgId",    msgId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onDeleteMsgDone()));
+}
+
+void ZaloService::onDeleteMsgDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    bool hasError  = (reply->error() != QNetworkReply::NoError);
+    QString tid    = reply->property("threadId").toString();
+    QString msgId  = reply->property("msgId").toString();
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+    qDebug() << "[Zalo] deleteMessage response:" << raw.left(200);
+
+    QString errMsg;
+    if (!hasError) {
+        QVariantMap outer = jsonToMap(raw);
+        if (outer["error_code"].toInt() == 0) {
+            // "Delete for me" must vanish completely from our own view, with no
+            // placeholder — unlike Recall's "(this message was recalled)" tag.
+            // This used to run an UPDATE...SET msgType=99 here (copy-pasted from
+            // the recall path), which left the DB row alive with a "recalled"
+            // tag — so re-opening the thread (or the chat.delete WS echo
+            // re-reading DB state) resurrected the "You recalled a message"
+            // placeholder instead of the message being gone. markMessageDeletedForMe
+            // does a hard DELETE instead, which is what "delete for me" actually means.
+            markMessageDeletedForMe(tid, msgId);
+        } else {
+            hasError = true;
+            errMsg = outer["error_message"].toString();
+            qDebug() << "[Zalo] deleteMessage error_code:" << outer["error_code"].toInt() << errMsg;
+        }
+    } else {
+        errMsg = reply->errorString();
+    }
+    emit messageDeleted(tid, msgId, !hasError, errMsg);
+}
+
+void ZaloService::recallMessage(const QString &threadId, bool isGroup, const QString &msgId, const QString &cliMsgId)
+{
+    if (!m_loggedIn) return;
+
+    QVariantMap params;
+    params["msgId"]        = msgId;
+    params["clientId"]     = QString::number(QDateTime::currentMSecsSinceEpoch());
+    params["cliMsgIdUndo"] = cliMsgId;
+    if (isGroup) {
+        params["grid"]       = threadId;
+        params["visibility"] = 0;
+        params["imei"]       = m_imei;
+    } else {
+        params["toid"] = threadId;
+    }
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString base = isGroup ? m_groupServiceUrl + "/api/group/undomsg"
+                           : m_chatServiceUrl  + "/api/message/undo";
+    QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
+                          + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] recallMessage POST" << urlStr << "msgId=" << msgId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("threadId", threadId);
+    reply->setProperty("msgId",    msgId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onRecallMsgDone()));
+}
+
+void ZaloService::onRecallMsgDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    bool hasError  = (reply->error() != QNetworkReply::NoError);
+    QString tid    = reply->property("threadId").toString();
+    QString msgId  = reply->property("msgId").toString();
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+    qDebug() << "[Zalo] recallMessage response:" << raw.left(200);
+
+    QString errMsg;
+    if (!hasError) {
+        QVariantMap outer = jsonToMap(raw);
+        if (outer["error_code"].toInt() == 0) {
+            // Reuse the same in-place update as the incoming chat.undo path
+            // (markMessageRecalled) so our own recalled bubble looks identical
+            // to one recalled by the WS notification, and the WS echo of our
+            // own action (if/when it arrives) is a harmless no-op re-update.
+            markMessageRecalled(tid, msgId);
+        } else {
+            hasError = true;
+            errMsg = outer["error_message"].toString();
+            qDebug() << "[Zalo] recallMessage error_code:" << outer["error_code"].toInt() << errMsg;
+        }
+    } else {
+        errMsg = reply->errorString();
+    }
+    emit messageRecalledDone(tid, msgId, !hasError, errMsg);
 }
 
 // ─── Send Photo ──────────────────────────────────────────────────────────────
@@ -769,6 +949,7 @@ void ZaloService::onSendPhotoMsgDone()
                 QSize dim = imageDimensions(localPath);
                 QVariantMap out;
                 out["msgId"]      = msgId;
+                out["cliMsgId"]   = clientId;
                 out["content"]    = contentJson;
                 out["msgType"]    = 2;
                 out["isMine"]     = true;
@@ -1486,6 +1667,7 @@ void ZaloService::onPollMsgDone()
 
         QVariantMap out;
         out["msgId"]    = msgId;
+        out["cliMsgId"] = m["cliMsgId"].toString();
         out["content"]  = m["content"].toString();
         out["senderId"] = m["uidFrom"].toString();
         out["dName"]    = m["dName"].toString();

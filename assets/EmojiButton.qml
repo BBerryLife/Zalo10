@@ -8,6 +8,7 @@ Container {
     signal emojiTapped(string file, string category)
 
     preferredHeight: ui.du(7)
+    maxHeight: ui.du(7)
     maxWidth: ui.du(7.5)
     layout: DockLayout {}
     topPadding:    ui.du(0.5)

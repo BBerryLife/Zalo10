@@ -124,6 +124,20 @@ inline QByteArray variantToJsonPretty(const QVariant &root)
     return result.toString().toUtf8();
 }
 
+// Compact (no indentation) counterpart of variantToJsonPretty(), for wire-protocol
+// payloads that get AES-encrypted afterwards. mapToJson() above can't be reused
+// here because its QVariant::List branch flattens every element via toString(),
+// which corrupts arrays of objects (e.g. deleteMessage()'s "msgs": [ {cliMsgId,
+// globalMsgId,...} ]) instead of recursing into them like this one does.
+inline QByteArray variantToJsonCompact(const QVariant &root)
+{
+    QScriptEngine eng;
+    QScriptValue val = variantToScriptValue(eng, root);
+    QScriptValue jsonStringify = eng.evaluate("JSON.stringify");
+    QScriptValue result = jsonStringify.call(QScriptValue(), QScriptValueList() << val);
+    return result.toString().toUtf8();
+}
+
 inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawContent)
 {
     QString nUrl, hUrl, tUrl;
@@ -231,6 +245,50 @@ inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
            .arg(nUrl).arg(tUrl).arg(hUrl);
 }
 
+
+// Zalo also sends a "chat.delete" event — the WS echo/notification for
+// "delete for me" (deleteMessage.ts's onlyMe path). This is critically
+// DIFFERENT from chat.undo (recall): chat.delete must only ever hide the
+// message locally for whichever side actually pressed delete — it is NOT a
+// broadcast "this message no longer exists for anyone" like undo is. But
+// Zalo's WS still delivers a chat.delete notification to BOTH participants
+// in the thread (confirmed from device logs: uidFrom=<deleter>,
+// idTo=<thread>, delivered regardless of which side deleted). If we treated
+// every chat.delete the same way we treat chat.undo (i.e. always call
+// markMessageRecalled()), then person A deleting a message "for me only"
+// would incorrectly also hide/tag it on person B's screen — the exact bug
+// reported. So: extract who actually did the deleting (content[].uidFrom)
+// and let the caller decide — only apply the local hide if that matches our
+// own uid; otherwise this is someone else's "delete for me" and must be a
+// complete no-op on our screen.
+//
+// content is a QVariantList of objects: [{type,actionType,uidFrom,uidTo,
+// clientDelMsgId,globalDelMsgId,destId}]. Returns true and fills outMsgId /
+// outDeleterUid if m is a chat.delete event; false (untouched outputs) otherwise.
+inline bool extractDeleteInfo(const QVariantMap &m, QString &outMsgId, QString &outDeleterUid)
+{
+    QString msgTypeStr = m.value("msgType").toString();
+    if (msgTypeStr.compare("chat.delete", Qt::CaseInsensitive) != 0)
+        return false;
+
+    QVariant contentVar = m.value("content");
+    QVariantList items = contentVar.toList();
+    if (items.isEmpty()) {
+        QString cs = contentVar.toString();
+        if (!cs.isEmpty() && cs.trimmed().startsWith("["))
+            items = jsonToList(cs.toUtf8());
+    }
+    if (items.isEmpty()) return false;
+
+    QVariantMap first = items.first().toMap();
+    QString delId = first.value("globalDelMsgId").toString();
+    if (delId.isEmpty()) delId = first.value("clientDelMsgId").toString();
+    if (delId.isEmpty()) return false;
+
+    outMsgId      = delId;
+    outDeleterUid = first.value("uidFrom").toString();
+    return true;
+}
 
 // Zalo sends a separate "chat.undo" event when a message is recalled/unsent.
 // Its content is {"globalMsgId":..., "cliMsgId":..., "deleteMsg":..., "srcId":..., "destId":...}

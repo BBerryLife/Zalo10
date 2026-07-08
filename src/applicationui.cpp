@@ -68,6 +68,26 @@ static bool isVersionNewer(const QString &a, const QString &b)
     return false;
 }
 
+// Cheap extension-based MIME sniff — good enough for the handful of formats
+// Zalo actually sends (jpg/png/gif/webp), no need to pull in a magic-byte lib.
+static QString mimeTypeForImagePath(const QString &path)
+{
+    QString lower = path.toLower();
+    if (lower.endsWith(".png"))                     return "image/png";
+    if (lower.endsWith(".gif"))                     return "image/gif";
+    if (lower.endsWith(".webp"))                     return "image/webp";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    return "image/jpeg"; // sensible default — this is what onImageMsgDownloaded transcodes most photos to
+}
+
+// Strips a "file://" prefix if present, leaving a bare filesystem path.
+static QString toLocalFilePath(const QString &pathOrUri)
+{
+    if (pathOrUri.startsWith("file://"))
+        return pathOrUri.mid(7);
+    return pathOrUri;
+}
+
 // Qt4 has no QString::toHtmlEscaped() (that's Qt5+) — do it by hand.
 // Order matters: '&' must be replaced first or it'd double-escape the
 // entities just inserted for the other characters.
@@ -81,7 +101,7 @@ static QString escapeHtmlQt4(const QString &in)
     return out;
 }
 
-ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false)
+ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain")
 {
     m_pInvokeManager = new InvokeManager(this);
     QObject::connect(m_pInvokeManager, SIGNAL(invoked(const bb::system::InvokeRequest&)),
@@ -144,6 +164,38 @@ void ApplicationUI::copyToClipboard(const QString &text)
     clipboard.insert("text/plain", text.toUtf8());
 }
 
+// Root cause of the "copy image only copies the link" bug: doCopy() in
+// ChatView.qml was calling copyToClipboard(content), and content for a photo
+// message is the JSON blob {"normalUrl":...,"thumbUrl":...,"hdUrl":...} — a
+// text string, not the picture. Whatever the user pasted it into only ever
+// saw that text/plain MIME entry, so it rendered as the JSON text instead of
+// an image. Fix: read the actual image bytes from the already-downloaded
+// local cache file (localImage in the message model) and put THOSE on the
+// clipboard under an image/* MIME type. No re-download from the CDN needed —
+// the file is already on disk from the normal receive/cache flow.
+bool ApplicationUI::copyImageToClipboard(const QString &localPath)
+{
+    QString path = toLocalFilePath(localPath);
+    QFile file(path);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+        qDebug() << "[App] copyImageToClipboard: cannot open" << path;
+        return false;
+    }
+    QByteArray bytes = file.readAll();
+    file.close();
+    if (bytes.isEmpty()) {
+        qDebug() << "[App] copyImageToClipboard: empty file" << path;
+        return false;
+    }
+
+    QString mime = mimeTypeForImagePath(path);
+    bb::system::Clipboard clipboard;
+    clipboard.clear();
+    clipboard.insert(mime, bytes);
+    qDebug() << "[App] copyImageToClipboard: copied" << bytes.size() << "bytes as" << mime << "from" << path;
+    return true;
+}
+
 // Ported from SmartList10's ApplicationUI::queryShareTargets/onQueryTargetsFinished —
 // same bb.action.SHARE query + same category ordering (BBM contact -> BBM group ->
 // BBM channel -> Text -> Email -> Meeting -> Bluetooth/NFC -> Remember -> other
@@ -151,9 +203,25 @@ void ApplicationUI::copyToClipboard(const QString &text)
 void ApplicationUI::queryShareTargets(const QString &text)
 {
     Q_UNUSED(text);
+    m_pendingShareMimeType = "text/plain";
     InvokeQueryTargetsRequest req;
     req.setAction("bb.action.SHARE");
     req.setMimeType("text/plain");
+    InvokeQueryTargetsReply *reply = m_pInvokeManager->queryTargets(req);
+    connect(reply, SIGNAL(finished()), this, SLOT(onQueryTargetsFinished()));
+}
+
+// Image counterpart of queryShareTargets(): same picker/ordering logic in
+// onQueryTargetsFinished(), just queried against image/* instead of
+// text/plain so apps that only register for image sharing (Photos-type
+// targets) show up too. localPath's extension picks the concrete MIME type
+// (jpeg/png/gif/webp) used both here and in invokeShareTargetForImage().
+void ApplicationUI::queryShareTargetsForImage(const QString &localPath)
+{
+    m_pendingShareMimeType = mimeTypeForImagePath(toLocalFilePath(localPath));
+    InvokeQueryTargetsRequest req;
+    req.setAction("bb.action.SHARE");
+    req.setMimeType(m_pendingShareMimeType);
     InvokeQueryTargetsReply *reply = m_pInvokeManager->queryTargets(req);
     connect(reply, SIGNAL(finished()), this, SLOT(onQueryTargetsFinished()));
 }
@@ -239,6 +307,31 @@ void ApplicationUI::invokeShareTarget(const QString &target, const QString &acti
     req.setAction(action.isEmpty() ? "bb.action.SHARE" : action);
     req.setMimeType("text/plain");
     req.setData(text.toUtf8());
+    m_pInvokeManager->invoke(req);
+}
+
+// Image counterpart of invokeShareTarget(): reads the same local cache file
+// used by copyImageToClipboard() and hands its raw bytes to the target app
+// under the correct image/* MIME type, instead of the JSON URL text that
+// used to be sent through invokeShareTarget(). This is the "apply the same
+// fix to Share" half of the request — a receiving app now gets an actual
+// picture to display/save, not a string it renders as plain text.
+void ApplicationUI::invokeShareTargetForImage(const QString &target, const QString &action, const QString &localPath)
+{
+    QString path = toLocalFilePath(localPath);
+    QFile file(path);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+        qDebug() << "[App] invokeShareTargetForImage: cannot open" << path;
+        return;
+    }
+    QByteArray bytes = file.readAll();
+    file.close();
+
+    InvokeRequest req;
+    req.setTarget(target);
+    req.setAction(action.isEmpty() ? "bb.action.SHARE" : action);
+    req.setMimeType(mimeTypeForImagePath(path));
+    req.setData(bytes);
     m_pInvokeManager->invoke(req);
 }
 

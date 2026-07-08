@@ -375,6 +375,7 @@ Container {
                     preferredWidth: pageWidth > 0 ? pageWidth : ui.du(52)
                     layout: GridLayout { columnCount: 6 }
                     horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment: VerticalAlignment.Top
                     topPadding: ui.du(0.5); bottomPadding: ui.du(0.5); leftPadding: ui.du(1); rightPadding: ui.du(1)
                     EmojiButton { emojiFile: "emoji_1f48b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48d_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }

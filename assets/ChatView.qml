@@ -211,6 +211,31 @@ Page {
         }
     }
 
+    // "Delete for me" (as opposed to applyRecall's "recall/undo"): the message
+    // must vanish from OUR OWN view completely, with no placeholder text —
+    // unlike recall, which stays visible as "(this message was recalled)".
+    // Only ever called for deletions WE performed (see the backend's
+    // extractDeleteInfo() self-only guard) — the other participant's
+    // "delete for me" never reaches this function.
+    function applyLocalDelete(msgId) {
+        var size = msgModel.size();
+        for (var j = 0; j < size; j++) {
+            var d = msgModel.value(j);
+            if ((d.msgId || "") === msgId) {
+                msgModel.removeAt(j);
+                // Removing a row changes who is now adjacent to whom, which
+                // changes bubblePos ("top"/"middle"/"bottom"/"full" — and with
+                // it, whether the accent strip renders) for the messages that
+                // used to sandwich this one. Without this, the neighbor above
+                // a deleted message could be left stuck with a stale "top"
+                // bubblePos and permanently lose its strip even though it's
+                // now the last message in its group.
+                rebuildGroups();
+                return;
+            }
+        }
+    }
+
     function applyRecall(msgId) {
         var size = msgModel.size();
         for (var j = 0; j < size; j++) {
@@ -402,22 +427,65 @@ Page {
             // (not one generic dispatcher) so each can be implemented and
             // tested independently later. Copy/Share are implemented below;
             // the rest are still no-op besides a console.log.
-            function doCopy(content) {
+            // isPhoto + localImage let us branch to the image-aware copy/share
+            // path. Previously doCopy/doShare always treated bubble content as
+            // plain text, so copying/sharing a photo message copied/shared the
+            // {"normalUrl":...} JSON string instead of the picture — pasting
+            // it anywhere just showed that text, never an image. Now, when the
+            // bubble is a photo AND we already have it cached locally
+            // (localImage — the same file the bubble itself renders from),
+            // we copy/share the actual image bytes from disk instead.
+            // Falls back to the old text behavior if no local copy exists yet
+            // (e.g. still downloading) rather than silently doing nothing.
+            function doCopy(content, isPhoto, localImage) {
+                if (isPhoto) {
+                    errorToast.body = "Copy isn't available for photos";
+                    errorToast.show();
+                    return;
+                }
                 app.copyToClipboard(content);
                 copyToast.show();
             }
             function doReply(msgId)        { console.log("[bubble] Reply " + msgId); }
             function doReaction(msgId)     { console.log("[bubble] Reaction " + msgId); }
-            function doRecallMsg(msgId)    { console.log("[bubble] Recall " + msgId); }
+            function doRecallMsg(msgId, cliMsgId, isMine) {
+                if (!isMine) {
+                    errorToast.body = "You can only recall your own messages";
+                    errorToast.show();
+                    return;
+                }
+                zService.recallMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId);
+            }
             function doForward(msgId)      { console.log("[bubble] Forward " + msgId); }
             function doPin(msgId)          { console.log("[bubble] Pin " + msgId); }
-            function doDownload(msgId)     { console.log("[bubble] Download " + msgId); }
-            function doShare(content) {
+            function doDownload(msgId, localImage) {
+                if (!localImage || localImage.length === 0) {
+                    errorToast.body = "Photo not downloaded yet";
+                    errorToast.show();
+                    return;
+                }
+                var saved = zService.downloadPhotoToGallery(localImage, msgId);
+                if (saved && saved.length > 0) {
+                    downloadToast.show();
+                } else {
+                    errorToast.body = "Failed to save photo";
+                    errorToast.show();
+                }
+            }
+            function doShare(content, isPhoto, localImage) {
+                if (isPhoto) {
+                    errorToast.body = "Share isn't available for photos";
+                    errorToast.show();
+                    return;
+                }
+                sharePicker.pendingShareIsImage = false;
                 sharePicker.pendingShareText = content;
                 shareDimDialog.open();
             }
-            function doCreateEvent(msgId)  { console.log("[bubble] Create event " + msgId); }
-            function doDeleteForMe(msgId)  { console.log("[bubble] Delete for me only " + msgId); }
+            function doCreateEvent(msgId)  { createEventUnderDevDialog.show(); }
+            function doDeleteForMe(msgId, cliMsgId, senderId) {
+                zService.deleteMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId, senderId, true);
+            }
             function doDeleteMsg(msgId)    { console.log("[bubble] Delete " + msgId); }
 
             listItemComponents: [
@@ -445,7 +513,7 @@ Page {
                                 ActionItem {
                                     title: "Copy"
                                     imageSource: "asset:///images/ChatView/ic_copy.png"
-                                    onTriggered: { rowRoot.ListItem.view.doCopy(ListItemData.content); }
+                                    onTriggered: { rowRoot.ListItem.view.doCopy(ListItemData.content, (ListItemData.msgType === 2 || ListItemData.msgType === "2"), ListItemData.localImage); }
                                 }
                                 ActionItem {
                                     title: "Reply"
@@ -460,7 +528,7 @@ Page {
                                 ActionItem {
                                     title: "Recall"
                                     imageSource: "asset:///images/ChatView/ic_recall.png"
-                                    onTriggered: { rowRoot.ListItem.view.doRecallMsg(ListItemData.msgId); }
+                                    onTriggered: { rowRoot.ListItem.view.doRecallMsg(ListItemData.msgId, ListItemData.cliMsgId, rowRoot.mine); }
                                 }
                                 ActionItem {
                                     title: "Forward"
@@ -475,12 +543,12 @@ Page {
                                 ActionItem {
                                     title: "Download"
                                     imageSource: "asset:///images/ChatView/ic_download.png"
-                                    onTriggered: { rowRoot.ListItem.view.doDownload(ListItemData.msgId); }
+                                    onTriggered: { rowRoot.ListItem.view.doDownload(ListItemData.msgId, ListItemData.localImage); }
                                 }
                                 ActionItem {
                                     title: "Share"
                                     imageSource: "asset:///images/ChatView/ic_share.png"
-                                    onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content); }
+                                    onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content, (ListItemData.msgType === 2 || ListItemData.msgType === "2"), ListItemData.localImage); }
                                 }
                                 ActionItem {
                                     title: "Create event"
@@ -490,7 +558,7 @@ Page {
                                 ActionItem {
                                     title: "Delete for me only"
                                     imageSource: "asset:///images/ChatView/action_delete.png"
-                                    onTriggered: { rowRoot.ListItem.view.doDeleteForMe(ListItemData.msgId); }
+                                    onTriggered: { rowRoot.ListItem.view.doDeleteForMe(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.senderId); }
                                 }
                             },
                             ActionSet {
@@ -499,7 +567,7 @@ Page {
                                 ActionItem {
                                     title: "Copy"
                                     imageSource: "asset:///images/ChatView/ic_copy.png"
-                                    onTriggered: { rowRoot.ListItem.view.doCopy(ListItemData.content); }
+                                    onTriggered: { rowRoot.ListItem.view.doCopy(ListItemData.content, (ListItemData.msgType === 2 || ListItemData.msgType === "2"), ListItemData.localImage); }
                                 }
                                 ActionItem {
                                     title: "Reply"
@@ -514,7 +582,7 @@ Page {
                                 ActionItem {
                                     title: "Recall"
                                     imageSource: "asset:///images/ChatView/ic_recall.png"
-                                    onTriggered: { rowRoot.ListItem.view.doRecallMsg(ListItemData.msgId); }
+                                    onTriggered: { rowRoot.ListItem.view.doRecallMsg(ListItemData.msgId, ListItemData.cliMsgId, rowRoot.mine); }
                                 }
                                 ActionItem {
                                     title: "Forward"
@@ -529,12 +597,12 @@ Page {
                                 ActionItem {
                                     title: "Download"
                                     imageSource: "asset:///images/ChatView/ic_download.png"
-                                    onTriggered: { rowRoot.ListItem.view.doDownload(ListItemData.msgId); }
+                                    onTriggered: { rowRoot.ListItem.view.doDownload(ListItemData.msgId, ListItemData.localImage); }
                                 }
                                 ActionItem {
                                     title: "Share"
                                     imageSource: "asset:///images/ChatView/ic_share.png"
-                                    onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content); }
+                                    onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content, (ListItemData.msgType === 2 || ListItemData.msgType === "2"), ListItemData.localImage); }
                                 }
                                 ActionItem {
                                     title: "Create event"
@@ -544,7 +612,7 @@ Page {
                                 ActionItem {
                                     title: "Delete for me only"
                                     imageSource: "asset:///images/ChatView/action_delete.png"
-                                    onTriggered: { rowRoot.ListItem.view.doDeleteForMe(ListItemData.msgId); }
+                                    onTriggered: { rowRoot.ListItem.view.doDeleteForMe(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.senderId); }
                                 }
                                 DeleteActionItem {
                                     title: "Delete"
@@ -919,6 +987,7 @@ Page {
         Container {
             id: emojiPanelSlot
             horizontalAlignment: HorizontalAlignment.Fill
+            topMargin: ui.du(0.8)
             visible: false
         }
 
@@ -1132,7 +1201,14 @@ Page {
                         var ep = emojiPanelDef.createObject();
                         ep.isDark = chatViewPage.isDark;
                         ep.horizontalAlignment = HorizontalAlignment.Fill;
-                        ep.preferredHeight = ui.du(28);
+                        // 23du = dot-row (2.5du) + 2 emoji rows tightly fit to
+                        // EmojiButton's own 7du height + grid padding (1du) +
+                        // bottom category bar (5.5du). The previous 28du left
+                        // ~2.5du of extra vertical space per row that GridLayout
+                        // spread out as padding around each button — visually
+                        // that read as "emoji look stretched" even though the
+                        // icon itself was already locked to a 1:1 box.
+                        ep.preferredHeight = ui.du(23);
                         ep.minHeight = ui.du(16);
                         emojiPanelSlot.add(ep);
                         emojiSignalCon.target = ep;
@@ -1493,6 +1569,22 @@ Page {
             position: SystemUiPosition.MiddleCenter
         },
 
+        // Generic error toast for Delete/Recall/Download failures — body is set
+        // by the caller right before show().
+        SystemToast {
+            id: errorToast
+            position: SystemUiPosition.MiddleCenter
+        },
+
+        // Separate from copyToast: copyToast's body is a static binding
+        // ("Copied to clipboard"), so reusing it here for Download would
+        // permanently overwrite that binding for every future Copy too.
+        SystemToast {
+            id: downloadToast
+            body: "Saved to Downloads"
+            position: SystemUiPosition.MiddleCenter
+        },
+
         SharePickerSheet { id: sharePicker },
 
         // "app" is a stable context property set once at startup (unlike
@@ -1519,7 +1611,13 @@ Page {
                     FadeTransition {
                         id: shareDimFadeIn
                         duration: 150; toOpacity: 1.0
-                        onEnded: { app.queryShareTargets(sharePicker.pendingShareText); }
+                        onEnded: {
+                            if (sharePicker.pendingShareIsImage && sharePicker.pendingShareImagePath.length > 0) {
+                                app.queryShareTargetsForImage(sharePicker.pendingShareImagePath);
+                            } else {
+                                app.queryShareTargets(sharePicker.pendingShareText);
+                            }
+                        }
                     },
                     FadeTransition {
                         id: shareDimFadeOut
@@ -1540,6 +1638,12 @@ Page {
         InfoDialog {
             id: videoCallUnderDevDialog
             title: "Video Call"
+            body: "This feature is still under development."
+        },
+
+        InfoDialog {
+            id: createEventUnderDevDialog
+            title: "Create Event"
             body: "This feature is still under development."
         },
 
@@ -1766,6 +1870,48 @@ Page {
             onMessageRecalled: {
                 if (threadId !== chatViewPage.threadId) return;
                 chatViewPage.applyRecall(msgId);
+            }
+
+            // Result of our OWN recallMessage() call. On success, apply the same
+            // in-place bubble update as an incoming chat.undo notification
+            // (applyRecall) rather than waiting for a WS echo/re-fetch. On
+            // failure, surface why via a toast instead of failing silently.
+            onMessageRecalledDone: {
+                if (threadId !== chatViewPage.threadId) return;
+                if (success) {
+                    chatViewPage.applyRecall(msgId);
+                } else {
+                    errorToast.body = error.length > 0 ? error : "Failed to recall message";
+                    errorToast.show();
+                }
+            }
+
+            // Result of our OWN deleteMessage() call ("Delete for me only", or
+            // "delete for everyone" in a group). On success, remove the bubble
+            // entirely from our own view (applyLocalDelete) — delete-for-me has
+            // no placeholder, unlike recall. The actual WS confirmation (the
+            // chat.delete event) arrives separately via onMessageDeletedLocally
+            // below; doing it here too means the bubble disappears immediately
+            // without waiting for that round-trip. On failure, show why.
+            onMessageDeleted: {
+                if (threadId !== chatViewPage.threadId) return;
+                if (success) {
+                    chatViewPage.applyLocalDelete(msgId);
+                } else {
+                    errorToast.body = error.length > 0 ? error : "Failed to delete message";
+                    errorToast.show();
+                }
+            }
+
+            // WS-side confirmation of OUR OWN "delete for me" (chat.delete),
+            // already filtered server/backend-side to only ever fire for
+            // deletions we performed (see extractDeleteInfo() in
+            // ZaloServiceUtils.hpp) — another participant's delete-for-me never
+            // reaches this signal. Re-applies applyLocalDelete as a harmless
+            // no-op if onMessageDeleted above already removed the bubble.
+            onMessageDeletedLocally: {
+                if (threadId !== chatViewPage.threadId) return;
+                chatViewPage.applyLocalDelete(msgId);
             }
 
             onMuteDone: {

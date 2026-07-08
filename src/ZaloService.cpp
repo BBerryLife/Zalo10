@@ -102,7 +102,8 @@ ZaloService::ZaloService(QObject *parent)
             "  msgType    INTEGER DEFAULT 0,"
             "  localImage TEXT DEFAULT '',"
             "  imgWidth   INTEGER DEFAULT 0,"
-            "  imgHeight  INTEGER DEFAULT 0"
+            "  imgHeight  INTEGER DEFAULT 0,"
+            "  cliMsgId   TEXT DEFAULT ''"
             ");";
         sqlite3_exec(m_db, sql, 0, 0, 0);
         // Migrations for existing DBs
@@ -110,6 +111,10 @@ ZaloService::ZaloService(QObject *parent)
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN localImage TEXT    DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN imgWidth   INTEGER DEFAULT 0;",  0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN imgHeight  INTEGER DEFAULT 0;",  0, 0, 0);
+        // cliMsgId: the client-generated message id echoed back by Zalo's WS/HTTP
+        // responses. Needed as-is (not msgId) by the delete/recall (undo) APIs —
+        // see deleteMessage.ts/undo.ts in zca-js, both key off cliMsgId + msgId.
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN cliMsgId   TEXT    DEFAULT '';", 0, 0, 0);
         // Preserves the original text of a recalled message so it can still be
         // shown (with a "(This message was recalled)" tag) when the user has
         // "Show Recalled Messages" enabled in Settings.

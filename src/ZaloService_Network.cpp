@@ -494,6 +494,57 @@ void ZaloService::cancelUpdateDownload()
     m_updateReply->abort(); // triggers finished() -> onUpdateDownloadFinished() with an error, which emits updateDownloadFailed()
 }
 
+// Same extension-sniff idea as ApplicationUI's copy/share fix — good enough
+// for the handful of formats Zalo actually sends.
+static QString photoExtensionFor(const QString &path)
+{
+    QString lower = path.toLower();
+    if (lower.endsWith(".png"))  return ".png";
+    if (lower.endsWith(".gif"))  return ".gif";
+    if (lower.endsWith(".webp")) return ".webp";
+    return ".jpg";
+}
+
+QString ZaloService::downloadPhotoToGallery(const QString &localImagePath, const QString &msgId)
+{
+    QString src = localImagePath;
+    if (src.startsWith("file://")) src = src.mid(7);
+
+    if (src.isEmpty() || !QFile::exists(src)) {
+        qDebug() << "[Zalo] downloadPhotoToGallery: source missing" << src;
+        return QString();
+    }
+
+    QString destDir = "/accounts/1000/shared/downloads/zalo10/photos";
+    QDir dir;
+    if (!dir.exists(destDir) && !dir.mkpath(destDir)) {
+        qDebug() << "[Zalo] downloadPhotoToGallery: mkpath failed" << destDir;
+        return QString();
+    }
+
+    // Name it Zalo10_<msgId><ext> so repeat-saving the same photo overwrites
+    // cleanly instead of piling up "(1)"/"(2)" duplicates in the gallery, and
+    // so the file is identifiable back to its source message if needed.
+    QString ext  = photoExtensionFor(src);
+    QString name = msgId.isEmpty()
+                 ? (QString("Zalo10_%1%2").arg(QDateTime::currentMSecsSinceEpoch()).arg(ext))
+                 : (QString("Zalo10_%1%2").arg(msgId).arg(ext));
+    QString destPath = destDir + "/" + name;
+
+    // QFile::copy() fails if the destination already exists — remove any
+    // previous save first so re-downloading the same photo just overwrites it.
+    if (QFile::exists(destPath))
+        QFile::remove(destPath);
+
+    if (!QFile::copy(src, destPath)) {
+        qDebug() << "[Zalo] downloadPhotoToGallery: copy failed" << src << "->" << destPath;
+        return QString();
+    }
+
+    qDebug() << "[Zalo] downloadPhotoToGallery: saved" << destPath;
+    return destPath;
+}
+
 // sslErrors() only fires for problems found *after* the handshake completes
 // (unknown/self-signed cert chain etc). A bare SslHandshakeFailedError usually
 // won't reach here since it happens during the handshake itself, but this is

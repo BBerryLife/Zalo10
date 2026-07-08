@@ -48,6 +48,20 @@ public:
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
+    // Delete a message. Ported from zca-js's deleteMessage.ts:
+    //   - onlyMe=true:  "delete for me" — always allowed, any thread.
+    //   - onlyMe=false: "delete for everyone" — only allowed in groups; for a
+    //     1-1 chat, recallMessage() (undo) is the only way to remove a message
+    //     for both sides. Zalo enforces the same split server-side.
+    // msgId/cliMsgId/senderId identify the target message (from the DB row);
+    // senderId lets us mirror zca-js's isSelf-vs-onlyMe guard client-side too,
+    // so a bad tap surfaces a clear error instead of a silent server rejection.
+    Q_INVOKABLE void deleteMessage(const QString &threadId, bool isGroup, const QString &msgId,
+                                    const QString &cliMsgId, const QString &senderId, bool onlyMe);
+    // Recall ("undo" in zca-js) a message you sent — removes it for everyone,
+    // in both 1-1 chats and groups. Ported from zca-js's undo.ts.
+    Q_INVOKABLE void recallMessage(const QString &threadId, bool isGroup, const QString &msgId,
+                                    const QString &cliMsgId);
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption = QString());
     // Copies a picker-provided (potentially transient) image path into the persistent
     // "/tmp/zalo_img_local_<ts>.<ext>" cache immediately, before upload starts, so the
@@ -60,6 +74,13 @@ public:
     // Update downloader — called from AboutSheet when user confirms update.
     // Saves to /accounts/1000/shared/downloads/<filename>.
     Q_INVOKABLE void downloadUpdate(const QString &url, const QString &filename);
+    // Long-press "Download" on a photo bubble: copies the already-cached local
+    // file (localImage — same source as the bubble's own rendering and the
+    // copy/share fixes above) into the user-visible shared downloads folder,
+    // so it shows up in the device's Pictures/gallery app. No re-download from
+    // the CDN — the bytes are already on disk. Returns the saved path on
+    // success, or an empty string on failure (caller shows an error toast).
+    Q_INVOKABLE QString downloadPhotoToGallery(const QString &localImagePath, const QString &msgId);
     // Aborts an in-flight downloadUpdate() (e.g. user tapped Cancel on the
     // SystemProgressDialog). Safe to call when nothing is downloading.
     Q_INVOKABLE void cancelUpdateDownload();
@@ -154,6 +175,20 @@ signals:
     // Fired when a previously-displayed message gets recalled/unsent by its sender
     // (Zalo "chat.undo" event). QML should update the existing bubble in place.
     void messageRecalled(const QString &threadId, const QString &msgId);
+    // Fired when OUR OWN "delete for me" is confirmed via the chat.delete WS
+    // notification (see extractDeleteInfo() in ZaloServiceUtils.hpp) and the
+    // local DB row has been hard-deleted. Unlike messageRecalled, this means
+    // "remove this bubble from the model entirely" — no placeholder text.
+    // Only ever fires for deletions WE performed; another participant's
+    // "delete for me" must never reach this signal or affect our screen.
+    void messageDeletedLocally(const QString &threadId, const QString &msgId);
+    // Result of OUR OWN deleteMessage()/recallMessage() calls (as opposed to
+    // messageRecalled above, which is the incoming notification when someone
+    // else's recall reaches us over WS). QML uses these to update the bubble
+    // immediately without waiting for a WS echo, and to show an error toast
+    // on failure (e.g. tried to delete-for-everyone in a 1-1 chat).
+    void messageDeleted(const QString &threadId, const QString &msgId, bool success, const QString &error);
+    void messageRecalledDone(const QString &threadId, const QString &msgId, bool success, const QString &error);
     void threadLastMessageChanged(const QString &threadId, const QString &lastMsg, const QString &lastTime);
     // threadId, localFilePath (file:///tmp/...)
     void avatarReady(const QString &threadId, const QString &localPath);
@@ -202,6 +237,8 @@ private slots:
     void onFetchMsgDone();
     void onFetchPhotoDetailDone();  // HTTP fallback khi cmd=510 không trả HTTP URL
     void onSendMsgDone();
+    void onDeleteMsgDone();
+    void onRecallMsgDone();
     void onSendPhotoDone();
     void onSendPhotoMsgDone();
     void onSendFileDone();
@@ -257,6 +294,7 @@ private:
     void fetchPhotoViaHttpAtIndex(const QString &msgId, const QString &threadId, int idx);
     QSize imageDimensions(const QString &localFileUrlOrPath) const; // strips "file://", reads pixel size
     void markMessageRecalled(const QString &threadId, const QString &msgId); // chat.undo handling
+    void markMessageDeletedForMe(const QString &threadId, const QString &msgId); // chat.delete handling — local-only, hard delete
 
     // Data export/import/cache helpers
     QVariantList dbLoadAllMessages() const;     // every row, every thread — used by exportData
