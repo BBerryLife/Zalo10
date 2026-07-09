@@ -1509,8 +1509,52 @@ Page {
             }
         }
 
+        // Writing every index back with replace() unconditionally is not just
+        // wasteful — it's the actual cause of the "gap that only shows up after
+        // the next message arrives" bug: replace() only swaps the item's DATA in
+        // Cascades' ArrayDataModel, it does not reliably force the ListView to
+        // re-measure that row's height. topPadding/bottomPadding directly depend
+        // on `grouped`/`bubblePos` (see the Container bindings a few hundred
+        // lines up), so whenever this recompute actually CHANGES those two
+        // values for a row — e.g. a message that used to be "grouped" becomes
+        // ungrouped because a deleted message that used to sit next to it is
+        // gone now — the row's on-screen height silently goes stale at its OLD
+        // size until something else (like a brand new append()) forces a full
+        // relayout, which is exactly the "looked fine until the next message
+        // arrived" symptom. remove+insert forces Cascades to treat the row as a
+        // brand new item and re-measure it immediately instead of leaving a
+        // stale cached height around. Rows whose grouped/bubblePos didn't
+        // change keep the cheap replace() (just content updates, e.g. a photo
+        // download finishing — no layout-affecting fields touched).
         for (var i = 0; i < size; i++) {
-            msgModel.replace(i, items[i]);
+            var old = msgModel.value(i);
+            var layoutChanged = (old.grouped !== items[i].grouped) || (old.bubblePos !== items[i].bubblePos);
+            if (layoutChanged) {
+                msgModel.removeAt(i);
+                msgModel.insert(i, items[i]);
+            } else {
+                msgModel.replace(i, items[i]);
+            }
+        }
+
+        // TEMP DIAGNOSTIC — investigating the "gap after delete+reopen+resend"
+        // bug report. Dumps every row's msgId/sender/content-length/grouped/
+        // bubblePos so a fresh log capture shows definitively whether there's
+        // a stray zero-content/ghost row still occupying a model slot near the
+        // deleted message, or whether bubblePos/grouped themselves are wrong.
+        // Safe to delete once that bug is found — this is not a fix by itself.
+        {
+            var dbgLine = "[Zalo QML] rebuildGroups: size=" + size;
+            for (var di = 0; di < size; di++) {
+                var dv = msgModel.value(di);
+                dbgLine += " | [" + di + "] id=" + String(dv.msgId).slice(-6)
+                    + " mine=" + chatViewPage.normMine(dv.isMine)
+                    + " sender=" + (dv.senderId || "")
+                    + " len=" + ((dv.content || "").length)
+                    + " grp=" + dv.grouped + " pos=" + dv.bubblePos
+                    + " ts=" + dv.ts;
+            }
+            console.log(dbgLine);
         }
     }
 
