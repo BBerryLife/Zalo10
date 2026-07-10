@@ -156,6 +156,17 @@ public:
     // opened. Returns the number of files deleted.
     Q_INVOKABLE int clearCache();
 
+    // ---- IPC (HeadlessService <-> UI thin client) ----------------------------
+    // publishState: ghi 1 cặp key/value vào bảng service_state, để UI đọc trạng
+    // thái (loggedIn, uid, qrImagePath...) mà không cần sống chung process.
+    // Gọi từ mọi nơi ZaloService hiện đang emit các signal trạng thái quan trọng.
+    void publishState(const QString &key, const QString &value);
+    // processCommandQueue: đọc mọi dòng command_queue chưa xử lý (processed=0),
+    // dispatch tới đúng hàm Q_INVOKABLE tương ứng, rồi đánh dấu processed=1.
+    // Chỉ HeadlessService gọi hàm này (qua QTimer định kỳ) — UI app KHÔNG BAO GIỜ
+    // gọi hàm này, chỉ ghi vào command_queue.
+    Q_INVOKABLE void processCommandQueue();
+
 signals:
     void loggedInChanged();
     void loginFailed(const QString &message);
@@ -266,6 +277,12 @@ private slots:
     void onWsSslErrors(const QList<QSslError> &errors);
     void onWsSocketError(QAbstractSocket::SocketError err);
     void onWsReconnectTimer();
+
+    // ---- IPC state-publishing slots (xem ZaloService_Ipc.cpp) ----------------
+    void onPublishLoggedInState();
+    void onPublishQrState(const QString &qrImagePath, const QString &qrCodeRaw);
+    void onPublishSessionExpired();
+    void onPublishLoginSuccess(const QString &uid, const QString &displayName);
 
 private:
     struct EncryptedParams {

@@ -22,6 +22,7 @@ HEADERS += \
     src/applicationui.hpp \
     src/ZaloService.hpp \
     src/ZaloServiceUtils.hpp \
+    src/ZaloServiceProxy.hpp \
     src/ActiveFrameCover.hpp
 
 SOURCES += \
@@ -35,6 +36,8 @@ SOURCES += \
     src/ZaloService_Crypto.cpp \
     src/ZaloService_Network.cpp \
     src/ZaloService_Db.cpp \
+    src/ZaloService_Ipc.cpp \
+    src/ZaloServiceProxy.cpp \
     src/ActiveFrameCover.cpp
 
 OTHER_FILES += \

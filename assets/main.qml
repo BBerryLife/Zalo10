@@ -63,11 +63,34 @@ TabbedPane {
         return mon + " " + date.getDate();
     }
     
+    // TRƯỚC ĐÂY: zService.loadSession() chạy đồng bộ ngay trong process UI
+    // (UI là nơi giữ ZaloService thật) và trả về bool ngay lập tức để quyết
+    // định mở loginSheet hay không.
+    //
+    // GIỜ: loadSession() thật chạy trong HeadlessService (process riêng),
+    // ngay khi service khởi động — không đợi UI mở lên. UI chỉ đọc lại kết
+    // quả qua zService.loggedIn (property, cập nhật bởi ZaloServiceProxy khi
+    // nó poll bảng service_state — xem ZaloServiceProxy.cpp). Vì đây là quá
+    // trình bất đồng bộ (HeadlessService cần vài trăm ms tới vài giây để
+    // refreshSessionKey() xong), ta chờ 1 khoảng ngắn ban đầu rồi mới quyết
+    // định có cần mở loginSheet hay không. Nếu sau đó loggedIn chuyển thành
+    // true/false, khối Connections { onSessionExpired/onLoginFailed/... } đã
+    // có sẵn bên dưới (attachedObjects) tự lo phần còn lại — không cần thêm
+    // Connections mới ở đây, tránh trùng logic mở loginSheet 2 lần.
+    Timer {
+        id: sessionCheckTimer
+        interval: 1500 // đủ thời gian cho HeadlessService publish trạng thái đăng nhập lần đầu
+        repeat: false
+        onTriggered: {
+            if (!zService.loggedIn) {
+                loginSheet.open();
+            }
+        }
+    }
+
     onCreationCompleted: {
         aboutSheet.zService = zService;
-        if (!zService.loadSession()) {
-            loginSheet.open();
-        }
+        sessionCheckTimer.start();
     }
     
     Tab {

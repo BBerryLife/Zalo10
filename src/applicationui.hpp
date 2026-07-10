@@ -12,7 +12,7 @@ namespace bb { namespace cascades { class LocaleHandler; class AbstractPane; } }
 class QTranslator;
 class QNetworkReply;
 class QSslError;
-class ZaloService;
+class ZaloServiceProxy;
 
 class ApplicationUI : public QObject
 {
@@ -112,7 +112,7 @@ private:
     QTranslator*                  m_pTranslator;
     bb::cascades::LocaleHandler*  m_pLocaleHandler;
     bb::system::InvokeManager*    m_pInvokeManager;
-    ZaloService*                  m_zService;
+    ZaloServiceProxy*             m_zService;
     QNetworkAccessManager*        m_updateManager;
     bool                          m_exitHandled; // chống chạy onManualExit() 2 lần nếu cả manualExit/aboutToQuit/SIGTERM đều bắn
     QString                       m_pendingShareMimeType; // "text/plain" or "image/*" — set right before queryTargets(), read in onQueryTargetsFinished()

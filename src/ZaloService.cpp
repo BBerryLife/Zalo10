@@ -89,6 +89,13 @@ ZaloService::ZaloService(QObject *parent)
 
     QString dbPath = QDir::homePath() + "/zalo_messages.db";
     if (sqlite3_open(dbPath.toUtf8().constData(), &m_db) == SQLITE_OK) {
+        // WAL mode: bắt buộc phải bật vì giờ đây có 2 process cùng mở file DB
+        // này đồng thời — HeadlessService (writer, giữ WS sống) và UI app
+        // (reader, hiển thị + queue lệnh). Rollback-journal mode mặc định khóa
+        // cả file khi ghi, khiến process kia dễ gặp SQLITE_BUSY. WAL cho phép
+        // 1 writer + nhiều reader chạy song song không khóa nhau.
+        sqlite3_exec(m_db, "PRAGMA journal_mode=WAL;", 0, 0, 0);
+        sqlite3_exec(m_db, "PRAGMA busy_timeout=3000;", 0, 0, 0);
         const char *sql =
             "CREATE TABLE IF NOT EXISTS messages ("
             "  msgId      TEXT PRIMARY KEY,"
@@ -170,6 +177,34 @@ ZaloService::ZaloService(QObject *parent)
             "  threadId  TEXT NOT NULL,"
             "  deletedAt TEXT"
             ");", 0, 0, 0);
+        // ---- IPC: UI (thin client) -> HeadlessService (giữ WS thật) ----------
+        // Kiến trúc mới: UI app KHÔNG còn tự kết nối WS/HTTP nữa — mọi hành động
+        // (sendMessage, startQRLogin, deleteMessage, ...) được UI ghi thành 1 dòng
+        // JSON vào bảng này; HeadlessService poll bảng này (QTimer ngắn, xem
+        // HeadlessService.cpp) và thực thi bằng đúng các hàm Q_INVOKABLE hiện có
+        // của ZaloService, rồi đánh dấu processed=1. UI đọc kết quả/side-effect
+        // qua chính bảng messages/... (đã ghi bởi dbSaveMessage) chứ không chờ
+        // trả lời trực tiếp qua cột này — status/result chỉ dùng cho các lệnh
+        // cần phản hồi tức thời không tự nhiên nằm trong bảng messages (vd
+        // startQRLogin trả về ảnh QR).
+        sqlite3_exec(m_db,
+            "CREATE TABLE IF NOT EXISTS command_queue ("
+            "  id        INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  command   TEXT NOT NULL,"     // tên hàm, vd "sendMessage"
+            "  argsJson  TEXT NOT NULL,"     // tham số dạng JSON
+            "  createdAt TEXT NOT NULL,"
+            "  processed INTEGER DEFAULT 0,"
+            "  resultJson TEXT DEFAULT ''"   // service ghi kết quả (nếu có) sau khi xử lý
+            ");", 0, 0, 0);
+        sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_cmdq_pending ON command_queue(processed, id);", 0, 0, 0);
+        // Trạng thái service publish ra cho UI đọc (loggedIn, qrCode hiện tại, uid...)
+        // — key/value đơn giản, tránh phải định nghĩa struct riêng cho từng trạng thái.
+        sqlite3_exec(m_db,
+            "CREATE TABLE IF NOT EXISTS service_state ("
+            "  key       TEXT PRIMARY KEY,"
+            "  value     TEXT,"
+            "  updatedAt TEXT"
+            ");", 0, 0, 0);
         qDebug() << "[Zalo] SQLite DB opened:" << dbPath;
     } else {
         qDebug() << "[Zalo] SQLite open FAILED";
@@ -181,6 +216,16 @@ ZaloService::ZaloService(QObject *parent)
     // reuse logic lives in downloadAvatar(), which checks avatar_meta fresh on
     // every call — this is just a startup diagnostic.
     loadAvatarCacheFromDb();
+
+    // ---- IPC state publishing (xem ZaloService_Ipc.cpp) ----------------------
+    // Móc vào đúng các signal trạng thái đã có sẵn thay vì rải publishState()
+    // vào từng điểm "emit ..." trong ZaloService_Auth.cpp — giảm rủi ro sửa
+    // nhầm logic login/QR vốn đã phức tạp. UI thin-client (ZaloServiceProxy)
+    // đọc các key này từ bảng service_state.
+    connect(this, SIGNAL(loggedInChanged()), this, SLOT(onPublishLoggedInState()));
+    connect(this, SIGNAL(qrCodeReady(QString,QString)), this, SLOT(onPublishQrState(QString,QString)));
+    connect(this, SIGNAL(sessionExpired()), this, SLOT(onPublishSessionExpired()));
+    connect(this, SIGNAL(loginSuccess(QString,QString)), this, SLOT(onPublishLoginSuccess(QString,QString)));
 }
 
 ZaloService::~ZaloService() {
