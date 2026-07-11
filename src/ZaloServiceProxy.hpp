@@ -9,6 +9,7 @@
 #include <QTcpSocket>
 #include "ZaloService.hpp"
 #include "EventBridgeServer.hpp" // chỉ để lấy hằng số PORT dùng chung 2 phía
+#include <sqlite3.h>
 
 // ZaloServiceProxy — thay thế ZaloService làm context property "zService" cho
 // QML trong UI process (ApplicationUI). Giữ NGUYÊN chữ ký Q_INVOKABLE của
@@ -167,6 +168,15 @@ private:
     QTcpSocket  *m_eventSocket;
     QTimer      *m_reconnectTimer;
     QByteArray   m_recvBuffer; // tích luỹ bytes tới khi đủ 1 dòng ('\n')
+
+    // Kết nối SQLite riêng, giữ mở suốt vòng đời proxy, chỉ dùng để ghi vào
+    // command_queue (writeCommand()). Trước đây mỗi lần ghi lệnh mở/đóng 1
+    // connection mới — dưới tải burst (vd hàng chục downloadAvatar bắn ra
+    // liên tiếp ngay sau khi fetchFriends xong) việc liên tục mở connection
+    // mới + PRAGMA journal_mode=WAL trên từng connection gây tranh chấp khoá
+    // và insert thất bại hàng loạt ("writeCommand: insert failed"). Giữ 1
+    // connection sống sẵn giống cách HeadlessService làm với m_db của nó.
+    sqlite3 *m_cmdDb;
 };
 
 #endif // ZALOSERVICEPROXY_HPP

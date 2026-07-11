@@ -69,7 +69,8 @@ ZaloServiceProxy::ZaloServiceProxy(QObject *parent)
       m_statePollTimer(new QTimer(this)),
       m_loggedIn(false),
       m_eventSocket(new QTcpSocket(this)),
-      m_reconnectTimer(new QTimer(this))
+      m_reconnectTimer(new QTimer(this)),
+      m_cmdDb(0)
 {
     // QUAN TRỌNG: m_localService KHÔNG BAO GIỜ được gọi loadSession(), bất kỳ
     // hàm startXxxLogin/fetchXxx/sendXxx/connectWebSocket nào — nó chỉ tồn tại
@@ -89,11 +90,23 @@ ZaloServiceProxy::ZaloServiceProxy(QObject *parent)
     m_reconnectTimer->start(2000); // thử kết nối mỗi 2s cho tới khi HeadlessService sẵn sàng
     m_eventSocket->connectToHost(QHostAddress::LocalHost, EventBridgeServer::PORT);
 
+    // 1 connection sống suốt vòng đời proxy cho command_queue — xem giải
+    // thích ở khai báo m_cmdDb trong .hpp.
+    QString dbPath = QDir::homePath() + "/zalo_messages.db";
+    if (sqlite3_open(dbPath.toUtf8().constData(), &m_cmdDb) == SQLITE_OK) {
+        sqlite3_exec(m_cmdDb, "PRAGMA journal_mode=WAL;", 0, 0, 0);
+        sqlite3_exec(m_cmdDb, "PRAGMA busy_timeout=5000;", 0, 0, 0);
+    } else {
+        qDebug() << "[ZaloServiceProxy] cannot open persistent command db";
+        if (m_cmdDb) { sqlite3_close(m_cmdDb); m_cmdDb = 0; }
+    }
+
     refreshStateFromDb();
 }
 
 ZaloServiceProxy::~ZaloServiceProxy()
 {
+    if (m_cmdDb) sqlite3_close(m_cmdDb);
 }
 
 void ZaloServiceProxy::onEventBridgeConnected()
@@ -187,25 +200,15 @@ void ZaloServiceProxy::dispatchEventLine(const QString &jsonLine)
 
 void ZaloServiceProxy::writeCommand(const QString &command, const QVariantMap &args)
 {
-    QString dbPath = QDir::homePath() + "/zalo_messages.db";
-    sqlite3 *db = 0;
-    if (sqlite3_open(dbPath.toUtf8().constData(), &db) != SQLITE_OK) {
-        qDebug() << "[ZaloServiceProxy] writeCommand: cannot open db for" << command;
-        if (db) sqlite3_close(db);
+    if (!m_cmdDb) {
+        qDebug() << "[ZaloServiceProxy] writeCommand: no db connection for" << command;
         return;
     }
-    // Mở/đóng kết nối riêng cho mỗi lệnh thay vì giữ 1 handle sqlite3* sống
-    // suốt vòng đời proxy — đơn giản hơn để tránh phải đồng bộ với
-    // m_localService's own m_db handle, và tần suất ghi lệnh (người dùng bấm
-    // gửi tin) thấp hơn nhiều so với tần suất service ghi tin nhắn nhận về,
-    // nên chi phí open/close mỗi lần không đáng kể.
-    sqlite3_exec(db, "PRAGMA journal_mode=WAL;", 0, 0, 0);
-    sqlite3_exec(db, "PRAGMA busy_timeout=3000;", 0, 0, 0);
 
     QString argsJson = mapToJsonSimple(args);
     const char *sql = "INSERT INTO command_queue(command, argsJson, createdAt, processed) VALUES(?,?,?,0);";
     sqlite3_stmt *stmt = 0;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
+    if (sqlite3_prepare_v2(m_cmdDb, sql, -1, &stmt, 0) == SQLITE_OK) {
         QByteArray cmdUtf8  = command.toUtf8();
         QByteArray argsUtf8 = argsJson.toUtf8();
         QByteArray tsUtf8   = QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8();
@@ -213,13 +216,14 @@ void ZaloServiceProxy::writeCommand(const QString &command, const QVariantMap &a
         sqlite3_bind_text(stmt, 2, argsUtf8.constData(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, 3, tsUtf8.constData(), -1, SQLITE_TRANSIENT);
         if (sqlite3_step(stmt) != SQLITE_DONE) {
-            qDebug() << "[ZaloServiceProxy] writeCommand: insert failed for" << command;
+            qDebug() << "[ZaloServiceProxy] writeCommand: insert failed for" << command
+                     << "-" << sqlite3_errmsg(m_cmdDb);
         }
         sqlite3_finalize(stmt);
     } else {
-        qDebug() << "[ZaloServiceProxy] writeCommand: prepare failed for" << command;
+        qDebug() << "[ZaloServiceProxy] writeCommand: prepare failed for" << command
+                 << "-" << sqlite3_errmsg(m_cmdDb);
     }
-    sqlite3_close(db);
 }
 
 void ZaloServiceProxy::refreshStateFromDb()
