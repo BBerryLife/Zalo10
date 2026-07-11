@@ -1,6 +1,5 @@
 #include "ZaloServiceProxy.hpp"
 #include "ZaloServiceUtils.hpp"
-#include <sqlite3.h>
 #include <QDir>
 #include <QDateTime>
 #include <QDebug>
@@ -69,8 +68,7 @@ ZaloServiceProxy::ZaloServiceProxy(QObject *parent)
       m_statePollTimer(new QTimer(this)),
       m_loggedIn(false),
       m_eventSocket(new QTcpSocket(this)),
-      m_reconnectTimer(new QTimer(this)),
-      m_cmdDb(0)
+      m_reconnectTimer(new QTimer(this))
 {
     // QUAN TRỌNG: m_localService KHÔNG BAO GIỜ được gọi loadSession(), bất kỳ
     // hàm startXxxLogin/fetchXxx/sendXxx/connectWebSocket nào — nó chỉ tồn tại
@@ -90,23 +88,11 @@ ZaloServiceProxy::ZaloServiceProxy(QObject *parent)
     m_reconnectTimer->start(2000); // thử kết nối mỗi 2s cho tới khi HeadlessService sẵn sàng
     m_eventSocket->connectToHost(QHostAddress::LocalHost, EventBridgeServer::PORT);
 
-    // 1 connection sống suốt vòng đời proxy cho command_queue — xem giải
-    // thích ở khai báo m_cmdDb trong .hpp.
-    QString dbPath = QDir::homePath() + "/zalo_messages.db";
-    if (sqlite3_open(dbPath.toUtf8().constData(), &m_cmdDb) == SQLITE_OK) {
-        sqlite3_exec(m_cmdDb, "PRAGMA journal_mode=WAL;", 0, 0, 0);
-        sqlite3_exec(m_cmdDb, "PRAGMA busy_timeout=5000;", 0, 0, 0);
-    } else {
-        qDebug() << "[ZaloServiceProxy] cannot open persistent command db";
-        if (m_cmdDb) { sqlite3_close(m_cmdDb); m_cmdDb = 0; }
-    }
-
     refreshStateFromDb();
 }
 
 ZaloServiceProxy::~ZaloServiceProxy()
 {
-    if (m_cmdDb) sqlite3_close(m_cmdDb);
 }
 
 void ZaloServiceProxy::onEventBridgeConnected()
@@ -200,30 +186,13 @@ void ZaloServiceProxy::dispatchEventLine(const QString &jsonLine)
 
 void ZaloServiceProxy::writeCommand(const QString &command, const QVariantMap &args)
 {
-    if (!m_cmdDb) {
-        qDebug() << "[ZaloServiceProxy] writeCommand: no db connection for" << command;
-        return;
-    }
-
+    // Dùng CHUNG connection SQLite với m_localService (xem enqueueCommand()
+    // trong ZaloService_Ipc.cpp) thay vì tự mở 1 connection riêng — 2
+    // connection khác nhau trong CÙNG process UI này từng gây SQLITE_LOCKED
+    // ("database is locked") dù đã bật WAL + busy_timeout, vì busy_timeout
+    // chỉ retry được SQLITE_BUSY, không retry được SQLITE_LOCKED.
     QString argsJson = mapToJsonSimple(args);
-    const char *sql = "INSERT INTO command_queue(command, argsJson, createdAt, processed) VALUES(?,?,?,0);";
-    sqlite3_stmt *stmt = 0;
-    if (sqlite3_prepare_v2(m_cmdDb, sql, -1, &stmt, 0) == SQLITE_OK) {
-        QByteArray cmdUtf8  = command.toUtf8();
-        QByteArray argsUtf8 = argsJson.toUtf8();
-        QByteArray tsUtf8   = QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8();
-        sqlite3_bind_text(stmt, 1, cmdUtf8.constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 2, argsUtf8.constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, tsUtf8.constData(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
-            qDebug() << "[ZaloServiceProxy] writeCommand: insert failed for" << command
-                     << "-" << sqlite3_errmsg(m_cmdDb);
-        }
-        sqlite3_finalize(stmt);
-    } else {
-        qDebug() << "[ZaloServiceProxy] writeCommand: prepare failed for" << command
-                 << "-" << sqlite3_errmsg(m_cmdDb);
-    }
+    m_localService->enqueueCommand(command, argsJson);
 }
 
 void ZaloServiceProxy::refreshStateFromDb()
@@ -233,24 +202,7 @@ void ZaloServiceProxy::refreshStateFromDb()
 
 void ZaloServiceProxy::onStatePollTimer()
 {
-    QString dbPath = QDir::homePath() + "/zalo_messages.db";
-    sqlite3 *db = 0;
-    if (sqlite3_open(dbPath.toUtf8().constData(), &db) != SQLITE_OK) {
-        if (db) sqlite3_close(db);
-        return;
-    }
-
-    QMap<QString, QString> state;
-    sqlite3_stmt *stmt = 0;
-    if (sqlite3_prepare_v2(db, "SELECT key, value FROM service_state;", -1, &stmt, 0) == SQLITE_OK) {
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            QString key = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
-            QString val = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
-            state[key] = val;
-        }
-        sqlite3_finalize(stmt);
-    }
-    sqlite3_close(db);
+    QMap<QString, QString> state = m_localService->readServiceState();
 
     bool newLoggedIn = state.value("loggedIn") == "1";
     if (newLoggedIn != m_loggedIn) {

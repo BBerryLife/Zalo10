@@ -82,6 +82,48 @@ void ZaloService::publishState(const QString &key, const QString &value)
     sqlite3_finalize(stmt);
 }
 
+void ZaloService::enqueueCommand(const QString &command, const QString &argsJson)
+{
+    if (!m_db) {
+        qDebug() << "[Zalo] enqueueCommand: no db connection for" << command;
+        return;
+    }
+    const char *sql = "INSERT INTO command_queue(command, argsJson, createdAt, processed) VALUES(?,?,?,0);";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+        QByteArray cmdUtf8  = command.toUtf8();
+        QByteArray argsUtf8 = argsJson.toUtf8();
+        QByteArray tsUtf8   = QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8();
+        sqlite3_bind_text(stmt, 1, cmdUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, argsUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, tsUtf8.constData(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) != SQLITE_DONE) {
+            qDebug() << "[Zalo] enqueueCommand: insert failed for" << command
+                     << "-" << sqlite3_errmsg(m_db);
+        }
+        sqlite3_finalize(stmt);
+    } else {
+        qDebug() << "[Zalo] enqueueCommand: prepare failed for" << command
+                 << "-" << sqlite3_errmsg(m_db);
+    }
+}
+
+QMap<QString, QString> ZaloService::readServiceState()
+{
+    QMap<QString, QString> state;
+    if (!m_db) return state;
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, "SELECT key, value FROM service_state;", -1, &stmt, 0) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            QString key = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
+            QString val = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
+            state[key] = val;
+        }
+        sqlite3_finalize(stmt);
+    }
+    return state;
+}
+
 // NOTE: argsJson được ZaloServiceProxy ghi bằng mapToJsonSimple() — chỉ phẳng
 // (String/Bool/Int/StringList), không có object/array lồng nhau — nên
 // jsonToMap() (parser thủ công trong ZaloServiceUtils.hpp, không dùng

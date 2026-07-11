@@ -156,6 +156,24 @@ public:
     // opened. Returns the number of files deleted.
     Q_INVOKABLE int clearCache();
 
+    // enqueueCommand: ZaloServiceProxy (UI thin client) gọi hàm này để ghi 1
+    // lệnh vào command_queue, dùng CHUNG connection SQLite (m_db) với mọi thao
+    // tác đọc/ghi local khác của instance này — thay vì ZaloServiceProxy tự mở
+    // 1 connection SQLite riêng (như trước đây). 2 connection riêng biệt trong
+    // CÙNG 1 process, dù đã bật WAL + busy_timeout, vẫn có thể đụng lock kiểu
+    // SQLITE_LOCKED (khác SQLITE_BUSY — busy_timeout không retry được lỗi này)
+    // khi có statement chưa đóng trên cùng bảng ở 2 connection khác nhau — đây
+    // chính là nguyên nhân "database is locked" quan sát được. Gộp về 1
+    // connection duy nhất cho toàn bộ UI process loại bỏ hẳn khả năng đó.
+    Q_INVOKABLE void enqueueCommand(const QString &command, const QString &argsJson);
+
+    // readServiceState: đọc toàn bộ bảng service_state, dùng CHUNG connection
+    // (m_db) — ZaloServiceProxy::onStatePollTimer() gọi hàm này mỗi 400ms thay
+    // vì tự mở 1 connection SQLite mới mỗi lần poll (cùng lý do với
+    // enqueueCommand() ở trên: giảm số connection đồng thời trong process UI
+    // xuống còn đúng 1, tránh SQLITE_LOCKED).
+    QMap<QString, QString> readServiceState();
+
     // ---- IPC (HeadlessService <-> UI thin client) ----------------------------
     // publishState: ghi 1 cặp key/value vào bảng service_state, để UI đọc trạng
     // thái (loggedIn, uid, qrImagePath...) mà không cần sống chung process.
