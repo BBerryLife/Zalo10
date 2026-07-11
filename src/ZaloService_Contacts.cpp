@@ -9,8 +9,6 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
-#include <QScriptEngine>
-#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -31,6 +29,7 @@
 #include <openssl/evp.h>
 #include <zlib.h>
 #include <string.h>
+#include <exception>
 
 // Conversations, friends, group details/avatars, invites, and per-thread
 // settings (mute, block, clear history, leave group).
@@ -112,7 +111,7 @@ void ZaloService::onFetchConvoDone()
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] fetchConvo decrypted (first150):" << dec.left(150);
 
-    QVariantMap outer = jsonToMap(dec.toUtf8());
+    QVariantMap outer = jsonToMap(dec);
     QVariantMap inner;
     if (outer.contains("data") && outer["data"].type() == QVariant::Map)
         inner = outer["data"].toMap();
@@ -194,7 +193,7 @@ void ZaloService::onGroupDetailsDone()
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] groupDetails decrypted (first200):" << dec.left(200);
 
-    QVariantMap outer = jsonToMap(dec.toUtf8());
+    QVariantMap outer = jsonToMap(dec);
     int ec2 = outer["error_code"].toInt();
     if (ec2 != 0) {
         qDebug() << "[Zalo Error] groupDetails inner error:" << ec2 << outer["error_message"].toString();
@@ -446,57 +445,69 @@ void ZaloService::onFetchFriendsDone()
         return;
     }
 
-    QVariantMap root = jsonToMap(raw);
-    if (root["error_code"].toInt() != 0) {
-        qDebug() << "[Zalo Error] fetchFriends:" << root["error_message"].toString();
-        m_isFetchingFriends = false;
-        return;
-    }
-
-    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-    qDebug() << "[Zalo] fetchFriends decrypted (first300):" << dec.left(300);
-
-    QVariantList friends;
-    QVariantMap outer = jsonToMap(dec.toUtf8());
-    if (outer.contains("data") && outer["data"].type() == QVariant::List)
-        friends = outer["data"].toList();
-    else if (outer.contains("friends") && outer["friends"].type() == QVariant::List)
-        friends = outer["friends"].toList();
-    else {
-        QVariantList arr = jsonToList(dec.toUtf8());
-        if (!arr.isEmpty())
-            friends = arr;
-    }
-
-    qDebug() << "[Zalo] fetchFriends found" << friends.size() << "friends";
-
     QVariantList threads;
-    for (int i = 0; i < friends.size(); ++i) {
-        QVariantMap f = friends[i].toMap();
-        QString uid  = f["userId"].toString();
-        if (uid.isEmpty()) uid = f["uid"].toString();
-        QString name = f["zaloName"].toString();
-        if (name.isEmpty()) name = f["displayName"].toString();
-        if (name.isEmpty()) name = f["username"].toString();
-        QString avatarUrl   = f["avatar"].toString();
-        QString bgAvatarUrl = f["bgavatar"].toString();
-        QString avatarBase   = avatarUrl.contains('?')   ? avatarUrl.left(avatarUrl.indexOf('?'))   : avatarUrl;
-        QString bgAvatarBase = bgAvatarUrl.contains('?') ? bgAvatarUrl.left(bgAvatarUrl.indexOf('?')) : bgAvatarUrl;
-        QString localAvatar   = m_avatarCache.value(avatarBase,   m_avatarCache.value(avatarUrl,   ""));
-        QString localBgAvatar = m_avatarCache.value(bgAvatarBase, m_avatarCache.value(bgAvatarUrl, ""));
+    try {
+        QVariantMap root = jsonToMap(raw);
+        if (root["error_code"].toInt() != 0) {
+            qDebug() << "[Zalo Error] fetchFriends:" << root["error_message"].toString();
+            m_isFetchingFriends = false;
+            return;
+        }
 
-        QVariantMap t;
-        t["threadId"]      = uid;
-        t["name"]          = name;
-        t["isGroup"]       = false;
-        t["avatar"]        = avatarUrl;
-        t["bgavatar"]      = bgAvatarUrl;
-        t["localAvatar"]   = localAvatar;
-        t["localBgAvatar"] = localBgAvatar;
-        t["unread"]        = 0;
-        t["lastMessage"]   = "";
-        if (!uid.isEmpty() && !name.isEmpty())
-            threads.append(t);
+        QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+        qDebug() << "[Zalo] fetchFriends decrypted (first300):" << dec.left(300);
+
+        QVariantList friends;
+        QVariantMap outer = jsonToMap(dec);
+        if (outer.contains("data") && outer["data"].type() == QVariant::List)
+            friends = outer["data"].toList();
+        else if (outer.contains("friends") && outer["friends"].type() == QVariant::List)
+            friends = outer["friends"].toList();
+        else {
+            QVariantList arr = jsonToList(dec);
+            if (!arr.isEmpty())
+                friends = arr;
+        }
+
+        qDebug() << "[Zalo] fetchFriends found" << friends.size() << "friends";
+
+        for (int i = 0; i < friends.size(); ++i) {
+            QVariantMap f = friends[i].toMap();
+            QString uid  = f["userId"].toString();
+            if (uid.isEmpty()) uid = f["uid"].toString();
+            QString name = f["zaloName"].toString();
+            if (name.isEmpty()) name = f["displayName"].toString();
+            if (name.isEmpty()) name = f["username"].toString();
+            QString avatarUrl   = f["avatar"].toString();
+            QString bgAvatarUrl = f["bgavatar"].toString();
+            QString avatarBase   = avatarUrl.contains('?')   ? avatarUrl.left(avatarUrl.indexOf('?'))   : avatarUrl;
+            QString bgAvatarBase = bgAvatarUrl.contains('?') ? bgAvatarUrl.left(bgAvatarUrl.indexOf('?')) : bgAvatarUrl;
+            QString localAvatar   = m_avatarCache.value(avatarBase,   m_avatarCache.value(avatarUrl,   ""));
+            QString localBgAvatar = m_avatarCache.value(bgAvatarBase, m_avatarCache.value(bgAvatarUrl, ""));
+
+            QVariantMap t;
+            t["threadId"]      = uid;
+            t["name"]          = name;
+            t["isGroup"]       = false;
+            t["avatar"]        = avatarUrl;
+            t["bgavatar"]      = bgAvatarUrl;
+            t["localAvatar"]   = localAvatar;
+            t["localBgAvatar"] = localBgAvatar;
+            t["unread"]        = 0;
+            t["lastMessage"]   = "";
+            if (!uid.isEmpty() && !name.isEmpty())
+                threads.append(t);
+        }
+    } catch (const std::exception &e) {
+        qDebug() << "[Zalo Error] fetchFriends: EXCEPTION during parse/decrypt:" << e.what();
+        m_isFetchingFriends = false;
+        emit friendsReady(QVariantList());
+        return;
+    } catch (...) {
+        qDebug() << "[Zalo Error] fetchFriends: UNKNOWN exception during parse/decrypt";
+        m_isFetchingFriends = false;
+        emit friendsReady(QVariantList());
+        return;
     }
 
     qDebug() << "[Zalo] fetchFriends parsed" << threads.size() << "valid friends";
@@ -600,7 +611,7 @@ void ZaloService::onFetchServerQuickMessagesDone()
     // fetchInvites, ...): the decrypted blob is itself {error_code, error_message,
     // data:{...}}, and for quickmessage/list the real payload — {cursor, version,
     // items} — lives under that inner "data" key, not at the top level.
-    QVariantMap outer = jsonToMap(dec.toUtf8());
+    QVariantMap outer = jsonToMap(dec);
     QVariantMap payload = outer.value("data").toMap();
     QVariantList items = payload.value("items").toList();
     if (items.isEmpty() && outer.contains("items"))
@@ -670,7 +681,7 @@ void ZaloService::onFetchInvitesDone()
 
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] fetchInvites decrypted FULL:" << dec.left(800);
-    QVariantMap outer = jsonToMap(dec.toUtf8());
+    QVariantMap outer = jsonToMap(dec);
     qDebug() << "[Zalo] fetchInvites outer keys:" << outer.keys();
 
     // recommendsv2/list response (per zca-js getFriendRecommendations.d.ts):

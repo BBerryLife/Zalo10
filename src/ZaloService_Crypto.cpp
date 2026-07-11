@@ -9,8 +9,6 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
-#include <QScriptEngine>
-#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -137,11 +135,25 @@ QString ZaloService::aesEncryptBase64_256(const QString &keyStr, const QString &
 QString ZaloService::aesDecryptBase64(const QString &keyStr, const QString &cipherB64)
 {
     if (cipherB64.isEmpty()) return QString();
+    qDebug() << "[Zalo] aesDecryptBase64 input length:" << cipherB64.length();
     QByteArray key    = resolveKey(keyStr);
     int keyBits = key.size() * 8;
     QString decoded   = QUrl::fromPercentEncoding(cipherB64.toUtf8());
     QByteArray cipher = QByteArray::fromBase64(decoded.toUtf8());
     if (cipher.isEmpty()) return QString();
+
+    // Sanity cap: 1 lần fetch bình thường (kể cả friend list/group list lớn)
+    // không thể vượt vài MB sau khi mã hoá. Nếu vượt ngưỡng này, gần như chắc
+    // chắn cipherB64 bị parse sai (garbage) chứ không phải payload thật —
+    // chặn ở đây để tránh AES_cbc_encrypt cấp phát/ghi vào buffer khổng lồ
+    // (nguồn gốc "bad allocation" quan sát được trong log) thay vì để crash.
+    const int kMaxCipherBytes = 20 * 1024 * 1024; // 20MB
+    if (cipher.size() > kMaxCipherBytes) {
+        qDebug() << "[Zalo Error] aesDecryptBase64: cipher size" << cipher.size()
+                  << "vuot nguong an toan (" << kMaxCipherBytes << ") - cipherB64.length()="
+                  << cipherB64.length() << "- bo qua de tranh bad_alloc";
+        return QString();
+    }
 
     unsigned char iv[AES_BLOCK_SIZE];
     memset(iv, 0, AES_BLOCK_SIZE);

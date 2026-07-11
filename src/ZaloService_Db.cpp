@@ -9,8 +9,6 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
-#include <QScriptEngine>
-#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>

@@ -1,11 +1,9 @@
 #include "ZaloServiceProxy.hpp"
+#include "ZaloServiceUtils.hpp"
 #include <sqlite3.h>
 #include <QDir>
 #include <QDateTime>
 #include <QDebug>
-#include <QScriptEngine>
-#include <QScriptValue>
-#include <QScriptValueIterator>
 #include <QHostAddress>
 
 // ---------------------------------------------------------------------------
@@ -19,9 +17,8 @@
 // ---------------------------------------------------------------------------
 
 // Chuyển 1 QVariantMap đơn giản (chỉ String/Bool/Int/StringList — đủ cho toàn
-// bộ tham số của các hàm Nhóm A) thành 1 chuỗi JSON thủ công. Không dùng
-// QScriptEngine ở đây vì phía ghi chỉ cần JSON hợp lệ, không cần parse gì —
-// nhẹ hơn là khởi tạo cả 1 QScriptEngine mỗi lần ghi lệnh.
+// bộ tham số của các hàm Nhóm A) thành 1 chuỗi JSON thủ công — không dùng bất
+// kỳ script engine nào, chỉ để ghi 1 dòng JSON hợp lệ vào command_queue.
 static QString jsonEscape(const QString &s)
 {
     QString out = s;
@@ -64,33 +61,6 @@ static QString mapToJsonSimple(const QVariantMap &args)
         parts << QString("\"%1\":%2").arg(it.key(), variantToJson(it.value()));
     }
     return "{" + parts.join(",") + "}";
-}
-
-// Chuyển 1 QScriptValue (kết quả JSON.parse) thành QVariant — giống hệt hàm
-// dùng trong ZaloService_Ipc.cpp (phía server), cần lại ở đây vì đây là
-// process khác (UI), không thể tái dùng static function ở file kia.
-static QVariant scriptValueToVariant(const QScriptValue &v)
-{
-    if (v.isArray()) {
-        QVariantList list;
-        int len = v.property("length").toInt32();
-        for (int i = 0; i < len; ++i)
-            list << scriptValueToVariant(v.property(i));
-        return list;
-    }
-    if (v.isObject() && !v.isNull() && !v.isUndefined()) {
-        QVariantMap map;
-        QScriptValueIterator it(v);
-        while (it.hasNext()) {
-            it.next();
-            map[it.name()] = scriptValueToVariant(it.value());
-        }
-        return map;
-    }
-    if (v.isBool())   return v.toBool();
-    if (v.isNumber()) return v.toNumber();
-    if (v.isString()) return v.toString();
-    return QVariant();
 }
 
 ZaloServiceProxy::ZaloServiceProxy(QObject *parent)
@@ -164,13 +134,11 @@ void ZaloServiceProxy::onEventBridgeReadyRead()
 
 void ZaloServiceProxy::dispatchEventLine(const QString &jsonLine)
 {
-    QScriptEngine engine;
-    QScriptValue parsed = engine.evaluate(QString("(%1)").arg(jsonLine));
-    if (engine.hasUncaughtException()) {
+    QVariantMap envelope = jsonToMap(jsonLine);
+    if (envelope.isEmpty()) {
         qDebug() << "[ZaloServiceProxy] dispatchEventLine: JSON parse failed";
         return;
     }
-    QVariantMap envelope = scriptValueToVariant(parsed).toMap();
     QString eventName = envelope.value("event").toString();
     QVariantMap d = envelope.value("data").toMap();
 

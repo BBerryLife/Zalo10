@@ -9,8 +9,6 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
-#include <QScriptEngine>
-#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -438,7 +436,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             if (dec.isEmpty() || dec.trimmed() == "{}")
                 dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
-            QVariantMap r = jsonToMap(dec.toUtf8());
+            QVariantMap r = jsonToMap(dec);
             d = r.contains("data") ? r["data"].toMap() : r;
         }
 
@@ -549,9 +547,10 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     mt = 2;
             }
 
-            // Qt4's QScriptEngine converts nested JSON objects to QVariantMap, so
-            // content.toString() comes back empty for photo/object payloads — re-serialize
-            // it to a JSON string here so the rest of the pipeline can parse it as usual.
+            // The JSON parser (ZaloServiceUtils.hpp) converts nested JSON objects to
+            // QVariantMap, so content.toString() comes back empty for photo/object
+            // payloads — re-serialize it to a JSON string here so the rest of the
+            // pipeline can parse it as usual.
             QString rawContent = m["content"].toString();
             if (rawContent.isEmpty()) {
                 QVariantMap cm = m["content"].toMap();
@@ -604,7 +603,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // WS may deliver via content JSON (href/thumb), top-level, or in "attach" sub-object
                 QString nUrl, hUrl, tUrl, fSizeStr;
                 if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(rawContent.toUtf8());
+                    QVariantMap cm = jsonToMap(rawContent);
                     nUrl = cm["normalUrl"].toString();
                     hUrl = cm["hdUrl"].toString();
                     tUrl = cm["thumbUrl"].toString();
@@ -628,7 +627,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         // attach may be a JSON string
                         QString attStr = m["attach"].toString();
                         if (!attStr.isEmpty() && attStr.startsWith("{"))
-                            att = jsonToMap(attStr.toUtf8());
+                            att = jsonToMap(attStr);
                     }
                     if (!att.isEmpty()) {
                         if (nUrl.isEmpty()) nUrl = att["normalUrl"].toString();
@@ -646,7 +645,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     if (prm.isEmpty()) {
                         QString prmStr = m["params"].toString();
                         if (!prmStr.isEmpty() && prmStr.startsWith("{"))
-                            prm = jsonToMap(prmStr.toUtf8());
+                            prm = jsonToMap(prmStr);
                     }
                     if (!prm.isEmpty()) {
                         if (nUrl.isEmpty()) nUrl = prm["normalUrl"].toString();
@@ -668,7 +667,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     // and may have put a "caption" key in rawContent) before we overwrite it.
                     QString caption;
                     if (!rawContent.isEmpty() && rawContent.contains("\"caption\":\"")) {
-                        QVariantMap prevCm = jsonToMap(rawContent.toUtf8());
+                        QVariantMap prevCm = jsonToMap(rawContent);
                         caption = prevCm["caption"].toString();
                     }
                     // Also try extracting directly from message map (title field)
@@ -866,7 +865,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             if (dec.isEmpty() || dec.trimmed() == "{}")
                 dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
-            QVariantMap r = jsonToMap(dec.toUtf8());
+            QVariantMap r = jsonToMap(dec);
             d = r.contains("data") ? r["data"].toMap() : r;
         }
 
@@ -1053,7 +1052,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             if ((mtH == 2 || out["msgType"].toInt() == 2) && !msgId.isEmpty()) {
                 QString checkUrl;
                 if (!rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(rawContentH.toUtf8());
+                    QVariantMap cm = jsonToMap(rawContentH);
                     checkUrl = cm["normalUrl"].toString();
                     if (checkUrl.isEmpty()) checkUrl = cm["hdUrl"].toString();
                     if (checkUrl.isEmpty()) checkUrl = cm["thumbUrl"].toString();
@@ -1093,7 +1092,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 QString content = mm["content"].toString();
                 QString photoUrl;
                 if (!content.isEmpty() && content.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(content.toUtf8());
+                    QVariantMap cm = jsonToMap(content);
                     photoUrl = cm["normalUrl"].toString();
                     if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
                     if (photoUrl.isEmpty()) photoUrl = cm["thumbUrl"].toString();

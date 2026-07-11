@@ -1,9 +1,7 @@
 #include "ZaloService.hpp"
+#include "ZaloServiceUtils.hpp"
 #include <sqlite3.h>
 #include <QDateTime>
-#include <QScriptEngine>
-#include <QScriptValue>
-#include <QScriptValueIterator>
 #include <QVariant>
 #include <QDebug>
 
@@ -84,37 +82,13 @@ void ZaloService::publishState(const QString &key, const QString &value)
     sqlite3_finalize(stmt);
 }
 
-// Chuyển 1 QScriptValue (kết quả JSON.parse) thành QVariant — Qt4 QScriptEngine
-// không có helper toVariant() tổng quát tốt cho object lồng nhau nên tự viết.
-static QVariant scriptValueToVariant(const QScriptValue &v)
+// NOTE: argsJson được ZaloServiceProxy ghi bằng mapToJsonSimple() — chỉ phẳng
+// (String/Bool/Int/StringList), không có object/array lồng nhau — nên
+// jsonToMap() (parser thủ công trong ZaloServiceUtils.hpp, không dùng
+// QScriptEngine/JIT) là đủ và an toàn để chạy trong HeadlessService.
+static QVariantMap parseArgsJson(const QString &json)
 {
-    if (v.isArray()) {
-        QVariantList list;
-        int len = v.property("length").toInt32();
-        for (int i = 0; i < len; ++i)
-            list << scriptValueToVariant(v.property(i));
-        return list;
-    }
-    if (v.isObject() && !v.isNull() && !v.isUndefined()) {
-        QVariantMap map;
-        QScriptValueIterator it(v);
-        while (it.hasNext()) {
-            it.next();
-            map[it.name()] = scriptValueToVariant(it.value());
-        }
-        return map;
-    }
-    if (v.isBool())   return v.toBool();
-    if (v.isNumber()) return v.toNumber();
-    if (v.isString()) return v.toString();
-    return QVariant();
-}
-
-static QVariantMap parseArgsJson(QScriptEngine &engine, const QString &json)
-{
-    QScriptValue parsed = engine.evaluate(QString("(%1)").arg(json));
-    QVariant v = scriptValueToVariant(parsed);
-    return v.toMap();
+    return jsonToMap(json);
 }
 
 // Đọc mọi lệnh đang chờ (processed=0) và thực thi. Được HeadlessService gọi
@@ -138,13 +112,11 @@ void ZaloService::processCommandQueue()
 
     if (pending.isEmpty()) return;
 
-    QScriptEngine engine;
-
     for (int i = 0; i < pending.size(); ++i) {
         int id = pending[i].first;
         const QString &command = pending[i].second.first;
         const QString &argsJson = pending[i].second.second;
-        QVariantMap args = parseArgsJson(engine, argsJson);
+        QVariantMap args = parseArgsJson(argsJson);
 
         qDebug() << "[ZaloIpc] dispatching command:" << command << "id:" << id;
 

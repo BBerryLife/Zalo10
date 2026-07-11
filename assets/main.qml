@@ -77,16 +77,12 @@ TabbedPane {
     // true/false, khối Connections { onSessionExpired/onLoginFailed/... } đã
     // có sẵn bên dưới (attachedObjects) tự lo phần còn lại — không cần thêm
     // Connections mới ở đây, tránh trùng logic mở loginSheet 2 lần.
-    Timer {
-        id: sessionCheckTimer
-        interval: 1500 // đủ thời gian cho HeadlessService publish trạng thái đăng nhập lần đầu
-        repeat: false
-        onTriggered: {
-            if (!zService.loggedIn) {
-                loginSheet.open();
-            }
-        }
-    }
+    //
+    // LƯU Ý: Timer KHÔNG thể khai báo tự do ở đây (ngoài attachedObjects) —
+    // TabbedPane coi mọi child không gán rõ property là phần tử của list
+    // "Tab" ngầm định, và Timer không phải Tab nên Cascades báo lỗi
+    // "Cannot assign object to list". Timer thật được đặt trong khối
+    // attachedObjects bên dưới (cùng chỗ với Sheet/Connections khác).
 
     onCreationCompleted: {
         aboutSheet.zService = zService;
@@ -142,6 +138,17 @@ TabbedPane {
     }
     
     attachedObjects: [
+        Timer {
+            id: sessionCheckTimer
+            interval: 1500 // đủ thời gian cho HeadlessService publish trạng thái đăng nhập lần đầu
+            repeat: false
+            onTriggered: {
+                if (!zService.loggedIn) {
+                    loginSheet.open();
+                }
+            }
+        },
+
         Sheet {
             id: loginSheet
             property bool needsQR: false

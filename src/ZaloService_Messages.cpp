@@ -9,8 +9,6 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
-#include <QScriptEngine>
-#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -96,7 +94,7 @@ void ZaloService::onFetchMsgDone()
     QString dec2 = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] fetchMessages decrypted (first150):" << dec2.left(150);
 
-    QVariantMap outer2 = jsonToMap(dec2.toUtf8());
+    QVariantMap outer2 = jsonToMap(dec2);
     QVariantMap d2;
     if (outer2.contains("data") && outer2["data"].type() == QVariant::Map)
         d2 = outer2["data"].toMap();
@@ -300,7 +298,7 @@ static QString extractPhotoUrl(const QVariantMap &mm)
     // Try content JSON
     QString content = mm["content"].toString();
     if (!content.isEmpty() && content.trimmed().startsWith("{")) {
-        QVariantMap cm = jsonToMap(content.toUtf8());
+        QVariantMap cm = jsonToMap(content);
         QString u = cm["normalUrl"].toString();
         if (u.isEmpty()) u = cm["hdUrl"].toString();
         if (u.isEmpty()) u = cm["thumbUrl"].toString();
@@ -352,7 +350,7 @@ void ZaloService::onFetchPhotoDetailDone()
         dataJson = dataEnc;
     }
 
-    QVariantMap data = jsonToMap(dataJson.toUtf8());
+    QVariantMap data = jsonToMap(dataJson);
 
     // Try to find the matching message in multiple possible response shapes:
     //   {msgs: [...]}  /  {groupMsgs: [...]}  /  {data: [...]}  /  single message map
@@ -447,7 +445,7 @@ void ZaloService::onSendMsgDone()
             // Parse msgId from encrypted response (same pattern as onSendPhotoMsgDone)
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             qDebug() << "[Zalo] sendMessage decrypted:" << dec.left(200);
-            QVariantMap decOuter = jsonToMap(dec.toUtf8());
+            QVariantMap decOuter = jsonToMap(dec);
             // Response format: {"error_code":0,"error_message":"...","data":{"msgId":"..."}}
             QVariantMap data = decOuter["data"].toMap();
             qDebug() << "[Zalo] sendMessage data keys:" << data.keys() << "msgId=" << data["msgId"].toString();
@@ -786,7 +784,7 @@ void ZaloService::onSendPhotoDone()
 
     // Decrypted string is {"error_code":0,"data":{"normalUrl":...,"photoId":...}}
     // Parse the outer wrapper, then get the inner data map
-    QVariantMap decOuter = jsonToMap(decStr.toUtf8());
+    QVariantMap decOuter = jsonToMap(decStr);
     QVariantMap uploadData;
     QVariant dataVariant = decOuter["data"];
     if (dataVariant.type() == QVariant::Map) {
@@ -911,7 +909,7 @@ void ZaloService::onSendPhotoMsgDone()
         QVariantMap outer = jsonToMap(raw);
         if (outer["error_code"].toInt() == 0) {
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
-            QVariantMap data = jsonToMap(dec.toUtf8());
+            QVariantMap data = jsonToMap(dec);
             qint64 msgIdInt = data["msgId"].toLongLong();
 
             if (msgIdInt == 0) {
@@ -1641,7 +1639,7 @@ void ZaloService::onPollMsgDone()
     if (root["error_code"].toInt() != 0) return;
 
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-    QVariantMap outer = jsonToMap(dec.toUtf8());
+    QVariantMap outer = jsonToMap(dec);
     QVariantMap d;
     if (outer.contains("data") && outer["data"].type() == QVariant::Map)
         d = outer["data"].toMap();

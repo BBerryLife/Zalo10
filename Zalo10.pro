@@ -7,11 +7,12 @@ PKGNAME = com.berrylife.zalo10
 # To release a new version, only update <versionNumber> in bar-descriptor.xml
 
 # Qt modules — tất cả có sẵn trong BB10 NDK 10.3
-QT += network script gui
+QT += network gui
 
 # BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
 LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform -lbbdevice
-LIBS += -lQtNetwork -lQtScript -lQtGui
+LIBS += -lQtNetwork -lQtGui
+LIBS += -lz
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3
 

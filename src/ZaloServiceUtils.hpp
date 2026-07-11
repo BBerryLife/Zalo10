@@ -2,126 +2,381 @@
 #define ZALOSERVICEUTILS_HPP
 
 // Small JSON/crypto helpers shared by the ZaloService_*.cpp translation units.
-// Qt4 has no QJson, so JSON (de)serialization is done via QScriptEngine; these
-// wrappers keep that detail in one place instead of repeating it at every call site.
-// Everything here is `inline` since the header is included from multiple .cpp files.
+// Qt4 has no QJson. JSON (de)serialization used to go through QScriptEngine,
+// but QtScript's JIT can't reserve executable memory inside a headless
+// (non-Cascades) bb::Application process on QNX — the first evaluate() call
+// segfaults (SIGSEGV inside libQtScript.so, "Could not reserve register file
+// memory"). Since HeadlessService is exactly that kind of process, every
+// (de)serialization helper below is now a hand-rolled recursive-descent
+// parser/serializer with no script engine involved. Everything here stays
+// `inline` since the header is included from multiple .cpp files.
 
 #include <QString>
 #include <QByteArray>
 #include <QVariant>
-#include <QScriptEngine>
-#include <QScriptValue>
+#include <QVariantMap>
+#include <QVariantList>
+#include <QStringList>
 #include <QDebug>
 
 #include <openssl/evp.h>
+
+// ---------------------------------------------------------------------------
+// Minimal hand-written JSON parser (no QScriptEngine/JIT). Supports objects,
+// arrays, strings (with standard escapes incl. \uXXXX), numbers, true/false/
+// null — enough for every payload this app sends/receives. Numbers are always
+// stored as double in the resulting QVariant (matching what QScriptEngine
+// used to produce); callers already go through toInt()/toString() etc.
+// ---------------------------------------------------------------------------
+namespace ZJson {
+
+class Parser
+{
+public:
+    Parser(const QString &text) : s(text), pos(0), len(text.length()), ok(true) {}
+
+    QVariant parseValue()
+    {
+        skipWs();
+        if (pos >= len) { ok = false; return QVariant(); }
+        QChar c = s.at(pos);
+        if (c == '{') return parseObject();
+        if (c == '[') return parseArray();
+        if (c == '"') return parseString();
+        if (c == 't' || c == 'f') return parseBool();
+        if (c == 'n') return parseNull();
+        if (c == '-' || c.isDigit()) return parseNumber();
+        ok = false;
+        return QVariant();
+    }
+
+    bool isOk() const { return ok; }
+
+private:
+    const QString &s;
+    int pos;
+    int len;
+    bool ok;
+
+    void skipWs()
+    {
+        while (pos < len) {
+            QChar c = s.at(pos);
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') ++pos;
+            else break;
+        }
+    }
+
+    bool expect(QChar c)
+    {
+        skipWs();
+        if (pos >= len || s.at(pos) != c) { ok = false; return false; }
+        ++pos;
+        return true;
+    }
+
+    QVariant parseObject()
+    {
+        QVariantMap map;
+        if (!expect('{')) return map;
+        skipWs();
+        if (pos < len && s.at(pos) == '}') { ++pos; return map; }
+        while (ok) {
+            skipWs();
+            if (pos >= len || s.at(pos) != '"') { ok = false; break; }
+            QString key = parseString().toString();
+            if (!ok) break;
+            if (!expect(':')) break;
+            QVariant val = parseValue();
+            if (!ok) break;
+            map[key] = val;
+            skipWs();
+            if (pos < len && s.at(pos) == ',') { ++pos; continue; }
+            if (pos < len && s.at(pos) == '}') { ++pos; break; }
+            ok = false;
+            break;
+        }
+        return map;
+    }
+
+    QVariant parseArray()
+    {
+        QVariantList list;
+        if (!expect('[')) return list;
+        skipWs();
+        if (pos < len && s.at(pos) == ']') { ++pos; return list; }
+        while (ok) {
+            QVariant val = parseValue();
+            if (!ok) break;
+            list << val;
+            skipWs();
+            if (pos < len && s.at(pos) == ',') { ++pos; continue; }
+            if (pos < len && s.at(pos) == ']') { ++pos; break; }
+            ok = false;
+            break;
+        }
+        return list;
+    }
+
+    QVariant parseString()
+    {
+        if (!expect('"')) return QString();
+
+        // Fast path: hầu hết chuỗi trong payload của app này (đặc biệt là
+        // field "data" chứa base64 dài, có thể vài chục KB với fetchFriends
+        // count=20000) không có ký tự escape nào. Quét thẳng tới dấu " đóng
+        // rồi cắt 1 lần bằng QString::mid() — 1 allocation duy nhất, thay vì
+        // nối từng ký tự (out += c) vốn có thể gây cấp phát lại liên tục và
+        // dồn ép bộ nhớ trên môi trường giới hạn RAM như simulator BB10
+        // (đây chính là nguồn gốc "bad allocation" quan sát được khi parse
+        // outer JSON của fetchFriends).
+        int start = pos;
+        int i = pos;
+        while (i < len) {
+            QChar c = s.at(i);
+            if (c == '"') {
+                QString result = s.mid(start, i - start);
+                pos = i + 1;
+                return result;
+            }
+            if (c == '\\') break; // cần xử lý escape -> rơi xuống slow path
+            ++i;
+        }
+
+        // Slow path: có escape sequence trong chuỗi (hoặc chuỗi không đóng
+        // đúng) — decode từng ký tự như trước, chỉ áp dụng cho phần còn lại
+        // kể từ vị trí start (giữ nguyên hành vi cũ, chỉ ảnh hưởng phần nhỏ
+        // của payload thường chứa escape, ví dụ tên có ký tự đặc biệt).
+        QString out = s.mid(start, i - start); // phần escape-free đã quét được ở trên
+        pos = i;
+        while (pos < len) {
+            QChar c = s.at(pos);
+            if (c == '"') { ++pos; return out; }
+            if (c == '\\') {
+                ++pos;
+                if (pos >= len) { ok = false; break; }
+                QChar e = s.at(pos);
+                switch (e.toLatin1()) {
+                case '"':  out += '"';  ++pos; break;
+                case '\\': out += '\\'; ++pos; break;
+                case '/':  out += '/';  ++pos; break;
+                case 'b':  out += '\b'; ++pos; break;
+                case 'f':  out += '\f'; ++pos; break;
+                case 'n':  out += '\n'; ++pos; break;
+                case 'r':  out += '\r'; ++pos; break;
+                case 't':  out += '\t'; ++pos; break;
+                case 'u': {
+                    if (pos + 4 >= len) { ok = false; break; }
+                    QString hex = s.mid(pos + 1, 4);
+                    bool okHex = false;
+                    ushort code = hex.toUShort(&okHex, 16);
+                    if (!okHex) { ok = false; break; }
+                    out += QChar(code);
+                    pos += 5;
+                    break;
+                }
+                default:
+                    ok = false;
+                    break;
+                }
+                if (!ok) break;
+            } else {
+                out += c;
+                ++pos;
+            }
+        }
+        if (pos >= len) ok = false; // unterminated string
+        return out;
+    }
+
+    QVariant parseBool()
+    {
+        if (s.mid(pos, 4) == "true")  { pos += 4; return true; }
+        if (s.mid(pos, 5) == "false") { pos += 5; return false; }
+        ok = false;
+        return QVariant();
+    }
+
+    QVariant parseNull()
+    {
+        if (s.mid(pos, 4) == "null") { pos += 4; return QVariant(); }
+        ok = false;
+        return QVariant();
+    }
+
+    QVariant parseNumber()
+    {
+        int start = pos;
+        if (pos < len && s.at(pos) == '-') ++pos;
+        while (pos < len && s.at(pos).isDigit()) ++pos;
+        if (pos < len && s.at(pos) == '.') {
+            ++pos;
+            while (pos < len && s.at(pos).isDigit()) ++pos;
+        }
+        if (pos < len && (s.at(pos) == 'e' || s.at(pos) == 'E')) {
+            ++pos;
+            if (pos < len && (s.at(pos) == '+' || s.at(pos) == '-')) ++pos;
+            while (pos < len && s.at(pos).isDigit()) ++pos;
+        }
+        if (pos == start) { ok = false; return QVariant(); }
+        bool convOk = false;
+        double d = s.mid(start, pos - start).toDouble(&convOk);
+        if (!convOk) { ok = false; return QVariant(); }
+        return d;
+    }
+};
+
+inline QVariant parse(const QString &text, bool *okOut = 0)
+{
+    Parser p(text);
+    QVariant v = p.parseValue();
+    if (okOut) *okOut = p.isOk();
+    return p.isOk() ? v : QVariant();
+}
+
+inline QString escape(const QString &s)
+{
+    QString out;
+    out.reserve(s.length() + 8);
+    for (int i = 0; i < s.length(); ++i) {
+        QChar c = s.at(i);
+        switch (c.toLatin1()) {
+        case '"':  out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\n': out += "\\n";  break;
+        case '\r': out += "\\r";  break;
+        case '\t': out += "\\t";  break;
+        default:
+            if (c.unicode() < 0x20) {
+                out += QString("\\u%1").arg((int)c.unicode(), 4, 16, QChar('0'));
+            } else {
+                out += c;
+            }
+        }
+    }
+    return out;
+}
+
+// Recursive QVariant -> JSON string serializer. indent<0 = compact (no
+// whitespace), indent>=0 = pretty-print with that many spaces per level.
+inline QString serialize(const QVariant &v, int indent, int depth)
+{
+    const QString nl  = indent >= 0 ? "\n" : "";
+    const QString pad = indent >= 0 ? QString(indent * (depth + 1), ' ') : QString();
+    const QString padEnd = indent >= 0 ? QString(indent * depth, ' ') : QString();
+    const QString colon = indent >= 0 ? ": " : ":";
+
+    switch (v.type()) {
+    case QVariant::Map: {
+        QVariantMap m = v.toMap();
+        if (m.isEmpty()) return "{}";
+        QStringList parts;
+        for (QVariantMap::const_iterator it = m.constBegin(); it != m.constEnd(); ++it) {
+            parts << pad + "\"" + escape(it.key()) + "\"" + colon + serialize(it.value(), indent, depth + 1);
+        }
+        return "{" + nl + parts.join("," + nl) + nl + padEnd + "}";
+    }
+    case QVariant::List: {
+        QVariantList lst = v.toList();
+        if (lst.isEmpty()) return "[]";
+        QStringList parts;
+        for (int i = 0; i < lst.size(); ++i)
+            parts << pad + serialize(lst.at(i), indent, depth + 1);
+        return "[" + nl + parts.join("," + nl) + nl + padEnd + "]";
+    }
+    case QVariant::StringList: {
+        QStringList lst = v.toStringList();
+        if (lst.isEmpty()) return "[]";
+        QStringList parts;
+        for (int i = 0; i < lst.size(); ++i)
+            parts << pad + "\"" + escape(lst.at(i)) + "\"";
+        return "[" + nl + parts.join("," + nl) + nl + padEnd + "]";
+    }
+    case QVariant::Bool:
+        return v.toBool() ? "true" : "false";
+    case QVariant::Int:
+    case QVariant::LongLong:
+        return QString::number(v.toLongLong());
+    case QVariant::UInt:
+    case QVariant::ULongLong:
+        return QString::number(v.toULongLong());
+    case QVariant::Double:
+        return QString::number(v.toDouble(), 'g', 17);
+    case QVariant::Invalid:
+        return "null";
+    default:
+        return "\"" + escape(v.toString()) + "\"";
+    }
+}
+
+} // namespace ZJson
+
+inline QVariantMap jsonToMap(const QString &text)
+{
+    QString trimmed = text.trimmed();
+    if (trimmed.isEmpty() || trimmed.startsWith('<')) return QVariantMap();
+    bool ok = false;
+    QVariant v = ZJson::parse(trimmed, &ok);
+    if (!ok || v.type() != QVariant::Map) return QVariantMap();
+    return v.toMap();
+}
 
 inline QVariantMap jsonToMap(const QByteArray &raw)
 {
     QByteArray trimmed = raw.trimmed();
     if (trimmed.isEmpty() || trimmed.startsWith("<")) return QVariantMap();
-    QScriptEngine eng;
-    eng.evaluate("var __safeJSON = function(s){try{return JSON.parse(s);}catch(e){return null;}}");
-    QScriptValue fn = eng.globalObject().property("__safeJSON");
-    QScriptValue val = fn.call(QScriptValue(), QScriptValueList()
-                               << eng.toScriptValue(QString::fromUtf8(trimmed)));
-    if (!val.isValid() || val.isNull() || val.isUndefined() || val.isError())
-        return QVariantMap();
-    QVariant v = val.toVariant();
-    if (v.type() == QVariant::Map)
-        return v.toMap();
-    return QVariantMap();
+    return jsonToMap(QString::fromUtf8(trimmed));
+}
+
+inline QVariantList jsonToList(const QString &text)
+{
+    QString trimmed = text.trimmed();
+    if (trimmed.isEmpty() || trimmed.startsWith('<')) return QVariantList();
+    bool ok = false;
+    QVariant v = ZJson::parse(trimmed, &ok);
+    if (!ok || v.type() != QVariant::List) return QVariantList();
+    return v.toList();
 }
 
 inline QVariantList jsonToList(const QByteArray &raw)
 {
     QByteArray trimmed = raw.trimmed();
     if (trimmed.isEmpty() || trimmed.startsWith("<")) return QVariantList();
-    QScriptEngine eng;
-    eng.evaluate("var __safeJSON = function(s){try{return JSON.parse(s);}catch(e){return null;}}");
-    QScriptValue fn = eng.globalObject().property("__safeJSON");
-    QScriptValue val = fn.call(QScriptValue(), QScriptValueList()
-                               << eng.toScriptValue(QString::fromUtf8(trimmed)));
-    if (!val.isValid() || val.isNull() || val.isUndefined() || val.isError())
-        return QVariantList();
-    QVariant v = val.toVariant();
-    if (v.type() == QVariant::List)
-        return v.toList();
-    return QVariantList();
+    return jsonToList(QString::fromUtf8(trimmed));
 }
 
 inline QByteArray mapToJson(const QVariantMap &map)
 {
-    QScriptEngine eng;
-    QScriptValue obj = eng.newObject();
+    // Historically flattened List values via toString() (matching the old
+    // QScriptEngine-based behavior of this specific helper); keep that quirk
+    // so existing wire-protocol call sites don't change shape. Callers that
+    // need real nested arrays/objects use variantToJsonCompact() instead.
+    QVariantMap flat;
     for (QVariantMap::const_iterator it = map.constBegin(); it != map.constEnd(); ++it) {
         QVariant v = it.value();
-        switch (v.type()) {
-        case QVariant::String:   obj.setProperty(it.key(), v.toString()); break;
-        case QVariant::Int:
-        case QVariant::LongLong: obj.setProperty(it.key(), (double)v.toLongLong()); break;
-        case QVariant::UInt:
-        case QVariant::ULongLong: obj.setProperty(it.key(), (double)v.toULongLong()); break;
-        case QVariant::Bool:     obj.setProperty(it.key(), (bool)v.toBool()); break;
-        case QVariant::Double:   obj.setProperty(it.key(), (double)v.toDouble()); break;
-        case QVariant::List: {
+        if (v.type() == QVariant::List) {
             QVariantList lst = v.toList();
-            QScriptValue arr = eng.newArray(lst.size());
-            for (int i = 0; i < lst.size(); ++i)
-                arr.setProperty(i, lst[i].toString());
-            obj.setProperty(it.key(), arr);
-            break;
-        }
-        default: obj.setProperty(it.key(), v.toString()); break;
+            QStringList asStrings;
+            for (int i = 0; i < lst.size(); ++i) asStrings << lst[i].toString();
+            flat[it.key()] = asStrings;
+        } else {
+            flat[it.key()] = v;
         }
     }
-    QScriptValue jsonStringify = eng.evaluate("JSON.stringify");
-    QScriptValue result = jsonStringify.call(QScriptValue(), QScriptValueList() << obj);
-    return result.toString().toUtf8();
+    return ZJson::serialize(flat, -1, 0).toUtf8();
 }
 
-// General-purpose recursive QVariant -> QScriptValue conversion, unlike the
+// General-purpose recursive QVariant JSON serialization, unlike the
 // flat-only mapToJson() above. Needed for exportData()/importData(), whose
 // payload is a root object containing arrays of (flat) message/quickMessage
 // maps plus scalar metadata — e.g. {"exportedAt": "...", "messages": [ {...},
 // {...} ], "quickMessages": [ {...} ]}. Kept separate from mapToJson() rather
 // than rewriting it, since every existing call site of mapToJson() is part of
 // the login/messaging wire protocol and shouldn't change behavior.
-inline QScriptValue variantToScriptValue(QScriptEngine &eng, const QVariant &v)
-{
-    switch (v.type()) {
-    case QVariant::Map: {
-        QVariantMap m = v.toMap();
-        QScriptValue obj = eng.newObject();
-        for (QVariantMap::const_iterator it = m.constBegin(); it != m.constEnd(); ++it)
-            obj.setProperty(it.key(), variantToScriptValue(eng, it.value()));
-        return obj;
-    }
-    case QVariant::List: {
-        QVariantList lst = v.toList();
-        QScriptValue arr = eng.newArray(lst.size());
-        for (int i = 0; i < lst.size(); ++i)
-            arr.setProperty(i, variantToScriptValue(eng, lst[i]));
-        return arr;
-    }
-    case QVariant::Int:
-    case QVariant::LongLong:  return QScriptValue(eng.toScriptValue((double)v.toLongLong()));
-    case QVariant::UInt:
-    case QVariant::ULongLong: return QScriptValue(eng.toScriptValue((double)v.toULongLong()));
-    case QVariant::Double:    return QScriptValue(eng.toScriptValue(v.toDouble()));
-    case QVariant::Bool:      return QScriptValue(v.toBool());
-    default:                  return QScriptValue(v.toString());
-    }
-}
-
 inline QByteArray variantToJsonPretty(const QVariant &root)
 {
-    QScriptEngine eng;
-    QScriptValue val = variantToScriptValue(eng, root);
-    QScriptValue jsonStringify = eng.evaluate("JSON.stringify");
     // 2-space indent so an exported file is still human-readable if someone opens it.
-    QScriptValue result = jsonStringify.call(QScriptValue(), QScriptValueList()
-                                              << val << QScriptValue() << QScriptValue(2));
-    return result.toString().toUtf8();
+    return ZJson::serialize(root, 2, 0).toUtf8();
 }
 
 // Compact (no indentation) counterpart of variantToJsonPretty(), for wire-protocol
@@ -131,11 +386,7 @@ inline QByteArray variantToJsonPretty(const QVariant &root)
 // globalMsgId,...} ]) instead of recursing into them like this one does.
 inline QByteArray variantToJsonCompact(const QVariant &root)
 {
-    QScriptEngine eng;
-    QScriptValue val = variantToScriptValue(eng, root);
-    QScriptValue jsonStringify = eng.evaluate("JSON.stringify");
-    QScriptValue result = jsonStringify.call(QScriptValue(), QScriptValueList() << val);
-    return result.toString().toUtf8();
+    return ZJson::serialize(root, -1, 0).toUtf8();
 }
 
 inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawContent)
@@ -300,7 +551,7 @@ inline QString extractRecalledMsgId(const QVariantMap &m)
     if (msgTypeStr.compare("chat.undo", Qt::CaseInsensitive) != 0)
         return QString();
 
-    // content arrives as a nested QVariantMap (QScriptEngine auto-converts JSON
+    // content arrives as a nested QVariantMap (the JSON parser converts JSON
     // objects), but may also already be a JSON string depending on the call path.
     QVariantMap c = m.value("content").toMap();
     if (c.isEmpty()) {

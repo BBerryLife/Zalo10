@@ -10,11 +10,11 @@ PKGNAME = com.berrylife.zalo10.headless
 # chung 1 .bar, chia sẻ chung sandbox filesystem (QDir::homePath()), đây là
 # điều kiện bắt buộc để cả 2 process đọc/ghi chung 1 file zalo_messages.db.
 
-QT += network script
+QT += network
 # Không cần "gui" — service không vẽ gì cả.
 
 LIBS += -lbb -lbbsystem
-LIBS += -lQtNetwork -lQtScript
+LIBS += -lQtNetwork
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3
 

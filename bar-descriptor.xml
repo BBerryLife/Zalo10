@@ -6,23 +6,45 @@
     <configuration id="com.qnx.qcc.toolChain.666213485" name="Device-Debug">
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm/o.le-v7-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
-       <asset entryPointId="Zalo10Headless" path="arm/o.le-v7-g/Zalo10Headless" type="Qnx/Elf">Zalo10Headless</asset>
+       <!-- Đã xác nhận qua Explorer: Zalo10Headless build config Device-Debug
+            ra thẳng arm/Zalo10Headless (KHÔNG có thư mục con o.le-v7-g như
+            Zalo10 — do Zalo10Headless.pro dùng Qt4 qmake profile thuần, không
+            qua Cascades profile). Project nằm ngang hàng (không lồng bên
+            trong Zalo10), nên cần "../" để đi từ thư mục Zalo10 sang
+            Zalo10Headless. -->
+       <asset entryPointId="Zalo10Headless" path="../Zalo10Headless/arm/Zalo10Headless" type="Qnx/Elf">Zalo10Headless</asset>
     </configuration>
     <configuration id="com.qnx.qcc.toolChain.2137696721" name="Device-Release">
        <entryPointType>Qnx/Cascades</entryPointType>
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm/o.le-v7/Zalo10.so" entry="true" type="Qnx/Elf">Zalo10.so</asset>
-       <asset entryPointId="Zalo10Headless" path="arm/o.le-v7/Zalo10Headless" type="Qnx/Elf">Zalo10Headless</asset>
+       <!-- CHƯA XÁC NHẬN qua build thật cho config Release của Zalo10Headless
+            — path dưới đây là suy đoán theo cùng khuôn mẫu đã xác nhận ở
+            Debug (arm/Zalo10Headless không có thư mục con release riêng theo
+            tên toolchain, mà theo thư mục con "release/" bên trong, xem cấu
+            trúc arm/debug, arm/release đã thấy trong Explorer image 4).
+            NẾU build Release Zalo10Headless và packaging vẫn báo lỗi tương
+            tự, cần xác nhận lại path thật giống cách đã làm với Debug. -->
+       <asset entryPointId="Zalo10Headless" path="../Zalo10Headless/arm/Zalo10Headless" type="Qnx/Elf">Zalo10Headless</asset>
     </configuration>
     <configuration id="com.qnx.qcc.toolChain.560740241" name="Device-Profile">
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm-p/o.le-v7-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
-       <asset entryPointId="Zalo10Headless" path="arm-p/o.le-v7-g/Zalo10Headless" type="Qnx/Elf">Zalo10Headless</asset>
+       <!-- CHƯA XÁC NHẬN qua build thật — xem ghi chú ở Device-Release. -->
+       <asset entryPointId="Zalo10Headless" path="../Zalo10Headless/arm-p/Zalo10Headless" type="Qnx/Elf">Zalo10Headless</asset>
     </configuration>
     <configuration id="com.qnx.qcc.toolChain.1655019260" name="Simulator-Debug">
        <platformArchitecture>x86</platformArchitecture>
        <asset path="x86/o-g/Zalo10" entry="true" type="Qnx/Elf">Zalo10</asset>
-       <asset entryPointId="Zalo10Headless" path="x86/o-g/Zalo10Headless" type="Qnx/Elf">Zalo10Headless</asset>
+       <!-- Zalo10Headless là project RIÊNG, nằm ngang hàng với Zalo10 (không
+            lồng bên trong), ví dụ:
+              C:\Users\Hoang\Documents\GitHub\Zalo10\            (project này)
+              C:\Users\Hoang\Documents\GitHub\Zalo10Headless\    (project kia)
+            Asset path trong bar-descriptor.xml được hiểu tương đối so với
+            thư mục project Zalo10 — "x86/Zalo10Headless" (không có "../") sẽ
+            trỏ NHẦM vào C:\...\Zalo10\x86\Zalo10Headless (không tồn tại).
+            Phải đi ra ngoài rồi vào project kia: ../Zalo10Headless/x86/... -->
+       <asset entryPointId="Zalo10Headless" path="../Zalo10Headless/x86/Zalo10Headless" type="Qnx/Elf">Zalo10Headless</asset>
     </configuration>
 
     <!-- Hai entry point riêng biệt trong cùng 1 gói .bar: entry point mặc định
