@@ -105,6 +105,7 @@ void ZaloServiceProxy::onEventBridgeConnected()
     m_reconnectTimer->stop(); // đã nối được, không cần tự retry nữa — onEventBridgeDisconnected() sẽ bật lại nếu rớt
     m_connectFailCount = 0;
     m_headlessInvokeAttempted = false; // service rõ ràng đang sống — cho phép invoke lại nếu sau này rớt hẳn
+    emit eventBridgeReconnected();
 }
 
 void ZaloServiceProxy::onEventBridgeDisconnected()

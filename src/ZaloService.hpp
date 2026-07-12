@@ -47,7 +47,7 @@ public:
     Q_INVOKABLE void rejectFriendRequest(const QString &friendId);
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
-    Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
+    Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup, bool isRetry = false);
     // Delete a message. Ported from zca-js's deleteMessage.ts:
     //   - onlyMe=true:  "delete for me" — always allowed, any thread.
     //   - onlyMe=false: "delete for everyone" — only allowed in groups; for a
@@ -258,6 +258,8 @@ private slots:
 
     void onFetchConvoDone();
     void onFetchFriendsDone();
+    void onRetryFetchConvoCheckTimer();   // xem fetchConversations()'s ec==600 handling
+    void onRetryFetchFriendsCheckTimer(); // xem fetchFriends()'s ec==600 handling
     void onFetchServerQuickMessagesDone();
     void onFetchInvitesDone();
     void onAcceptFriendDone();
@@ -266,6 +268,7 @@ private slots:
     void onFetchMsgDone();
     void onFetchPhotoDetailDone();  // HTTP fallback khi cmd=510 không trả HTTP URL
     void onSendMsgDone();
+    void onRetrySendCheckTimer(); // xem sendMessage()'s ec==600 handling trong ZaloService_Messages.cpp
     void onDeleteMsgDone();
     void onRecallMsgDone();
     void onSendPhotoDone();
@@ -410,6 +413,17 @@ private:
     QString m_loginVersion;
     QString m_qrCode;
     QString m_pendingEncryptKey;
+
+    // State cho sendMessage()'s ec==600 auto-retry (xem ZaloService_Messages.cpp)
+    QString m_retrySendThreadId;
+    QString m_retrySendContent;
+    bool    m_retrySendIsGroup;
+    QString m_pendingRetrySendOldKey;
+
+    // State cho fetchConversations()/fetchFriends()'s ec==600 auto-retry
+    // (xem ZaloService_Contacts.cpp) — cùng pattern với sendMessage ở trên.
+    QString m_pendingRetryFetchConvoOldKey;
+    QString m_pendingRetryFetchFriendsOldKey;
 
     QString m_chatServiceUrl;
     QString m_groupServiceUrl;

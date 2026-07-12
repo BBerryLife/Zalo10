@@ -392,6 +392,21 @@ NavigationPane {
             Connections {
                 target: zService
 
+                // Xem eventBridgeReconnected() trong ZaloServiceProxy.hpp: mọi
+                // avatarReady broadcast trong lúc UI mất kết nối EventBridge bị
+                // mất vĩnh viễn. Khi vừa kết nối lại, quét friendModel và phát
+                // lại downloadAvatar cho bất kỳ ai chưa có localAvatar — rẻ vì
+                // avatar đã tải xong nằm sẵn trên đĩa (avatar_meta cache), nên
+                // đây gần như luôn là 1 lần đọc file, không phải tải mạng lại.
+                onEventBridgeReconnected: {
+                    for (var i = 0; i < friendModel.size(); i++) {
+                        var d = friendModel.value(i);
+                        if ((!d.localAvatar || d.localAvatar.length === 0) && d.avatar && d.avatar.length > 0 && d.threadId) {
+                            chatsNav.queueAvatarDownload(d.threadId, d.avatar);
+                        }
+                    }
+                }
+
                 onFriendsReady: {
                     chatsLoading.visible = false;
                     friendModel.clear();

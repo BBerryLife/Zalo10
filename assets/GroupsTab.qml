@@ -398,6 +398,19 @@ NavigationPane {
             Connections {
                 target: zService
 
+                // Xem giải thích đầy đủ trong ChatsTab.qml's onEventBridgeReconnected —
+                // cùng lý do: avatarReady broadcast trong lúc UI mất kết nối
+                // EventBridge bị mất vĩnh viễn, phát lại downloadAvatar ở đây gần
+                // như miễn phí vì file đã có sẵn trên đĩa.
+                onEventBridgeReconnected: {
+                    for (var i = 0; i < groupModel.size(); i++) {
+                        var d = groupModel.value(i);
+                        if ((!d.localAvatar || d.localAvatar.length === 0) && d.avatar && d.avatar.length > 0 && d.threadId) {
+                            groupsNav.queueAvatarDownload(d.threadId, d.avatar);
+                        }
+                    }
+                }
+
                 onConversationsReady: {
                     groupsLoading.visible = false;
                     groupModel.clear();

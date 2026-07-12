@@ -142,6 +142,20 @@ signals:
     void leaveGroupDone(const QString &groupId, bool success);
     void serverQuickMessagesReady(int imported, int skipped, const QString &error);
 
+    // Bắn ra mỗi khi kết nối TCP tới EventBridgeServer được (re)thiết lập —
+    // bao gồm cả lần đầu VÀ mọi lần reconnect sau khi rớt. Lý do cần: mọi
+    // event tạm thời (avatarReady, imageMsgReady...) broadcast trong lúc UI
+    // đang mất kết nối (ví dụ: HeadlessService vừa được tự invoke lại sau
+    // khi UI 3 lần connect thất bại — xem onEventBridgeReconnectTimer()) bị
+    // MẤT VĨNH VIỄN, vì EventBridgeServer không lưu lại gì cả (đúng thiết kế
+    // — xem comment trong EventBridgeServer.hpp: "gửi() không có ai nhận, dữ
+    // liệu bị bỏ qua"). QML nghe signal này để tự phát lại các yêu cầu còn
+    // thiếu kết quả (vd downloadAvatar cho item chưa có localAvatar) — với
+    // avatar cụ thể, việc phát lại gần như miễn phí vì file đã nằm sẵn trên
+    // đĩa (avatar_meta cache), nên downloadAvatar() trả về ngay lập tức
+    // không cần tải mạng lại.
+    void eventBridgeReconnected();
+
 private slots:
     // Poll bảng service_state (ghi bởi HeadlessService) để cập nhật loggedIn/
     // qrCodeReady/... cho UI — đây là "chiều ngược lại" của command_queue.

@@ -9,6 +9,7 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
+#include <QTimer>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -94,12 +95,27 @@ void ZaloService::onFetchConvoDone()
     if (ec != 0) {
         qDebug() << "[Zalo Error] fetchConvo error_code:" << ec << root["error_message"].toString();
         m_isFetchingConversations = false;
-        // ec=600: zpw_sek expired — session cookies invalid, must re-login
+        // ec=600: zpw_sek expired. QUAN TRỌNG: đây KHÔNG đồng nghĩa với việc
+        // cookie đăng nhập gốc (zpsid) đã hết hạn — server có thể tự xoay
+        // vòng riêng zpw_sek trong khi cookie gốc vẫn còn dùng được (đã thấy
+        // thực tế: refreshSessionKey() lúc HeadlessService khởi động dùng
+        // đúng cookie này và thành công). Trước đây (1-process, không
+        // headless) code này coi 600 = phải QR lại ngay — giả định đó không
+        // còn đúng khi Headless giữ session sống lâu hơn nhiều, zpw_sek có
+        // nhiều cơ hội hơn để bị server xoay vòng giữa chừng.
+        // Thử refreshSessionKey() trước (dùng lại đúng flow auto-renew có
+        // sẵn qua step7_checkSession — xem ZaloService_Network.cpp) — chỉ
+        // khi chính flow đó thất bại thật sự thì sessionExpired() mới được
+        // emit (bên trong step7_checkSession/step8, xem m_isAutoRenew).
         if (ec == 600) {
-            qDebug() << "[Zalo] fetchConvo: session expired (600), emitting sessionExpired";
-            m_loggedIn = false;
-            emit loggedInChanged();
-            emit sessionExpired();
+            qDebug() << "[Zalo] fetchConvo: got 600, attempting silent secretKey refresh before forcing QR re-login";
+            m_pendingRetryFetchConvoOldKey = m_secretKey;
+            refreshSessionKey();
+            // Cùng lý do như sendMessage()'s ec==600 retry (xem
+            // ZaloService_Messages.cpp): sessionRefreshed() không emit khi
+            // refresh thất bại, nên poll m_secretKey sau 1 khoảng ngắn thay
+            // vì connect trực tiếp vào signal đó.
+            QTimer::singleShot(2000, this, SLOT(onRetryFetchConvoCheckTimer()));
             return;
         }
         emit conversationsReady(QVariantList());
@@ -458,9 +474,19 @@ void ZaloService::onFetchFriendsDone()
     QVariantList threads;
     try {
         QVariantMap root = jsonToMap(raw);
-        if (root["error_code"].toInt() != 0) {
+        int ec = root["error_code"].toInt();
+        if (ec != 0) {
             qDebug() << "[Zalo Error] fetchFriends:" << root["error_message"].toString();
             m_isFetchingFriends = false;
+            // Cùng lý do với fetchConversations()'s ec==600 handling ở trên —
+            // zpw_sek có thể bị server xoay vòng độc lập với cookie đăng nhập
+            // gốc, thử refresh trước khi bỏ cuộc.
+            if (ec == 600) {
+                qDebug() << "[Zalo] fetchFriends: got 600, attempting silent secretKey refresh";
+                m_pendingRetryFetchFriendsOldKey = m_secretKey;
+                refreshSessionKey();
+                QTimer::singleShot(2000, this, SLOT(onRetryFetchFriendsCheckTimer()));
+            }
             return;
         }
 
@@ -554,6 +580,30 @@ void ZaloService::onFetchFriendsDone()
         emit friendsReady(threads);
     }
     m_isFetchingFriends = false;
+}
+
+void ZaloService::onRetryFetchConvoCheckTimer()
+{
+    if (m_secretKey.isEmpty() || m_secretKey == m_pendingRetryFetchConvoOldKey) {
+        // Refresh thất bại hẳn hoặc không đổi gì — session thật sự có vấn đề
+        // (step7/step8 auto-renew bên trong refreshSessionKey() đã xử lý,
+        // bao gồm cả emit sessionExpired() nếu cần). Không retry nữa, để UI
+        // ở trạng thái "chưa fetch được" như trước đây thay vì lặp vô hạn.
+        qDebug() << "[Zalo] fetchConversations retry-after-600: secretKey refresh did not help, giving up";
+        return;
+    }
+    qDebug() << "[Zalo] fetchConversations retry-after-600: secretKey refreshed, retrying fetch";
+    fetchConversations();
+}
+
+void ZaloService::onRetryFetchFriendsCheckTimer()
+{
+    if (m_secretKey.isEmpty() || m_secretKey == m_pendingRetryFetchFriendsOldKey) {
+        qDebug() << "[Zalo] fetchFriends retry-after-600: secretKey refresh did not help, giving up";
+        return;
+    }
+    qDebug() << "[Zalo] fetchFriends retry-after-600: secretKey refreshed, retrying fetch";
+    fetchFriends();
 }
 
 // Pulls the user's own quick-message list from their real Zalo account

@@ -74,7 +74,7 @@ ZaloService::ZaloService(QObject *parent)
       m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false),
       m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),
       m_lastFetchFriendsTime(0), m_lastFetchConvoTime(0), m_db(0),
-      m_updateReply(0)
+      m_updateReply(0), m_retrySendIsGroup(false)
 {
     m_qrExpireTimer->setSingleShot(true);
     m_wsReconnectTimer->setSingleShot(true);

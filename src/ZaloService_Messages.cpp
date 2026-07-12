@@ -9,6 +9,7 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
+#include <QTimer>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -385,7 +386,7 @@ void ZaloService::onFetchPhotoDetailDone()
 }
 
 
-void ZaloService::sendMessage(const QString &threadId, const QString &content, bool isGroup)
+void ZaloService::sendMessage(const QString &threadId, const QString &content, bool isGroup, bool isRetry)
 {
     if (!m_loggedIn) return;
 
@@ -415,11 +416,12 @@ void ZaloService::sendMessage(const QString &threadId, const QString &content, b
     QNetworkRequest sendReq = buildRequest(urlStr, "https://chat.zalo.me/");
     sendReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
-    qDebug() << "[Zalo] sendMessage POST" << urlStr << "isGroup:" << isGroup;
+    qDebug() << "[Zalo] sendMessage POST" << urlStr << "isGroup:" << isGroup << "isRetry:" << isRetry;
     QNetworkReply *reply = m_manager->post(sendReq, body);
     reply->setProperty("threadId", threadId);
     reply->setProperty("content",  content);
     reply->setProperty("isGroup",  isGroup);
+    reply->setProperty("isRetry",  isRetry);
     // clientId is what we sent as cliMsgId; stash it so onSendMsgDone can save
     // it into the DB row for this message (needed by deleteMessage/undo later).
     reply->setProperty("cliMsgId", msgData["clientId"].toString());
@@ -434,6 +436,7 @@ void ZaloService::onSendMsgDone()
     QString tid     = reply->property("threadId").toString();
     QString content = reply->property("content").toString();
     bool isGroup    = reply->property("isGroup").toBool();
+    bool isRetry    = reply->property("isRetry").toBool();
     QString outCliMsgId = reply->property("cliMsgId").toString();
     QByteArray raw  = reply->readAll();
     reply->deleteLater();
@@ -441,7 +444,8 @@ void ZaloService::onSendMsgDone()
 
     if (!hasError) {
         QVariantMap outer = jsonToMap(raw);
-        if (outer["error_code"].toInt() == 0) {
+        int ec = outer["error_code"].toInt();
+        if (ec == 0) {
             // Parse msgId from encrypted response (same pattern as onSendPhotoMsgDone)
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             qDebug() << "[Zalo] sendMessage decrypted:" << dec.left(200);
@@ -470,13 +474,57 @@ void ZaloService::onSendMsgDone()
             } else {
                 qDebug() << "[Zalo] sendMessage: WS already delivered msgId=" << msgId << ", skipping duplicate";
             }
-        } else {
-            hasError = true;
-            qDebug() << "[Zalo] sendMessage error_code:" << outer["error_code"].toInt()
-                     << outer["error_message"].toString();
+            emit messageSent(true, tid);
+            return;
+        }
+
+        qDebug() << "[Zalo] sendMessage error_code:" << ec << outer["error_message"].toString();
+
+        // ec=600: zpw_sek bị server xoay vòng giữa chừng — KHÔNG có nghĩa là
+        // cookie đăng nhập gốc đã hết hạn (xem giải thích đầy đủ trong
+        // ZaloService_Contacts.cpp's fetchConvo, cùng nguyên nhân). Với
+        // HeadlessService giữ session sống liên tục, đây sẽ xảy ra thường
+        // xuyên hơn nhiều so với trước — nếu cứ báo lỗi thẳng cho UI thì
+        // người dùng phải tự gõ lại tin nhắn mỗi lần server xoay vòng key,
+        // dù chỉ cần 1 lần refresh + gửi lại là xong. Refresh rồi tự động
+        // gửi lại ĐÚNG 1 LẦN (isRetry chặn vòng lặp nếu 600 lặp lại thật —
+        // trường hợp đó mới là lỗi session thật sự, để messageSent(false)
+        // báo cho UI như bình thường).
+        if (ec == 600 && !isRetry) {
+            qDebug() << "[Zalo] sendMessage: got 600, refreshing secretKey then retrying send once";
+            m_retrySendThreadId = tid;
+            m_retrySendContent  = content;
+            m_retrySendIsGroup  = isGroup;
+            QString oldSecretKey = m_secretKey;
+            refreshSessionKey();
+            // sessionRefreshed() is ONLY emitted on a successful refresh (see
+            // ZaloService_Network.cpp) — on failure the code falls through to
+            // step7_checkSession()/sessionExpired() instead and never touches
+            // that signal, so connecting to it directly here would leave this
+            // retry hanging forever if the refresh fails. Poll m_secretKey
+            // after a short delay instead: refreshSessionKey()'s HTTP round
+            // trip is a single request, comfortably done well within 2s on
+            // any real network condition this app runs on.
+            m_pendingRetrySendOldKey = oldSecretKey;
+            QTimer::singleShot(2000, this, SLOT(onRetrySendCheckTimer()));
+            return;
         }
     }
-    emit messageSent(!hasError, tid);
+
+    emit messageSent(false, tid);
+}
+
+void ZaloService::onRetrySendCheckTimer()
+{
+    if (m_secretKey.isEmpty() || m_secretKey == m_pendingRetrySendOldKey) {
+        // Refresh either failed outright (secretKey cleared, step7/step8 auto-
+        // renew or sessionExpired() already handled it) or never actually
+        // changed anything — either way, retrying the send would just hit the
+        // same 600 again. Report the original send as failed.
+        emit messageSent(false, m_retrySendThreadId);
+        return;
+    }
+    sendMessage(m_retrySendThreadId, m_retrySendContent, m_retrySendIsGroup, true);
 }
 
 // ---- Delete & Recall (ported from zca-js deleteMessage.ts / undo.ts) ---------
