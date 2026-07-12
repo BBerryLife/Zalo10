@@ -2,6 +2,8 @@
 #include <QTcpSocket>
 #include <QHostAddress>
 #include <QDebug>
+#include <QTimer>
+#include <QCoreApplication>
 
 // ---------------------------------------------------------------------------
 // Serialize QVariantMap -> JSON thủ công (không QScriptEngine, không cần parse
@@ -67,7 +69,19 @@ EventBridgeServer::EventBridgeServer(ZaloService *service, QObject *parent)
     : QObject(parent), m_server(new QTcpServer(this))
 {
     if (!m_server->listen(QHostAddress::LocalHost, PORT)) {
-        qDebug() << "[EventBridge] FAILED to listen on port" << PORT << "-" << m_server->errorString();
+        // Port đã bị chiếm gần như chắc chắn nghĩa là 1 HeadlessService khác
+        // ĐANG chạy rồi (ví dụ: ZaloServiceProxy's onEventBridgeReconnectTimer()
+        // tự invoke() lại target headless sau vài lần connect thất bại do
+        // EventBridge tạm không phản hồi kịp, trong khi HeadlessService cũ
+        // thực ra vẫn sống bình thường). Tiếp tục chạy ở đây nghĩa là CÓ 2
+        // process cùng mở WebSocket thật tới Zalo song song — chính xác lỗi
+        // kiến trúc "2 kết nối WS phá session" mà toàn bộ thiết kế headless
+        // này được tạo ra để tránh. An toàn hơn nhiều nếu instance thừa này
+        // tự thoát ngay, để lại đúng 1 HeadlessService sống.
+        qDebug() << "[EventBridge] FAILED to listen on port" << PORT << "-" << m_server->errorString()
+                 << "- another HeadlessService instance is very likely already running; exiting this one to avoid a duplicate WebSocket connection.";
+        QTimer::singleShot(0, qApp, SLOT(quit()));
+        return;
     } else {
         qDebug() << "[EventBridge] listening on 127.0.0.1:" << PORT;
     }
@@ -92,6 +106,11 @@ EventBridgeServer::EventBridgeServer(ZaloService *service, QObject *parent)
     connect(service, SIGNAL(clearHistoryDone(QString,bool)), this, SLOT(onClearHistoryDone(QString,bool)));
     connect(service, SIGNAL(leaveGroupDone(QString,bool)), this, SLOT(onLeaveGroupDone(QString,bool)));
     connect(service, SIGNAL(serverQuickMessagesReady(int,int,QString)), this, SLOT(onServerQuickMessagesReady(int,int,QString)));
+}
+
+bool EventBridgeServer::isListening() const
+{
+    return m_server->isListening();
 }
 
 void EventBridgeServer::onNewConnection()

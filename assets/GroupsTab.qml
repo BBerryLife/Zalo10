@@ -14,6 +14,17 @@ NavigationPane {
     property string searchText: ""
     property variant allGroups: []
     property bool refreshCooldown: false
+    // See ChatsTab.qml's pendingAvatarQueue for why this exists — avoids a
+    // synchronous burst of enqueueCommand() calls (one per group avatar)
+    // landing on top of HeadlessService's own command_queue writes.
+    property variant pendingAvatarQueue: []
+
+    function queueAvatarDownload(threadId, url) {
+        var q = pendingAvatarQueue;
+        q.push({ tid: threadId, url: url });
+        pendingAvatarQueue = q;
+        if (!avatarDripTimer.running) avatarDripTimer.start();
+    }
 
     attachedObjects: [
         Timer {
@@ -21,6 +32,21 @@ NavigationPane {
             interval: 11000
             repeat: false
             onTriggered: groupsNav.refreshCooldown = false
+        },
+        Timer {
+            id: avatarDripTimer
+            interval: 60
+            repeat: true
+            onTriggered: {
+                var q = groupsNav.pendingAvatarQueue;
+                var batch = 5;
+                for (var i = 0; i < batch && q.length > 0; i++) {
+                    var item = q.shift();
+                    zService.downloadAvatar(item.tid, item.url);
+                }
+                groupsNav.pendingAvatarQueue = q;
+                if (q.length === 0) avatarDripTimer.stop();
+            }
         },
         // Same reasoning as ChatsTab.qml's chatViewWarmupTimer: forces the
         // ChatView.qml component to be parsed/cached once in the background
@@ -426,7 +452,7 @@ NavigationPane {
                         var gurl = gg.avatar || "";
                         var gtid = gg.threadId || "";
                         if (gurl.length > 0 && gtid.length > 0)
-                            zService.downloadAvatar(gtid, gurl);
+                            groupsNav.queueAvatarDownload(gtid, gurl);
                     }
                     groupsNav.allGroups = arr;
                 }

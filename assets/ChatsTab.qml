@@ -22,6 +22,22 @@ NavigationPane {
     property bool refreshCooldown: false
     property variant activeChatPage: null
     property variant activeQmPage: null
+    // Queue of {threadId, url} pending avatar downloads, drained a few at a
+    // time by avatarDripTimer instead of firing zService.downloadAvatar() for
+    // every friend synchronously in one tick (see onFriendsReady below). A
+    // big synchronous burst of enqueueCommand() calls (one per avatar, 80+ on
+    // a large friends list) was landing on top of HeadlessService's own
+    // command_queue writes in a separate process and occasionally hitting
+    // SQLITE_LOCKED — spacing them out avoids piling up that many DB writes
+    // in the same instant to begin with.
+    property variant pendingAvatarQueue: []
+
+    function queueAvatarDownload(threadId, url) {
+        var q = pendingAvatarQueue;
+        q.push({ tid: threadId, url: url });
+        pendingAvatarQueue = q;
+        if (!avatarDripTimer.running) avatarDripTimer.start();
+    }
 
     attachedObjects: [
         Timer {
@@ -29,6 +45,23 @@ NavigationPane {
             interval: 11000
             repeat: false
             onTriggered: chatsNav.refreshCooldown = false
+        },
+        // Drains pendingAvatarQueue a handful of items at a time — see property
+        // comment above for why this exists.
+        Timer {
+            id: avatarDripTimer
+            interval: 60
+            repeat: true
+            onTriggered: {
+                var q = chatsNav.pendingAvatarQueue;
+                var batch = 5;
+                for (var i = 0; i < batch && q.length > 0; i++) {
+                    var item = q.shift();
+                    zService.downloadAvatar(item.tid, item.url);
+                }
+                chatsNav.pendingAvatarQueue = q;
+                if (q.length === 0) avatarDripTimer.stop();
+            }
         },
         // Forces the (large, ~1400-line) ChatView.qml document to be parsed
         // and its component type cached by the QML engine once, in the
@@ -431,7 +464,7 @@ NavigationPane {
                         var furl = ff.avatar || "";
                         var ftid = ff.threadId || ff.uid || "";
                         if (furl.length > 0 && ftid.length > 0)
-                            zService.downloadAvatar(ftid, furl);
+                            chatsNav.queueAvatarDownload(ftid, furl);
                     }
                     chatsEmpty.visible = (outArr.length === 0);
                 }

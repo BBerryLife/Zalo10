@@ -639,11 +639,16 @@ void ZaloService::onRecallMsgDone()
 // Two-step: 1) upload to file[0]/api/{message|group}/photo_original/upload
 //           2) send message via {chat|group}/api/{message|group}/photo
 // Copies a picker-provided image (which may live in a transient/sandboxed location,
-// e.g. a Camera share-card path) into the persistent "/tmp/zalo_img_local_<ts>.<ext>"
+// e.g. a Camera share-card path) into the persistent "<homePath>/tmp/zalo_img_local_<ts>.<ext>"
 // cache. Uses the same "zalo_img_" prefix as downloadImageMessage()'s cache files so
 // clearCache() already picks it up via cacheFilePatterns() — nothing else deletes it,
-// including app close/restart (plain "/tmp/", not QDir::tempPath() — see notes on
-// downloadImageMessage() for why).
+// including app close/restart.
+//
+// IMPORTANT: must be QDir::homePath(), NOT plain "/tmp/". This file is written by the
+// UI process (cacheLocalImage is called directly, Group B — no IPC) but then read by
+// HeadlessService (a separate process, different "/tmp/" sandbox) when sendPhoto's
+// command_queue entry is dispatched and the actual upload happens. Plain "/tmp/" is
+// not shared between the two processes on BB10/QNX; homePath() is.
 QString ZaloService::cacheLocalImage(const QString &sourcePath)
 {
     QString path = sourcePath;
@@ -656,7 +661,8 @@ QString ZaloService::cacheLocalImage(const QString &sourcePath)
     QString ext = path.section('.', -1).toLower();
     if (ext.isEmpty() || ext.length() > 4) ext = "jpg";
     qint64 ts = QDateTime::currentMSecsSinceEpoch();
-    QString destPath = "/tmp/zalo_img_local_" + QString::number(ts) + "." + ext;
+    QDir().mkpath(QDir::homePath() + "/tmp");
+    QString destPath = QDir::homePath() + "/tmp/zalo_img_local_" + QString::number(ts) + "." + ext;
 
     if (!QFile::copy(path, destPath)) {
         qDebug() << "[Zalo] cacheLocalImage: copy failed" << path << "->" << destPath
@@ -1251,14 +1257,14 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
 
                     // Use msgId in filename — unique path avoids BB10 image cache stale data.
                     // Always save as .png — BB10 ImageView is more reliable with PNG than JPEG.
-                    // NOTE: hardcoded "/tmp/" (NOT QDir::tempPath()) — on this BB10 device
-                    // QDir::tempPath() resolves to a per-launch sandboxed scratch dir that gets
-                    // wiped every time the app restarts, while plain "/tmp/" is the same
-                    // device-wide location avatars use and is confirmed to survive app restarts
-                    // (see avatar_meta persistence). See onImageMsgDownloaded() below for the
-                    // same fix applied to full-size photos.
-                    QString tmpPath = "/tmp/msgthumb_" +
+                    // Lives under QDir::homePath() (app data dir), NOT plain "/tmp/": since
+                    // the headless split, this file is written by Zalo10Headless (its own
+                    // "/tmp/" sandbox) but read by the Zalo10 UI process (a different
+                    // sandbox) — plain "/tmp/" is not shared between the two on BB10/QNX.
+                    // homePath() is shared (same dir the SQLite DB lives in).
+                    QString tmpPath = QDir::homePath() + "/tmp/msgthumb_" +
                                       msgId + ".png";
+                    QDir().mkpath(QDir::homePath() + "/tmp");
                     QFile::remove(tmpPath);
 
                     // Byte-stuff scan data: in JPEG, any 0xFF byte in entropy-coded
@@ -1354,10 +1360,12 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                 return;
             } // end if(ext.isEmpty())
 
-            // Hardcoded "/tmp/" — same reasoning as msgthumb_ above: QDir::tempPath()
-            // does not survive an app restart on this device, plain "/tmp/" does.
-            QString tmpPath = "/tmp/msgimg_" +
+            // Lives under QDir::homePath() (app data dir), NOT plain "/tmp/" — see
+            // note on msgthumb_ above: not shared between the UI and headless
+            // process sandboxes on BB10/QNX.
+            QString tmpPath = QDir::homePath() + "/tmp/msgimg_" +
                               QString::number(qHash(url)) + "." + ext;
+            QDir().mkpath(QDir::homePath() + "/tmp");
             QFile f(tmpPath);
             if (f.open(QIODevice::WriteOnly)) {
                 f.write(imgData);
@@ -1480,15 +1488,14 @@ void ZaloService::onImageMsgDownloaded()
     // lets the QFile::exists() check above in downloadImageMessage() reliably
     // recognise "we already have this one" on the next call.
     //
-    // Hardcoded "/tmp/" (NOT QDir::tempPath()): on this BB10 device,
-    // QDir::tempPath() resolves to a per-app-launch scratch directory that the
-    // OS wipes on every app restart, whereas plain "/tmp/" is the same
-    // device-wide, persistent location avatars already use successfully (see
-    // avatar_meta — confirmed to survive restarts in the field). Using the
-    // same persistent root here is what makes downloaded chat photos actually
-    // survive logout/login and app restarts instead of vanishing every time.
+    // Lives under QDir::homePath() (app data dir), NOT plain "/tmp/": since the
+    // headless split, this file is written by Zalo10Headless (its own "/tmp/"
+    // sandbox) but read by the Zalo10 UI process (a different sandbox) — plain
+    // "/tmp/" is not shared between the two on BB10/QNX. homePath() is shared
+    // (same dir the SQLite DB lives in, confirmed to work cross-process).
     QString stableKey = msgId.isEmpty() ? md5Hex(url) : msgId;
-    QString tmpPath = "/tmp/zalo_img_" + stableKey + "." + ext;
+    QString tmpPath = QDir::homePath() + "/tmp/zalo_img_" + stableKey + "." + ext;
+    QDir().mkpath(QDir::homePath() + "/tmp");
     QFile f(tmpPath);
     if (f.open(QIODevice::WriteOnly)) { f.write(finalData); f.close(); }
     QString filePath = "file://" + tmpPath;

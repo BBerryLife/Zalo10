@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QHostAddress>
+#include <bb/system/InvokeRequest>
 
 // ---------------------------------------------------------------------------
 // Xem giải thích kiến trúc đầy đủ trong ZaloServiceProxy.hpp. Tóm tắt:
@@ -68,7 +69,10 @@ ZaloServiceProxy::ZaloServiceProxy(QObject *parent)
       m_statePollTimer(new QTimer(this)),
       m_loggedIn(false),
       m_eventSocket(new QTcpSocket(this)),
-      m_reconnectTimer(new QTimer(this))
+      m_reconnectTimer(new QTimer(this)),
+      m_invokeManager(new bb::system::InvokeManager(this)),
+      m_connectFailCount(0),
+      m_headlessInvokeAttempted(false)
 {
     // QUAN TRỌNG: m_localService KHÔNG BAO GIỜ được gọi loadSession(), bất kỳ
     // hàm startXxxLogin/fetchXxx/sendXxx/connectWebSocket nào — nó chỉ tồn tại
@@ -99,6 +103,8 @@ void ZaloServiceProxy::onEventBridgeConnected()
 {
     qDebug() << "[ZaloServiceProxy] connected to EventBridgeServer";
     m_reconnectTimer->stop(); // đã nối được, không cần tự retry nữa — onEventBridgeDisconnected() sẽ bật lại nếu rớt
+    m_connectFailCount = 0;
+    m_headlessInvokeAttempted = false; // service rõ ràng đang sống — cho phép invoke lại nếu sau này rớt hẳn
 }
 
 void ZaloServiceProxy::onEventBridgeDisconnected()
@@ -111,6 +117,24 @@ void ZaloServiceProxy::onEventBridgeDisconnected()
 void ZaloServiceProxy::onEventBridgeReconnectTimer()
 {
     if (m_eventSocket->state() == QAbstractSocket::UnconnectedState) {
+        m_connectFailCount++;
+        // Sau 3 lần thử liên tiếp (~6s, xem interval start(2000)) không kết
+        // nối được EventBridge, coi như HeadlessService chưa chạy — tự
+        // invoke() nó lên đúng 1 lần (m_headlessInvokeAttempted chặn lặp lại
+        // liên tục nếu Headless khởi động chậm/lỗi). Đây chỉ là lưới an toàn
+        // bổ sung cho invoke-target bb.action.system.STARTED trong
+        // bar-descriptor.xml — không thay thế, vì đó vẫn là cách chuẩn để
+        // Headless tự chạy ngay từ lúc boot máy trước khi user mở UI lần nào.
+        if (m_connectFailCount >= 3 && !m_headlessInvokeAttempted) {
+            m_headlessInvokeAttempted = true;
+            qDebug() << "[ZaloServiceProxy] EventBridge unreachable after"
+                     << m_connectFailCount << "attempts — invoking headless service directly";
+            bb::system::InvokeRequest req;
+            req.setTarget("com.BerryLife.Zalo10.headless");
+            req.setAction("bb.action.system.STARTED");
+            req.setMimeType("application/vnd.blackberry.system.event.STARTED");
+            m_invokeManager->invoke(req);
+        }
         m_eventSocket->connectToHost(QHostAddress::LocalHost, EventBridgeServer::PORT);
     }
 }

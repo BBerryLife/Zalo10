@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QVariant>
 #include <QDebug>
+#include <time.h>
 
 // ---------------------------------------------------------------------------
 // IPC giữa HeadlessService (giữ WS thật, chạy nền không phụ thuộc UI) và
@@ -89,22 +90,53 @@ void ZaloService::enqueueCommand(const QString &command, const QString &argsJson
         return;
     }
     const char *sql = "INSERT INTO command_queue(command, argsJson, createdAt, processed) VALUES(?,?,?,0);";
-    sqlite3_stmt *stmt = 0;
-    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
-        QByteArray cmdUtf8  = command.toUtf8();
-        QByteArray argsUtf8 = argsJson.toUtf8();
-        QByteArray tsUtf8   = QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8();
-        sqlite3_bind_text(stmt, 1, cmdUtf8.constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 2, argsUtf8.constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 3, tsUtf8.constData(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
-            qDebug() << "[Zalo] enqueueCommand: insert failed for" << command
-                     << "-" << sqlite3_errmsg(m_db);
+
+    QByteArray cmdUtf8  = command.toUtf8();
+    QByteArray argsUtf8 = argsJson.toUtf8();
+    QByteArray tsUtf8   = QDateTime::currentDateTime().toString(Qt::ISODate).toUtf8();
+
+    // Manual retry loop on top of PRAGMA busy_timeout: when the UI fires many
+    // enqueueCommand() calls back-to-back in the same tick (e.g. downloadAvatar
+    // for an entire 80+ item friends list, see ChatsTab.qml/GroupsTab.qml), a
+    // request can land at the exact instant HeadlessService's own writer
+    // (processCommandQueue()'s UPDATE/DELETE, running on its own QTimer in a
+    // separate process) holds the write lock. busy_timeout only auto-retries
+    // SQLITE_BUSY; a handful of these attempts still come back SQLITE_LOCKED
+    // (schema/table lock contention) which busy_timeout does NOT retry on its
+    // own. Retrying a few times here with a short sleep is enough to ride out
+    // that window without silently dropping the command (which previously
+    // meant vanished avatars / stalled sends the caller had no way to notice).
+    const int maxAttempts = 5;
+    for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
+        sqlite3_stmt *stmt = 0;
+        int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, cmdUtf8.constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, argsUtf8.constData(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 3, tsUtf8.constData(), -1, SQLITE_TRANSIENT);
+            rc = sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+            if (rc == SQLITE_DONE) return; // success
+        } else if (stmt) {
+            sqlite3_finalize(stmt);
         }
-        sqlite3_finalize(stmt);
-    } else {
-        qDebug() << "[Zalo] enqueueCommand: prepare failed for" << command
-                 << "-" << sqlite3_errmsg(m_db);
+
+        if (rc == SQLITE_LOCKED || rc == SQLITE_BUSY) {
+            if (attempt < maxAttempts) {
+                // Short, increasing backoff (10ms, 20ms, 30ms, 40ms) — cheap
+                // enough not to visibly stall the UI thread, long enough to
+                // clear a single UPDATE/DELETE from the other process.
+                struct timespec ts;
+                ts.tv_sec = 0;
+                ts.tv_nsec = 10000000L * attempt;
+                nanosleep(&ts, 0);
+                continue;
+            }
+        }
+
+        qDebug() << "[Zalo] enqueueCommand: insert failed for" << command
+                 << "after" << attempt << "attempt(s) -" << sqlite3_errmsg(m_db);
+        return;
     }
 }
 

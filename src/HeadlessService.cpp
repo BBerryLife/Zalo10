@@ -22,6 +22,16 @@ HeadlessService::HeadlessService(QObject *parent)
 {
     qDebug() << "[HeadlessService] starting...";
 
+    // Nếu EventBridgeServer không bind được port (xem EventBridgeServer.cpp)
+    // — gần như chắc chắn nghĩa là 1 HeadlessService khác đã đang chạy —
+    // nó tự lên lịch quit() ứng dụng ngay. Không tiếp tục làm gì thêm ở đây
+    // (không loadSession(), không start command poll): instance thừa này
+    // không nên đụng vào session/WS thật của instance kia dù chỉ 1 lần.
+    if (!m_eventBridge->isListening()) {
+        qDebug() << "[HeadlessService] another instance is already running — this instance will exit without touching the session.";
+        return;
+    }
+
     connect(m_commandPollTimer, SIGNAL(timeout()), this, SLOT(onCommandPollTimer()));
     m_commandPollTimer->start(500); // 500ms — đủ nhanh cho UX chat, nhẹ CPU
 
@@ -38,6 +48,14 @@ HeadlessService::HeadlessService(QObject *parent)
 
 HeadlessService::~HeadlessService()
 {
+    // Instance thừa (đã tự quit() sớm trong constructor, xem ở trên) không
+    // bao giờ chạm tới m_zService->loadSession(), nên cũng không được gọi
+    // saveSession()/closeWebSocketGracefully() ở đây — làm vậy có thể ghi đè
+    // session hợp lệ của instance thật bằng dữ liệu chưa từng thực sự sống.
+    if (!m_eventBridge->isListening()) {
+        qDebug() << "[HeadlessService] duplicate instance exiting — session untouched";
+        return;
+    }
     qDebug() << "[HeadlessService] shutting down — saving session";
     m_zService->saveSession();
     m_zService->closeWebSocketGracefully();

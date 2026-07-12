@@ -367,7 +367,13 @@ void ZaloService::onStep4Done()
 
     if (!imageB64.isEmpty()) {
         QByteArray imgData = QByteArray::fromBase64(imageB64.toUtf8());
-        QString tempPath = QDir::tempPath() + "/qr.png";
+        // homePath(), not QDir::tempPath(): QR login now runs inside
+        // HeadlessService (a separate process from the UI), and tempPath() is
+        // a per-process scratch dir on BB10/QNX — the UI process could never
+        // see a file written there by the headless process. homePath() is
+        // the shared app-data dir (same one the SQLite DB lives in).
+        QString tempPath = QDir::homePath() + "/tmp/qr.png";
+        QDir().mkpath(QDir::homePath() + "/tmp");
         QFile imgFile(tempPath);
         if (imgFile.open(QIODevice::WriteOnly)) {
             imgFile.write(imgData);
@@ -407,7 +413,9 @@ void ZaloService::onQRImageFetched()
         return;
     }
 
-    QString tempPath = QDir::tempPath() + "/qr.png";
+    // homePath(), not QDir::tempPath() — see note in step4/QR base64 branch above.
+    QString tempPath = QDir::homePath() + "/tmp/qr.png";
+    QDir().mkpath(QDir::homePath() + "/tmp");
     QFile imgFile(tempPath);
     if (imgFile.open(QIODevice::WriteOnly)) {
         imgFile.write(imgData);

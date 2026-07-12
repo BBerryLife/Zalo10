@@ -36,6 +36,11 @@ public:
 
     explicit EventBridgeServer(ZaloService *service, QObject *parent = 0);
 
+    // false nếu listen() thất bại lúc construct (gần như chắc chắn nghĩa là 1
+    // HeadlessService khác đã đang chạy) — xem HeadlessService.cpp, nơi đây là
+    // tín hiệu để instance thừa tự thoát sớm trước khi đụng vào session thật.
+    bool isListening() const;
+
 private slots:
     void onNewConnection();
     void onClientDisconnected();

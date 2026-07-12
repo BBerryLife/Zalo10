@@ -342,7 +342,17 @@ void ZaloService::onAvatarDownloaded()
     // a changed profile picture overwrites the same file in place instead of
     // leaving the old image as an orphaned file in tmp every time the CDN
     // hands back a different URL for an unchanged picture.
-    QString fname = "/tmp/avatar_" + md5Hex(threadId) + ".jpg";
+    //
+    // IMPORTANT: must live under QDir::homePath() (app data dir), NOT plain
+    // "/tmp/". Since the headless split, avatars are downloaded by
+    // Zalo10Headless (a separate process with its own "/tmp/" sandbox) but
+    // displayed by the Zalo10 UI process (a different sandbox) — plain
+    // "/tmp/" is NOT shared between the two on BB10/QNX, so the UI process
+    // could never see files the headless process wrote there. homePath()
+    // IS shared (it's the same dir the SQLite DB lives in, which both
+    // processes already read/write successfully).
+    QString fname = QDir::homePath() + "/tmp/avatar_" + md5Hex(threadId) + ".jpg";
+    QDir().mkpath(QDir::homePath() + "/tmp");
     QFile f(fname);
     if (f.open(QIODevice::WriteOnly)) {
         f.write(data);

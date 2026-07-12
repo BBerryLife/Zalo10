@@ -7,6 +7,7 @@
 #include <QVariant>
 #include <QTimer>
 #include <QTcpSocket>
+#include <bb/system/InvokeManager>
 #include "ZaloService.hpp"
 #include "EventBridgeServer.hpp" // chỉ để lấy hằng số PORT dùng chung 2 phía
 
@@ -167,6 +168,16 @@ private:
     QTcpSocket  *m_eventSocket;
     QTimer      *m_reconnectTimer;
     QByteArray   m_recvBuffer; // tích luỹ bytes tới khi đủ 1 dòng ('\n')
+
+    // Lưới an toàn: bar-descriptor.xml chỉ trigger invoke-target headless qua
+    // bb.action.system.STARTED (lúc BOOT máy) — nếu user chỉ đóng app bình
+    // thường (không reboot) và vì lý do gì đó process headless đã chết/chưa
+    // từng chạy, không có cơ chế OS nào tự khởi động lại nó. Nếu sau vài lần
+    // thử kết nối EventBridge liên tiếp đều thất bại, tự invoke() thẳng
+    // headless target 1 lần — xem onEventBridgeReconnectTimer().
+    bb::system::InvokeManager *m_invokeManager;
+    int          m_connectFailCount;
+    bool         m_headlessInvokeAttempted;
 };
 
 #endif // ZALOSERVICEPROXY_HPP
