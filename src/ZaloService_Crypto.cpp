@@ -141,6 +141,7 @@ QString ZaloService::aesDecryptBase64(const QString &keyStr, const QString &ciph
     QString decoded   = QUrl::fromPercentEncoding(cipherB64.toUtf8());
     QByteArray cipher = QByteArray::fromBase64(decoded.toUtf8());
     if (cipher.isEmpty()) return QString();
+    qDebug() << "[Zalo] aesDecryptBase64 cipher size after base64 decode:" << cipher.size() << "bytes";
 
     // Sanity cap: 1 lần fetch bình thường (kể cả friend list/group list lớn)
     // không thể vượt vài MB sau khi mã hoá. Nếu vượt ngưỡng này, gần như chắc
@@ -167,6 +168,7 @@ QString ZaloService::aesDecryptBase64(const QString &keyStr, const QString &ciph
         unsigned char pad = (unsigned char)out.at(out.size() - 1);
         if (pad > 0 && pad <= AES_BLOCK_SIZE) out.chop(pad);
     }
+    qDebug() << "[Zalo] aesDecryptBase64 decrypted output size:" << out.size() << "bytes";
     return QString::fromUtf8(out);
 }
 

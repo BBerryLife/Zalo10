@@ -437,7 +437,16 @@ void ZaloService::fetchFriends()
     QVariantMap innerParams;
     innerParams["incInvalid"]  = 1;
     innerParams["page"]        = 1;
-    innerParams["count"]       = 20000;
+    // count=20000 trước đây yêu cầu server trả TOÀN BỘ friend list trong 1
+    // lần gọi — với các tài khoản có nhiều bạn bè/dữ liệu profile đính kèm
+    // (bio, ảnh nền...), phản hồi JSON sau decrypt có thể lên tới hàng trăm
+    // KB. Nghi vấn: đây là nguồn gốc "bad allocation" quan sát được trong
+    // parse/decrypt (dù đã có sanity-cap 20MB ở aesDecryptBase64 — không có
+    // dòng log "vuot nguong" nào xuất hiện, nên payload chưa chạm ngưỡng đó,
+    // nhưng vẫn đủ lớn để gây áp lực cấp phát bộ nhớ trên thiết bị thật).
+    // 2000 vẫn dư thừa so với số bạn bè thực tế của hầu hết tài khoản
+    // (~87 trong log thực tế) trong khi giảm đáng kể kích thước response.
+    innerParams["count"]       = 2000;
     innerParams["avatar_size"] = 120;
     innerParams["actiontime"]  = 0;
     innerParams["imei"]        = m_imei;
@@ -460,7 +469,7 @@ void ZaloService::onFetchFriendsDone()
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    qDebug() << "[Zalo] fetchFriends raw (first300):" << raw.left(300);
+    qDebug() << "[Zalo] fetchFriends raw size:" << raw.size() << "bytes, first300:" << raw.left(300);
 
     // Xử lý HTTP 429 Too Many Requests — raw là HTML, không phải JSON
     if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
