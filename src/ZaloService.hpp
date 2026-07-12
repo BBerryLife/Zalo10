@@ -382,6 +382,7 @@ private:
     QString     m_wsExpectedAccept; // Sec-WebSocket-Accept expected
     QByteArray  m_wsBuffer;         // buffer cho incomplete frames
     void connectWebSocket();
+    void connectWebSocketAtCurrentIndex(); // dùng nội bộ bởi connectWebSocket() và onWsReconnectTimer() — xem ZaloService_WebSocket.cpp
     void disconnectWebSocket();
     void refreshSessionKey();
     void sendKeepAlive();   // GET {chat}/keepalive — gia hạn session, port từ zca-js keepAliveFactory
