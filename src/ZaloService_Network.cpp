@@ -325,6 +325,11 @@ void ZaloService::onRefreshSessionKeyDone()
         emit loggedInChanged();
         m_listenTimer->start(8000);
         m_keepAliveTimer->start(KEEPALIVE_INTERVAL_MS);
+        // Bắn ngay 1 lần thay vì chờ hết KEEPALIVE_INTERVAL_MS đầu tiên: một
+        // session được khôi phục từ QSettings (loadSession() lúc HeadlessService
+        // khởi động) có thể đã ở rất gần thời điểm hết hạn thật của cookie
+        // zpw_sek phía server — chờ thêm dù chỉ 45s cũng có thể là quá trễ.
+        sendKeepAlive();
     }
     // Chỉ emit loginSuccess lần đầu; các lần refresh dùng sessionRefreshed
     if (!m_loginEmitted) {

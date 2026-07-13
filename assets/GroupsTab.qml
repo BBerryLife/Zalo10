@@ -33,6 +33,14 @@ NavigationPane {
             repeat: false
             onTriggered: groupsNav.refreshCooldown = false
         },
+        // See onLoginSuccess above — staggers fetchConversations 400ms behind
+        // ChatsTab's fetchFriends to avoid concurrent decrypt+parse peaks.
+        Timer {
+            id: loginFetchDelayTimer
+            interval: 400
+            repeat: false
+            onTriggered: zService.fetchConversations()
+        },
         Timer {
             id: avatarDripTimer
             interval: 60
@@ -495,8 +503,13 @@ NavigationPane {
                     if (groupModel.size() === 0) {
                         groupsNav.refreshCooldown = true;
                         groupsRefreshCooldownTimer.restart();
-                        zService.fetchConversations();
                         groupsLoading.visible = true;
+                        // 400ms delay — see ChatsTab.qml's onLoginSuccess comment:
+                        // staggers this behind ChatsTab's fetchFriends (fires
+                        // immediately) and ahead of InvitesTab's fetchInvites
+                        // (800ms) to avoid 3 concurrent decrypt+parse operations
+                        // peaking at once right after login.
+                        loginFetchDelayTimer.start();
                     }
                 }
 

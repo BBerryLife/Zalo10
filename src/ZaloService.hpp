@@ -472,7 +472,13 @@ private:
 
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;
-    static const int KEEPALIVE_INTERVAL_MS = 120000; // 2 phut, theo goi y trong issue zca-js
+    // 45 giây, KHÔNG phải 2 phút như trước. Log thực tế cho thấy cookie
+    // zpw_sek phía server hết hạn CHỈ SAU ~99 GIÂY kể từ lần refresh/login
+    // gần nhất — với interval 120s cũ, lần keepAlive đầu tiên luôn tới TRỄ
+    // hơn thời điểm cookie đã chết, nên "gia hạn" chưa từng thực sự xảy ra
+    // kịp lúc trong session đầu tiên sau mỗi lần khởi động HeadlessService.
+    // 45s để lại biên độ an toàn đáng kể so với ngưỡng ~99s quan sát được.
+    static const int KEEPALIVE_INTERVAL_MS = 45000;
     static const char *USER_AGENT;
     QString generateRandomUserAgent();
     static const char *AES_FIXED_KEY;

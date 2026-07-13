@@ -511,6 +511,14 @@ NavigationPane {
                     if (friendModel.size() === 0) {
                         chatsNav.refreshCooldown = true;
                         chatsRefreshCooldownTimer.restart();
+                        // Fires immediately — first in the stagger order across
+                        // tabs (see GroupsTab.qml/InvitesTab.qml's matching
+                        // onLoginSuccess handlers, which delay by 400ms/800ms).
+                        // Previously all tabs fired their initial fetch in the
+                        // very same tick, landing within ~10ms of each other —
+                        // 3 concurrent decrypt+parse operations peaking at once
+                        // caused an observed "bad allocation" crash on-device
+                        // right after a fresh QR login.
                         zService.fetchFriends();
                         chatsLoading.visible = true;
                     }
