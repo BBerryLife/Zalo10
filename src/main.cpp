@@ -14,6 +14,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <QSocketNotifier>
+#include <exception>
 
 using namespace bb::cascades;
 
@@ -93,12 +94,36 @@ static void zalo10MessageHandler(QtMsgType type, const char *msg)
     if (type == QtFatalMsg) abort();
 }
 
+// Cùng lý do như SafeHeadlessApplication ở main_headless.cpp — bọc notify()
+// để 1 exception (vd std::bad_alloc) ném ra từ 1 slot/event handler bất kỳ
+// không kéo sập toàn bộ UI process. UI process ít khi chạy các đường
+// decrypt/JSON nặng (đa số qua IPC sang HeadlessService), nhưng thêm cho
+// đối xứng/an toàn không tốn gì.
+class SafeApplication : public Application
+{
+public:
+    SafeApplication(int argc, char **argv) : Application(argc, argv) {}
+
+    bool notify(QObject *receiver, QEvent *event)
+    {
+        try {
+            return Application::notify(receiver, event);
+        } catch (const std::exception &e) {
+            qWarning() << "[App] CAUGHT exception in event handler (process van song):" << e.what();
+            return false;
+        } catch (...) {
+            qWarning() << "[App] CAUGHT unknown exception in event handler (process van song)";
+            return false;
+        }
+    }
+};
+
 Q_DECL_EXPORT int main(int argc, char **argv)
 {
     qInstallMsgHandler(zalo10MessageHandler);
     installZalo10TermHandler();
 
-    Application app(argc, argv);
+    SafeApplication app(argc, argv);
 
     Application::instance()->themeSupport()->setVisualStyle(VisualStyle::Bright);
     {
@@ -113,5 +138,5 @@ Q_DECL_EXPORT int main(int argc, char **argv)
     QSocketNotifier termNotifier(g_zalo10TermFd[0], QSocketNotifier::Read);
     QObject::connect(&termNotifier, SIGNAL(activated(int)), &appui, SLOT(onTermSignal(int)));
 
-    return Application::exec();
+    return SafeApplication::exec();
 }
