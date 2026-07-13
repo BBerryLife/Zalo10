@@ -245,15 +245,6 @@ NavigationPane {
         attachedObjects: [
             ArrayDataModel { id: inviteModel },
             ArrayDataModel { id: searchModel },
-            // See ChatsTab.qml's onLoginSuccess comment — staggers fetchInvites
-            // 800ms behind fetchFriends (0ms) and fetchConversations (400ms) to
-            // avoid concurrent decrypt+parse peaks right after login.
-            Timer {
-                id: loginFetchDelayTimer
-                interval: 800
-                repeat: false
-                onTriggered: zService.fetchInvites()
-            },
             Connections {
                 target: zService
 
@@ -309,7 +300,7 @@ NavigationPane {
                     }
                 }
 
-                onLoginSuccess: { loginFetchDelayTimer.start(); }
+                onLoginSuccess: { zService.fetchInvites(); }
             }
         ]
     }
