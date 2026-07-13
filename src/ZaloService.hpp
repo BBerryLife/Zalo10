@@ -461,6 +461,25 @@ private:
     QSet<QString> m_pendingAvatars; // Ngăn tải trùng lặp
     QMap<QString, QSet<QString> > m_pendingAvatarWaiters; // url -> set of threadIds đang chờ
 
+    // Giới hạn số lượng avatar tải CÙNG LÚC qua mạng thật (QNetworkReply đang
+    // in-flight) — TÁCH BIỆT với avatarDripTimer phía QML (giới hạn tốc độ
+    // GHI lệnh vào command_queue). processCommandQueue() (ZaloService_Ipc.cpp)
+    // đọc TOÀN BỘ command_queue processed=0 và dispatch hết trong 1 lần poll
+    // (không giới hạn) — nên nếu UI đã kịp ghi hàng chục lệnh downloadAvatar
+    // trước khi HeadlessService poll tới (ví dụ: sau 1 lần fetchFriends 87
+    // người), toàn bộ 80-90 lệnh đó bắn network request gần như đồng thời chỉ
+    // trong 1 tick. Quan sát thực tế: HeadlessService crash (log dừng đột ngột
+    // giữa chừng, không có dòng lỗi/fatal nào) đúng ngay giữa 1 đợt burst như
+    // vậy — rất có thể do QNetworkAccessManager/SSL context trên BB10 Simulator
+    // không chịu nổi hàng chục request đồng thời. Hàng đợi dưới đây giữ số
+    // request thực sự đang bay tối đa ở MAX_CONCURRENT_AVATAR_DOWNLOADS, mọi
+    // request vượt quá sẽ nằm trong m_avatarDownloadQueue chờ tới lượt khi có
+    // 1 request khác xong (xem onAvatarDownloaded()).
+    static const int MAX_CONCURRENT_AVATAR_DOWNLOADS = 4;
+    int m_activeAvatarDownloads;
+    QList<QPair<QString, QString> > m_avatarDownloadQueue; // (url, threadId) đang chờ tới lượt tải
+    void startAvatarNetworkFetch(const QString &url, const QString &threadId);
+
     // Re-emit friendsReady sau khi avatar load xong
     sqlite3 *m_db;
     QVariantList m_pendingFriends;

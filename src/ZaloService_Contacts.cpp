@@ -315,6 +315,16 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
     m_pendingAvatarWaiters[baseUrl].clear();
     m_pendingAvatarWaiters[baseUrl].insert(threadId);
 
+    if (m_activeAvatarDownloads >= MAX_CONCURRENT_AVATAR_DOWNLOADS) {
+        m_avatarDownloadQueue.append(qMakePair(url, threadId));
+        return;
+    }
+    startAvatarNetworkFetch(url, threadId);
+}
+
+void ZaloService::startAvatarNetworkFetch(const QString &url, const QString &threadId)
+{
+    ++m_activeAvatarDownloads;
     QString httpUrl = url;
     if (httpUrl.startsWith("https://"))
         httpUrl = "http://" + httpUrl.mid(8);
@@ -339,6 +349,16 @@ void ZaloService::onAvatarDownloaded()
     bool hasError      = (reply->error() != QNetworkReply::NoError);
     QByteArray data    = reply->readAll();
     reply->deleteLater();
+
+    // 1 slot vừa trống — cho request kế tiếp trong hàng đợi (nếu có) bay ra
+    // ngay, giữ đúng luôn tối đa MAX_CONCURRENT_AVATAR_DOWNLOADS request bay
+    // cùng lúc bất kể queue ban đầu dài bao nhiêu. Phải làm TRƯỚC nhánh lỗi
+    // return sớm bên dưới, không thì 1 request lỗi sẽ làm nghẽn cả hàng đợi.
+    --m_activeAvatarDownloads;
+    if (!m_avatarDownloadQueue.isEmpty()) {
+        QPair<QString, QString> next = m_avatarDownloadQueue.takeFirst();
+        startAvatarNetworkFetch(next.first, next.second);
+    }
 
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
     QSet<QString> waiters = m_pendingAvatarWaiters.take(baseUrl);
