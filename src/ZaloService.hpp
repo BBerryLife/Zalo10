@@ -475,7 +475,7 @@ private:
     // request thực sự đang bay tối đa ở MAX_CONCURRENT_AVATAR_DOWNLOADS, mọi
     // request vượt quá sẽ nằm trong m_avatarDownloadQueue chờ tới lượt khi có
     // 1 request khác xong (xem onAvatarDownloaded()).
-    static const int MAX_CONCURRENT_AVATAR_DOWNLOADS = 4;
+    static const int MAX_CONCURRENT_AVATAR_DOWNLOADS = 2;
     int m_activeAvatarDownloads;
     QList<QPair<QString, QString> > m_avatarDownloadQueue; // (url, threadId) đang chờ tới lượt tải
     void startAvatarNetworkFetch(const QString &url, const QString &threadId);

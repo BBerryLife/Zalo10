@@ -182,13 +182,16 @@ static QVariantMap parseArgsJson(const QString &json)
 // poll xuống MAX_COMMANDS_PER_POLL: các lệnh còn lại (processed vẫn =0) sẽ
 // được xử lý ở (các) tick 500ms kế tiếp — trải batch 300 lệnh ra ~7-8 giây
 // thay vì dồn hết vào 1 lần, event loop có cơ hội "thở" giữa các batch.
-// MAX_COMMANDS_PER_POLL = 20 (xem giải thích ở comment phía trên).
+// MAX_COMMANDS_PER_POLL = 8 (xem giải thích ở comment phía trên; giảm từ 20
+// xuống 8 sau khi phát hiện "bad allocation" vẫn lặp lại nhiều lần dù đã
+// giới hạn batch — process đang thực sự sát trần bộ nhớ trên Simulator, cần
+// giảm áp lực bộ nhớ đỉnh xuống thấp hơn nữa, không chỉ chặn crash).
 void ZaloService::processCommandQueue()
 {
     if (!m_db) return;
 
     sqlite3_stmt *stmt = 0;
-    const char *selSql = "SELECT id, command, argsJson FROM command_queue WHERE processed=0 ORDER BY id ASC LIMIT 20;";
+    const char *selSql = "SELECT id, command, argsJson FROM command_queue WHERE processed=0 ORDER BY id ASC LIMIT 8;";
     if (sqlite3_prepare_v2(m_db, selSql, -1, &stmt, 0) != SQLITE_OK) return;
 
     QList<QPair<int, QPair<QString, QString> > > pending;
