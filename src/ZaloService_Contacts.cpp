@@ -68,11 +68,6 @@ void ZaloService::onFetchConvoDone()
 
     if (reply->error() != QNetworkReply::NoError) {
         qDebug() << "[Zalo Error] fetchConversations Network Error:" << reply->errorString();
-        // Lỗi tầng network (vd "Host not found") thường do connection pool
-        // dùng chung (m_manager) tồn đọng quá nhiều kết nối cache — tự dọn
-        // ngay để lần fetch/refresh kế tiếp có cơ hội thành công, không phải
-        // đợi tới lần drain hàng đợi avatar tiếp theo mới được dọn.
-        m_manager->clearAccessCache();
     }
 
     QByteArray raw = reply->readAll();
@@ -350,6 +345,18 @@ void ZaloService::startAvatarNetworkFetch(const QString &url, const QString &thr
     avatarReq.setRawHeader("Referer",    "https://chat.zalo.me/");
     avatarReq.setRawHeader("User-Agent", m_userAgent.toUtf8());
     avatarReq.setRawHeader("Accept",     "image/webp,image/apng,image/*,*/*;q=0.8");
+    // QUAN TRỌNG: "Connection: close" — Qt4.7 (BB10 NDK) không có
+    // QNetworkAccessManager::clearAccessCache() (chỉ có từ Qt 4.8+, build lỗi
+    // "no member named clearAccessCache" khi thử dùng). Thay vào đó, chặn
+    // ngay từ gốc: mỗi avatar tới từ 1 host CDN riêng (s120-xxx.zadn.vn,
+    // s240-xxx.zadn.vn...) — nếu để Qt tự giữ (keep-alive) từng kết nối này
+    // trong pool dùng chung để tái sử dụng, sau vài chục-vài trăm avatar, số
+    // socket tồn đọng có thể ăn hết tài nguyên của thiết bị, khiến các
+    // request MỚI (fetchConversations/fetchFriends lúc bấm refresh) không mở
+    // được kết nối nữa dù WebSocket đã mở sẵn từ trước vẫn hoạt động bình
+    // thường. Header này báo server đóng kết nối ngay sau khi trả lời — Qt
+    // không giữ lại trong pool nữa, nên không tích tụ dần theo thời gian.
+    avatarReq.setRawHeader("Connection", "close");
     QNetworkReply *reply = m_manager->get(avatarReq);
     reply->setProperty("avatarUrl",      url);
     reply->setProperty("avatarThreadId", threadId);
@@ -377,27 +384,6 @@ void ZaloService::onAvatarDownloaded()
     --m_activeAvatarDownloads;
     if (!m_avatarDownloadQueue.isEmpty()) {
         QTimer::singleShot(0, this, SLOT(startNextQueuedAvatarDownload()));
-    } else if (m_activeAvatarDownloads == 0) {
-        // QUAN TRỌNG: hàng đợi avatar vừa RỖNG HOÀN TOÀN (không còn item chờ,
-        // không còn request nào đang bay). m_manager (QNetworkAccessManager)
-        // là INSTANCE DÙNG CHUNG cho mọi request trong app — avatar, fetch
-        // friends/conversations, gửi tin nhắn, login... TẤT CẢ đi qua cùng 1
-        // connection pool. Sau 1 đợt tải hàng chục-hàng trăm avatar (mỗi cái
-        // từ 1 host CDN khác nhau: s120-xxx.zadn.vn, s240-xxx.zadn.vn...),
-        // Qt giữ lại (cache/keep-alive) nhiều kết nối TCP đã dùng để tái sử
-        // dụng — nhưng trên thiết bị/simulator BB10 với giới hạn socket/file-
-        // descriptor thấp, số kết nối tồn đọng này có thể ăn hết tài nguyên,
-        // khiến các request MỚI (fetchConversations, fetchFriends gọi lại lúc
-        // bấm refresh) không mở được kết nối/DNS nữa — quan sát thực tế: lỗi
-        // "Host  not found" (host rỗng — DNS resolver không còn tài nguyên
-        // để hoạt động) xuất hiện đúng sau 1 đợt tải avatar lớn, trong khi
-        // WebSocket đã mở sẵn từ trước vẫn nhận tin nhắn bình thường (không
-        // cần mở kết nối MỚI nên không bị ảnh hưởng) — khớp chính xác với
-        // triệu chứng "nhắn/nhận tin OK nhưng refresh không fetch được nữa".
-        // clearAccessCache() giải phóng toàn bộ kết nối TCP đã cache lại,
-        // trả tài nguyên về hệ thống ngay khi không còn avatar nào cần tải.
-        m_manager->clearAccessCache();
-        qDebug() << "[Zalo] avatar download queue drained, cleared QNetworkAccessManager connection cache";
     }
 
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
@@ -533,7 +519,6 @@ void ZaloService::onFetchFriendsDone()
 
     if (reply->error() != QNetworkReply::NoError) {
         qDebug() << "[Zalo Error] fetchFriends Network Error:" << reply->errorString();
-        m_manager->clearAccessCache();
     }
 
     // Xử lý HTTP 429 Too Many Requests — raw là HTML, không phải JSON
