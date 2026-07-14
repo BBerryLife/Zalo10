@@ -68,6 +68,11 @@ void ZaloService::onFetchConvoDone()
 
     if (reply->error() != QNetworkReply::NoError) {
         qDebug() << "[Zalo Error] fetchConversations Network Error:" << reply->errorString();
+        // Lỗi tầng network (vd "Host not found") thường do connection pool
+        // dùng chung (m_manager) tồn đọng quá nhiều kết nối cache — tự dọn
+        // ngay để lần fetch/refresh kế tiếp có cơ hội thành công, không phải
+        // đợi tới lần drain hàng đợi avatar tiếp theo mới được dọn.
+        m_manager->clearAccessCache();
     }
 
     QByteArray raw = reply->readAll();
@@ -372,6 +377,27 @@ void ZaloService::onAvatarDownloaded()
     --m_activeAvatarDownloads;
     if (!m_avatarDownloadQueue.isEmpty()) {
         QTimer::singleShot(0, this, SLOT(startNextQueuedAvatarDownload()));
+    } else if (m_activeAvatarDownloads == 0) {
+        // QUAN TRỌNG: hàng đợi avatar vừa RỖNG HOÀN TOÀN (không còn item chờ,
+        // không còn request nào đang bay). m_manager (QNetworkAccessManager)
+        // là INSTANCE DÙNG CHUNG cho mọi request trong app — avatar, fetch
+        // friends/conversations, gửi tin nhắn, login... TẤT CẢ đi qua cùng 1
+        // connection pool. Sau 1 đợt tải hàng chục-hàng trăm avatar (mỗi cái
+        // từ 1 host CDN khác nhau: s120-xxx.zadn.vn, s240-xxx.zadn.vn...),
+        // Qt giữ lại (cache/keep-alive) nhiều kết nối TCP đã dùng để tái sử
+        // dụng — nhưng trên thiết bị/simulator BB10 với giới hạn socket/file-
+        // descriptor thấp, số kết nối tồn đọng này có thể ăn hết tài nguyên,
+        // khiến các request MỚI (fetchConversations, fetchFriends gọi lại lúc
+        // bấm refresh) không mở được kết nối/DNS nữa — quan sát thực tế: lỗi
+        // "Host  not found" (host rỗng — DNS resolver không còn tài nguyên
+        // để hoạt động) xuất hiện đúng sau 1 đợt tải avatar lớn, trong khi
+        // WebSocket đã mở sẵn từ trước vẫn nhận tin nhắn bình thường (không
+        // cần mở kết nối MỚI nên không bị ảnh hưởng) — khớp chính xác với
+        // triệu chứng "nhắn/nhận tin OK nhưng refresh không fetch được nữa".
+        // clearAccessCache() giải phóng toàn bộ kết nối TCP đã cache lại,
+        // trả tài nguyên về hệ thống ngay khi không còn avatar nào cần tải.
+        m_manager->clearAccessCache();
+        qDebug() << "[Zalo] avatar download queue drained, cleared QNetworkAccessManager connection cache";
     }
 
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
@@ -504,6 +530,11 @@ void ZaloService::onFetchFriendsDone()
     reply->deleteLater();
 
     qDebug() << "[Zalo] fetchFriends raw size:" << raw.size() << "bytes, first300:" << raw.left(300);
+
+    if (reply->error() != QNetworkReply::NoError) {
+        qDebug() << "[Zalo Error] fetchFriends Network Error:" << reply->errorString();
+        m_manager->clearAccessCache();
+    }
 
     // Xử lý HTTP 429 Too Many Requests — raw là HTML, không phải JSON
     if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
