@@ -322,6 +322,17 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
     startAvatarNetworkFetch(url, threadId);
 }
 
+void ZaloService::startNextQueuedAvatarDownload()
+{
+    // Có thể bị gọi "thừa" vô hại nếu queue đã trống lúc singleShot(0,...)
+    // thực sự chạy (ví dụ nếu có nhiều singleShot xếp hàng cùng lúc) — chỉ
+    // cần kiểm tra rỗng ở đây, không cần đồng bộ hoá gì thêm (single-threaded).
+    if (m_avatarDownloadQueue.isEmpty()) return;
+    if (m_activeAvatarDownloads >= MAX_CONCURRENT_AVATAR_DOWNLOADS) return;
+    QPair<QString, QString> next = m_avatarDownloadQueue.takeFirst();
+    startAvatarNetworkFetch(next.first, next.second);
+}
+
 void ZaloService::startAvatarNetworkFetch(const QString &url, const QString &threadId)
 {
     ++m_activeAvatarDownloads;
@@ -350,14 +361,17 @@ void ZaloService::onAvatarDownloaded()
     QByteArray data    = reply->readAll();
     reply->deleteLater();
 
-    // 1 slot vừa trống — cho request kế tiếp trong hàng đợi (nếu có) bay ra
-    // ngay, giữ đúng luôn tối đa MAX_CONCURRENT_AVATAR_DOWNLOADS request bay
-    // cùng lúc bất kể queue ban đầu dài bao nhiêu. Phải làm TRƯỚC nhánh lỗi
-    // return sớm bên dưới, không thì 1 request lỗi sẽ làm nghẽn cả hàng đợi.
+    // 1 slot vừa trống — cho request kế tiếp trong hàng đợi (nếu có) bay ra,
+    // giữ đúng luôn tối đa MAX_CONCURRENT_AVATAR_DOWNLOADS request bay cùng
+    // lúc bất kể queue ban đầu dài bao nhiêu. Phải làm TRƯỚC nhánh lỗi return
+    // sớm bên dưới, không thì 1 request lỗi sẽ làm nghẽn cả hàng đợi.
+    //
+    // QUAN TRỌNG: gọi qua QTimer::singleShot(0,...) — xem giải thích chi tiết
+    // ở khai báo startNextQueuedAvatarDownload() trong ZaloService.hpp. TUYỆT
+    // ĐỐI không gọi startAvatarNetworkFetch() trực tiếp/đồng bộ ở đây nữa.
     --m_activeAvatarDownloads;
     if (!m_avatarDownloadQueue.isEmpty()) {
-        QPair<QString, QString> next = m_avatarDownloadQueue.takeFirst();
-        startAvatarNetworkFetch(next.first, next.second);
+        QTimer::singleShot(0, this, SLOT(startNextQueuedAvatarDownload()));
     }
 
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;

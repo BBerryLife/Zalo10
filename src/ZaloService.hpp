@@ -184,6 +184,11 @@ public:
     // Chỉ HeadlessService gọi hàm này (qua QTimer định kỳ) — UI app KHÔNG BAO GIỜ
     // gọi hàm này, chỉ ghi vào command_queue.
     Q_INVOKABLE void processCommandQueue();
+    // dispatchCommand: bảng if-else thực thi 1 lệnh cụ thể — tách khỏi
+    // processCommandQueue() để mỗi lệnh có thể được bọc try/catch RIÊNG (1
+    // lệnh ném exception không còn kéo theo cả batch, xem processCommandQueue()
+    // trong ZaloService_Ipc.cpp để biết lý do).
+    void dispatchCommand(const QString &command, const QVariantMap &args);
 
 signals:
     void loggedInChanged();
@@ -242,6 +247,21 @@ private slots:
     void onUpdateDownloadProgress(qint64 received, qint64 total);
     void onUpdateDownloadFinished();
     void onUpdateSslErrors(const QList<QSslError> &errors);
+    // Bắt đầu request tải avatar KẾ TIẾP trong m_avatarDownloadQueue (nếu có).
+    // QUAN TRỌNG: luôn được gọi qua QTimer::singleShot(0, ...) từ
+    // onAvatarDownloaded(), KHÔNG gọi trực tiếp — nếu gọi trực tiếp (đồng bộ)
+    // và request đó lại lỗi ngay lập tức (vd URL rỗng/hỏng khiến
+    // QNetworkAccessManager trả lỗi "cục bộ" gần như tức thời), nó gọi lại
+    // onAvatarDownloaded() ngay trong CÙNG stack frame — tạo chuỗi đệ quy có
+    // thể sâu tới hàng nghìn lớp nếu nhiều item liên tiếp trong hàng đợi đều
+    // lỗi kiểu này (quan sát thực tế: đúng nguyên nhân hàng chục nghìn dòng
+    // "bad allocation" dồn dập trong vài trăm mili-giây, không phải do 1 lần
+    // cấp phát lớn mà do đệ quy cực sâu — mỗi lớp gọi hàm đều tốn thêm bộ nhớ
+    // stack/heap, cộng dồn tới khi cấp phát thất bại thật). Gọi qua
+    // singleShot(0,...) trả quyền điều khiển về event loop giữa mỗi item,
+    // phá vỡ chuỗi đệ quy này hoàn toàn — mỗi item giờ chạy trong tick sự
+    // kiện RIÊNG, không còn cộng dồn stack.
+    void startNextQueuedAvatarDownload();
 
     void onStep2Done();
     void onStep3Done();

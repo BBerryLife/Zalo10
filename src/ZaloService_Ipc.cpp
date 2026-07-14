@@ -5,6 +5,7 @@
 #include <QVariant>
 #include <QDebug>
 #include <time.h>
+#include <exception>
 
 // ---------------------------------------------------------------------------
 // IPC giữa HeadlessService (giữ WS thật, chạy nền không phụ thuộc UI) và
@@ -213,9 +214,49 @@ void ZaloService::processCommandQueue()
 
         qDebug() << "[ZaloIpc] dispatching command:" << command << "id:" << id;
 
-        // Dispatch thủ công — danh sách này chỉ cần cover các lệnh UI thực sự
-        // gọi (queryShareTargets, getImageDimensions... vẫn có thể chạy ngay
-        // trong UI process vì không đụng network/session).
+        // QUAN TRỌNG: mỗi lệnh được bọc try/catch RIÊNG. Trước đây không có —
+        // nếu 1 lệnh (vd downloadAvatar) ném exception (bad_alloc), nó lan
+        // thẳng ra khỏi cả vòng for này, thoát luôn processCommandQueue() TRƯỚC
+        // khi kịp UPDATE processed=1 cho id đó. Vì SELECT luôn ORDER BY id ASC,
+        // lệnh chết này mãi mãi đứng đầu hàng đợi — CHẶN ĐỨNG toàn bộ command
+        // phía sau nó (mọi downloadAvatar khác, sendMessage, fetchConversations...
+        // đều không bao giờ được xử lý nữa). Quan sát thực tế: 1 lệnh downloadAvatar
+        // (id 92) bị dispatch lại mỗi 500ms, hàng trăm lần liên tục, mãi không
+        // qua được — đúng là nguyên nhân "gửi tin nhắn không được", "không nhận
+        // thông báo", "refresh không hoạt động" mà notify() (fix trước) không
+        // giải quyết được vì nó chỉ ngăn CRASH, không ngăn 1 lệnh chặn cả hàng đợi.
+        try {
+            dispatchCommand(command, args);
+        } catch (const std::exception &e) {
+            qWarning() << "[ZaloIpc] command" << command << "id:" << id
+                       << "THREW exception, bo qua lenh nay va danh dau processed de khong chan hang doi:" << e.what();
+        } catch (...) {
+            qWarning() << "[ZaloIpc] command" << command << "id:" << id
+                       << "THREW unknown exception, bo qua lenh nay va danh dau processed de khong chan hang doi";
+        }
+        // Đánh dấu processed=1 ngay dưới đây, BẤT KỂ dispatchCommand() ở trên
+        // thành công hay ném exception (đã catch phía trên) — đảm bảo lệnh
+        // này không bao giờ chặn các lệnh phía sau trong hàng đợi nữa.
+        sqlite3_stmt *upd = 0;
+        if (sqlite3_prepare_v2(m_db, "UPDATE command_queue SET processed=1 WHERE id=?;", -1, &upd, 0) == SQLITE_OK) {
+            sqlite3_bind_int(upd, 1, id);
+            sqlite3_step(upd);
+            sqlite3_finalize(upd);
+        }
+    }
+
+    sqlite3_exec(m_db,
+        "DELETE FROM command_queue WHERE processed=1 AND createdAt < datetime('now','-1 hour');",
+        0, 0, 0);
+}
+
+// Bảng dispatch thủ công tách riêng khỏi processCommandQueue() — để lệnh gọi
+// này có thể được bọc try/catch RIÊNG cho TỪNG lệnh (xem processCommandQueue()).
+// Danh sách này chỉ cần cover các lệnh UI thực sự gọi (queryShareTargets,
+// getImageDimensions... vẫn có thể chạy ngay trong UI process vì không đụng
+// network/session).
+void ZaloService::dispatchCommand(const QString &command, const QVariantMap &args)
+{
         if (command == "sendMessage") {
             sendMessage(args.value("threadId").toString(), args.value("content").toString(), args.value("isGroup").toBool());
         } else if (command == "sendPhoto") {
@@ -278,21 +319,4 @@ void ZaloService::processCommandQueue()
         } else {
             qDebug() << "[ZaloIpc] unknown command:" << command;
         }
-
-        // Đánh dấu đã xử lý ngay sau khi dispatch (không chờ callback async của
-        // hàm trên hoàn tất — các hàm này vốn đã async, kết quả của chúng đi ra
-        // qua DB/signal như thiết kế cũ, không qua resultJson).
-        sqlite3_stmt *upd = 0;
-        if (sqlite3_prepare_v2(m_db, "UPDATE command_queue SET processed=1 WHERE id=?;", -1, &upd, 0) == SQLITE_OK) {
-            sqlite3_bind_int(upd, 1, id);
-            sqlite3_step(upd);
-            sqlite3_finalize(upd);
-        }
-    }
-
-    // Dọn bớt các lệnh đã xử lý lâu (giữ queue nhỏ) — chỉ xoá lệnh cũ hơn 1 giờ
-    // để không ảnh hưởng nếu đang debug/đọc lại.
-    sqlite3_exec(m_db,
-        "DELETE FROM command_queue WHERE processed=1 AND createdAt < datetime('now','-1 hour');",
-        0, 0, 0);
 }
