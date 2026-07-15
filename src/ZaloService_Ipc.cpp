@@ -237,11 +237,36 @@ void ZaloService::processCommandQueue()
         // Đánh dấu processed=1 ngay dưới đây, BẤT KỂ dispatchCommand() ở trên
         // thành công hay ném exception (đã catch phía trên) — đảm bảo lệnh
         // này không bao giờ chặn các lệnh phía sau trong hàng đợi nữa.
-        sqlite3_stmt *upd = 0;
-        if (sqlite3_prepare_v2(m_db, "UPDATE command_queue SET processed=1 WHERE id=?;", -1, &upd, 0) == SQLITE_OK) {
-            sqlite3_bind_int(upd, 1, id);
-            sqlite3_step(upd);
-            sqlite3_finalize(upd);
+        //
+        // QUAN TRỌNG: retry-with-backoff — trước đây chỉ thử 1 lần, nếu
+        // SQLite trả SQLITE_BUSY/LOCKED (do UI process đang ghi enqueueCommand
+        // cùng lúc — file DB dùng chung giữa 2 process) thì ÂM THẦM bỏ qua,
+        // không update được, không log gì cả. Quan sát thực tế trong log: 1
+        // lệnh (fetchConversations id 3, downloadAvatar id 18/19/20...) bị
+        // dispatch LẠI ở tick kế tiếp dù đã xử lý xong — đúng vì processed=1
+        // chưa kịp ghi. Cùng cơ chế retry đã áp dụng cho enqueueCommand() phía
+        // UI (fix cũ, xem ZaloServiceProxy) — giờ áp dụng đối xứng ở đây.
+        bool marked = false;
+        for (int attempt = 0; attempt < 5 && !marked; ++attempt) {
+            sqlite3_stmt *upd = 0;
+            if (sqlite3_prepare_v2(m_db, "UPDATE command_queue SET processed=1 WHERE id=?;", -1, &upd, 0) == SQLITE_OK) {
+                sqlite3_bind_int(upd, 1, id);
+                int rc = sqlite3_step(upd);
+                sqlite3_finalize(upd);
+                if (rc == SQLITE_DONE) {
+                    marked = true;
+                } else if (rc == SQLITE_BUSY || rc == SQLITE_LOCKED) {
+                    struct timespec ts = { 0, 20L * 1000L * 1000L }; // 20ms
+                    nanosleep(&ts, 0);
+                }
+            } else {
+                struct timespec ts = { 0, 20L * 1000L * 1000L };
+                nanosleep(&ts, 0);
+            }
+        }
+        if (!marked) {
+            qWarning() << "[ZaloIpc] command" << command << "id:" << id
+                       << "KHONG the danh dau processed sau 5 lan thu (DB locked lien tuc) - se bi dispatch lai o tick ke tiep";
         }
     }
 

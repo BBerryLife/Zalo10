@@ -441,6 +441,9 @@ void ZaloService::onSendMsgDone()
     QByteArray raw  = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] sendMessage response:" << raw.left(200);
+    if (hasError) {
+        qDebug() << "[Zalo Error] sendMessage Network Error:" << reply->errorString();
+    }
 
     if (!hasError) {
         QVariantMap outer = jsonToMap(raw);

@@ -345,18 +345,23 @@ void ZaloService::startAvatarNetworkFetch(const QString &url, const QString &thr
     avatarReq.setRawHeader("Referer",    "https://chat.zalo.me/");
     avatarReq.setRawHeader("User-Agent", m_userAgent.toUtf8());
     avatarReq.setRawHeader("Accept",     "image/webp,image/apng,image/*,*/*;q=0.8");
-    // QUAN TRỌNG: "Connection: close" — Qt4.7 (BB10 NDK) không có
-    // QNetworkAccessManager::clearAccessCache() (chỉ có từ Qt 4.8+, build lỗi
-    // "no member named clearAccessCache" khi thử dùng). Thay vào đó, chặn
-    // ngay từ gốc: mỗi avatar tới từ 1 host CDN riêng (s120-xxx.zadn.vn,
-    // s240-xxx.zadn.vn...) — nếu để Qt tự giữ (keep-alive) từng kết nối này
-    // trong pool dùng chung để tái sử dụng, sau vài chục-vài trăm avatar, số
-    // socket tồn đọng có thể ăn hết tài nguyên của thiết bị, khiến các
-    // request MỚI (fetchConversations/fetchFriends lúc bấm refresh) không mở
-    // được kết nối nữa dù WebSocket đã mở sẵn từ trước vẫn hoạt động bình
-    // thường. Header này báo server đóng kết nối ngay sau khi trả lời — Qt
-    // không giữ lại trong pool nữa, nên không tích tụ dần theo thời gian.
-    avatarReq.setRawHeader("Connection", "close");
+    // QUAN TRỌNG — ĐÃ REVERT "Connection: close" thêm ở lần sửa trước:
+    // log đầy đủ sau đó cho thấy lỗi "Host X not found" (và bad_alloc hàng
+    // loạt kèm theo) VẪN xảy ra, thậm chí lan sang cả sendMessage cá nhân —
+    // và bằng chứng mới trỏ tới nguyên nhân NGƯỢC LẠI với suy đoán trước:
+    // không phải do Qt GIỮ LẠI quá nhiều kết nối, mà do mỗi avatar (hàng
+    // trăm cái, từ hàng trăm host CDN khác nhau, dồn dập trong ~30-90s) mở
+    // MỘT KẾT NỐI TCP MỚI — và "Connection: close" ép server đóng kết nối
+    // ngay sau mỗi request càng làm việc này tệ hơn: mỗi socket bị đóng rơi
+    // vào trạng thái TIME_WAIT (hệ điều hành giữ lại 30-240s trước khi thực
+    // sự giải phóng fd/port), dồn dập hàng trăm cái trong thời gian ngắn có
+    // thể ăn hết số file-descriptor/ephemeral-port khả dụng của thiết bị —
+    // khớp với "Host not found" (không mở nổi socket MỚI để phân giải DNS)
+    // VÀ với bad_alloc lan rộng (network stack cạn buffer). Để Qt tự GIỮ và
+    // TÁI SỬ DỤNG kết nối (hành vi mặc định, KHÔNG set Connection: close)
+    // mới là hướng đúng — giảm tổng số kết nối TCP MỚI cần mở, do đó giảm
+    // tích tụ TIME_WAIT. Xem thêm spacing giữa các lần tải trong
+    // startNextQueuedAvatarDownload() để giảm tốc độ mở kết nối mới.
     QNetworkReply *reply = m_manager->get(avatarReq);
     reply->setProperty("avatarUrl",      url);
     reply->setProperty("avatarThreadId", threadId);
@@ -378,12 +383,18 @@ void ZaloService::onAvatarDownloaded()
     // lúc bất kể queue ban đầu dài bao nhiêu. Phải làm TRƯỚC nhánh lỗi return
     // sớm bên dưới, không thì 1 request lỗi sẽ làm nghẽn cả hàng đợi.
     //
-    // QUAN TRỌNG: gọi qua QTimer::singleShot(0,...) — xem giải thích chi tiết
-    // ở khai báo startNextQueuedAvatarDownload() trong ZaloService.hpp. TUYỆT
-    // ĐỐI không gọi startAvatarNetworkFetch() trực tiếp/đồng bộ ở đây nữa.
+    // QUAN TRỌNG: gọi qua QTimer::singleShot(...) — xem giải thích chi tiết ở
+    // khai báo startNextQueuedAvatarDownload() trong ZaloService.hpp (phá vỡ
+    // đệ quy đồng bộ). Delay 80ms (không phải 0ms) — thêm SAU KHI phát hiện
+    // dồn dập mở kết nối TCP mới quá nhanh (hàng trăm avatar trong ~30-90s)
+    // có thể làm tích tụ socket ở trạng thái TIME_WAIT, cạn tài nguyên hệ
+    // thống (xem giải thích chi tiết ở startAvatarNetworkFetch()). Giãn nhịp
+    // mở kết nối mới ra giúp hệ điều hành có thời gian giải phóng TIME_WAIT
+    // giữa chừng, thay vì dồn cục hàng trăm cái liên tiếp gần như không nghỉ.
+    // TUYỆT ĐỐI không gọi startAvatarNetworkFetch() trực tiếp/đồng bộ ở đây.
     --m_activeAvatarDownloads;
     if (!m_avatarDownloadQueue.isEmpty()) {
-        QTimer::singleShot(0, this, SLOT(startNextQueuedAvatarDownload()));
+        QTimer::singleShot(80, this, SLOT(startNextQueuedAvatarDownload()));
     }
 
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
