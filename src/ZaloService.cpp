@@ -73,10 +73,8 @@ ZaloService::ZaloService(QObject *parent)
       m_webSocket(0), m_wsUrlIndex(0), m_wsConnected(false), m_wsHandshakeSent(false),
       m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false),
       m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),
-      m_lastFetchFriendsTime(0), m_lastFetchConvoTime(0),
-      m_fetchFriendsStartedAt(0), m_fetchConvoStartedAt(0), m_db(0),
-      m_updateReply(0), m_retrySendIsGroup(false), m_activeAvatarDownloads(0),
-      m_consecutiveAvatarFailures(0)
+      m_lastFetchFriendsTime(0), m_lastFetchConvoTime(0), m_db(0),
+      m_updateReply(0), m_retrySendIsGroup(false), m_activeAvatarDownloads(0)
 {
     m_qrExpireTimer->setSingleShot(true);
     m_wsReconnectTimer->setSingleShot(true);
@@ -225,13 +223,6 @@ ZaloService::ZaloService(QObject *parent)
     connect(this, SIGNAL(loggedInChanged()), this, SLOT(onPublishLoggedInState()));
     connect(this, SIGNAL(qrCodeReady(QString,QString)), this, SLOT(onPublishQrState(QString,QString)));
     connect(this, SIGNAL(sessionExpired()), this, SLOT(onPublishSessionExpired()));
-    // See onPublishFriendsReady/onPublishConversationsReady/onPublishMessageSent
-    // declarations in ZaloService.hpp — durable service_state fallback for
-    // when EventBridgeServer's live TCP broadcast is missed (e.g. right after
-    // reopening the app, before the UI's EventBridge client reconnects).
-    connect(this, SIGNAL(friendsReady(QVariantList)), this, SLOT(onPublishFriendsReady(QVariantList)));
-    connect(this, SIGNAL(conversationsReady(QVariantList)), this, SLOT(onPublishConversationsReady(QVariantList)));
-    connect(this, SIGNAL(messageSent(bool,QString)), this, SLOT(onPublishMessageSent(bool,QString)));
     connect(this, SIGNAL(loginSuccess(QString,QString)), this, SLOT(onPublishLoginSuccess(QString,QString)));
 }
 

@@ -38,18 +38,8 @@
 void ZaloService::fetchConversations(){
     if (!m_loggedIn) return;
     if (m_isFetchingConversations) {
-        // Nếu cờ đã bật quá lâu, coi như bị kẹt do 1 exception bị
-        // SafeHeadlessApplication::notify() nuốt mất giữa chừng lúc xử lý lần
-        // fetch trước (xem giải thích chi tiết ở khai báo m_fetchConvoStartedAt
-        // trong ZaloService.hpp) — không skip vĩnh viễn nữa, cho fetch mới.
-        qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_fetchConvoStartedAt;
-        if (m_fetchConvoStartedAt > 0 && elapsed > FETCH_STALE_TIMEOUT_MS) {
-            qDebug() << "[Zalo] fetchConversations: previous fetch flag stuck for" << elapsed
-                     << "ms (> " << FETCH_STALE_TIMEOUT_MS << "ms) - treating as stale, allowing new fetch";
-        } else {
-            qDebug() << "[Zalo] fetchConversations: already in progress, skipping duplicate call";
-            return;
-        }
+        qDebug() << "[Zalo] fetchConversations: already in progress, skipping duplicate call";
+        return;
     }
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (m_lastFetchConvoTime > 0 && (now - m_lastFetchConvoTime) < FETCH_COOLDOWN_MS) {
@@ -58,7 +48,6 @@ void ZaloService::fetchConversations(){
         return;
     }
     m_isFetchingConversations = true;
-    m_fetchConvoStartedAt = now;
 
     QVariantMap qp;
     qp["zpw_ver"]  = QString::number(API_VERSION);
@@ -251,12 +240,7 @@ void ZaloService::onGroupDetailsDone()
             t["threadId"] = gid;
             t["name"]     = gname;
             t["isGroup"]  = true;
-            // avt (thumbnail) is frequently left empty by the server for
-            // group conversations even when a real avatar exists — fullAvt
-            // (full-size URL) is populated in that case. Fall back to it so
-            // groups with a set avatar actually get one shown, instead of
-            // silently ending up with an empty avatar field forever.
-            t["avatar"]   = !g["avt"].toString().isEmpty() ? g["avt"].toString() : g["fullAvt"].toString();
+            t["avatar"]   = g["avt"].toString();
             t["unread"]   = 0;
             threads.append(t);
             m_groupNames[gid] = gname; // cache for notifications
@@ -270,8 +254,7 @@ void ZaloService::onGroupDetailsDone()
             t["threadId"] = gid;
             t["name"]     = g["name"].toString();
             t["isGroup"]  = true;
-            // Same avt/fullAvt fallback as the gridInfoMap branch above.
-            t["avatar"]   = !g["avt"].toString().isEmpty() ? g["avt"].toString() : g["fullAvt"].toString();
+            t["avatar"]   = g["avt"].toString();
             t["unread"]   = 0;
             threads.append(t);
             m_groupNames[gid] = g["name"].toString(); // cache
@@ -409,25 +392,9 @@ void ZaloService::onAvatarDownloaded()
     // mở kết nối mới ra giúp hệ điều hành có thời gian giải phóng TIME_WAIT
     // giữa chừng, thay vì dồn cục hàng trăm cái liên tiếp gần như không nghỉ.
     // TUYỆT ĐỐI không gọi startAvatarNetworkFetch() trực tiếp/đồng bộ ở đây.
-    //
-    // QUAN TRỌNG (retry-storm backoff): 80ms cố định giả định request vừa
-    // rồi mất một khoảng thời gian network round-trip thật. Nhưng khi DNS/
-    // network đang hỏng, lỗi (vd "Host not found") trả về gần NGAY LẬP TỨC —
-    // nếu cứ giữ đúng 80ms cho MỌI trường hợp, một hàng đợi vài chục avatar
-    // (tích luỹ qua nhiều lần fetchFriends/fetchConversations) sẽ lỗi liên
-    // tục gần như không nghỉ, hàng chục request/giây, trong khi network vẫn
-    // đang hỏng — đây chính là nguyên nhân bão "bad allocation" quan sát
-    // thực tế ngay sau khi refresh/mở lại app lúc mạng chưa ổn định. Đếm số
-    // lần lỗi LIÊN TIẾP; vượt ngưỡng thì giãn delay ra
-    // AVATAR_FAILURE_BACKOFF_MS thay vì 80ms, cho mạng có thời gian hồi phục
-    // giữa các lần thử thay vì dồn dập.
-    int nextDelayMs = 80;
-    if (m_consecutiveAvatarFailures >= AVATAR_FAILURE_BACKOFF_THRESHOLD) {
-        nextDelayMs = AVATAR_FAILURE_BACKOFF_MS;
-    }
     --m_activeAvatarDownloads;
     if (!m_avatarDownloadQueue.isEmpty()) {
-        QTimer::singleShot(nextDelayMs, this, SLOT(startNextQueuedAvatarDownload()));
+        QTimer::singleShot(80, this, SLOT(startNextQueuedAvatarDownload()));
     }
 
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
@@ -438,14 +405,11 @@ void ZaloService::onAvatarDownloaded()
 
     if (hasError || data.isEmpty()) {
         int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        ++m_consecutiveAvatarFailures;
         qDebug() << "[Zalo] avatar download failed for" << threadId
                  << "error:" << reply->errorString()
-                 << "HTTP:" << httpStatus
-                 << "consecutiveFailures:" << m_consecutiveAvatarFailures;
+                 << "HTTP:" << httpStatus;
         return;
     }
-    m_consecutiveAvatarFailures = 0;
 
     // Fixed filename per-person (md5 of threadId, NOT of the URL): this means
     // a changed profile picture overwrites the same file in place instead of
@@ -515,16 +479,8 @@ void ZaloService::fetchFriends()
 {
     if (!m_loggedIn) return;
     if (m_isFetchingFriends) {
-        // Xem giải thích chi tiết ở fetchConversations() phía trên — cùng cơ
-        // chế chống kẹt cờ vĩnh viễn khi exception bị nuốt giữa chừng.
-        qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_fetchFriendsStartedAt;
-        if (m_fetchFriendsStartedAt > 0 && elapsed > FETCH_STALE_TIMEOUT_MS) {
-            qDebug() << "[Zalo] fetchFriends: previous fetch flag stuck for" << elapsed
-                     << "ms (> " << FETCH_STALE_TIMEOUT_MS << "ms) - treating as stale, allowing new fetch";
-        } else {
-            qDebug() << "[Zalo] fetchFriends: already in progress, skipping duplicate call";
-            return;
-        }
+        qDebug() << "[Zalo] fetchFriends: already in progress, skipping duplicate call";
+        return;
     }
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (m_lastFetchFriendsTime > 0 && (now - m_lastFetchFriendsTime) < FETCH_COOLDOWN_MS) {
@@ -533,7 +489,6 @@ void ZaloService::fetchFriends()
         return;
     }
     m_isFetchingFriends = true;
-    m_fetchFriendsStartedAt = now;
 
     // zca-js dùng GET, params trong query string (không phải POST body)
     QVariantMap innerParams;

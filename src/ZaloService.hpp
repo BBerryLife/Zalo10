@@ -324,26 +324,6 @@ private slots:
     void onPublishQrState(const QString &qrImagePath, const QString &qrCodeRaw);
     void onPublishSessionExpired();
     void onPublishLoginSuccess(const QString &uid, const QString &displayName);
-    // QUAN TRỌNG: friendsReady/conversationsReady/messageSent trước đây CHỈ đi
-    // qua EventBridgeServer's broadcastEvent() (TCP, live-only, không lưu lại
-    // gì) — nếu UI process chưa kịp kết nối lại EventBridge (m_reconnectTimer
-    // 2s trong ZaloServiceProxy) đúng lúc HeadlessService emit các signal này
-    // (rất dễ xảy ra ngay sau khi mở lại app: loadSession() ở HeadlessService
-    // chạy độc lập, không chờ UI, nên có thể fetchFriends/fetchConversations
-    // do onLoginSuccess trong QML kích hoạt trả về TRƯỚC KHI EventBridge kịp
-    // kết nối), sự kiện đó mất VĨNH VIỄN — UI không có cách nào biết lại được,
-    // dù dữ liệu đã có sẵn trong HeadlessService. Đây chính là nguyên nhân
-    // "bấm refresh không fetch lại được", "mở lại app không fetch được để
-    // nhắn" — không phải do command không được dispatch (nó CÓ dispatch và
-    // chạy xong trong HeadlessService), mà do KẾT QUẢ không bao giờ tới được
-    // UI. Publish thêm các key này vào service_state (đã có sẵn hạ tầng poll
-    // 400ms ở ZaloServiceProxy cho loggedIn/qrCode/sessionExpired) làm lưới an
-    // toàn thứ 2, KHÔNG thay thế EventBridge (vẫn giữ nguyên cho độ trễ thấp
-    // khi UI đang mở sẵn) — chỉ đảm bảo UI luôn "bắt kịp" được dù có bỏ lỡ
-    // broadcast TCP.
-    void onPublishFriendsReady(const QVariantList &friends);
-    void onPublishConversationsReady(const QVariantList &threads);
-    void onPublishMessageSent(bool success, const QString &threadId);
 
 private:
     struct EncryptedParams {
@@ -446,23 +426,6 @@ private:
     qint64 m_lastFetchConvoTime;        // epoch-ms của lần fetch thành công gần nhất
     static const int FETCH_COOLDOWN_MS = 10000; // 10 giây cooldown giữa 2 lần fetch
 
-    // QUAN TRỌNG: m_isFetchingFriends/m_isFetchingConversations chỉ được set
-    // lại về false ở các điểm return CUỐI của onFetchFriendsDone()/
-    // onGroupDetailsDone() — nhưng SafeHeadlessApplication::notify() (xem
-    // main_headless.cpp) bắt exception ở tầng Qt event-dispatch, BÊN NGOÀI
-    // hoàn toàn các hàm này. Nếu bad_alloc (hay bất kỳ exception nào) ném ra
-    // giữa chừng — vd ngay trong jsonToMap() lúc parse response — hàm bị hủy
-    // nửa chừng, KHÔNG BAO GIỜ chạm tới dòng reset flag, và cờ "đang fetch"
-    // bị kẹt true VĨNH VIỄN cho tới khi HeadlessService restart. Log thực tế
-    // xác nhận đúng chuỗi này: "bad allocation" ngay trong lúc xử lý
-    // groupDetails -> 60s sau, fetchConversations tiếp theo bị skip với log
-    // "already in progress". Lưu lại epoch-ms lúc BẮT ĐẦU fetch; nếu đã quá
-    // FETCH_STALE_TIMEOUT_MS mà cờ vẫn còn true, coi như cờ bị kẹt do 1 exception
-    // đã bị nuốt đâu đó và cho phép fetch mới thay vì skip vĩnh viễn.
-    qint64 m_fetchFriendsStartedAt;
-    qint64 m_fetchConvoStartedAt;
-    static const int FETCH_STALE_TIMEOUT_MS = 20000; // 20s là quá đủ cho 1 fetch bình thường (log thực tế: <1s)
-
     QMap<QString, QString> m_cookies;
     QString m_uid;
     QString m_displayName;
@@ -537,25 +500,6 @@ private:
     QList<QPair<QString, QString> > m_avatarDownloadQueue; // (url, threadId) đang chờ tới lượt tải
     void startAvatarNetworkFetch(const QString &url, const QString &threadId);
 
-    // QUAN TRỌNG: bảo vệ chống retry-storm khi mạng đang hỏng (vd DNS tạm
-    // thời không phân giải được — lỗi "Host not found" xảy ra gần như NGAY
-    // LẬP TỨC, không phải sau 1 network round-trip thật). Trước đây,
-    // onAvatarDownloaded() luôn lên lịch startNextQueuedAvatarDownload() sau
-    // đúng 80ms bất kể request vừa rồi thành công hay lỗi — nếu mạng đang
-    // hỏng, MỌI item trong hàng đợi (có thể hàng chục cái, tích luỹ qua cả
-    // fetchFriends 87 người + fetchConversations 20 group) đều lỗi gần như
-    // tức thời, khiến vòng lặp 80ms này thực chất chạy liên tục không nghỉ —
-    // quan sát thực tế: đúng lúc này log cho thấy hàng chục nghìn "bad
-    // allocation" dồn dập trong ~90 giây, sau đó tự hết khi network cuối
-    // cùng cũng hồi phục. Đếm số lỗi liên tiếp: quá
-    // AVATAR_FAILURE_BACKOFF_THRESHOLD lần liền, giãn delay ra
-    // AVATAR_FAILURE_BACKOFF_MS thay vì 80ms cố định — cho mạng/hệ thống
-    // thời gian hồi phục thay vì dồn dập thử lại. Reset về 0 ngay khi có 1
-    // request thành công.
-    int m_consecutiveAvatarFailures;
-    static const int AVATAR_FAILURE_BACKOFF_THRESHOLD = 4;
-    static const int AVATAR_FAILURE_BACKOFF_MS = 5000;
-
     // Re-emit friendsReady sau khi avatar load xong
     sqlite3 *m_db;
     QVariantList m_pendingFriends;
@@ -567,14 +511,13 @@ private:
 
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;
-    // QUAN TRỌNG: đã thử 45000 (45s) + gọi sendKeepAlive() ngay sau login/
-    // refresh — cùng với fetch-stagger, đã bị revert trước đây vì log xác
-    // nhận /keepalive trả error_code:0 nhưng KHÔNG cập nhật cookie zpw_sek
-    // (không có Set-Cookie mới) — zpw_sek có TTL cố định phía server, hoàn
-    // toàn không bị ảnh hưởng bởi tần suất gọi /keepalive từ client. Rút
-    // ngắn interval hay gọi thêm 1 lần ngay lập tức không "gia hạn" được gì
-    // cả, chỉ tốn thêm 1 request mỗi 45s không cần thiết. Giữ nguyên 120s.
-    static const int KEEPALIVE_INTERVAL_MS = 120000; // 2 phut, theo goi y trong issue zca-js
+    // 45 giây, KHÔNG phải 2 phút như trước. Log thực tế cho thấy cookie
+    // zpw_sek phía server hết hạn CHỈ SAU ~99 GIÂY kể từ lần refresh/login
+    // gần nhất — với interval 120s cũ, lần keepAlive đầu tiên luôn tới TRỄ
+    // hơn thời điểm cookie đã chết, nên "gia hạn" chưa từng thực sự xảy ra
+    // kịp lúc trong session đầu tiên sau mỗi lần khởi động HeadlessService.
+    // 45s để lại biên độ an toàn đáng kể so với ngưỡng ~99s quan sát được.
+    static const int KEEPALIVE_INTERVAL_MS = 45000;
     static const char *USER_AGENT;
     QString generateRandomUserAgent();
     static const char *AES_FIXED_KEY;
