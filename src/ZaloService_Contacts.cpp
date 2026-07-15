@@ -240,7 +240,12 @@ void ZaloService::onGroupDetailsDone()
             t["threadId"] = gid;
             t["name"]     = gname;
             t["isGroup"]  = true;
-            t["avatar"]   = g["avt"].toString();
+            // avt (thumbnail) is frequently left empty by the server for
+            // group conversations even when a real avatar exists — fullAvt
+            // (full-size URL) is populated in that case. Fall back to it so
+            // groups with a set avatar actually get one shown, instead of
+            // silently ending up with an empty avatar field forever.
+            t["avatar"]   = !g["avt"].toString().isEmpty() ? g["avt"].toString() : g["fullAvt"].toString();
             t["unread"]   = 0;
             threads.append(t);
             m_groupNames[gid] = gname; // cache for notifications
@@ -254,7 +259,8 @@ void ZaloService::onGroupDetailsDone()
             t["threadId"] = gid;
             t["name"]     = g["name"].toString();
             t["isGroup"]  = true;
-            t["avatar"]   = g["avt"].toString();
+            // Same avt/fullAvt fallback as the gridInfoMap branch above.
+            t["avatar"]   = !g["avt"].toString().isEmpty() ? g["avt"].toString() : g["fullAvt"].toString();
             t["unread"]   = 0;
             threads.append(t);
             m_groupNames[gid] = g["name"].toString(); // cache

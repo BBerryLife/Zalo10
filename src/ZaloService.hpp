@@ -324,6 +324,26 @@ private slots:
     void onPublishQrState(const QString &qrImagePath, const QString &qrCodeRaw);
     void onPublishSessionExpired();
     void onPublishLoginSuccess(const QString &uid, const QString &displayName);
+    // QUAN TRỌNG: friendsReady/conversationsReady/messageSent trước đây CHỈ đi
+    // qua EventBridgeServer's broadcastEvent() (TCP, live-only, không lưu lại
+    // gì) — nếu UI process chưa kịp kết nối lại EventBridge (m_reconnectTimer
+    // 2s trong ZaloServiceProxy) đúng lúc HeadlessService emit các signal này
+    // (rất dễ xảy ra ngay sau khi mở lại app: loadSession() ở HeadlessService
+    // chạy độc lập, không chờ UI, nên có thể fetchFriends/fetchConversations
+    // do onLoginSuccess trong QML kích hoạt trả về TRƯỚC KHI EventBridge kịp
+    // kết nối), sự kiện đó mất VĨNH VIỄN — UI không có cách nào biết lại được,
+    // dù dữ liệu đã có sẵn trong HeadlessService. Đây chính là nguyên nhân
+    // "bấm refresh không fetch lại được", "mở lại app không fetch được để
+    // nhắn" — không phải do command không được dispatch (nó CÓ dispatch và
+    // chạy xong trong HeadlessService), mà do KẾT QUẢ không bao giờ tới được
+    // UI. Publish thêm các key này vào service_state (đã có sẵn hạ tầng poll
+    // 400ms ở ZaloServiceProxy cho loggedIn/qrCode/sessionExpired) làm lưới an
+    // toàn thứ 2, KHÔNG thay thế EventBridge (vẫn giữ nguyên cho độ trễ thấp
+    // khi UI đang mở sẵn) — chỉ đảm bảo UI luôn "bắt kịp" được dù có bỏ lỡ
+    // broadcast TCP.
+    void onPublishFriendsReady(const QVariantList &friends);
+    void onPublishConversationsReady(const QVariantList &threads);
+    void onPublishMessageSent(bool success, const QString &threadId);
 
 private:
     struct EncryptedParams {
@@ -511,13 +531,14 @@ private:
 
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;
-    // 45 giây, KHÔNG phải 2 phút như trước. Log thực tế cho thấy cookie
-    // zpw_sek phía server hết hạn CHỈ SAU ~99 GIÂY kể từ lần refresh/login
-    // gần nhất — với interval 120s cũ, lần keepAlive đầu tiên luôn tới TRỄ
-    // hơn thời điểm cookie đã chết, nên "gia hạn" chưa từng thực sự xảy ra
-    // kịp lúc trong session đầu tiên sau mỗi lần khởi động HeadlessService.
-    // 45s để lại biên độ an toàn đáng kể so với ngưỡng ~99s quan sát được.
-    static const int KEEPALIVE_INTERVAL_MS = 45000;
+    // QUAN TRỌNG: đã thử 45000 (45s) + gọi sendKeepAlive() ngay sau login/
+    // refresh — cùng với fetch-stagger, đã bị revert trước đây vì log xác
+    // nhận /keepalive trả error_code:0 nhưng KHÔNG cập nhật cookie zpw_sek
+    // (không có Set-Cookie mới) — zpw_sek có TTL cố định phía server, hoàn
+    // toàn không bị ảnh hưởng bởi tần suất gọi /keepalive từ client. Rút
+    // ngắn interval hay gọi thêm 1 lần ngay lập tức không "gia hạn" được gì
+    // cả, chỉ tốn thêm 1 request mỗi 45s không cần thiết. Giữ nguyên 120s.
+    static const int KEEPALIVE_INTERVAL_MS = 120000; // 2 phut, theo goi y trong issue zca-js
     static const char *USER_AGENT;
     QString generateRandomUserAgent();
     static const char *AES_FIXED_KEY;

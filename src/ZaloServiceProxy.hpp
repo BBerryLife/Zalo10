@@ -178,6 +178,14 @@ private:
     QString      m_lastQrImagePath;
     QString      m_lastQrCodeRaw;
     QString      m_lastSessionExpiredFlag;
+    // Last-seen "seq" values for the service_state fallback (see
+    // onPublishFriendsReady/onPublishConversationsReady/onPublishMessageSent
+    // in ZaloService.hpp) — only re-emit friendsReady/conversationsReady/
+    // messageSent to QML when the seq actually changed, so this fallback
+    // path doesn't re-fire the same result on every 400ms poll tick.
+    QString      m_lastFriendsReadySeq;
+    QString      m_lastConversationsReadySeq;
+    QString      m_lastMessageSentSeq;
 
     QTcpSocket  *m_eventSocket;
     QTimer      *m_reconnectTimer;

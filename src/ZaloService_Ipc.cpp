@@ -54,6 +54,34 @@ void ZaloService::onPublishLoginSuccess(const QString &uid, const QString &displ
     publishState("sessionExpired", "0");
 }
 
+// See declarations in ZaloService.hpp for why these exist (durable fallback
+// for EventBridge broadcasts the UI process may have missed). Each writes
+// the payload as JSON plus bumps a monotonically increasing "seq" counter —
+// the proxy only needs to notice the seq changed to know there's fresh data
+// worth re-parsing, without needing to diff the JSON itself.
+void ZaloService::onPublishFriendsReady(const QVariantList &friends)
+{
+    QVariantMap wrap;
+    wrap["list"] = friends;
+    publishState("friendsReadyJson", QString::fromUtf8(variantToJsonCompact(wrap)));
+    publishState("friendsReadySeq", QString::number(QDateTime::currentMSecsSinceEpoch()));
+}
+
+void ZaloService::onPublishConversationsReady(const QVariantList &threads)
+{
+    QVariantMap wrap;
+    wrap["list"] = threads;
+    publishState("conversationsReadyJson", QString::fromUtf8(variantToJsonCompact(wrap)));
+    publishState("conversationsReadySeq", QString::number(QDateTime::currentMSecsSinceEpoch()));
+}
+
+void ZaloService::onPublishMessageSent(bool success, const QString &threadId)
+{
+    publishState("messageSentSuccess", success ? "1" : "0");
+    publishState("messageSentThreadId", threadId);
+    publishState("messageSentSeq", QString::number(QDateTime::currentMSecsSinceEpoch()));
+}
+
 void ZaloService::publishState(const QString &key, const QString &value)
 {
     if (!m_db) return;

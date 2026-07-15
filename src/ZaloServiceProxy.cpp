@@ -253,6 +253,39 @@ void ZaloServiceProxy::onStatePollTimer()
     } else if (sessionExpiredFlag == "0") {
         m_lastSessionExpiredFlag = "0";
     }
+
+    // ---- Durable fallback for friendsReady/conversationsReady/messageSent ----
+    // See onPublishFriendsReady/onPublishConversationsReady/onPublishMessageSent
+    // in ZaloService.hpp/.cpp for why this exists: EventBridgeServer's TCP
+    // broadcast is live-only and gets silently dropped if the UI's
+    // m_eventSocket isn't connected at the exact moment HeadlessService emits
+    // these — most commonly right after reopening the app (HeadlessService's
+    // loadSession() runs independently of the UI and may already be answering
+    // fetchFriends/fetchConversations before EventBridge reconnects) or right
+    // after tapping refresh a 2nd time in quick succession. Comparing "seq"
+    // (a timestamp bumped on every publish) against the last one we acted on
+    // means this only fires for genuinely new data, and is naturally
+    // idempotent with whatever the live EventBridge path already delivered.
+    QString friendsSeq = state.value("friendsReadySeq");
+    if (!friendsSeq.isEmpty() && friendsSeq != m_lastFriendsReadySeq) {
+        m_lastFriendsReadySeq = friendsSeq;
+        QVariantMap wrap = jsonToMap(state.value("friendsReadyJson"));
+        emit friendsReady(wrap.value("list").toList());
+    }
+
+    QString convoSeq = state.value("conversationsReadySeq");
+    if (!convoSeq.isEmpty() && convoSeq != m_lastConversationsReadySeq) {
+        m_lastConversationsReadySeq = convoSeq;
+        QVariantMap wrap = jsonToMap(state.value("conversationsReadyJson"));
+        emit conversationsReady(wrap.value("list").toList());
+    }
+
+    QString msgSentSeq = state.value("messageSentSeq");
+    if (!msgSentSeq.isEmpty() && msgSentSeq != m_lastMessageSentSeq) {
+        m_lastMessageSentSeq = msgSentSeq;
+        bool success = state.value("messageSentSuccess") == "1";
+        emit messageSent(success, state.value("messageSentThreadId"));
+    }
 }
 
 // ---- Nhóm A: mọi hàm dưới đây CHỈ ghi command_queue, không gọi network -----

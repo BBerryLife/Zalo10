@@ -223,6 +223,13 @@ ZaloService::ZaloService(QObject *parent)
     connect(this, SIGNAL(loggedInChanged()), this, SLOT(onPublishLoggedInState()));
     connect(this, SIGNAL(qrCodeReady(QString,QString)), this, SLOT(onPublishQrState(QString,QString)));
     connect(this, SIGNAL(sessionExpired()), this, SLOT(onPublishSessionExpired()));
+    // See onPublishFriendsReady/onPublishConversationsReady/onPublishMessageSent
+    // declarations in ZaloService.hpp — durable service_state fallback for
+    // when EventBridgeServer's live TCP broadcast is missed (e.g. right after
+    // reopening the app, before the UI's EventBridge client reconnects).
+    connect(this, SIGNAL(friendsReady(QVariantList)), this, SLOT(onPublishFriendsReady(QVariantList)));
+    connect(this, SIGNAL(conversationsReady(QVariantList)), this, SLOT(onPublishConversationsReady(QVariantList)));
+    connect(this, SIGNAL(messageSent(bool,QString)), this, SLOT(onPublishMessageSent(bool,QString)));
     connect(this, SIGNAL(loginSuccess(QString,QString)), this, SLOT(onPublishLoginSuccess(QString,QString)));
 }
 
