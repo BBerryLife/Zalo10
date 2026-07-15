@@ -446,6 +446,23 @@ private:
     qint64 m_lastFetchConvoTime;        // epoch-ms của lần fetch thành công gần nhất
     static const int FETCH_COOLDOWN_MS = 10000; // 10 giây cooldown giữa 2 lần fetch
 
+    // QUAN TRỌNG: m_isFetchingFriends/m_isFetchingConversations chỉ được set
+    // lại về false ở các điểm return CUỐI của onFetchFriendsDone()/
+    // onGroupDetailsDone() — nhưng SafeHeadlessApplication::notify() (xem
+    // main_headless.cpp) bắt exception ở tầng Qt event-dispatch, BÊN NGOÀI
+    // hoàn toàn các hàm này. Nếu bad_alloc (hay bất kỳ exception nào) ném ra
+    // giữa chừng — vd ngay trong jsonToMap() lúc parse response — hàm bị hủy
+    // nửa chừng, KHÔNG BAO GIỜ chạm tới dòng reset flag, và cờ "đang fetch"
+    // bị kẹt true VĨNH VIỄN cho tới khi HeadlessService restart. Log thực tế
+    // xác nhận đúng chuỗi này: "bad allocation" ngay trong lúc xử lý
+    // groupDetails -> 60s sau, fetchConversations tiếp theo bị skip với log
+    // "already in progress". Lưu lại epoch-ms lúc BẮT ĐẦU fetch; nếu đã quá
+    // FETCH_STALE_TIMEOUT_MS mà cờ vẫn còn true, coi như cờ bị kẹt do 1 exception
+    // đã bị nuốt đâu đó và cho phép fetch mới thay vì skip vĩnh viễn.
+    qint64 m_fetchFriendsStartedAt;
+    qint64 m_fetchConvoStartedAt;
+    static const int FETCH_STALE_TIMEOUT_MS = 20000; // 20s là quá đủ cho 1 fetch bình thường (log thực tế: <1s)
+
     QMap<QString, QString> m_cookies;
     QString m_uid;
     QString m_displayName;

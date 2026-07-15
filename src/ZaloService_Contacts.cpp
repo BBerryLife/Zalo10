@@ -38,8 +38,18 @@
 void ZaloService::fetchConversations(){
     if (!m_loggedIn) return;
     if (m_isFetchingConversations) {
-        qDebug() << "[Zalo] fetchConversations: already in progress, skipping duplicate call";
-        return;
+        // Nếu cờ đã bật quá lâu, coi như bị kẹt do 1 exception bị
+        // SafeHeadlessApplication::notify() nuốt mất giữa chừng lúc xử lý lần
+        // fetch trước (xem giải thích chi tiết ở khai báo m_fetchConvoStartedAt
+        // trong ZaloService.hpp) — không skip vĩnh viễn nữa, cho fetch mới.
+        qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_fetchConvoStartedAt;
+        if (m_fetchConvoStartedAt > 0 && elapsed > FETCH_STALE_TIMEOUT_MS) {
+            qDebug() << "[Zalo] fetchConversations: previous fetch flag stuck for" << elapsed
+                     << "ms (> " << FETCH_STALE_TIMEOUT_MS << "ms) - treating as stale, allowing new fetch";
+        } else {
+            qDebug() << "[Zalo] fetchConversations: already in progress, skipping duplicate call";
+            return;
+        }
     }
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (m_lastFetchConvoTime > 0 && (now - m_lastFetchConvoTime) < FETCH_COOLDOWN_MS) {
@@ -48,6 +58,7 @@ void ZaloService::fetchConversations(){
         return;
     }
     m_isFetchingConversations = true;
+    m_fetchConvoStartedAt = now;
 
     QVariantMap qp;
     qp["zpw_ver"]  = QString::number(API_VERSION);
@@ -504,8 +515,16 @@ void ZaloService::fetchFriends()
 {
     if (!m_loggedIn) return;
     if (m_isFetchingFriends) {
-        qDebug() << "[Zalo] fetchFriends: already in progress, skipping duplicate call";
-        return;
+        // Xem giải thích chi tiết ở fetchConversations() phía trên — cùng cơ
+        // chế chống kẹt cờ vĩnh viễn khi exception bị nuốt giữa chừng.
+        qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_fetchFriendsStartedAt;
+        if (m_fetchFriendsStartedAt > 0 && elapsed > FETCH_STALE_TIMEOUT_MS) {
+            qDebug() << "[Zalo] fetchFriends: previous fetch flag stuck for" << elapsed
+                     << "ms (> " << FETCH_STALE_TIMEOUT_MS << "ms) - treating as stale, allowing new fetch";
+        } else {
+            qDebug() << "[Zalo] fetchFriends: already in progress, skipping duplicate call";
+            return;
+        }
     }
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (m_lastFetchFriendsTime > 0 && (now - m_lastFetchFriendsTime) < FETCH_COOLDOWN_MS) {
@@ -514,6 +533,7 @@ void ZaloService::fetchFriends()
         return;
     }
     m_isFetchingFriends = true;
+    m_fetchFriendsStartedAt = now;
 
     // zca-js dùng GET, params trong query string (không phải POST body)
     QVariantMap innerParams;
