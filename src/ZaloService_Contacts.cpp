@@ -398,9 +398,25 @@ void ZaloService::onAvatarDownloaded()
     // mở kết nối mới ra giúp hệ điều hành có thời gian giải phóng TIME_WAIT
     // giữa chừng, thay vì dồn cục hàng trăm cái liên tiếp gần như không nghỉ.
     // TUYỆT ĐỐI không gọi startAvatarNetworkFetch() trực tiếp/đồng bộ ở đây.
+    //
+    // QUAN TRỌNG (retry-storm backoff): 80ms cố định giả định request vừa
+    // rồi mất một khoảng thời gian network round-trip thật. Nhưng khi DNS/
+    // network đang hỏng, lỗi (vd "Host not found") trả về gần NGAY LẬP TỨC —
+    // nếu cứ giữ đúng 80ms cho MỌI trường hợp, một hàng đợi vài chục avatar
+    // (tích luỹ qua nhiều lần fetchFriends/fetchConversations) sẽ lỗi liên
+    // tục gần như không nghỉ, hàng chục request/giây, trong khi network vẫn
+    // đang hỏng — đây chính là nguyên nhân bão "bad allocation" quan sát
+    // thực tế ngay sau khi refresh/mở lại app lúc mạng chưa ổn định. Đếm số
+    // lần lỗi LIÊN TIẾP; vượt ngưỡng thì giãn delay ra
+    // AVATAR_FAILURE_BACKOFF_MS thay vì 80ms, cho mạng có thời gian hồi phục
+    // giữa các lần thử thay vì dồn dập.
+    int nextDelayMs = 80;
+    if (m_consecutiveAvatarFailures >= AVATAR_FAILURE_BACKOFF_THRESHOLD) {
+        nextDelayMs = AVATAR_FAILURE_BACKOFF_MS;
+    }
     --m_activeAvatarDownloads;
     if (!m_avatarDownloadQueue.isEmpty()) {
-        QTimer::singleShot(80, this, SLOT(startNextQueuedAvatarDownload()));
+        QTimer::singleShot(nextDelayMs, this, SLOT(startNextQueuedAvatarDownload()));
     }
 
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
@@ -411,11 +427,14 @@ void ZaloService::onAvatarDownloaded()
 
     if (hasError || data.isEmpty()) {
         int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        ++m_consecutiveAvatarFailures;
         qDebug() << "[Zalo] avatar download failed for" << threadId
                  << "error:" << reply->errorString()
-                 << "HTTP:" << httpStatus;
+                 << "HTTP:" << httpStatus
+                 << "consecutiveFailures:" << m_consecutiveAvatarFailures;
         return;
     }
+    m_consecutiveAvatarFailures = 0;
 
     // Fixed filename per-person (md5 of threadId, NOT of the URL): this means
     // a changed profile picture overwrites the same file in place instead of

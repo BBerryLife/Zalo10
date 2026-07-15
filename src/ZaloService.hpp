@@ -520,6 +520,25 @@ private:
     QList<QPair<QString, QString> > m_avatarDownloadQueue; // (url, threadId) đang chờ tới lượt tải
     void startAvatarNetworkFetch(const QString &url, const QString &threadId);
 
+    // QUAN TRỌNG: bảo vệ chống retry-storm khi mạng đang hỏng (vd DNS tạm
+    // thời không phân giải được — lỗi "Host not found" xảy ra gần như NGAY
+    // LẬP TỨC, không phải sau 1 network round-trip thật). Trước đây,
+    // onAvatarDownloaded() luôn lên lịch startNextQueuedAvatarDownload() sau
+    // đúng 80ms bất kể request vừa rồi thành công hay lỗi — nếu mạng đang
+    // hỏng, MỌI item trong hàng đợi (có thể hàng chục cái, tích luỹ qua cả
+    // fetchFriends 87 người + fetchConversations 20 group) đều lỗi gần như
+    // tức thời, khiến vòng lặp 80ms này thực chất chạy liên tục không nghỉ —
+    // quan sát thực tế: đúng lúc này log cho thấy hàng chục nghìn "bad
+    // allocation" dồn dập trong ~90 giây, sau đó tự hết khi network cuối
+    // cùng cũng hồi phục. Đếm số lỗi liên tiếp: quá
+    // AVATAR_FAILURE_BACKOFF_THRESHOLD lần liền, giãn delay ra
+    // AVATAR_FAILURE_BACKOFF_MS thay vì 80ms cố định — cho mạng/hệ thống
+    // thời gian hồi phục thay vì dồn dập thử lại. Reset về 0 ngay khi có 1
+    // request thành công.
+    int m_consecutiveAvatarFailures;
+    static const int AVATAR_FAILURE_BACKOFF_THRESHOLD = 4;
+    static const int AVATAR_FAILURE_BACKOFF_MS = 5000;
+
     // Re-emit friendsReady sau khi avatar load xong
     sqlite3 *m_db;
     QVariantList m_pendingFriends;
