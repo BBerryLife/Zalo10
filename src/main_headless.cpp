@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QDateTime>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 
 using namespace bb;
@@ -70,7 +71,8 @@ static void headlessMessageHandler(QtMsgType type, const char *msg)
 class SafeHeadlessApplication : public Application
 {
 public:
-    SafeHeadlessApplication(int argc, char **argv) : Application(argc, argv) {}
+    SafeHeadlessApplication(int argc, char **argv)
+        : Application(argc, argv), m_burstWindowStart(0), m_burstCount(0) {}
 
     bool notify(QObject *receiver, QEvent *event)
     {
@@ -78,10 +80,59 @@ public:
             return Application::notify(receiver, event);
         } catch (const std::exception &e) {
             qWarning() << "[HeadlessService] CAUGHT exception in event handler (process van song):" << e.what();
+            noteExceptionAndMaybeRestart();
             return false;
         } catch (...) {
             qWarning() << "[HeadlessService] CAUGHT unknown exception in event handler (process van song)";
+            noteExceptionAndMaybeRestart();
             return false;
+        }
+    }
+
+private:
+    qint64 m_burstWindowStart;
+    int    m_burstCount;
+
+    // QUAN TRỌNG — notify() ở trên chặn được std::terminate() (process chết),
+    // NHƯNG không giải quyết được nguyên nhân gốc (thường là bad_alloc do áp
+    // lực bộ nhớ). Quan sát thực tế trong log: sau 1 exception đầu tiên, CÙNG
+    // 1 event/tài nguyên (vd socket còn dữ liệu chưa đọc được vì lần đọc
+    // trước ném exception nên chưa kịp tiêu thụ) cứ được Qt dispatch lại gần
+    // như ngay lập tức — hàng nghìn lần/giây, liên tục nhiều PHÚT — biến
+    // process thành "sống dở chết dở": không crash (nên không tự khởi động
+    // lại) nhưng cũng không còn xử lý được bất kỳ việc thực sự nào (mất tin
+    // nhắn đến, gửi đi không được, refresh không phản hồi) — đúng 2 triệu chứng
+    // còn lại ngoài lần fetch đầu tiên. Vì ZaloServiceProxy (phía UI) ĐÃ CÓ sẵn
+    // cơ chế phát hiện mất kết nối EventBridge + tự invoke() lại HeadlessService
+    // mới (xem onEventBridgeDisconnected()/onEventBridgeReconnectTimer()), cách
+    // an toàn nhất không phải là cố "chữa" tiếp trong trạng thái bộ nhớ đã hỏng,
+    // mà là NHẬN DIỆN vòng lặp exception dồn dập này và chủ động thoát process
+    // ngay — để lại đúng 1 HeadlessService cũ, hỏng, biến mất, và cơ chế
+    // reconnect có sẵn ở UI sẽ tự khởi động lại 1 instance MỚI, sạch, trong
+    // vòng vài giây, mà không cần người dùng thao tác gì thêm. Ngưỡng: từ 20
+    // exception trở lên trong cùng 1 cửa sổ 300ms mới coi là "vòng lặp dồn
+    // dập" — một vài exception lẻ tẻ, cách xa nhau (như trường hợp fetchFriends
+    // occasional) thì KHÔNG kích hoạt, tránh restart quá nhạy.
+    void noteExceptionAndMaybeRestart()
+    {
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (m_burstWindowStart == 0 || (now - m_burstWindowStart) > 300) {
+            m_burstWindowStart = now;
+            m_burstCount = 1;
+            return;
+        }
+        ++m_burstCount;
+        if (m_burstCount >= 20) {
+            qWarning() << "[HeadlessService] Runaway exception loop detected ("
+                       << m_burstCount << "exceptions within 300ms) - process is stuck, "
+                       << "exiting now so ZaloServiceProxy's reconnect timer can relaunch a fresh instance.";
+            // ::exit() thay vì qApp->quit(): trạng thái bộ nhớ hiện tại đã bất
+            // thường (đây chính là lý do gây exception), không nên tin tưởng
+            // thêm bất kỳ đường Qt event-loop/destructor nào nữa còn chạy đúng.
+            // Thoát ngay lập tức, đóng socket EventBridge, để UI phát hiện mất
+            // kết nối và tự invoke() lại — nhanh và chắc chắn hơn nhiều so với
+            // chờ quit() đi qua vòng lặp sự kiện vốn đang là nguồn gốc lỗi.
+            ::exit(1);
         }
     }
 };
