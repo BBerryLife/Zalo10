@@ -1438,8 +1438,25 @@ Page {
         if (size === 0) return;
 
         var items = [];
+        // Snapshot each row's CURRENT grouped/bubblePos before anything below
+        // mutates it. msgModel.value(i) hands back the same underlying object
+        // that items[i] then points to and gets its fields overwritten on
+        // (cur.bubblePos = ...; cur.grouped = ...; a few dozen lines down) —
+        // so comparing "old = msgModel.value(i)" against "items[i]" later was
+        // really comparing that object against itself post-mutation, always
+        // equal. layoutChanged was effectively always false, so the
+        // remove+insert remeasure path documented below never actually ran —
+        // this is the real reason grouped bubbles kept rendering with a stale
+        // gap even though the recomputed grouped/bubblePos values were
+        // correct. Capturing plain old/new values up front (not object
+        // references) makes the before/after comparison meaningful again.
+        var prevGrouped = [];
+        var prevBubblePos = [];
         for (var i = 0; i < size; i++) {
-            items.push(msgModel.value(i));
+            var v = msgModel.value(i);
+            items.push(v);
+            prevGrouped.push(v.grouped);
+            prevBubblePos.push(v.bubblePos);
         }
 
         // Normalise a Zalo timestamp (may be seconds or ms) to milliseconds.
@@ -1527,8 +1544,7 @@ Page {
         // change keep the cheap replace() (just content updates, e.g. a photo
         // download finishing — no layout-affecting fields touched).
         for (var i = 0; i < size; i++) {
-            var old = msgModel.value(i);
-            var layoutChanged = (old.grouped !== items[i].grouped) || (old.bubblePos !== items[i].bubblePos);
+            var layoutChanged = (prevGrouped[i] !== items[i].grouped) || (prevBubblePos[i] !== items[i].bubblePos);
             if (layoutChanged) {
                 msgModel.removeAt(i);
                 msgModel.insert(i, items[i]);
