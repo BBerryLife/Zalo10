@@ -1883,8 +1883,29 @@ Page {
                 }
 
                 if (!handledInPlace) {
+                    var dupIdx = -1;
                     for (var di = 0; di < msgModel.size(); di++) {
-                        if (msgModel.value(di).msgId === msg.msgId) return;
+                        if (msgModel.value(di).msgId === msg.msgId) { dupIdx = di; break; }
+                    }
+                    if (dupIdx >= 0) {
+                        // Same msgId already recorded — typically the optimistic row
+                        // created right after the HTTP send-confirm (which only knows
+                        // the local device clock, not the server's real ts) getting a
+                        // second echo from the WS confirm (which carries the real,
+                        // authoritative server ts). Previously this duplicate was
+                        // silently dropped, so the row stayed stuck on local-clock ts
+                        // forever. If the local device clock drifts from server time
+                        // (as it does here, ~4h off), that stale ts both displays the
+                        // wrong time AND falls outside the 5-minute grouping window,
+                        // splitting a bubble that should still be merged with its
+                        // neighbours. Adopt the newer ts when it actually differs.
+                        var existingRow = msgModel.value(dupIdx);
+                        if (msg.ts && String(msg.ts) !== String(existingRow.ts)) {
+                            msgModel.replace(dupIdx, msg);
+                            chatViewPage.rebuildGroups();
+                            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                        }
+                        return;
                     }
                     msgModel.append(msg);
                 }
