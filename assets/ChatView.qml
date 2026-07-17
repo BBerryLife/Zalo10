@@ -636,6 +636,20 @@ Page {
                                              || ListItemData.isMine === "true"
                                              || ListItemData.isMine === 1)
                         property bool grouped: ListItemData.grouped === true
+                        // TEMP DIAGNOSTIC — pinpointing whether the "always caps at 2"
+                        // grouping bug is a QML binding problem (ListItemData.grouped
+                        // never reaching this row as true) or a Cascades-internal
+                        // layout/height cache problem (binding IS true but topPadding's
+                        // effect on measured height doesn't stick). rebuildGroups()
+                        // already logs what it WROTE into msgModel; this logs what this
+                        // delegate instance actually READS for the same row, so
+                        // diffing the two logs tells us which side is wrong. Safe to
+                        // delete once that's answered.
+                        onGroupedChanged: {
+                            console.log("[Zalo QML] delegate grouped-binding: msgId=" + String(ListItemData.msgId).slice(-6)
+                                + " grouped=" + grouped + " bubblePos=" + (ListItemData.bubblePos || "full")
+                                + " index=" + ListItem.indexPath[0]);
+                        }
                         property bool recalled: (ListItemData.msgType === 99 || ListItemData.msgType === "99")
                         // "Show Recalled Messages" setting: when on, and the recalled message's
                         // original content was plain text (not a photo/sticker JSON blob), keep
@@ -666,6 +680,11 @@ Page {
                         // without ever exceeding the bubble's own width. 94 = the two
                         // side spacer Containers below (6+60) + bubble left/right padding (14+14).
                         property string bubblePos: ListItemData.bubblePos || "full"
+                        // TEMP DIAGNOSTIC — see onGroupedChanged above for why.
+                        onBubblePosChanged: {
+                            console.log("[Zalo QML] delegate bubblePos-binding: msgId=" + String(ListItemData.msgId).slice(-6)
+                                + " bubblePos=" + bubblePos + " index=" + ListItem.indexPath[0]);
+                        }
                         property string bubbleImage: rowRoot.mine
                             ? ("asset:///images/Bubble/outgoing/" + rowRoot.bubblePos + ".png")
                             : ("asset:///images/Bubble/incoming/" + rowRoot.bubblePos + ".png")
