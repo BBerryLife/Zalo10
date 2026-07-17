@@ -1540,16 +1540,43 @@ Page {
         // relayout, which is exactly the "looked fine until the next message
         // arrived" symptom. remove+insert forces Cascades to treat the row as a
         // brand new item and re-measure it immediately instead of leaving a
-        // stale cached height around. Rows whose grouped/bubblePos didn't
-        // change keep the cheap replace() (just content updates, e.g. a photo
-        // download finishing — no layout-affecting fields touched).
+        // stale cached height around.
+        //
+        // Doing that removeAt+insert PER ROW, though, turned out to have its
+        // own failure mode: when several messages arrive close together (a
+        // second or less apart), rebuildGroups() runs once per message, and
+        // each run can touch multiple earlier rows whose grouped/bubblePos
+        // just shifted because a new row joined their cluster. Each of those
+        // per-row removeAt+insert calls kicks off Cascades' default
+        // remove/insert item animation; with runs stacking up faster than an
+        // animation can finish, a later run's removeAt+insert on the same
+        // index interrupts the still-running animation from the previous
+        // run, and the row is left with whatever half-finished height that
+        // interruption produced — visually stuck looking "split" even though
+        // the underlying grouped/bubblePos data is correct (confirmed by the
+        // diagnostic dump below matching the intended grouping while the
+        // screen still showed separate bubbles).
+        //
+        // Collapsing every row's update into a single clear()+append() avoids
+        // that entirely: it's one atomic model reset instead of N
+        // independently-animated per-row mutations, so there's nothing left
+        // to race. Only pay that (heavier) cost when something actually
+        // needs to re-layout; a run where nothing's grouping changed (e.g. a
+        // photo URL just finished downloading) still uses cheap in-place
+        // replace() per row, same as before.
+        var anyLayoutChanged = false;
         for (var i = 0; i < size; i++) {
-            var layoutChanged = (prevGrouped[i] !== items[i].grouped) || (prevBubblePos[i] !== items[i].bubblePos);
-            if (layoutChanged) {
-                msgModel.removeAt(i);
-                msgModel.insert(i, items[i]);
-            } else {
-                msgModel.replace(i, items[i]);
+            if (prevGrouped[i] !== items[i].grouped || prevBubblePos[i] !== items[i].bubblePos) {
+                anyLayoutChanged = true;
+                break;
+            }
+        }
+        if (anyLayoutChanged) {
+            msgModel.clear();
+            msgModel.append(items);
+        } else {
+            for (var i2 = 0; i2 < size; i2++) {
+                msgModel.replace(i2, items[i2]);
             }
         }
 
