@@ -9,6 +9,8 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
+#include <QScriptEngine>
+#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -79,20 +81,6 @@ QString ZaloService::aesDecryptBase64_256(const QString &keyStr, const QString &
         QUrl::fromPercentEncoding(cipherB64.toUtf8()).toUtf8());
     if (cipher.isEmpty()) return QString();
 
-    // QUAN TRỌNG: AES_cbc_encrypt() (OpenSSL) ghi đúng cipher.size() byte vào
-    // out — nhưng CBC là block cipher, chỉ đúng/an toàn khi cipher.size() là
-    // BỘI SỐ của AES_BLOCK_SIZE (16). Nếu cipherB64 bị lệch block (ví dụ do
-    // percent-decode/base64-decode phía trên trả về số byte lẻ vì dữ liệu
-    // server không như mong đợi), gọi thẳng AES_cbc_encrypt với size lẻ có
-    // thể ghi TRÀN ra ngoài buffer `out` (heap buffer overflow) — bug này
-    // KHÔNG crash ngay tại đây, mà thường crash sau đó ở 1 allocation khác
-    // hoàn toàn không liên quan, rất khó trace nếu không kiểm tra ở đây.
-    if (cipher.size() % AES_BLOCK_SIZE != 0) {
-        qDebug() << "[Zalo Error] aesDecryptBase64_256: cipher size" << cipher.size()
-                  << "khong chia het cho" << AES_BLOCK_SIZE << "(AES block) - du lieu loi/lech, bo qua de tranh buffer overflow";
-        return QString();
-    }
-
     unsigned char iv[AES_BLOCK_SIZE];
     memset(iv, 0, AES_BLOCK_SIZE);
 
@@ -149,45 +137,11 @@ QString ZaloService::aesEncryptBase64_256(const QString &keyStr, const QString &
 QString ZaloService::aesDecryptBase64(const QString &keyStr, const QString &cipherB64)
 {
     if (cipherB64.isEmpty()) return QString();
-    qDebug() << "[Zalo] aesDecryptBase64 input length:" << cipherB64.length();
-    // Log rải ra từng bước nhỏ — lần crash gần nhất, log dừng đột ngột ngay
-    // sau dòng "input length" phía trên, TRƯỚC cả dòng "cipher size after
-    // base64 decode" ở dưới — nghĩa là crash nằm đâu đó trong resolveKey()/
-    // fromPercentEncoding()/fromBase64() bên dưới, không phải ở
-    // AES_cbc_encrypt như nghi ngờ ban đầu. Thêm log xen kẽ để lần sau biết
-    // chính xác dòng nào chết, thay vì đoán qua khoảng trống trong log.
     QByteArray key    = resolveKey(keyStr);
-    qDebug() << "[Zalo] aesDecryptBase64 resolveKey done, keyBytes:" << key.size();
-    QString decoded   = QUrl::fromPercentEncoding(cipherB64.toUtf8());
-    qDebug() << "[Zalo] aesDecryptBase64 percent-decode done, length:" << decoded.length();
     int keyBits = key.size() * 8;
+    QString decoded   = QUrl::fromPercentEncoding(cipherB64.toUtf8());
     QByteArray cipher = QByteArray::fromBase64(decoded.toUtf8());
     if (cipher.isEmpty()) return QString();
-    qDebug() << "[Zalo] aesDecryptBase64 cipher size after base64 decode:" << cipher.size() << "bytes";
-
-    // Sanity cap: 1 lần fetch bình thường (kể cả friend list/group list lớn)
-    // không thể vượt vài MB sau khi mã hoá. Nếu vượt ngưỡng này, gần như chắc
-    // chắn cipherB64 bị parse sai (garbage) chứ không phải payload thật —
-    // chặn ở đây để tránh AES_cbc_encrypt cấp phát/ghi vào buffer khổng lồ
-    // (nguồn gốc "bad allocation" quan sát được trong log) thay vì để crash.
-    const int kMaxCipherBytes = 20 * 1024 * 1024; // 20MB
-    if (cipher.size() > kMaxCipherBytes) {
-        qDebug() << "[Zalo Error] aesDecryptBase64: cipher size" << cipher.size()
-                  << "vuot nguong an toan (" << kMaxCipherBytes << ") - cipherB64.length()="
-                  << cipherB64.length() << "- bo qua de tranh bad_alloc";
-        return QString();
-    }
-
-    // QUAN TRỌNG (xem giải thích chi tiết ở aesDecryptBase64_256 phía trên):
-    // AES_cbc_encrypt() chỉ an toàn khi cipher.size() là bội số của
-    // AES_BLOCK_SIZE (16) — không kiểm tra thì có thể ghi tràn ra ngoài
-    // buffer `out`, gây heap corruption âm thầm, crash trễ ở 1 chỗ khác
-    // không liên quan (rất khó trace).
-    if (cipher.size() % AES_BLOCK_SIZE != 0) {
-        qDebug() << "[Zalo Error] aesDecryptBase64: cipher size" << cipher.size()
-                  << "khong chia het cho" << AES_BLOCK_SIZE << "(AES block) - du lieu loi/lech, bo qua de tranh buffer overflow";
-        return QString();
-    }
 
     unsigned char iv[AES_BLOCK_SIZE];
     memset(iv, 0, AES_BLOCK_SIZE);
@@ -201,7 +155,6 @@ QString ZaloService::aesDecryptBase64(const QString &keyStr, const QString &ciph
         unsigned char pad = (unsigned char)out.at(out.size() - 1);
         if (pad > 0 && pad <= AES_BLOCK_SIZE) out.chop(pad);
     }
-    qDebug() << "[Zalo] aesDecryptBase64 decrypted output size:" << out.size() << "bytes";
     return QString::fromUtf8(out);
 }
 

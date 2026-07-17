@@ -14,17 +14,6 @@ NavigationPane {
     property string searchText: ""
     property variant allGroups: []
     property bool refreshCooldown: false
-    // See ChatsTab.qml's pendingAvatarQueue for why this exists — avoids a
-    // synchronous burst of enqueueCommand() calls (one per group avatar)
-    // landing on top of HeadlessService's own command_queue writes.
-    property variant pendingAvatarQueue: []
-
-    function queueAvatarDownload(threadId, url) {
-        var q = pendingAvatarQueue;
-        q.push({ tid: threadId, url: url });
-        pendingAvatarQueue = q;
-        if (!avatarDripTimer.running) avatarDripTimer.start();
-    }
 
     attachedObjects: [
         Timer {
@@ -32,29 +21,6 @@ NavigationPane {
             interval: 11000
             repeat: false
             onTriggered: groupsNav.refreshCooldown = false
-        },
-        // See onLoginSuccess above — staggers fetchConversations 400ms behind
-        // ChatsTab's fetchFriends to avoid concurrent decrypt+parse peaks.
-        Timer {
-            id: loginFetchDelayTimer
-            interval: 400
-            repeat: false
-            onTriggered: zService.fetchConversations()
-        },
-        Timer {
-            id: avatarDripTimer
-            interval: 60
-            repeat: true
-            onTriggered: {
-                var q = groupsNav.pendingAvatarQueue;
-                var batch = 5;
-                for (var i = 0; i < batch && q.length > 0; i++) {
-                    var item = q.shift();
-                    zService.downloadAvatar(item.tid, item.url);
-                }
-                groupsNav.pendingAvatarQueue = q;
-                if (q.length === 0) avatarDripTimer.stop();
-            }
         },
         // Same reasoning as ChatsTab.qml's chatViewWarmupTimer: forces the
         // ChatView.qml component to be parsed/cached once in the background
@@ -406,19 +372,6 @@ NavigationPane {
             Connections {
                 target: zService
 
-                // Xem giải thích đầy đủ trong ChatsTab.qml's onEventBridgeReconnected —
-                // cùng lý do: avatarReady broadcast trong lúc UI mất kết nối
-                // EventBridge bị mất vĩnh viễn, phát lại downloadAvatar ở đây gần
-                // như miễn phí vì file đã có sẵn trên đĩa.
-                onEventBridgeReconnected: {
-                    for (var i = 0; i < groupModel.size(); i++) {
-                        var d = groupModel.value(i);
-                        if ((!d.localAvatar || d.localAvatar.length === 0) && d.avatar && d.avatar.length > 0 && d.threadId) {
-                            groupsNav.queueAvatarDownload(d.threadId, d.avatar);
-                        }
-                    }
-                }
-
                 onConversationsReady: {
                     groupsLoading.visible = false;
                     groupModel.clear();
@@ -473,7 +426,7 @@ NavigationPane {
                         var gurl = gg.avatar || "";
                         var gtid = gg.threadId || "";
                         if (gurl.length > 0 && gtid.length > 0)
-                            groupsNav.queueAvatarDownload(gtid, gurl);
+                            zService.downloadAvatar(gtid, gurl);
                     }
                     groupsNav.allGroups = arr;
                 }
@@ -503,13 +456,8 @@ NavigationPane {
                     if (groupModel.size() === 0) {
                         groupsNav.refreshCooldown = true;
                         groupsRefreshCooldownTimer.restart();
+                        zService.fetchConversations();
                         groupsLoading.visible = true;
-                        // 400ms delay — see ChatsTab.qml's onLoginSuccess comment:
-                        // staggers this behind ChatsTab's fetchFriends (fires
-                        // immediately) and ahead of InvitesTab's fetchInvites
-                        // (800ms) to avoid 3 concurrent decrypt+parse operations
-                        // peaking at once right after login.
-                        loginFetchDelayTimer.start();
                     }
                 }
 

@@ -7,12 +7,11 @@ PKGNAME = com.berrylife.zalo10
 # To release a new version, only update <versionNumber> in bar-descriptor.xml
 
 # Qt modules — tất cả có sẵn trong BB10 NDK 10.3
-QT += network gui
+QT += network script gui
 
 # BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
 LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform -lbbdevice
-LIBS += -lQtNetwork -lQtGui
-LIBS += -lz
+LIBS += -lQtNetwork -lQtScript -lQtGui
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3
 
@@ -23,7 +22,6 @@ HEADERS += \
     src/applicationui.hpp \
     src/ZaloService.hpp \
     src/ZaloServiceUtils.hpp \
-    src/ZaloServiceProxy.hpp \
     src/ActiveFrameCover.hpp
 
 SOURCES += \
@@ -37,8 +35,6 @@ SOURCES += \
     src/ZaloService_Crypto.cpp \
     src/ZaloService_Network.cpp \
     src/ZaloService_Db.cpp \
-    src/ZaloService_Ipc.cpp \
-    src/ZaloServiceProxy.cpp \
     src/ActiveFrameCover.cpp
 
 OTHER_FILES += \

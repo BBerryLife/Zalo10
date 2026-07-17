@@ -9,6 +9,8 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
+#include <QScriptEngine>
+#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -163,7 +165,7 @@ bool ZaloService::loadSession()
 
     QString cookieJson = s.value("cookies").toString();
     if (!cookieJson.isEmpty()) {
-        QVariantMap cookieMap = jsonToMap(cookieJson);
+        QVariantMap cookieMap = jsonToMap(cookieJson.toUtf8());
         QMapIterator<QString, QVariant> it(cookieMap);
         while (it.hasNext()) {
             it.next();
@@ -249,10 +251,13 @@ void ZaloService::onRefreshSessionKeyDone()
     qDebug() << "[Zalo] refreshSessionKey response (first200):" << raw.left(200);
 
     // Parse outer để lấy error_code + encrypted data
-    QVariantMap outerObj = jsonToMap(raw);
+    QScriptEngine outerEng;
+    outerEng.globalObject().setProperty("__raw", QString::fromUtf8(raw));
+    outerEng.evaluate("var __o=null;try{__o=JSON.parse(__raw);}catch(e){__o=null;}");
+    QScriptValue outerObj = outerEng.globalObject().property("__o");
 
-    int ec = !outerObj.isEmpty() ? outerObj.value("error_code").toInt() : -1;
-    QString encData = !outerObj.isEmpty() ? outerObj.value("data").toString() : QString();
+    int ec = outerObj.isObject() ? outerObj.property("error_code").toInt32() : -1;
+    QString encData = outerObj.isObject() ? outerObj.property("data").toString() : QString();
 
     // Decrypt
     QString decrypted;
@@ -263,43 +268,51 @@ void ZaloService::onRefreshSessionKeyDone()
 
     bool refreshOk = false;
     if (ec == 0 && !decrypted.isEmpty()) {
-        QVariantMap decMap = jsonToMap(decrypted);
-        int innerEc = decMap.contains("error_code") ? decMap.value("error_code").toInt() : 0;
-        QVariantMap info = decMap.value("data").type() == QVariant::Map ? decMap.value("data").toMap() : decMap;
+        QScriptEngine eng;
+        eng.globalObject().setProperty("__dec", decrypted);
+        eng.evaluate("var __info=null; var __innerEc=0;"
+                     "try{"
+                     "  var tmp=JSON.parse(__dec);"
+                     "  __innerEc = (tmp.error_code !== undefined) ? tmp.error_code : 0;"
+                     "  if(tmp&&tmp.data){__info=tmp.data;}else{__info=tmp;}"
+                     "}catch(e){__info=null;}");
+        QScriptValue info = eng.globalObject().property("__info");
+        int innerEc = eng.globalObject().property("__innerEc").toInt32();
 
         if (innerEc != 0) {
             qDebug() << "[Zalo] refreshSessionKey: inner error_code=" << innerEc << "- session expired";
-        } else if (!info.isEmpty()) {
-            QString newKey = info.value("zpw_enk").toString();
+        } else if (info.isObject() && !info.isNull()) {
+            QString newKey = info.property("zpw_enk").toString();
             if (!newKey.isEmpty()) {
                 m_secretKey   = newKey;
-                m_displayName = info.value("display_name").toString();
+                m_displayName = info.property("display_name").toString();
                 qDebug() << "[Zalo] refreshSessionKey: new secretKey, first20:" << m_secretKey.left(20);
                 refreshOk = true;
 
                 // Update service URLs
-                QVariantMap svcMap = info.value("zpw_service_map_v3").toMap();
-                if (!svcMap.isEmpty()) {
-                    QVariantList c  = svcMap.value("chat").toList();
-                    QVariantList g  = svcMap.value("group").toList();
-                    QVariantList p  = svcMap.value("profile").toList();
-                    QVariantList gp = svcMap.value("group_poll").toList();
-                    QVariantList f  = svcMap.value("friend").toList();
-                    QVariantList qm = svcMap.value("quick_message").toList();
-                    if (!c.isEmpty())  m_chatServiceUrl      = c.at(0).toString();
-                    if (!g.isEmpty())  m_groupServiceUrl     = g.at(0).toString();
-                    if (!p.isEmpty())  m_profileServiceUrl   = p.at(0).toString();
-                    if (!gp.isEmpty()) m_groupPollServiceUrl = gp.at(0).toString();
-                    if (!f.isEmpty())  m_friendServiceUrl    = f.at(0).toString();
-                    if (!qm.isEmpty()) m_quickMessageServiceUrl = qm.at(0).toString();
+                QScriptValue svcMap = info.property("zpw_service_map_v3");
+                if (svcMap.isObject()) {
+                    QScriptValue c = svcMap.property("chat");
+                    QScriptValue g = svcMap.property("group");
+                    QScriptValue p = svcMap.property("profile");
+                    QScriptValue gp= svcMap.property("group_poll");
+                    QScriptValue f = svcMap.property("friend");
+                    QScriptValue qm= svcMap.property("quick_message");
+                    if (c.isArray())  m_chatServiceUrl      = c.property(0).toString();
+                    if (g.isArray())  m_groupServiceUrl     = g.property(0).toString();
+                    if (p.isArray())  m_profileServiceUrl   = p.property(0).toString();
+                    if (gp.isArray()) m_groupPollServiceUrl = gp.property(0).toString();
+                    if (f.isArray())  m_friendServiceUrl    = f.property(0).toString();
+                    if (qm.isArray()) m_quickMessageServiceUrl = qm.property(0).toString();
                 }
 
                 // Update WS URLs
-                QVariantList wsArr = info.value("zpw_ws").toList();
-                if (!wsArr.isEmpty()) {
+                QScriptValue wsArr = info.property("zpw_ws");
+                if (wsArr.isArray()) {
                     m_zpwWsUrls.clear();
-                    for (int i = 0; i < wsArr.size() && i < 10; ++i) {
-                        QString wsUrl = wsArr.at(i).toString();
+                    int len = wsArr.property("length").toInt32();
+                    for (int i = 0; i < len && i < 10; ++i) {
+                        QString wsUrl = wsArr.property(i).toString();
                         if (!wsUrl.isEmpty()) m_zpwWsUrls << wsUrl;
                     }
                     disconnectWebSocket();
@@ -325,11 +338,6 @@ void ZaloService::onRefreshSessionKeyDone()
         emit loggedInChanged();
         m_listenTimer->start(8000);
         m_keepAliveTimer->start(KEEPALIVE_INTERVAL_MS);
-        // Bắn ngay 1 lần thay vì chờ hết KEEPALIVE_INTERVAL_MS đầu tiên: một
-        // session được khôi phục từ QSettings (loadSession() lúc HeadlessService
-        // khởi động) có thể đã ở rất gần thời điểm hết hạn thật của cookie
-        // zpw_sek phía server — chờ thêm dù chỉ 45s cũng có thể là quá trễ.
-        sendKeepAlive();
     }
     // Chỉ emit loginSuccess lần đầu; các lần refresh dùng sessionRefreshed
     if (!m_loginEmitted) {

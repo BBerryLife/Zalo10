@@ -1,5 +1,5 @@
 #include "applicationui.hpp"
-#include "ZaloServiceProxy.hpp"
+#include "ZaloService.hpp"
 #include "ZaloServiceUtils.hpp"
 #include "ActiveFrameCover.hpp"
 
@@ -115,7 +115,7 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     Q_ASSERT(res); Q_UNUSED(res);
     onSystemLanguageChanged();
 
-    ZaloServiceProxy *zService = new ZaloServiceProxy(this);
+    ZaloService *zService = new ZaloService(this);
     m_zService = zService;
 
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
@@ -382,18 +382,11 @@ void ApplicationUI::onManualExit()
     if (m_exitHandled) return; // manualExit() / aboutToQuit() / SIGTERM có thể trùng nhau
     m_exitHandled = true;
 
-    // TRƯỚC ĐÂY: onManualExit() gọi m_zService->saveSession() +
-    // closeWebSocketGracefully() ở đây, vì UI process là nơi duy nhất giữ
-    // WebSocket/session thật — đóng active frame (SIGTERM) đồng nghĩa mất kết
-    // nối, nên phải cố lưu lại càng nhiều càng tốt trước khi chết.
-    //
-    // GIỜ: WebSocket + session sống trong HeadlessService (process riêng,
-    // xem HeadlessService.cpp), không phụ thuộc vòng đời của UI app nữa. UI
-    // (ApplicationUI) chỉ là thin-client hiển thị — đóng active frame giờ
-    // KHÔNG còn ảnh hưởng gì tới session/kết nối WS, nên không còn gì để lưu
-    // ở đây cả. Đây chính là thay đổi cốt lõi giải quyết yêu cầu gốc: đóng
-    // app xong mở lại không cần quét QR nữa (miễn HeadlessService vẫn chạy).
-    qDebug() << "[App] manualExit: UI closing (session unaffected — held by HeadlessService)";
+    if (m_zService && m_zService->loggedIn()) {
+        qDebug() << "[App] manualExit: saving session";
+        m_zService->saveSession();
+        m_zService->closeWebSocketGracefully();
+    }
     bb::cascades::Application::instance()->quit();
 }
 

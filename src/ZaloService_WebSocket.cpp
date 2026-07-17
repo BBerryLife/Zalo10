@@ -9,6 +9,8 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
+#include <QScriptEngine>
+#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -73,21 +75,10 @@ void ZaloService::connectWebSocket()
         qDebug() << "[Zalo WS] No zpw_ws URLs, skip";
         return;
     }
-    // Phiên WS mới (login/refresh session) — luôn bắt đầu lại từ URL đầu
-    // tiên server đưa ra, và làm mới toàn bộ danh sách (server có thể trả
-    // danh sách khác sau mỗi lần login/refresh).
+    disconnectWebSocket();
+
     m_wsUrlIndex = 0;
     m_wsUrls = m_zpwWsUrls;
-    connectWebSocketAtCurrentIndex();
-}
-
-void ZaloService::connectWebSocketAtCurrentIndex()
-{
-    if (m_wsUrls.isEmpty()) {
-        qDebug() << "[Zalo WS] No zpw_ws URLs, skip";
-        return;
-    }
-    disconnectWebSocket();
 
     QUrl url(m_wsUrls[m_wsUrlIndex]);
     // Thêm query params như zca-js
@@ -95,7 +86,7 @@ void ZaloService::connectWebSocketAtCurrentIndex()
     url.addQueryItem("zpw_ver",  QString::number(API_VERSION));
     url.addQueryItem("zpw_type", QString::number(API_TYPE));
 
-    qDebug() << "[Zalo WS] Connecting to (url index" << m_wsUrlIndex << "of" << m_wsUrls.size() << "):" << url.toString().left(80);
+    qDebug() << "[Zalo WS] Connecting to:" << url.toString().left(80);
 
     m_webSocket = new QSslSocket(this);
     m_wsBuffer.clear();
@@ -116,19 +107,14 @@ void ZaloService::connectWebSocketAtCurrentIndex()
     int  port   = url.port(useSsl ? 443 : 80);
 
     if (useSsl) {
-        // BB10's bundled Qt4/OpenSSL stack tops out at TLS 1.0 — this is a
-        // hard NDK/platform limitation (confirmed: setProtocol(QSsl::AnyProtocol)
-        // on Qt4 only negotiates SSLv2/SSLv3/TLSv1.0, and the OpenSSL build on
-        // BB10 doesn't even compile in TLSv1_1_client_method/TLSv1_2_client_method
-        // — there is no client-side setProtocol() value that gets us TLS 1.2).
-        // Some Zalo WS hosts (observed: ws12-msg) now require TLS 1.2+ and
-        // reject the handshake outright with "tlsv1 alert protocol version"
-        // (error:1407742E ... reason(1070)) — this is not transient, retrying
-        // the same host will never succeed. Other hosts the server offers in
-        // zpw_ws[] (observed: ws5-msg) still accept TLS 1.0 fine. AnyProtocol
-        // is kept here because it's harmless and correct for the hosts that DO
-        // work — the actual fix for hosts that don't is round-robining to a
-        // different zpw_ws[] entry, done in onWsReconnectTimer().
+        // Same root cause/fix as buildRequest()'s update-check request
+        // (see ZaloService_Network.cpp): BB10's bundled OpenSSL/Qt4 stack
+        // defaults to an old protocol pin. Some Zalo WS hosts (e.g.
+        // ws12-msg) reject that with "tlsv1 alert protocol version" —
+        // confirmed via the onWsSocketError logging added earlier
+        // (error:1407742E ... reason(1070) = TLS protocol_version alert).
+        // Force AnyProtocol so OpenSSL negotiates the highest version both
+        // sides support, instead of leaving this QSslSocket on its default.
         QSslConfiguration wsSslConf = m_webSocket->sslConfiguration();
         wsSslConf.setProtocol(QSsl::AnyProtocol);
         m_webSocket->setSslConfiguration(wsSslConf);
@@ -452,7 +438,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             if (dec.isEmpty() || dec.trimmed() == "{}")
                 dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
-            QVariantMap r = jsonToMap(dec);
+            QVariantMap r = jsonToMap(dec.toUtf8());
             d = r.contains("data") ? r["data"].toMap() : r;
         }
 
@@ -563,10 +549,9 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     mt = 2;
             }
 
-            // The JSON parser (ZaloServiceUtils.hpp) converts nested JSON objects to
-            // QVariantMap, so content.toString() comes back empty for photo/object
-            // payloads — re-serialize it to a JSON string here so the rest of the
-            // pipeline can parse it as usual.
+            // Qt4's QScriptEngine converts nested JSON objects to QVariantMap, so
+            // content.toString() comes back empty for photo/object payloads — re-serialize
+            // it to a JSON string here so the rest of the pipeline can parse it as usual.
             QString rawContent = m["content"].toString();
             if (rawContent.isEmpty()) {
                 QVariantMap cm = m["content"].toMap();
@@ -619,7 +604,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // WS may deliver via content JSON (href/thumb), top-level, or in "attach" sub-object
                 QString nUrl, hUrl, tUrl, fSizeStr;
                 if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(rawContent);
+                    QVariantMap cm = jsonToMap(rawContent.toUtf8());
                     nUrl = cm["normalUrl"].toString();
                     hUrl = cm["hdUrl"].toString();
                     tUrl = cm["thumbUrl"].toString();
@@ -643,7 +628,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                         // attach may be a JSON string
                         QString attStr = m["attach"].toString();
                         if (!attStr.isEmpty() && attStr.startsWith("{"))
-                            att = jsonToMap(attStr);
+                            att = jsonToMap(attStr.toUtf8());
                     }
                     if (!att.isEmpty()) {
                         if (nUrl.isEmpty()) nUrl = att["normalUrl"].toString();
@@ -661,7 +646,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     if (prm.isEmpty()) {
                         QString prmStr = m["params"].toString();
                         if (!prmStr.isEmpty() && prmStr.startsWith("{"))
-                            prm = jsonToMap(prmStr);
+                            prm = jsonToMap(prmStr.toUtf8());
                     }
                     if (!prm.isEmpty()) {
                         if (nUrl.isEmpty()) nUrl = prm["normalUrl"].toString();
@@ -683,7 +668,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     // and may have put a "caption" key in rawContent) before we overwrite it.
                     QString caption;
                     if (!rawContent.isEmpty() && rawContent.contains("\"caption\":\"")) {
-                        QVariantMap prevCm = jsonToMap(rawContent);
+                        QVariantMap prevCm = jsonToMap(rawContent.toUtf8());
                         caption = prevCm["caption"].toString();
                     }
                     // Also try extracting directly from message map (title field)
@@ -881,7 +866,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             if (dec.isEmpty() || dec.trimmed() == "{}")
                 dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
-            QVariantMap r = jsonToMap(dec);
+            QVariantMap r = jsonToMap(dec.toUtf8());
             d = r.contains("data") ? r["data"].toMap() : r;
         }
 
@@ -1068,7 +1053,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             if ((mtH == 2 || out["msgType"].toInt() == 2) && !msgId.isEmpty()) {
                 QString checkUrl;
                 if (!rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(rawContentH);
+                    QVariantMap cm = jsonToMap(rawContentH.toUtf8());
                     checkUrl = cm["normalUrl"].toString();
                     if (checkUrl.isEmpty()) checkUrl = cm["hdUrl"].toString();
                     if (checkUrl.isEmpty()) checkUrl = cm["thumbUrl"].toString();
@@ -1108,7 +1093,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 QString content = mm["content"].toString();
                 QString photoUrl;
                 if (!content.isEmpty() && content.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(content);
+                    QVariantMap cm = jsonToMap(content.toUtf8());
                     photoUrl = cm["normalUrl"].toString();
                     if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
                     if (photoUrl.isEmpty()) photoUrl = cm["thumbUrl"].toString();
@@ -1193,19 +1178,7 @@ void ZaloService::onWsDisconnected()
 
 void ZaloService::onWsReconnectTimer()
 {
-    // Round-robin sang URL kế tiếp trong danh sách zpw_ws[] server cung cấp,
-    // thay vì luôn quay lại URL đầu tiên qua connectWebSocket(). LÝ DO: một
-    // số host WS (quan sát thực tế: ws12-msg) từ chối handshake VĨNH VIỄN
-    // với lỗi "tlsv1 alert protocol version" — BB10's Qt4/OpenSSL chỉ hỗ trợ
-    // tối đa TLS 1.0 (giới hạn cứng của NDK, không sửa được bằng setProtocol()),
-    // trong khi host đó yêu cầu TLS 1.2+. Đây KHÔNG phải lỗi thoáng qua nên
-    // retry cùng URL vô hạn lần sẽ không bao giờ thành công. Các host khác
-    // server cung cấp (quan sát: ws5-msg) VẪN chấp nhận TLS 1.0 bình thường —
-    // xoay vòng qua chúng cho tới khi tìm được 1 host tương thích.
-    if (m_wsUrls.size() > 1) {
-        m_wsUrlIndex = (m_wsUrlIndex + 1) % m_wsUrls.size();
-    }
-    qDebug() << "[Zalo WS] Reconnecting... (trying url index" << m_wsUrlIndex << ")";
-    connectWebSocketAtCurrentIndex();
+    qDebug() << "[Zalo WS] Reconnecting...";
+    connectWebSocket();
 }
 

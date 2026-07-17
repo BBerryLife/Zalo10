@@ -9,6 +9,8 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
+#include <QScriptEngine>
+#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -174,7 +176,7 @@ void ZaloService::onCookieStep1Done()
         }
         QString decrypted = aesDecryptBase64_256(m_pendingEncryptKey, encData);
         qDebug() << "[Zalo] cookieStep1 decrypted (first100):" << decrypted.left(100);
-        QVariantMap root2 = jsonToMap(decrypted);
+        QVariantMap root2 = jsonToMap(decrypted.toUtf8());
         info = root2["data"].toMap();
         if (info.isEmpty()) info = root2;
     }
@@ -367,13 +369,7 @@ void ZaloService::onStep4Done()
 
     if (!imageB64.isEmpty()) {
         QByteArray imgData = QByteArray::fromBase64(imageB64.toUtf8());
-        // homePath(), not QDir::tempPath(): QR login now runs inside
-        // HeadlessService (a separate process from the UI), and tempPath() is
-        // a per-process scratch dir on BB10/QNX — the UI process could never
-        // see a file written there by the headless process. homePath() is
-        // the shared app-data dir (same one the SQLite DB lives in).
-        QString tempPath = QDir::homePath() + "/tmp/qr.png";
-        QDir().mkpath(QDir::homePath() + "/tmp");
+        QString tempPath = QDir::tempPath() + "/qr.png";
         QFile imgFile(tempPath);
         if (imgFile.open(QIODevice::WriteOnly)) {
             imgFile.write(imgData);
@@ -413,9 +409,7 @@ void ZaloService::onQRImageFetched()
         return;
     }
 
-    // homePath(), not QDir::tempPath() — see note in step4/QR base64 branch above.
-    QString tempPath = QDir::homePath() + "/tmp/qr.png";
-    QDir().mkpath(QDir::homePath() + "/tmp");
+    QString tempPath = QDir::tempPath() + "/qr.png";
     QFile imgFile(tempPath);
     if (imgFile.open(QIODevice::WriteOnly)) {
         imgFile.write(imgData);
@@ -608,21 +602,24 @@ void ZaloService::onStep8Done()
     qDebug() << "[Zalo] Step8 raw response:" << raw.left(300);
     qDebug() << "[Zalo] Step8 cookies count:" << m_cookies.size();
 
-    QVariantMap outerObj = jsonToMap(raw);
+    QScriptEngine outerEng;
+    outerEng.globalObject().setProperty("__raw", QString::fromUtf8(raw));
+    outerEng.evaluate("var __o = null; try { __o = JSON.parse(__raw); } catch(e) { __o = null; }");
+    QScriptValue outerObj = outerEng.globalObject().property("__o");
 
-    if (outerObj.isEmpty()) {
+    if (!outerObj.isValid() || outerObj.isNull()) {
         qDebug() << "[Zalo Error] Step8: outer JSON parse failed";
         if (m_isAutoRenew) emit sessionExpired();
         else               emit loginFailed("Step8 parse failed");
         return;
     }
 
-    int errCode8 = outerObj.value("error_code").toInt();
+    int errCode8 = outerObj.property("error_code").toInt32();
     qDebug() << "[Zalo] Step8 error_code:" << errCode8
-             << "msg:" << outerObj.value("error_message").toString();
+             << "msg:" << outerObj.property("error_message").toString();
 
     // Decrypt data field
-    QString encData = outerObj.value("data").toString();
+    QString encData = outerObj.property("data").toString();
     qDebug() << "[Zalo] Step8 encrypted data (first60):" << encData.left(60);
     qDebug() << "[Zalo] Step8 pendingEncryptKey:" << m_pendingEncryptKey;
 
@@ -639,18 +636,26 @@ void ZaloService::onStep8Done()
         return;
     }
 
-    QVariantMap decMap = jsonToMap(decrypted);
-    QVariantMap info = decMap.value("data").type() == QVariant::Map ? decMap.value("data").toMap() : decMap;
-    if (info.isEmpty()) {
+    QScriptEngine eng;
+    eng.globalObject().setProperty("__dec", decrypted);
+    eng.evaluate("var __info = null;"
+                 "try {"
+                 "  var tmp = JSON.parse(__dec);"
+                 "  if (tmp && tmp.data) { __info = tmp.data; }"
+                 "  else { __info = tmp; }"
+                 "} catch(e) { __info = null; }");
+
+    QScriptValue info = eng.globalObject().property("__info");
+    if (!info.isValid() || info.isNull() || info.isUndefined() || !info.isObject()) {
         qDebug() << "[Zalo Error] Step8: info object invalid";
         if (m_isAutoRenew) emit sessionExpired();
         else               emit loginFailed("Step8: invalid info object");
         return;
     }
 
-    m_secretKey   = info.value("zpw_enk").toString();
-    m_uid         = info.value("uid").toString();
-    m_displayName = info.value("display_name").toString();
+    m_secretKey   = info.property("zpw_enk").toString();
+    m_uid         = info.property("uid").toString();
+    m_displayName = info.property("display_name").toString();
 
     qDebug() << "[Zalo] secretKey (first20):" << m_secretKey.left(20);
     qDebug() << "[Zalo] info keys check - zpw_enk empty?:" << m_secretKey.isEmpty()
@@ -673,32 +678,35 @@ void ZaloService::onStep8Done()
     m_fileServiceUrl.clear();
     m_quickMessageServiceUrl.clear();
 
-    QVariantMap svcMap = info.value("zpw_service_map_v3").toMap();
-    if (!svcMap.isEmpty()) {
-        QVariantList chatArr   = svcMap.value("chat").toList();
-        QVariantList groupArr  = svcMap.value("group").toList();
-        QVariantList profArr   = svcMap.value("profile").toList();
-        QVariantList pollArr   = svcMap.value("group_poll").toList();
-        QVariantList friendArr = svcMap.value("friend").toList();
-        QVariantList fileArr   = svcMap.value("file").toList();
-        QVariantList qmArr     = svcMap.value("quick_message").toList();
+    QScriptValue svcMap = info.property("zpw_service_map_v3");
+    if (svcMap.isObject()) {
+        QScriptValue chatArr   = svcMap.property("chat");
+        QScriptValue groupArr  = svcMap.property("group");
+        QScriptValue profArr   = svcMap.property("profile");
+        QScriptValue pollArr   = svcMap.property("group_poll");
+        QScriptValue friendArr = svcMap.property("friend");
+        QScriptValue fileArr   = svcMap.property("file");
+        QScriptValue qmArr     = svcMap.property("quick_message");
 
-        if (!chatArr.isEmpty())   m_chatServiceUrl      = chatArr.at(0).toString();
-        if (!groupArr.isEmpty())  m_groupServiceUrl     = groupArr.at(0).toString();
-        if (!profArr.isEmpty())   m_profileServiceUrl   = profArr.at(0).toString();
-        if (!pollArr.isEmpty())   m_groupPollServiceUrl = pollArr.at(0).toString();
-        if (!friendArr.isEmpty()) m_friendServiceUrl    = friendArr.at(0).toString();
-        if (!fileArr.isEmpty())   m_fileServiceUrl      = fileArr.at(0).toString();
-        if (!qmArr.isEmpty())     m_quickMessageServiceUrl = qmArr.at(0).toString();
+        if (chatArr.isArray())   m_chatServiceUrl      = chatArr.property(0).toString();
+        if (groupArr.isArray())  m_groupServiceUrl     = groupArr.property(0).toString();
+        if (profArr.isArray())   m_profileServiceUrl   = profArr.property(0).toString();
+        if (pollArr.isArray())   m_groupPollServiceUrl = pollArr.property(0).toString();
+        if (friendArr.isArray()) m_friendServiceUrl    = friendArr.property(0).toString();
+        if (fileArr.isArray())   m_fileServiceUrl      = fileArr.property(0).toString();
+        if (qmArr.isArray())     m_quickMessageServiceUrl = qmArr.property(0).toString();
     }
 
     // Extract WebSocket URLs
     m_zpwWsUrls.clear();
-    QVariantList wsArr = info.value("zpw_ws").toList();
-    for (int i = 0; i < wsArr.size() && i < 10; ++i) {
-        QString wsUrl = wsArr.at(i).toString();
-        if (!wsUrl.isEmpty())
-            m_zpwWsUrls << wsUrl;
+    QScriptValue wsArr = info.property("zpw_ws");
+    if (wsArr.isArray()) {
+        int len = wsArr.property("length").toInt32();
+        for (int i = 0; i < len && i < 10; ++i) {
+            QString wsUrl = wsArr.property(i).toString();
+            if (!wsUrl.isEmpty())
+                m_zpwWsUrls << wsUrl;
+        }
     }
 
     qDebug() << "[Zalo] chat:"        << m_chatServiceUrl;

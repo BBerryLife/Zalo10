@@ -22,22 +22,6 @@ NavigationPane {
     property bool refreshCooldown: false
     property variant activeChatPage: null
     property variant activeQmPage: null
-    // Queue of {threadId, url} pending avatar downloads, drained a few at a
-    // time by avatarDripTimer instead of firing zService.downloadAvatar() for
-    // every friend synchronously in one tick (see onFriendsReady below). A
-    // big synchronous burst of enqueueCommand() calls (one per avatar, 80+ on
-    // a large friends list) was landing on top of HeadlessService's own
-    // command_queue writes in a separate process and occasionally hitting
-    // SQLITE_LOCKED — spacing them out avoids piling up that many DB writes
-    // in the same instant to begin with.
-    property variant pendingAvatarQueue: []
-
-    function queueAvatarDownload(threadId, url) {
-        var q = pendingAvatarQueue;
-        q.push({ tid: threadId, url: url });
-        pendingAvatarQueue = q;
-        if (!avatarDripTimer.running) avatarDripTimer.start();
-    }
 
     attachedObjects: [
         Timer {
@@ -45,23 +29,6 @@ NavigationPane {
             interval: 11000
             repeat: false
             onTriggered: chatsNav.refreshCooldown = false
-        },
-        // Drains pendingAvatarQueue a handful of items at a time — see property
-        // comment above for why this exists.
-        Timer {
-            id: avatarDripTimer
-            interval: 60
-            repeat: true
-            onTriggered: {
-                var q = chatsNav.pendingAvatarQueue;
-                var batch = 5;
-                for (var i = 0; i < batch && q.length > 0; i++) {
-                    var item = q.shift();
-                    zService.downloadAvatar(item.tid, item.url);
-                }
-                chatsNav.pendingAvatarQueue = q;
-                if (q.length === 0) avatarDripTimer.stop();
-            }
         },
         // Forces the (large, ~1400-line) ChatView.qml document to be parsed
         // and its component type cached by the QML engine once, in the
@@ -392,21 +359,6 @@ NavigationPane {
             Connections {
                 target: zService
 
-                // Xem eventBridgeReconnected() trong ZaloServiceProxy.hpp: mọi
-                // avatarReady broadcast trong lúc UI mất kết nối EventBridge bị
-                // mất vĩnh viễn. Khi vừa kết nối lại, quét friendModel và phát
-                // lại downloadAvatar cho bất kỳ ai chưa có localAvatar — rẻ vì
-                // avatar đã tải xong nằm sẵn trên đĩa (avatar_meta cache), nên
-                // đây gần như luôn là 1 lần đọc file, không phải tải mạng lại.
-                onEventBridgeReconnected: {
-                    for (var i = 0; i < friendModel.size(); i++) {
-                        var d = friendModel.value(i);
-                        if ((!d.localAvatar || d.localAvatar.length === 0) && d.avatar && d.avatar.length > 0 && d.threadId) {
-                            chatsNav.queueAvatarDownload(d.threadId, d.avatar);
-                        }
-                    }
-                }
-
                 onFriendsReady: {
                     chatsLoading.visible = false;
                     friendModel.clear();
@@ -479,7 +431,7 @@ NavigationPane {
                         var furl = ff.avatar || "";
                         var ftid = ff.threadId || ff.uid || "";
                         if (furl.length > 0 && ftid.length > 0)
-                            chatsNav.queueAvatarDownload(ftid, furl);
+                            zService.downloadAvatar(ftid, furl);
                     }
                     chatsEmpty.visible = (outArr.length === 0);
                 }
@@ -511,14 +463,6 @@ NavigationPane {
                     if (friendModel.size() === 0) {
                         chatsNav.refreshCooldown = true;
                         chatsRefreshCooldownTimer.restart();
-                        // Fires immediately — first in the stagger order across
-                        // tabs (see GroupsTab.qml/InvitesTab.qml's matching
-                        // onLoginSuccess handlers, which delay by 400ms/800ms).
-                        // Previously all tabs fired their initial fetch in the
-                        // very same tick, landing within ~10ms of each other —
-                        // 3 concurrent decrypt+parse operations peaking at once
-                        // caused an observed "bad allocation" crash on-device
-                        // right after a fresh QR login.
                         zService.fetchFriends();
                         chatsLoading.visible = true;
                     }

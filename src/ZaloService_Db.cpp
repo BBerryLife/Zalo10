@@ -9,6 +9,8 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
+#include <QScriptEngine>
+#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -329,9 +331,9 @@ QVariantMap ZaloService::getThreadLastMessages() const
     return result;
 }
 
-// Filename prefixes Zalo10 writes under QDir::homePath() + "/tmp/" for
-// cached images (see clearCache()'s comment for why this is homePath()-based
-// and not plain "/tmp" or QDir::tempPath()).
+// Filename prefixes Zalo10 writes under the persistent "/tmp" directory for
+// cached images (see clearCache()'s comment for why this is literal "/tmp"
+// and not QDir::tempPath()).
 // Centralized here so exportData()'s "include images" option and clearCache()
 // agree on exactly what counts as a cache file — see ZaloService.hpp for the
 // full list of call sites that create these (avatar download, photo thumbnail
@@ -710,18 +712,18 @@ QVariantMap ZaloService::importData(const QString &jsonFilePath)
 
 int ZaloService::clearCache()
 {
-    // 1. Delete every cached image file this app writes under
-    //    QDir::homePath() + "/tmp/" — the shared app-data location every
-    //    cache writer in this app targets (see downloadAvatar()/
-    //    onAvatarDownloaded(), onImageMsgDownloaded(), and
-    //    downloadImageMessage()'s base64 branches). NOT plain "/tmp" — since
-    //    the headless split that's a per-process sandbox and isn't where
-    //    files actually get written anymore.
+    // 1. Delete every cached image file this app writes under "/tmp/".
+    //    NOTE: this scans literal "/tmp", not QDir::tempPath() — on this BB10
+    //    device those are two different directories (QDir::tempPath() is a
+    //    per-launch scratch dir the OS wipes on every app restart; "/tmp" is
+    //    the persistent, device-wide location every cache writer in this app
+    //    actually targets — see downloadAvatar()/onAvatarDownloaded(),
+    //    onImageMsgDownloaded(), and downloadImageMessage()'s base64 branches).
     //    Once deleted, any localImage path stored in the messages table now
     //    points at a file that no longer exists — that's expected (it's
     //    exactly why exportData() checks QFile::exists() before bundling an
     //    image, and why Settings warns the user upfront).
-    QDir tmp(QDir::homePath() + "/tmp");
+    QDir tmp("/tmp");
     QStringList patterns = cacheFilePatterns();
     int deleted = 0;
     QStringList allFiles = tmp.entryList(QDir::Files);

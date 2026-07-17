@@ -9,7 +9,8 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
-#include <QTimer>
+#include <QScriptEngine>
+#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -30,7 +31,6 @@
 #include <openssl/evp.h>
 #include <zlib.h>
 #include <string.h>
-#include <exception>
 
 // Conversations, friends, group details/avatars, invites, and per-thread
 // settings (mute, block, clear history, leave group).
@@ -95,27 +95,12 @@ void ZaloService::onFetchConvoDone()
     if (ec != 0) {
         qDebug() << "[Zalo Error] fetchConvo error_code:" << ec << root["error_message"].toString();
         m_isFetchingConversations = false;
-        // ec=600: zpw_sek expired. QUAN TRỌNG: đây KHÔNG đồng nghĩa với việc
-        // cookie đăng nhập gốc (zpsid) đã hết hạn — server có thể tự xoay
-        // vòng riêng zpw_sek trong khi cookie gốc vẫn còn dùng được (đã thấy
-        // thực tế: refreshSessionKey() lúc HeadlessService khởi động dùng
-        // đúng cookie này và thành công). Trước đây (1-process, không
-        // headless) code này coi 600 = phải QR lại ngay — giả định đó không
-        // còn đúng khi Headless giữ session sống lâu hơn nhiều, zpw_sek có
-        // nhiều cơ hội hơn để bị server xoay vòng giữa chừng.
-        // Thử refreshSessionKey() trước (dùng lại đúng flow auto-renew có
-        // sẵn qua step7_checkSession — xem ZaloService_Network.cpp) — chỉ
-        // khi chính flow đó thất bại thật sự thì sessionExpired() mới được
-        // emit (bên trong step7_checkSession/step8, xem m_isAutoRenew).
+        // ec=600: zpw_sek expired — session cookies invalid, must re-login
         if (ec == 600) {
-            qDebug() << "[Zalo] fetchConvo: got 600, attempting silent secretKey refresh before forcing QR re-login";
-            m_pendingRetryFetchConvoOldKey = m_secretKey;
-            refreshSessionKey();
-            // Cùng lý do như sendMessage()'s ec==600 retry (xem
-            // ZaloService_Messages.cpp): sessionRefreshed() không emit khi
-            // refresh thất bại, nên poll m_secretKey sau 1 khoảng ngắn thay
-            // vì connect trực tiếp vào signal đó.
-            QTimer::singleShot(2000, this, SLOT(onRetryFetchConvoCheckTimer()));
+            qDebug() << "[Zalo] fetchConvo: session expired (600), emitting sessionExpired";
+            m_loggedIn = false;
+            emit loggedInChanged();
+            emit sessionExpired();
             return;
         }
         emit conversationsReady(QVariantList());
@@ -127,7 +112,7 @@ void ZaloService::onFetchConvoDone()
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] fetchConvo decrypted (first150):" << dec.left(150);
 
-    QVariantMap outer = jsonToMap(dec);
+    QVariantMap outer = jsonToMap(dec.toUtf8());
     QVariantMap inner;
     if (outer.contains("data") && outer["data"].type() == QVariant::Map)
         inner = outer["data"].toMap();
@@ -209,7 +194,7 @@ void ZaloService::onGroupDetailsDone()
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] groupDetails decrypted (first200):" << dec.left(200);
 
-    QVariantMap outer = jsonToMap(dec);
+    QVariantMap outer = jsonToMap(dec.toUtf8());
     int ec2 = outer["error_code"].toInt();
     if (ec2 != 0) {
         qDebug() << "[Zalo Error] groupDetails inner error:" << ec2 << outer["error_message"].toString();
@@ -315,27 +300,6 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
     m_pendingAvatarWaiters[baseUrl].clear();
     m_pendingAvatarWaiters[baseUrl].insert(threadId);
 
-    if (m_activeAvatarDownloads >= MAX_CONCURRENT_AVATAR_DOWNLOADS) {
-        m_avatarDownloadQueue.append(qMakePair(url, threadId));
-        return;
-    }
-    startAvatarNetworkFetch(url, threadId);
-}
-
-void ZaloService::startNextQueuedAvatarDownload()
-{
-    // Có thể bị gọi "thừa" vô hại nếu queue đã trống lúc singleShot(0,...)
-    // thực sự chạy (ví dụ nếu có nhiều singleShot xếp hàng cùng lúc) — chỉ
-    // cần kiểm tra rỗng ở đây, không cần đồng bộ hoá gì thêm (single-threaded).
-    if (m_avatarDownloadQueue.isEmpty()) return;
-    if (m_activeAvatarDownloads >= MAX_CONCURRENT_AVATAR_DOWNLOADS) return;
-    QPair<QString, QString> next = m_avatarDownloadQueue.takeFirst();
-    startAvatarNetworkFetch(next.first, next.second);
-}
-
-void ZaloService::startAvatarNetworkFetch(const QString &url, const QString &threadId)
-{
-    ++m_activeAvatarDownloads;
     QString httpUrl = url;
     if (httpUrl.startsWith("https://"))
         httpUrl = "http://" + httpUrl.mid(8);
@@ -345,23 +309,6 @@ void ZaloService::startAvatarNetworkFetch(const QString &url, const QString &thr
     avatarReq.setRawHeader("Referer",    "https://chat.zalo.me/");
     avatarReq.setRawHeader("User-Agent", m_userAgent.toUtf8());
     avatarReq.setRawHeader("Accept",     "image/webp,image/apng,image/*,*/*;q=0.8");
-    // QUAN TRỌNG — ĐÃ REVERT "Connection: close" thêm ở lần sửa trước:
-    // log đầy đủ sau đó cho thấy lỗi "Host X not found" (và bad_alloc hàng
-    // loạt kèm theo) VẪN xảy ra, thậm chí lan sang cả sendMessage cá nhân —
-    // và bằng chứng mới trỏ tới nguyên nhân NGƯỢC LẠI với suy đoán trước:
-    // không phải do Qt GIỮ LẠI quá nhiều kết nối, mà do mỗi avatar (hàng
-    // trăm cái, từ hàng trăm host CDN khác nhau, dồn dập trong ~30-90s) mở
-    // MỘT KẾT NỐI TCP MỚI — và "Connection: close" ép server đóng kết nối
-    // ngay sau mỗi request càng làm việc này tệ hơn: mỗi socket bị đóng rơi
-    // vào trạng thái TIME_WAIT (hệ điều hành giữ lại 30-240s trước khi thực
-    // sự giải phóng fd/port), dồn dập hàng trăm cái trong thời gian ngắn có
-    // thể ăn hết số file-descriptor/ephemeral-port khả dụng của thiết bị —
-    // khớp với "Host not found" (không mở nổi socket MỚI để phân giải DNS)
-    // VÀ với bad_alloc lan rộng (network stack cạn buffer). Để Qt tự GIỮ và
-    // TÁI SỬ DỤNG kết nối (hành vi mặc định, KHÔNG set Connection: close)
-    // mới là hướng đúng — giảm tổng số kết nối TCP MỚI cần mở, do đó giảm
-    // tích tụ TIME_WAIT. Xem thêm spacing giữa các lần tải trong
-    // startNextQueuedAvatarDownload() để giảm tốc độ mở kết nối mới.
     QNetworkReply *reply = m_manager->get(avatarReq);
     reply->setProperty("avatarUrl",      url);
     reply->setProperty("avatarThreadId", threadId);
@@ -377,25 +324,6 @@ void ZaloService::onAvatarDownloaded()
     bool hasError      = (reply->error() != QNetworkReply::NoError);
     QByteArray data    = reply->readAll();
     reply->deleteLater();
-
-    // 1 slot vừa trống — cho request kế tiếp trong hàng đợi (nếu có) bay ra,
-    // giữ đúng luôn tối đa MAX_CONCURRENT_AVATAR_DOWNLOADS request bay cùng
-    // lúc bất kể queue ban đầu dài bao nhiêu. Phải làm TRƯỚC nhánh lỗi return
-    // sớm bên dưới, không thì 1 request lỗi sẽ làm nghẽn cả hàng đợi.
-    //
-    // QUAN TRỌNG: gọi qua QTimer::singleShot(...) — xem giải thích chi tiết ở
-    // khai báo startNextQueuedAvatarDownload() trong ZaloService.hpp (phá vỡ
-    // đệ quy đồng bộ). Delay 80ms (không phải 0ms) — thêm SAU KHI phát hiện
-    // dồn dập mở kết nối TCP mới quá nhanh (hàng trăm avatar trong ~30-90s)
-    // có thể làm tích tụ socket ở trạng thái TIME_WAIT, cạn tài nguyên hệ
-    // thống (xem giải thích chi tiết ở startAvatarNetworkFetch()). Giãn nhịp
-    // mở kết nối mới ra giúp hệ điều hành có thời gian giải phóng TIME_WAIT
-    // giữa chừng, thay vì dồn cục hàng trăm cái liên tiếp gần như không nghỉ.
-    // TUYỆT ĐỐI không gọi startAvatarNetworkFetch() trực tiếp/đồng bộ ở đây.
-    --m_activeAvatarDownloads;
-    if (!m_avatarDownloadQueue.isEmpty()) {
-        QTimer::singleShot(80, this, SLOT(startNextQueuedAvatarDownload()));
-    }
 
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
     QSet<QString> waiters = m_pendingAvatarWaiters.take(baseUrl);
@@ -415,17 +343,7 @@ void ZaloService::onAvatarDownloaded()
     // a changed profile picture overwrites the same file in place instead of
     // leaving the old image as an orphaned file in tmp every time the CDN
     // hands back a different URL for an unchanged picture.
-    //
-    // IMPORTANT: must live under QDir::homePath() (app data dir), NOT plain
-    // "/tmp/". Since the headless split, avatars are downloaded by
-    // Zalo10Headless (a separate process with its own "/tmp/" sandbox) but
-    // displayed by the Zalo10 UI process (a different sandbox) — plain
-    // "/tmp/" is NOT shared between the two on BB10/QNX, so the UI process
-    // could never see files the headless process wrote there. homePath()
-    // IS shared (it's the same dir the SQLite DB lives in, which both
-    // processes already read/write successfully).
-    QString fname = QDir::homePath() + "/tmp/avatar_" + md5Hex(threadId) + ".jpg";
-    QDir().mkpath(QDir::homePath() + "/tmp");
+    QString fname = "/tmp/avatar_" + md5Hex(threadId) + ".jpg";
     QFile f(fname);
     if (f.open(QIODevice::WriteOnly)) {
         f.write(data);
@@ -494,16 +412,7 @@ void ZaloService::fetchFriends()
     QVariantMap innerParams;
     innerParams["incInvalid"]  = 1;
     innerParams["page"]        = 1;
-    // count=20000 trước đây yêu cầu server trả TOÀN BỘ friend list trong 1
-    // lần gọi — với các tài khoản có nhiều bạn bè/dữ liệu profile đính kèm
-    // (bio, ảnh nền...), phản hồi JSON sau decrypt có thể lên tới hàng trăm
-    // KB. Nghi vấn: đây là nguồn gốc "bad allocation" quan sát được trong
-    // parse/decrypt (dù đã có sanity-cap 20MB ở aesDecryptBase64 — không có
-    // dòng log "vuot nguong" nào xuất hiện, nên payload chưa chạm ngưỡng đó,
-    // nhưng vẫn đủ lớn để gây áp lực cấp phát bộ nhớ trên thiết bị thật).
-    // 2000 vẫn dư thừa so với số bạn bè thực tế của hầu hết tài khoản
-    // (~87 trong log thực tế) trong khi giảm đáng kể kích thước response.
-    innerParams["count"]       = 2000;
+    innerParams["count"]       = 20000;
     innerParams["avatar_size"] = 120;
     innerParams["actiontime"]  = 0;
     innerParams["imei"]        = m_imei;
@@ -526,11 +435,7 @@ void ZaloService::onFetchFriendsDone()
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    qDebug() << "[Zalo] fetchFriends raw size:" << raw.size() << "bytes, first300:" << raw.left(300);
-
-    if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "[Zalo Error] fetchFriends Network Error:" << reply->errorString();
-    }
+    qDebug() << "[Zalo] fetchFriends raw (first300):" << raw.left(300);
 
     // Xử lý HTTP 429 Too Many Requests — raw là HTML, không phải JSON
     if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
@@ -541,79 +446,57 @@ void ZaloService::onFetchFriendsDone()
         return;
     }
 
+    QVariantMap root = jsonToMap(raw);
+    if (root["error_code"].toInt() != 0) {
+        qDebug() << "[Zalo Error] fetchFriends:" << root["error_message"].toString();
+        m_isFetchingFriends = false;
+        return;
+    }
+
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    qDebug() << "[Zalo] fetchFriends decrypted (first300):" << dec.left(300);
+
+    QVariantList friends;
+    QVariantMap outer = jsonToMap(dec.toUtf8());
+    if (outer.contains("data") && outer["data"].type() == QVariant::List)
+        friends = outer["data"].toList();
+    else if (outer.contains("friends") && outer["friends"].type() == QVariant::List)
+        friends = outer["friends"].toList();
+    else {
+        QVariantList arr = jsonToList(dec.toUtf8());
+        if (!arr.isEmpty())
+            friends = arr;
+    }
+
+    qDebug() << "[Zalo] fetchFriends found" << friends.size() << "friends";
+
     QVariantList threads;
-    try {
-        QVariantMap root = jsonToMap(raw);
-        int ec = root["error_code"].toInt();
-        if (ec != 0) {
-            qDebug() << "[Zalo Error] fetchFriends:" << root["error_message"].toString();
-            m_isFetchingFriends = false;
-            // Cùng lý do với fetchConversations()'s ec==600 handling ở trên —
-            // zpw_sek có thể bị server xoay vòng độc lập với cookie đăng nhập
-            // gốc, thử refresh trước khi bỏ cuộc.
-            if (ec == 600) {
-                qDebug() << "[Zalo] fetchFriends: got 600, attempting silent secretKey refresh";
-                m_pendingRetryFetchFriendsOldKey = m_secretKey;
-                refreshSessionKey();
-                QTimer::singleShot(2000, this, SLOT(onRetryFetchFriendsCheckTimer()));
-            }
-            return;
-        }
+    for (int i = 0; i < friends.size(); ++i) {
+        QVariantMap f = friends[i].toMap();
+        QString uid  = f["userId"].toString();
+        if (uid.isEmpty()) uid = f["uid"].toString();
+        QString name = f["zaloName"].toString();
+        if (name.isEmpty()) name = f["displayName"].toString();
+        if (name.isEmpty()) name = f["username"].toString();
+        QString avatarUrl   = f["avatar"].toString();
+        QString bgAvatarUrl = f["bgavatar"].toString();
+        QString avatarBase   = avatarUrl.contains('?')   ? avatarUrl.left(avatarUrl.indexOf('?'))   : avatarUrl;
+        QString bgAvatarBase = bgAvatarUrl.contains('?') ? bgAvatarUrl.left(bgAvatarUrl.indexOf('?')) : bgAvatarUrl;
+        QString localAvatar   = m_avatarCache.value(avatarBase,   m_avatarCache.value(avatarUrl,   ""));
+        QString localBgAvatar = m_avatarCache.value(bgAvatarBase, m_avatarCache.value(bgAvatarUrl, ""));
 
-        QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-        qDebug() << "[Zalo] fetchFriends decrypted (first300):" << dec.left(300);
-
-        QVariantList friends;
-        QVariantMap outer = jsonToMap(dec);
-        if (outer.contains("data") && outer["data"].type() == QVariant::List)
-            friends = outer["data"].toList();
-        else if (outer.contains("friends") && outer["friends"].type() == QVariant::List)
-            friends = outer["friends"].toList();
-        else {
-            QVariantList arr = jsonToList(dec);
-            if (!arr.isEmpty())
-                friends = arr;
-        }
-
-        qDebug() << "[Zalo] fetchFriends found" << friends.size() << "friends";
-
-        for (int i = 0; i < friends.size(); ++i) {
-            QVariantMap f = friends[i].toMap();
-            QString uid  = f["userId"].toString();
-            if (uid.isEmpty()) uid = f["uid"].toString();
-            QString name = f["zaloName"].toString();
-            if (name.isEmpty()) name = f["displayName"].toString();
-            if (name.isEmpty()) name = f["username"].toString();
-            QString avatarUrl   = f["avatar"].toString();
-            QString bgAvatarUrl = f["bgavatar"].toString();
-            QString avatarBase   = avatarUrl.contains('?')   ? avatarUrl.left(avatarUrl.indexOf('?'))   : avatarUrl;
-            QString bgAvatarBase = bgAvatarUrl.contains('?') ? bgAvatarUrl.left(bgAvatarUrl.indexOf('?')) : bgAvatarUrl;
-            QString localAvatar   = m_avatarCache.value(avatarBase,   m_avatarCache.value(avatarUrl,   ""));
-            QString localBgAvatar = m_avatarCache.value(bgAvatarBase, m_avatarCache.value(bgAvatarUrl, ""));
-
-            QVariantMap t;
-            t["threadId"]      = uid;
-            t["name"]          = name;
-            t["isGroup"]       = false;
-            t["avatar"]        = avatarUrl;
-            t["bgavatar"]      = bgAvatarUrl;
-            t["localAvatar"]   = localAvatar;
-            t["localBgAvatar"] = localBgAvatar;
-            t["unread"]        = 0;
-            t["lastMessage"]   = "";
-            if (!uid.isEmpty() && !name.isEmpty())
-                threads.append(t);
-        }
-    } catch (const std::exception &e) {
-        qDebug() << "[Zalo Error] fetchFriends: EXCEPTION during parse/decrypt:" << e.what();
-        m_isFetchingFriends = false;
-        emit friendsReady(QVariantList());
-        return;
-    } catch (...) {
-        qDebug() << "[Zalo Error] fetchFriends: UNKNOWN exception during parse/decrypt";
-        m_isFetchingFriends = false;
-        emit friendsReady(QVariantList());
-        return;
+        QVariantMap t;
+        t["threadId"]      = uid;
+        t["name"]          = name;
+        t["isGroup"]       = false;
+        t["avatar"]        = avatarUrl;
+        t["bgavatar"]      = bgAvatarUrl;
+        t["localAvatar"]   = localAvatar;
+        t["localBgAvatar"] = localBgAvatar;
+        t["unread"]        = 0;
+        t["lastMessage"]   = "";
+        if (!uid.isEmpty() && !name.isEmpty())
+            threads.append(t);
     }
 
     qDebug() << "[Zalo] fetchFriends parsed" << threads.size() << "valid friends";
@@ -650,30 +533,6 @@ void ZaloService::onFetchFriendsDone()
         emit friendsReady(threads);
     }
     m_isFetchingFriends = false;
-}
-
-void ZaloService::onRetryFetchConvoCheckTimer()
-{
-    if (m_secretKey.isEmpty() || m_secretKey == m_pendingRetryFetchConvoOldKey) {
-        // Refresh thất bại hẳn hoặc không đổi gì — session thật sự có vấn đề
-        // (step7/step8 auto-renew bên trong refreshSessionKey() đã xử lý,
-        // bao gồm cả emit sessionExpired() nếu cần). Không retry nữa, để UI
-        // ở trạng thái "chưa fetch được" như trước đây thay vì lặp vô hạn.
-        qDebug() << "[Zalo] fetchConversations retry-after-600: secretKey refresh did not help, giving up";
-        return;
-    }
-    qDebug() << "[Zalo] fetchConversations retry-after-600: secretKey refreshed, retrying fetch";
-    fetchConversations();
-}
-
-void ZaloService::onRetryFetchFriendsCheckTimer()
-{
-    if (m_secretKey.isEmpty() || m_secretKey == m_pendingRetryFetchFriendsOldKey) {
-        qDebug() << "[Zalo] fetchFriends retry-after-600: secretKey refresh did not help, giving up";
-        return;
-    }
-    qDebug() << "[Zalo] fetchFriends retry-after-600: secretKey refreshed, retrying fetch";
-    fetchFriends();
 }
 
 // Pulls the user's own quick-message list from their real Zalo account
@@ -741,7 +600,7 @@ void ZaloService::onFetchServerQuickMessagesDone()
     // fetchInvites, ...): the decrypted blob is itself {error_code, error_message,
     // data:{...}}, and for quickmessage/list the real payload — {cursor, version,
     // items} — lives under that inner "data" key, not at the top level.
-    QVariantMap outer = jsonToMap(dec);
+    QVariantMap outer = jsonToMap(dec.toUtf8());
     QVariantMap payload = outer.value("data").toMap();
     QVariantList items = payload.value("items").toList();
     if (items.isEmpty() && outer.contains("items"))
@@ -811,7 +670,7 @@ void ZaloService::onFetchInvitesDone()
 
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] fetchInvites decrypted FULL:" << dec.left(800);
-    QVariantMap outer = jsonToMap(dec);
+    QVariantMap outer = jsonToMap(dec.toUtf8());
     qDebug() << "[Zalo] fetchInvites outer keys:" << outer.keys();
 
     // recommendsv2/list response (per zca-js getFriendRecommendations.d.ts):

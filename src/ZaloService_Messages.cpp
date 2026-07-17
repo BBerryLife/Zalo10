@@ -9,7 +9,8 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QByteArray>
-#include <QTimer>
+#include <QScriptEngine>
+#include <QScriptValue>
 #include <QUuid>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -95,7 +96,7 @@ void ZaloService::onFetchMsgDone()
     QString dec2 = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] fetchMessages decrypted (first150):" << dec2.left(150);
 
-    QVariantMap outer2 = jsonToMap(dec2);
+    QVariantMap outer2 = jsonToMap(dec2.toUtf8());
     QVariantMap d2;
     if (outer2.contains("data") && outer2["data"].type() == QVariant::Map)
         d2 = outer2["data"].toMap();
@@ -299,7 +300,7 @@ static QString extractPhotoUrl(const QVariantMap &mm)
     // Try content JSON
     QString content = mm["content"].toString();
     if (!content.isEmpty() && content.trimmed().startsWith("{")) {
-        QVariantMap cm = jsonToMap(content);
+        QVariantMap cm = jsonToMap(content.toUtf8());
         QString u = cm["normalUrl"].toString();
         if (u.isEmpty()) u = cm["hdUrl"].toString();
         if (u.isEmpty()) u = cm["thumbUrl"].toString();
@@ -351,7 +352,7 @@ void ZaloService::onFetchPhotoDetailDone()
         dataJson = dataEnc;
     }
 
-    QVariantMap data = jsonToMap(dataJson);
+    QVariantMap data = jsonToMap(dataJson.toUtf8());
 
     // Try to find the matching message in multiple possible response shapes:
     //   {msgs: [...]}  /  {groupMsgs: [...]}  /  {data: [...]}  /  single message map
@@ -386,7 +387,7 @@ void ZaloService::onFetchPhotoDetailDone()
 }
 
 
-void ZaloService::sendMessage(const QString &threadId, const QString &content, bool isGroup, bool isRetry)
+void ZaloService::sendMessage(const QString &threadId, const QString &content, bool isGroup)
 {
     if (!m_loggedIn) return;
 
@@ -416,12 +417,11 @@ void ZaloService::sendMessage(const QString &threadId, const QString &content, b
     QNetworkRequest sendReq = buildRequest(urlStr, "https://chat.zalo.me/");
     sendReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
-    qDebug() << "[Zalo] sendMessage POST" << urlStr << "isGroup:" << isGroup << "isRetry:" << isRetry;
+    qDebug() << "[Zalo] sendMessage POST" << urlStr << "isGroup:" << isGroup;
     QNetworkReply *reply = m_manager->post(sendReq, body);
     reply->setProperty("threadId", threadId);
     reply->setProperty("content",  content);
     reply->setProperty("isGroup",  isGroup);
-    reply->setProperty("isRetry",  isRetry);
     // clientId is what we sent as cliMsgId; stash it so onSendMsgDone can save
     // it into the DB row for this message (needed by deleteMessage/undo later).
     reply->setProperty("cliMsgId", msgData["clientId"].toString());
@@ -436,23 +436,18 @@ void ZaloService::onSendMsgDone()
     QString tid     = reply->property("threadId").toString();
     QString content = reply->property("content").toString();
     bool isGroup    = reply->property("isGroup").toBool();
-    bool isRetry    = reply->property("isRetry").toBool();
     QString outCliMsgId = reply->property("cliMsgId").toString();
     QByteArray raw  = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] sendMessage response:" << raw.left(200);
-    if (hasError) {
-        qDebug() << "[Zalo Error] sendMessage Network Error:" << reply->errorString();
-    }
 
     if (!hasError) {
         QVariantMap outer = jsonToMap(raw);
-        int ec = outer["error_code"].toInt();
-        if (ec == 0) {
+        if (outer["error_code"].toInt() == 0) {
             // Parse msgId from encrypted response (same pattern as onSendPhotoMsgDone)
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
             qDebug() << "[Zalo] sendMessage decrypted:" << dec.left(200);
-            QVariantMap decOuter = jsonToMap(dec);
+            QVariantMap decOuter = jsonToMap(dec.toUtf8());
             // Response format: {"error_code":0,"error_message":"...","data":{"msgId":"..."}}
             QVariantMap data = decOuter["data"].toMap();
             qDebug() << "[Zalo] sendMessage data keys:" << data.keys() << "msgId=" << data["msgId"].toString();
@@ -477,57 +472,13 @@ void ZaloService::onSendMsgDone()
             } else {
                 qDebug() << "[Zalo] sendMessage: WS already delivered msgId=" << msgId << ", skipping duplicate";
             }
-            emit messageSent(true, tid);
-            return;
-        }
-
-        qDebug() << "[Zalo] sendMessage error_code:" << ec << outer["error_message"].toString();
-
-        // ec=600: zpw_sek bị server xoay vòng giữa chừng — KHÔNG có nghĩa là
-        // cookie đăng nhập gốc đã hết hạn (xem giải thích đầy đủ trong
-        // ZaloService_Contacts.cpp's fetchConvo, cùng nguyên nhân). Với
-        // HeadlessService giữ session sống liên tục, đây sẽ xảy ra thường
-        // xuyên hơn nhiều so với trước — nếu cứ báo lỗi thẳng cho UI thì
-        // người dùng phải tự gõ lại tin nhắn mỗi lần server xoay vòng key,
-        // dù chỉ cần 1 lần refresh + gửi lại là xong. Refresh rồi tự động
-        // gửi lại ĐÚNG 1 LẦN (isRetry chặn vòng lặp nếu 600 lặp lại thật —
-        // trường hợp đó mới là lỗi session thật sự, để messageSent(false)
-        // báo cho UI như bình thường).
-        if (ec == 600 && !isRetry) {
-            qDebug() << "[Zalo] sendMessage: got 600, refreshing secretKey then retrying send once";
-            m_retrySendThreadId = tid;
-            m_retrySendContent  = content;
-            m_retrySendIsGroup  = isGroup;
-            QString oldSecretKey = m_secretKey;
-            refreshSessionKey();
-            // sessionRefreshed() is ONLY emitted on a successful refresh (see
-            // ZaloService_Network.cpp) — on failure the code falls through to
-            // step7_checkSession()/sessionExpired() instead and never touches
-            // that signal, so connecting to it directly here would leave this
-            // retry hanging forever if the refresh fails. Poll m_secretKey
-            // after a short delay instead: refreshSessionKey()'s HTTP round
-            // trip is a single request, comfortably done well within 2s on
-            // any real network condition this app runs on.
-            m_pendingRetrySendOldKey = oldSecretKey;
-            QTimer::singleShot(2000, this, SLOT(onRetrySendCheckTimer()));
-            return;
+        } else {
+            hasError = true;
+            qDebug() << "[Zalo] sendMessage error_code:" << outer["error_code"].toInt()
+                     << outer["error_message"].toString();
         }
     }
-
-    emit messageSent(false, tid);
-}
-
-void ZaloService::onRetrySendCheckTimer()
-{
-    if (m_secretKey.isEmpty() || m_secretKey == m_pendingRetrySendOldKey) {
-        // Refresh either failed outright (secretKey cleared, step7/step8 auto-
-        // renew or sessionExpired() already handled it) or never actually
-        // changed anything — either way, retrying the send would just hit the
-        // same 600 again. Report the original send as failed.
-        emit messageSent(false, m_retrySendThreadId);
-        return;
-    }
-    sendMessage(m_retrySendThreadId, m_retrySendContent, m_retrySendIsGroup, true);
+    emit messageSent(!hasError, tid);
 }
 
 // ---- Delete & Recall (ported from zca-js deleteMessage.ts / undo.ts) ---------
@@ -690,16 +641,11 @@ void ZaloService::onRecallMsgDone()
 // Two-step: 1) upload to file[0]/api/{message|group}/photo_original/upload
 //           2) send message via {chat|group}/api/{message|group}/photo
 // Copies a picker-provided image (which may live in a transient/sandboxed location,
-// e.g. a Camera share-card path) into the persistent "<homePath>/tmp/zalo_img_local_<ts>.<ext>"
+// e.g. a Camera share-card path) into the persistent "/tmp/zalo_img_local_<ts>.<ext>"
 // cache. Uses the same "zalo_img_" prefix as downloadImageMessage()'s cache files so
 // clearCache() already picks it up via cacheFilePatterns() — nothing else deletes it,
-// including app close/restart.
-//
-// IMPORTANT: must be QDir::homePath(), NOT plain "/tmp/". This file is written by the
-// UI process (cacheLocalImage is called directly, Group B — no IPC) but then read by
-// HeadlessService (a separate process, different "/tmp/" sandbox) when sendPhoto's
-// command_queue entry is dispatched and the actual upload happens. Plain "/tmp/" is
-// not shared between the two processes on BB10/QNX; homePath() is.
+// including app close/restart (plain "/tmp/", not QDir::tempPath() — see notes on
+// downloadImageMessage() for why).
 QString ZaloService::cacheLocalImage(const QString &sourcePath)
 {
     QString path = sourcePath;
@@ -712,8 +658,7 @@ QString ZaloService::cacheLocalImage(const QString &sourcePath)
     QString ext = path.section('.', -1).toLower();
     if (ext.isEmpty() || ext.length() > 4) ext = "jpg";
     qint64 ts = QDateTime::currentMSecsSinceEpoch();
-    QDir().mkpath(QDir::homePath() + "/tmp");
-    QString destPath = QDir::homePath() + "/tmp/zalo_img_local_" + QString::number(ts) + "." + ext;
+    QString destPath = "/tmp/zalo_img_local_" + QString::number(ts) + "." + ext;
 
     if (!QFile::copy(path, destPath)) {
         qDebug() << "[Zalo] cacheLocalImage: copy failed" << path << "->" << destPath
@@ -841,7 +786,7 @@ void ZaloService::onSendPhotoDone()
 
     // Decrypted string is {"error_code":0,"data":{"normalUrl":...,"photoId":...}}
     // Parse the outer wrapper, then get the inner data map
-    QVariantMap decOuter = jsonToMap(decStr);
+    QVariantMap decOuter = jsonToMap(decStr.toUtf8());
     QVariantMap uploadData;
     QVariant dataVariant = decOuter["data"];
     if (dataVariant.type() == QVariant::Map) {
@@ -966,7 +911,7 @@ void ZaloService::onSendPhotoMsgDone()
         QVariantMap outer = jsonToMap(raw);
         if (outer["error_code"].toInt() == 0) {
             QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
-            QVariantMap data = jsonToMap(dec);
+            QVariantMap data = jsonToMap(dec.toUtf8());
             qint64 msgIdInt = data["msgId"].toLongLong();
 
             if (msgIdInt == 0) {
@@ -1308,14 +1253,14 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
 
                     // Use msgId in filename — unique path avoids BB10 image cache stale data.
                     // Always save as .png — BB10 ImageView is more reliable with PNG than JPEG.
-                    // Lives under QDir::homePath() (app data dir), NOT plain "/tmp/": since
-                    // the headless split, this file is written by Zalo10Headless (its own
-                    // "/tmp/" sandbox) but read by the Zalo10 UI process (a different
-                    // sandbox) — plain "/tmp/" is not shared between the two on BB10/QNX.
-                    // homePath() is shared (same dir the SQLite DB lives in).
-                    QString tmpPath = QDir::homePath() + "/tmp/msgthumb_" +
+                    // NOTE: hardcoded "/tmp/" (NOT QDir::tempPath()) — on this BB10 device
+                    // QDir::tempPath() resolves to a per-launch sandboxed scratch dir that gets
+                    // wiped every time the app restarts, while plain "/tmp/" is the same
+                    // device-wide location avatars use and is confirmed to survive app restarts
+                    // (see avatar_meta persistence). See onImageMsgDownloaded() below for the
+                    // same fix applied to full-size photos.
+                    QString tmpPath = "/tmp/msgthumb_" +
                                       msgId + ".png";
-                    QDir().mkpath(QDir::homePath() + "/tmp");
                     QFile::remove(tmpPath);
 
                     // Byte-stuff scan data: in JPEG, any 0xFF byte in entropy-coded
@@ -1411,12 +1356,10 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                 return;
             } // end if(ext.isEmpty())
 
-            // Lives under QDir::homePath() (app data dir), NOT plain "/tmp/" — see
-            // note on msgthumb_ above: not shared between the UI and headless
-            // process sandboxes on BB10/QNX.
-            QString tmpPath = QDir::homePath() + "/tmp/msgimg_" +
+            // Hardcoded "/tmp/" — same reasoning as msgthumb_ above: QDir::tempPath()
+            // does not survive an app restart on this device, plain "/tmp/" does.
+            QString tmpPath = "/tmp/msgimg_" +
                               QString::number(qHash(url)) + "." + ext;
-            QDir().mkpath(QDir::homePath() + "/tmp");
             QFile f(tmpPath);
             if (f.open(QIODevice::WriteOnly)) {
                 f.write(imgData);
@@ -1539,14 +1482,15 @@ void ZaloService::onImageMsgDownloaded()
     // lets the QFile::exists() check above in downloadImageMessage() reliably
     // recognise "we already have this one" on the next call.
     //
-    // Lives under QDir::homePath() (app data dir), NOT plain "/tmp/": since the
-    // headless split, this file is written by Zalo10Headless (its own "/tmp/"
-    // sandbox) but read by the Zalo10 UI process (a different sandbox) — plain
-    // "/tmp/" is not shared between the two on BB10/QNX. homePath() is shared
-    // (same dir the SQLite DB lives in, confirmed to work cross-process).
+    // Hardcoded "/tmp/" (NOT QDir::tempPath()): on this BB10 device,
+    // QDir::tempPath() resolves to a per-app-launch scratch directory that the
+    // OS wipes on every app restart, whereas plain "/tmp/" is the same
+    // device-wide, persistent location avatars already use successfully (see
+    // avatar_meta — confirmed to survive restarts in the field). Using the
+    // same persistent root here is what makes downloaded chat photos actually
+    // survive logout/login and app restarts instead of vanishing every time.
     QString stableKey = msgId.isEmpty() ? md5Hex(url) : msgId;
-    QString tmpPath = QDir::homePath() + "/tmp/zalo_img_" + stableKey + "." + ext;
-    QDir().mkpath(QDir::homePath() + "/tmp");
+    QString tmpPath = "/tmp/zalo_img_" + stableKey + "." + ext;
     QFile f(tmpPath);
     if (f.open(QIODevice::WriteOnly)) { f.write(finalData); f.close(); }
     QString filePath = "file://" + tmpPath;
@@ -1697,7 +1641,7 @@ void ZaloService::onPollMsgDone()
     if (root["error_code"].toInt() != 0) return;
 
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-    QVariantMap outer = jsonToMap(dec);
+    QVariantMap outer = jsonToMap(dec.toUtf8());
     QVariantMap d;
     if (outer.contains("data") && outer["data"].type() == QVariant::Map)
         d = outer["data"].toMap();

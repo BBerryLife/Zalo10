@@ -47,7 +47,7 @@ public:
     Q_INVOKABLE void rejectFriendRequest(const QString &friendId);
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
-    Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup, bool isRetry = false);
+    Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     // Delete a message. Ported from zca-js's deleteMessage.ts:
     //   - onlyMe=true:  "delete for me" — always allowed, any thread.
     //   - onlyMe=false: "delete for everyone" — only allowed in groups; for a
@@ -156,40 +156,6 @@ public:
     // opened. Returns the number of files deleted.
     Q_INVOKABLE int clearCache();
 
-    // enqueueCommand: ZaloServiceProxy (UI thin client) gọi hàm này để ghi 1
-    // lệnh vào command_queue, dùng CHUNG connection SQLite (m_db) với mọi thao
-    // tác đọc/ghi local khác của instance này — thay vì ZaloServiceProxy tự mở
-    // 1 connection SQLite riêng (như trước đây). 2 connection riêng biệt trong
-    // CÙNG 1 process, dù đã bật WAL + busy_timeout, vẫn có thể đụng lock kiểu
-    // SQLITE_LOCKED (khác SQLITE_BUSY — busy_timeout không retry được lỗi này)
-    // khi có statement chưa đóng trên cùng bảng ở 2 connection khác nhau — đây
-    // chính là nguyên nhân "database is locked" quan sát được. Gộp về 1
-    // connection duy nhất cho toàn bộ UI process loại bỏ hẳn khả năng đó.
-    Q_INVOKABLE void enqueueCommand(const QString &command, const QString &argsJson);
-
-    // readServiceState: đọc toàn bộ bảng service_state, dùng CHUNG connection
-    // (m_db) — ZaloServiceProxy::onStatePollTimer() gọi hàm này mỗi 400ms thay
-    // vì tự mở 1 connection SQLite mới mỗi lần poll (cùng lý do với
-    // enqueueCommand() ở trên: giảm số connection đồng thời trong process UI
-    // xuống còn đúng 1, tránh SQLITE_LOCKED).
-    QMap<QString, QString> readServiceState();
-
-    // ---- IPC (HeadlessService <-> UI thin client) ----------------------------
-    // publishState: ghi 1 cặp key/value vào bảng service_state, để UI đọc trạng
-    // thái (loggedIn, uid, qrImagePath...) mà không cần sống chung process.
-    // Gọi từ mọi nơi ZaloService hiện đang emit các signal trạng thái quan trọng.
-    void publishState(const QString &key, const QString &value);
-    // processCommandQueue: đọc mọi dòng command_queue chưa xử lý (processed=0),
-    // dispatch tới đúng hàm Q_INVOKABLE tương ứng, rồi đánh dấu processed=1.
-    // Chỉ HeadlessService gọi hàm này (qua QTimer định kỳ) — UI app KHÔNG BAO GIỜ
-    // gọi hàm này, chỉ ghi vào command_queue.
-    Q_INVOKABLE void processCommandQueue();
-    // dispatchCommand: bảng if-else thực thi 1 lệnh cụ thể — tách khỏi
-    // processCommandQueue() để mỗi lệnh có thể được bọc try/catch RIÊNG (1
-    // lệnh ném exception không còn kéo theo cả batch, xem processCommandQueue()
-    // trong ZaloService_Ipc.cpp để biết lý do).
-    void dispatchCommand(const QString &command, const QVariantMap &args);
-
 signals:
     void loggedInChanged();
     void loginFailed(const QString &message);
@@ -247,21 +213,6 @@ private slots:
     void onUpdateDownloadProgress(qint64 received, qint64 total);
     void onUpdateDownloadFinished();
     void onUpdateSslErrors(const QList<QSslError> &errors);
-    // Bắt đầu request tải avatar KẾ TIẾP trong m_avatarDownloadQueue (nếu có).
-    // QUAN TRỌNG: luôn được gọi qua QTimer::singleShot(0, ...) từ
-    // onAvatarDownloaded(), KHÔNG gọi trực tiếp — nếu gọi trực tiếp (đồng bộ)
-    // và request đó lại lỗi ngay lập tức (vd URL rỗng/hỏng khiến
-    // QNetworkAccessManager trả lỗi "cục bộ" gần như tức thời), nó gọi lại
-    // onAvatarDownloaded() ngay trong CÙNG stack frame — tạo chuỗi đệ quy có
-    // thể sâu tới hàng nghìn lớp nếu nhiều item liên tiếp trong hàng đợi đều
-    // lỗi kiểu này (quan sát thực tế: đúng nguyên nhân hàng chục nghìn dòng
-    // "bad allocation" dồn dập trong vài trăm mili-giây, không phải do 1 lần
-    // cấp phát lớn mà do đệ quy cực sâu — mỗi lớp gọi hàm đều tốn thêm bộ nhớ
-    // stack/heap, cộng dồn tới khi cấp phát thất bại thật). Gọi qua
-    // singleShot(0,...) trả quyền điều khiển về event loop giữa mỗi item,
-    // phá vỡ chuỗi đệ quy này hoàn toàn — mỗi item giờ chạy trong tick sự
-    // kiện RIÊNG, không còn cộng dồn stack.
-    void startNextQueuedAvatarDownload();
 
     void onStep2Done();
     void onStep3Done();
@@ -278,8 +229,6 @@ private slots:
 
     void onFetchConvoDone();
     void onFetchFriendsDone();
-    void onRetryFetchConvoCheckTimer();   // xem fetchConversations()'s ec==600 handling
-    void onRetryFetchFriendsCheckTimer(); // xem fetchFriends()'s ec==600 handling
     void onFetchServerQuickMessagesDone();
     void onFetchInvitesDone();
     void onAcceptFriendDone();
@@ -288,7 +237,6 @@ private slots:
     void onFetchMsgDone();
     void onFetchPhotoDetailDone();  // HTTP fallback khi cmd=510 không trả HTTP URL
     void onSendMsgDone();
-    void onRetrySendCheckTimer(); // xem sendMessage()'s ec==600 handling trong ZaloService_Messages.cpp
     void onDeleteMsgDone();
     void onRecallMsgDone();
     void onSendPhotoDone();
@@ -318,12 +266,6 @@ private slots:
     void onWsSslErrors(const QList<QSslError> &errors);
     void onWsSocketError(QAbstractSocket::SocketError err);
     void onWsReconnectTimer();
-
-    // ---- IPC state-publishing slots (xem ZaloService_Ipc.cpp) ----------------
-    void onPublishLoggedInState();
-    void onPublishQrState(const QString &qrImagePath, const QString &qrCodeRaw);
-    void onPublishSessionExpired();
-    void onPublishLoginSuccess(const QString &uid, const QString &displayName);
 
 private:
     struct EncryptedParams {
@@ -402,7 +344,6 @@ private:
     QString     m_wsExpectedAccept; // Sec-WebSocket-Accept expected
     QByteArray  m_wsBuffer;         // buffer cho incomplete frames
     void connectWebSocket();
-    void connectWebSocketAtCurrentIndex(); // dùng nội bộ bởi connectWebSocket() và onWsReconnectTimer() — xem ZaloService_WebSocket.cpp
     void disconnectWebSocket();
     void refreshSessionKey();
     void sendKeepAlive();   // GET {chat}/keepalive — gia hạn session, port từ zca-js keepAliveFactory
@@ -434,17 +375,6 @@ private:
     QString m_loginVersion;
     QString m_qrCode;
     QString m_pendingEncryptKey;
-
-    // State cho sendMessage()'s ec==600 auto-retry (xem ZaloService_Messages.cpp)
-    QString m_retrySendThreadId;
-    QString m_retrySendContent;
-    bool    m_retrySendIsGroup;
-    QString m_pendingRetrySendOldKey;
-
-    // State cho fetchConversations()/fetchFriends()'s ec==600 auto-retry
-    // (xem ZaloService_Contacts.cpp) — cùng pattern với sendMessage ở trên.
-    QString m_pendingRetryFetchConvoOldKey;
-    QString m_pendingRetryFetchFriendsOldKey;
 
     QString m_chatServiceUrl;
     QString m_groupServiceUrl;
@@ -481,25 +411,6 @@ private:
     QSet<QString> m_pendingAvatars; // Ngăn tải trùng lặp
     QMap<QString, QSet<QString> > m_pendingAvatarWaiters; // url -> set of threadIds đang chờ
 
-    // Giới hạn số lượng avatar tải CÙNG LÚC qua mạng thật (QNetworkReply đang
-    // in-flight) — TÁCH BIỆT với avatarDripTimer phía QML (giới hạn tốc độ
-    // GHI lệnh vào command_queue). processCommandQueue() (ZaloService_Ipc.cpp)
-    // đọc TOÀN BỘ command_queue processed=0 và dispatch hết trong 1 lần poll
-    // (không giới hạn) — nên nếu UI đã kịp ghi hàng chục lệnh downloadAvatar
-    // trước khi HeadlessService poll tới (ví dụ: sau 1 lần fetchFriends 87
-    // người), toàn bộ 80-90 lệnh đó bắn network request gần như đồng thời chỉ
-    // trong 1 tick. Quan sát thực tế: HeadlessService crash (log dừng đột ngột
-    // giữa chừng, không có dòng lỗi/fatal nào) đúng ngay giữa 1 đợt burst như
-    // vậy — rất có thể do QNetworkAccessManager/SSL context trên BB10 Simulator
-    // không chịu nổi hàng chục request đồng thời. Hàng đợi dưới đây giữ số
-    // request thực sự đang bay tối đa ở MAX_CONCURRENT_AVATAR_DOWNLOADS, mọi
-    // request vượt quá sẽ nằm trong m_avatarDownloadQueue chờ tới lượt khi có
-    // 1 request khác xong (xem onAvatarDownloaded()).
-    static const int MAX_CONCURRENT_AVATAR_DOWNLOADS = 2;
-    int m_activeAvatarDownloads;
-    QList<QPair<QString, QString> > m_avatarDownloadQueue; // (url, threadId) đang chờ tới lượt tải
-    void startAvatarNetworkFetch(const QString &url, const QString &threadId);
-
     // Re-emit friendsReady sau khi avatar load xong
     sqlite3 *m_db;
     QVariantList m_pendingFriends;
@@ -511,13 +422,7 @@ private:
 
     static const int API_VERSION = 671; // zca-js su dung 671 (default)
     static const int API_TYPE = 30;
-    // 45 giây, KHÔNG phải 2 phút như trước. Log thực tế cho thấy cookie
-    // zpw_sek phía server hết hạn CHỈ SAU ~99 GIÂY kể từ lần refresh/login
-    // gần nhất — với interval 120s cũ, lần keepAlive đầu tiên luôn tới TRỄ
-    // hơn thời điểm cookie đã chết, nên "gia hạn" chưa từng thực sự xảy ra
-    // kịp lúc trong session đầu tiên sau mỗi lần khởi động HeadlessService.
-    // 45s để lại biên độ an toàn đáng kể so với ngưỡng ~99s quan sát được.
-    static const int KEEPALIVE_INTERVAL_MS = 45000;
+    static const int KEEPALIVE_INTERVAL_MS = 120000; // 2 phut, theo goi y trong issue zca-js
     static const char *USER_AGENT;
     QString generateRandomUserAgent();
     static const char *AES_FIXED_KEY;
