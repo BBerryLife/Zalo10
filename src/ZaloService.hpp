@@ -280,8 +280,6 @@ private slots:
     void onFetchFriendsDone();
     void onRetryFetchConvoCheckTimer();   // xem fetchConversations()'s ec==600 handling
     void onRetryFetchFriendsCheckTimer(); // xem fetchFriends()'s ec==600 handling
-    void onFetchFriendsNetRetryTimer();   // retry sau lỗi MẠNG (khác ec==600) — xem fetchFriends()
-    void onFetchConvoNetRetryTimer();     // retry sau lỗi MẠNG (khác ec==600) — xem fetchConversations()
     void onFetchServerQuickMessagesDone();
     void onFetchInvitesDone();
     void onAcceptFriendDone();
@@ -447,14 +445,6 @@ private:
     // (xem ZaloService_Contacts.cpp) — cùng pattern với sendMessage ở trên.
     QString m_pendingRetryFetchConvoOldKey;
     QString m_pendingRetryFetchFriendsOldKey;
-
-    // Đếm số lần đã tự retry khi gặp lỗi MẠNG (host not found/timeout/...,
-    // khác với lỗi ứng dụng ec!=0 ở trên) cho 1 lần fetch — cap ở 1 lần retry
-    // để không lặp vô hạn nếu mất mạng thật sự. Reset về 0 mỗi khi request
-    // nhận được phản hồi HTTP thật (dù thành công hay lỗi ứng dụng), chỉ giữ
-    // nguyên khi retry chưa dùng hết — xem onFetchFriendsDone()/onFetchConvoDone().
-    int m_fetchFriendsNetRetryCount;
-    int m_fetchConvoNetRetryCount;
 
     QString m_chatServiceUrl;
     QString m_groupServiceUrl;

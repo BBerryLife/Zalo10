@@ -73,7 +73,6 @@ ZaloService::ZaloService(QObject *parent)
       m_webSocket(0), m_wsUrlIndex(0), m_wsConnected(false), m_wsHandshakeSent(false),
       m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false),
       m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),
-      m_fetchFriendsNetRetryCount(0), m_fetchConvoNetRetryCount(0),
       m_lastFetchFriendsTime(0), m_lastFetchConvoTime(0), m_db(0),
       m_updateReply(0), m_retrySendIsGroup(false), m_activeAvatarDownloads(0)
 {

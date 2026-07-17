@@ -66,35 +66,18 @@ void ZaloService::onFetchConvoDone()
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
 
+    if (reply->error() != QNetworkReply::NoError) {
+        qDebug() << "[Zalo Error] fetchConversations Network Error:" << reply->errorString();
+    }
+
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    // Cùng lý do với fetchFriends() — lỗi MẠNG (không phải lỗi ứng dụng
-    // ec!=0) trước đây chỉ được log rồi rơi xuống nhánh raw.isEmpty() coi
-    // như "0 nhóm" thành công, refresh trông như im lặng không làm gì. Log
-    // mới cho thấy raw rỗng có thể xảy ra CẢ KHI reply->error()==NoError
-    // (nghi tranh chấp SSL/socket lúc khởi động, cùng nguyên nhân với
-    // fetchFriends — xem ghi chú chi tiết ở onFetchFriendsDone()). Coi cả
-    // hai trường hợp là lỗi tạm thời, retry 1 lần trước khi chấp nhận thất bại.
-    bool networkFailed = (reply->error() != QNetworkReply::NoError) || raw.isEmpty();
-    if (networkFailed) {
-        if (reply->error() != QNetworkReply::NoError)
-            qDebug() << "[Zalo Error] fetchConversations Network Error:" << reply->errorString();
-        else
-            qDebug() << "[Zalo Error] fetchConversations: empty response body with no network error (transient?)";
+    if (raw.isEmpty()) {
+        emit conversationsReady(QVariantList());
         m_isFetchingConversations = false;
-        if (m_fetchConvoNetRetryCount < 1) {
-            m_fetchConvoNetRetryCount++;
-            qDebug() << "[Zalo] fetchConversations: retrying once in 1.5s";
-            QTimer::singleShot(1500, this, SLOT(onFetchConvoNetRetryTimer()));
-        } else {
-            qDebug() << "[Zalo] fetchConversations: failure persisted after retry, giving up for now";
-            m_fetchConvoNetRetryCount = 0;
-            emit conversationsReady(QVariantList());
-        }
         return;
     }
-    m_fetchConvoNetRetryCount = 0;
 
     qDebug() << "[Zalo] fetchConvo raw (first200):" << raw.left(200);
 
@@ -140,49 +123,27 @@ void ZaloService::onFetchConvoDone()
     }
     m_lastFetchConvoTime = QDateTime::currentMSecsSinceEpoch();
 
-    // QUAN TRỌNG — trước đây đoạn decrypt/parse dưới đây KHÔNG có try/catch,
-    // khác với fetchFriends() (đã có từ trước). Quan sát thực tế: 1 bad_alloc
-    // ném ra ngay trong lúc đang xử lý payload getlg/v4 (bắt được ở tầng
-    // notify() nhờ circuit-breaker mới thêm — không còn làm treo cả process
-    // nữa) khiến hàm này thoát NGANG CHỪNG, trước khi chạy tới dòng
-    // "m_isFetchingConversations = false" ở cuối — cờ kẹt ở true VĨNH VIỄN,
-    // mọi lần bấm refresh nhóm sau đó đều bị chặn ở check "already in
-    // progress" ngay từ đầu fetchConversations(), dù thực ra không còn request
-    // nào đang chạy thật. Bọc try/catch ở đây, giống hệt cách fetchFriends()
-    // đã làm, để bất kỳ exception nào trong lúc decrypt/parse cũng chắc chắn
-    // reset được cờ trước khi thoát.
     QVariantList threads;
-    try {
-        QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-        qDebug() << "[Zalo] fetchConvo decrypted (first150):" << dec.left(150);
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    qDebug() << "[Zalo] fetchConvo decrypted (first150):" << dec.left(150);
 
-        QVariantMap outer = jsonToMap(dec);
-        QVariantMap inner;
-        if (outer.contains("data") && outer["data"].type() == QVariant::Map)
-            inner = outer["data"].toMap();
-        else
-            inner = outer;
+    QVariantMap outer = jsonToMap(dec);
+    QVariantMap inner;
+    if (outer.contains("data") && outer["data"].type() == QVariant::Map)
+        inner = outer["data"].toMap();
+    else
+        inner = outer;
 
-        QVariantMap gridVerMap = inner["gridVerMap"].toMap();
-        qDebug() << "[Zalo] fetchConvo gridVerMap size:" << gridVerMap.size();
+    QVariantMap gridVerMap = inner["gridVerMap"].toMap();
+    qDebug() << "[Zalo] fetchConvo gridVerMap size:" << gridVerMap.size();
 
-        QStringList groupIds = gridVerMap.keys();
+    QStringList groupIds = gridVerMap.keys();
 
-        qDebug() << "[Zalo] fetchConvo found" << groupIds.size() << "groups, fetching details...";
+    qDebug() << "[Zalo] fetchConvo found" << groupIds.size() << "groups, fetching details...";
 
-        if (!groupIds.isEmpty()) {
-            fetchGroupDetails(groupIds); // m_isFetchingConversations reset ở onGroupDetailsDone() (đã bọc try/catch riêng bên dưới)
-        } else {
-            m_isFetchingConversations = false;
-            emit conversationsReady(QVariantList());
-        }
-    } catch (const std::exception &e) {
-        qDebug() << "[Zalo Error] fetchConversations: EXCEPTION during parse/decrypt:" << e.what();
-        m_isFetchingConversations = false;
-        emit conversationsReady(QVariantList());
-    } catch (...) {
-        qDebug() << "[Zalo Error] fetchConversations: UNKNOWN exception during parse/decrypt";
-        m_isFetchingConversations = false;
+    if (!groupIds.isEmpty()) {
+        fetchGroupDetails(groupIds);
+    } else {
         emit conversationsReady(QVariantList());
     }
 }
@@ -236,92 +197,74 @@ void ZaloService::onGroupDetailsDone()
         return;
     }
 
-    // QUAN TRỌNG — bọc toàn bộ phần parse/decrypt/build-threads dưới đây
-    // trong try/catch: đây chính là chỗ ghi nhận thực tế từng ném bad_alloc
-    // (payload getmg-v2 có thể khá lớn khi nhiều group cùng lúc). Nếu không
-    // bọc, exception sẽ thoát ngang hàm này TRƯỚC dòng reset
-    // "m_isFetchingConversations = false" ở cuối — cờ kẹt vĩnh viễn, mọi lần
-    // fetchConversations() sau đó đều bị chặn ở check "already in progress"
-    // dù không còn request nào thật sự đang chạy (đúng triệu chứng "refresh
-    // nhóm lần 2 không được" đã quan sát).
-    try {
-        QVariantMap root = jsonToMap(raw);
-        int ec = root["error_code"].toInt();
-        if (ec != 0) {
-            qDebug() << "[Zalo Error] groupDetails outer error:" << ec << root["error_message"].toString();
-            m_isFetchingConversations = false;
-            emit conversationsReady(QVariantList());
-            return;
-        }
-
-        QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-        qDebug() << "[Zalo] groupDetails decrypted (first200):" << dec.left(200);
-
-        QVariantMap outer = jsonToMap(dec);
-        int ec2 = outer["error_code"].toInt();
-        if (ec2 != 0) {
-            qDebug() << "[Zalo Error] groupDetails inner error:" << ec2 << outer["error_message"].toString();
-            m_isFetchingConversations = false;
-            emit conversationsReady(QVariantList());
-            return;
-        }
-
-        QVariantMap inner;
-        if (outer.contains("data") && outer["data"].type() == QVariant::Map)
-            inner = outer["data"].toMap();
-        else
-            inner = outer;
-
-        qDebug() << "[Zalo] groupDetails inner keys:" << inner.keys();
-
-        QVariantList threads;
-
-        QVariantMap gridInfoMap = inner["gridInfoMap"].toMap();
-        if (!gridInfoMap.isEmpty()) {
-            QStringList keys = gridInfoMap.keys();
-            for (int i = 0; i < keys.size(); ++i) {
-                QVariantMap g = gridInfoMap[keys[i]].toMap();
-                QVariantMap t;
-                QString gname = g["name"].toString();
-                if (gname.isEmpty()) gname = "Nhom " + g["groupId"].toString().right(6);
-                QString gid = g["groupId"].toString();
-                t["threadId"] = gid;
-                t["name"]     = gname;
-                t["isGroup"]  = true;
-                t["avatar"]   = g["avt"].toString();
-                t["unread"]   = 0;
-                threads.append(t);
-                m_groupNames[gid] = gname; // cache for notifications
-            }
-        } else {
-            QVariantList grids = inner["gridInfos"].toList();
-            for (int i = 0; i < grids.size(); ++i) {
-                QVariantMap g = grids[i].toMap();
-                QVariantMap t;
-                QString gid = g["groupId"].toString();
-                t["threadId"] = gid;
-                t["name"]     = g["name"].toString();
-                t["isGroup"]  = true;
-                t["avatar"]   = g["avt"].toString();
-                t["unread"]   = 0;
-                threads.append(t);
-                m_groupNames[gid] = g["name"].toString(); // cache
-            }
-        }
-
-        qDebug() << "[Zalo] groupDetails found" << threads.size() << "groups with names";
-        if (!threads.isEmpty())
-            emit conversationsReady(threads);
-        m_isFetchingConversations = false;
-    } catch (const std::exception &e) {
-        qDebug() << "[Zalo Error] groupDetails: EXCEPTION during parse/decrypt:" << e.what();
+    QVariantMap root = jsonToMap(raw);
+    int ec = root["error_code"].toInt();
+    if (ec != 0) {
+        qDebug() << "[Zalo Error] groupDetails outer error:" << ec << root["error_message"].toString();
         m_isFetchingConversations = false;
         emit conversationsReady(QVariantList());
-    } catch (...) {
-        qDebug() << "[Zalo Error] groupDetails: UNKNOWN exception during parse/decrypt";
-        m_isFetchingConversations = false;
-        emit conversationsReady(QVariantList());
+        return;
     }
+
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    qDebug() << "[Zalo] groupDetails decrypted (first200):" << dec.left(200);
+
+    QVariantMap outer = jsonToMap(dec);
+    int ec2 = outer["error_code"].toInt();
+    if (ec2 != 0) {
+        qDebug() << "[Zalo Error] groupDetails inner error:" << ec2 << outer["error_message"].toString();
+        m_isFetchingConversations = false;
+        emit conversationsReady(QVariantList());
+        return;
+    }
+
+    QVariantMap inner;
+    if (outer.contains("data") && outer["data"].type() == QVariant::Map)
+        inner = outer["data"].toMap();
+    else
+        inner = outer;
+
+    qDebug() << "[Zalo] groupDetails inner keys:" << inner.keys();
+
+    QVariantList threads;
+
+    QVariantMap gridInfoMap = inner["gridInfoMap"].toMap();
+    if (!gridInfoMap.isEmpty()) {
+        QStringList keys = gridInfoMap.keys();
+        for (int i = 0; i < keys.size(); ++i) {
+            QVariantMap g = gridInfoMap[keys[i]].toMap();
+            QVariantMap t;
+            QString gname = g["name"].toString();
+            if (gname.isEmpty()) gname = "Nhom " + g["groupId"].toString().right(6);
+            QString gid = g["groupId"].toString();
+            t["threadId"] = gid;
+            t["name"]     = gname;
+            t["isGroup"]  = true;
+            t["avatar"]   = g["avt"].toString();
+            t["unread"]   = 0;
+            threads.append(t);
+            m_groupNames[gid] = gname; // cache for notifications
+        }
+    } else {
+        QVariantList grids = inner["gridInfos"].toList();
+        for (int i = 0; i < grids.size(); ++i) {
+            QVariantMap g = grids[i].toMap();
+            QVariantMap t;
+            QString gid = g["groupId"].toString();
+            t["threadId"] = gid;
+            t["name"]     = g["name"].toString();
+            t["isGroup"]  = true;
+            t["avatar"]   = g["avt"].toString();
+            t["unread"]   = 0;
+            threads.append(t);
+            m_groupNames[gid] = g["name"].toString(); // cache
+        }
+    }
+
+    qDebug() << "[Zalo] groupDetails found" << threads.size() << "groups with names";
+    if (!threads.isEmpty())
+        emit conversationsReady(threads);
+    m_isFetchingConversations = false;
 }
 
 void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
@@ -585,37 +528,9 @@ void ZaloService::onFetchFriendsDone()
 
     qDebug() << "[Zalo] fetchFriends raw size:" << raw.size() << "bytes, first300:" << raw.left(300);
 
-    // QUAN TRỌNG — trước đây chỉ coi lỗi MẠNG (reply->error() != NoError, vd
-    // "Host not found") là đáng retry. Log mới quan sát được 1 kiểu lỗi
-    // KHÁC: raw.size() == 0 NHƯNG reply->error() == NoError (không log được
-    // "Network Error" nào cả) — tức Qt/BB10 coi request "thành công" nhưng
-    // thân response trống rỗng thật sự. Xảy ra ngay trong cửa sổ khởi động
-    // rất hẹp (fetchFriends bắn đi lúc WS handshake CÙNG LÚC đang hoàn tất
-    // HTTP Upgrade) — nghi ngờ tranh chấp tài nguyên SSL/socket dùng chung
-    // trên BB10 khi có nhiều kết nối HTTPS/WSS cùng lúc lúc mới khởi động.
-    // Trước đây trường hợp này lọt qua nhánh network-error, rơi thẳng vào
-    // parse "" như 1 response hợp lệ rỗng → "0 bạn bè" bị coi là thành công,
-    // friendsReady() không emit, refresh coi như không làm gì. Giờ coi CẢ
-    // network-error LẪN raw rỗng bất thường đều là lỗi tạm thời, retry đúng
-    // 1 lần như nhau.
-    bool networkFailed = (reply->error() != QNetworkReply::NoError) || raw.isEmpty();
-    if (networkFailed) {
-        if (reply->error() != QNetworkReply::NoError)
-            qDebug() << "[Zalo Error] fetchFriends Network Error:" << reply->errorString();
-        else
-            qDebug() << "[Zalo Error] fetchFriends: empty response body with no network error (transient?)";
-        m_isFetchingFriends = false;
-        if (m_fetchFriendsNetRetryCount < 1) {
-            m_fetchFriendsNetRetryCount++;
-            qDebug() << "[Zalo] fetchFriends: retrying once in 1.5s";
-            QTimer::singleShot(1500, this, SLOT(onFetchFriendsNetRetryTimer()));
-        } else {
-            qDebug() << "[Zalo] fetchFriends: failure persisted after retry, giving up for now";
-            m_fetchFriendsNetRetryCount = 0;
-        }
-        return;
+    if (reply->error() != QNetworkReply::NoError) {
+        qDebug() << "[Zalo Error] fetchFriends Network Error:" << reply->errorString();
     }
-    m_fetchFriendsNetRetryCount = 0;
 
     // Xử lý HTTP 429 Too Many Requests — raw là HTML, không phải JSON
     if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
@@ -759,21 +674,6 @@ void ZaloService::onRetryFetchFriendsCheckTimer()
     }
     qDebug() << "[Zalo] fetchFriends retry-after-600: secretKey refreshed, retrying fetch";
     fetchFriends();
-}
-
-// Retry sau lỗi MẠNG (Host not found/timeout/...) — khác hẳn nhánh ec==600 ở
-// trên (đó là lỗi ứng dụng, cần refresh secretKey trước). Ở đây chỉ đơn giản
-// gọi lại fetchFriends(): m_isFetchingFriends đã được reset về false ngay
-// trước khi hẹn giờ này, và m_lastFetchFriendsTime không đổi trong lần thất
-// bại vừa rồi nên không bị cooldown 10s chặn.
-void ZaloService::onFetchFriendsNetRetryTimer()
-{
-    fetchFriends();
-}
-
-void ZaloService::onFetchConvoNetRetryTimer()
-{
-    fetchConversations();
 }
 
 // Pulls the user's own quick-message list from their real Zalo account
