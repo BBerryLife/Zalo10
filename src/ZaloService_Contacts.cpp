@@ -71,29 +71,30 @@ void ZaloService::onFetchConvoDone()
 
     // Cùng lý do với fetchFriends() — lỗi MẠNG (không phải lỗi ứng dụng
     // ec!=0) trước đây chỉ được log rồi rơi xuống nhánh raw.isEmpty() coi
-    // như "0 nhóm" thành công, refresh trông như im lặng không làm gì. Retry
-    // 1 lần trước khi chấp nhận thất bại.
-    if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "[Zalo Error] fetchConversations Network Error:" << reply->errorString();
+    // như "0 nhóm" thành công, refresh trông như im lặng không làm gì. Log
+    // mới cho thấy raw rỗng có thể xảy ra CẢ KHI reply->error()==NoError
+    // (nghi tranh chấp SSL/socket lúc khởi động, cùng nguyên nhân với
+    // fetchFriends — xem ghi chú chi tiết ở onFetchFriendsDone()). Coi cả
+    // hai trường hợp là lỗi tạm thời, retry 1 lần trước khi chấp nhận thất bại.
+    bool networkFailed = (reply->error() != QNetworkReply::NoError) || raw.isEmpty();
+    if (networkFailed) {
+        if (reply->error() != QNetworkReply::NoError)
+            qDebug() << "[Zalo Error] fetchConversations Network Error:" << reply->errorString();
+        else
+            qDebug() << "[Zalo Error] fetchConversations: empty response body with no network error (transient?)";
         m_isFetchingConversations = false;
         if (m_fetchConvoNetRetryCount < 1) {
             m_fetchConvoNetRetryCount++;
-            qDebug() << "[Zalo] fetchConversations: network error, retrying once in 1.5s";
+            qDebug() << "[Zalo] fetchConversations: retrying once in 1.5s";
             QTimer::singleShot(1500, this, SLOT(onFetchConvoNetRetryTimer()));
         } else {
-            qDebug() << "[Zalo] fetchConversations: network error persisted after retry, giving up for now";
+            qDebug() << "[Zalo] fetchConversations: failure persisted after retry, giving up for now";
             m_fetchConvoNetRetryCount = 0;
             emit conversationsReady(QVariantList());
         }
         return;
     }
     m_fetchConvoNetRetryCount = 0;
-
-    if (raw.isEmpty()) {
-        emit conversationsReady(QVariantList());
-        m_isFetchingConversations = false;
-        return;
-    }
 
     qDebug() << "[Zalo] fetchConvo raw (first200):" << raw.left(200);
 
@@ -584,25 +585,32 @@ void ZaloService::onFetchFriendsDone()
 
     qDebug() << "[Zalo] fetchFriends raw size:" << raw.size() << "bytes, first300:" << raw.left(300);
 
-    // QUAN TRỌNG — trước đây lỗi MẠNG (vd "Host not found" quan sát thực tế
-    // khi bấm refresh lần 2 — nghi do DNS/connection-pool của BB10 tạm thời
-    // "kẹt" sau 1 loạt request avatar/ảnh trước đó, không phải lỗi code xây
-    // dựng URL vì chuỗi URL debug in ra vẫn đúng) chỉ được LOG rồi rơi tiếp
-    // xuống parse "raw" rỗng như thể server trả về hợp lệ — kết quả "0 bạn
-    // bè" bị coi là thành công, khiến friendsReady() không bao giờ emit và
-    // refresh trông như "im lặng không làm gì". Giờ retry đúng 1 lần sau
-    // 1.5s (đủ để 1 lỗi DNS/pool thoáng qua tự phục hồi, và không đụng
-    // cooldown 10s vì m_lastFetchFriendsTime chỉ được set khi fetch THẬT SỰ
-    // thành công) trước khi bỏ cuộc.
-    if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "[Zalo Error] fetchFriends Network Error:" << reply->errorString();
+    // QUAN TRỌNG — trước đây chỉ coi lỗi MẠNG (reply->error() != NoError, vd
+    // "Host not found") là đáng retry. Log mới quan sát được 1 kiểu lỗi
+    // KHÁC: raw.size() == 0 NHƯNG reply->error() == NoError (không log được
+    // "Network Error" nào cả) — tức Qt/BB10 coi request "thành công" nhưng
+    // thân response trống rỗng thật sự. Xảy ra ngay trong cửa sổ khởi động
+    // rất hẹp (fetchFriends bắn đi lúc WS handshake CÙNG LÚC đang hoàn tất
+    // HTTP Upgrade) — nghi ngờ tranh chấp tài nguyên SSL/socket dùng chung
+    // trên BB10 khi có nhiều kết nối HTTPS/WSS cùng lúc lúc mới khởi động.
+    // Trước đây trường hợp này lọt qua nhánh network-error, rơi thẳng vào
+    // parse "" như 1 response hợp lệ rỗng → "0 bạn bè" bị coi là thành công,
+    // friendsReady() không emit, refresh coi như không làm gì. Giờ coi CẢ
+    // network-error LẪN raw rỗng bất thường đều là lỗi tạm thời, retry đúng
+    // 1 lần như nhau.
+    bool networkFailed = (reply->error() != QNetworkReply::NoError) || raw.isEmpty();
+    if (networkFailed) {
+        if (reply->error() != QNetworkReply::NoError)
+            qDebug() << "[Zalo Error] fetchFriends Network Error:" << reply->errorString();
+        else
+            qDebug() << "[Zalo Error] fetchFriends: empty response body with no network error (transient?)";
         m_isFetchingFriends = false;
         if (m_fetchFriendsNetRetryCount < 1) {
             m_fetchFriendsNetRetryCount++;
-            qDebug() << "[Zalo] fetchFriends: network error, retrying once in 1.5s";
+            qDebug() << "[Zalo] fetchFriends: retrying once in 1.5s";
             QTimer::singleShot(1500, this, SLOT(onFetchFriendsNetRetryTimer()));
         } else {
-            qDebug() << "[Zalo] fetchFriends: network error persisted after retry, giving up for now";
+            qDebug() << "[Zalo] fetchFriends: failure persisted after retry, giving up for now";
             m_fetchFriendsNetRetryCount = 0;
         }
         return;
