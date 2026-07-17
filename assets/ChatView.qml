@@ -495,6 +495,21 @@ Page {
                         id: rowRoot
                         highlightAppearance: HighlightAppearance.None
                         dividerVisible: false
+                        // CustomListItem (the stock Cascades control, not something this
+                        // project defines) carries its own built-in default padding
+                        // around its content — separate from, and layered on top of,
+                        // the inner Container's own `topPadding: grouped ? 0 : 10`
+                        // logic a bit further down. That inherited padding is constant
+                        // no matter what grouped/bubblePos end up being, which is
+                        // exactly why four different attempts at fixing how rows get
+                        // written into msgModel (remove+insert, snapshot comparison,
+                        // clear+append, forcing a fresh dataModel) never changed
+                        // anything on screen — the diagnostics proved the data and the
+                        // bindings were correct the whole time, but this separate,
+                        // always-on padding was never touched by any of them. Zeroing
+                        // it here lets the inner Container's grouped-based padding be
+                        // the only source of vertical spacing between rows.
+                        topPadding: 0; bottomPadding: 0; leftPadding: 0; rightPadding: 0
 
                         // Cascades ActionItem/DeleteActionItem has no "visible" property
                         // (they extend UIObject, not Control) — assigning one is a hard
