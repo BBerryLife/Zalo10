@@ -1593,6 +1593,18 @@ Page {
         if (anyLayoutChanged) {
             msgModel.clear();
             msgModel.append(items);
+            // clear()+append() alone updates the ArrayDataModel's data, but the
+            // delegate-binding diagnostics above proved grouped/bubblePos were
+            // ALREADY arriving correctly at the delegate for the affected rows
+            // even while the gap still showed — meaning the ListView itself was
+            // reusing pooled Control instances whose already-measured height
+            // Cascades wasn't recomputing off the padding-only change. Detaching
+            // and reattaching the ListView's dataModel forces it to drop every
+            // pooled item Control and instantiate fresh ones against the new
+            // data, which is the only thing left that can invalidate that
+            // stale measured height.
+            msgList.dataModel = null;
+            msgList.dataModel = msgModel;
         } else {
             for (var i2 = 0; i2 < size; i2++) {
                 msgModel.replace(i2, items[i2]);
