@@ -420,8 +420,7 @@ Page {
                 }
             }
             chatViewPage.dbIsMineCache = newCache;
-            chatViewPage.rebuildGroups();
-            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.None);
+            chatViewPage.rebuildGroups(true);
         }
 
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
@@ -460,7 +459,44 @@ Page {
                 // Exists purely as a bounce-through target for the hard
                 // remeasure trick in rebuildGroups() — see the comment there.
                 // Always stays empty; never populated or read directly.
-                ArrayDataModel { id: emptyMsgModel }
+                ArrayDataModel { id: emptyMsgModel },
+                // Swapping dataModel to emptyMsgModel and immediately back to
+                // msgModel in the SAME synchronous block (the first version of
+                // this trick) turned out to only reliably remeasure a couple
+                // of rows per rebuild — a fresh device log matched against a
+                // screenshot showed rows further into the list (added a few
+                // messages earlier, whose bubblePos had since changed as newer
+                // messages joined their group) got no "layoutFrame CHANGED"
+                // line at all and rendered with their stale height. Cascades
+                // most likely coalesces the two dataModel writes within one
+                // event-loop tick and never actually tears down the pooled
+                // Controls for rows outside whatever it considers the
+                // "immediately affected" region. Re-attaching msgModel on a
+                // Timer instead forces the empty-model state to actually be
+                // rendered (a real, separate frame with zero rows) before
+                // msgModel comes back, so every previously-pooled Control is
+                // gone by the time the real data returns and ALL rows get
+                // freshly created against the current grouped/bubblePos.
+                Timer {
+                    id: dataModelReattachTimer
+                    interval: 0
+                    repeat: false
+                    // scrollAfter is set by rebuildGroups() right before
+                    // start() — callers used to call msgList.scrollToPosition()
+                    // themselves immediately after rebuildGroups() returned,
+                    // but now that the real dataModel isn't back in place
+                    // until this timer fires, scrolling immediately would hit
+                    // the still-empty emptyMsgModel and do nothing. Doing it
+                    // here instead, after dataModel is genuinely restored,
+                    // keeps the "jump to newest message" behavior working.
+                    property bool scrollAfter: false
+                    onTriggered: {
+                        msgList.dataModel = msgModel;
+                        if (dataModelReattachTimer.scrollAfter) {
+                            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                        }
+                    }
+                }
             ]
 
             // Bubble hold-menu action stubs. Wired to individual functions
@@ -1473,8 +1509,7 @@ Page {
                 selfName:   chatViewPage.selfName
             };
             msgModel.append(imgPlaceholder);
-            chatViewPage.rebuildGroups();
-            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+            chatViewPage.rebuildGroups(true);
             zService.sendPhoto(chatViewPage.threadId, imgPath, chatViewPage.isGroup, caption);
             return;
         }
@@ -1490,8 +1525,7 @@ Page {
             selfName: chatViewPage.selfName
         };
         msgModel.append(placeholder);
-        chatViewPage.rebuildGroups();
-        msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+        chatViewPage.rebuildGroups(true);
 
         chatViewPage.pendingMsg = txt;
         zService.sendMessage(chatViewPage.threadId, txt, chatViewPage.isGroup);
@@ -1532,7 +1566,7 @@ Page {
                    .replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
     }
 
-    function rebuildGroups() {
+    function rebuildGroups(scrollAfter) {
         var size = msgModel.size();
         if (size === 0) return;
 
@@ -1693,12 +1727,8 @@ Page {
             // reusing pooled Control instances whose already-measured height
             // Cascades wasn't recomputing off the padding-only change.
             //
-            // Two earlier attempts at forcing a hard remeasure both turned out
-            // unreliable in the field (confirmed by a fresh device log: some
-            // rows whose bubblePos changed — e.g. "bottom" becoming "middle"
-            // once a new message joins the group below them — never got a
-            // "row layoutFrame CHANGED" log line after either trick ran, i.e.
-            // Cascades silently kept the stale pooled height for that row):
+            // Three earlier attempts at forcing a hard remeasure all turned
+            // out unreliable in the field:
             //   1) detach/reattach msgList.dataModel by setting it to null,
             //      then back to msgModel. dataModel is a non-nullable
             //      DataModel-typed property, so assigning null is plausibly
@@ -1706,27 +1736,39 @@ Page {
             //      afterwards is a no-op QML change-notification-wise. Never
             //      had any visible effect.
             //   2) toggling msgList.visible false→true. A real, distinct
-            //      bool change each time, but apparently still not a strong
-            //      enough signal for Cascades to unconditionally drop every
-            //      pooled item Control — it only sometimes forced a remeasure,
-            //      which is why some sends grouped correctly and others (the
-            //      very next message in the same run) silently didn't.
+            //      bool change each time, but not a strong enough signal for
+            //      Cascades to unconditionally drop every pooled item Control.
+            //   3) bouncing dataModel to a permanently-empty second
+            //      ArrayDataModel (emptyMsgModel) and immediately back to
+            //      msgModel, both writes in the same synchronous block. Two
+            //      real reference changes, which sounded like it should work
+            //      — but a device log cross-checked against a screenshot
+            //      showed only 1-2 rows per rebuild actually got a "row
+            //      layoutFrame CHANGED" line; rows further into the list kept
+            //      their stale pooled height even though their bubblePos had
+            //      changed. Cascades most likely coalesces both dataModel
+            //      writes within the same event-loop tick and never actually
+            //      renders the empty-model state, so nothing gets torn down.
             //
-            // What neither trick above actually did was point msgList.dataModel
-            // at a genuinely DIFFERENT DataModel object — both kept reusing the
-            // exact same msgModel instance under the hood. emptyMsgModel is a
-            // second, permanently-empty ArrayDataModel that exists purely to
-            // give dataModel a real identity change to bounce through: pointing
-            // at it and then back at msgModel is two real reference changes on
-            // a non-nullable property, so Cascades has no pooled-Control state
-            // left to reuse from the (momentarily active) empty model when
-            // dataModel flips back to msgModel — forcing every row to be
-            // recreated fresh against the just-updated grouped/bubblePos data.
+            // Deferring the reattach onto a Timer (interval: 0) instead forces
+            // the empty-model state to actually be rendered — a real, separate
+            // frame with zero rows — before msgModel comes back on the next
+            // tick. By the time the real data returns, every previously-pooled
+            // Control is already gone, so all rows get freshly created against
+            // the current grouped/bubblePos.
             msgList.dataModel = emptyMsgModel;
-            msgList.dataModel = msgModel;
+            dataModelReattachTimer.scrollAfter = !!scrollAfter;
+            dataModelReattachTimer.start();
         } else {
             for (var i2 = 0; i2 < size; i2++) {
                 msgModel.replace(i2, items[i2]);
+            }
+            // No dataModel swap needed here — msgList.dataModel is still
+            // pointing at msgModel the whole time, so (unlike the branch
+            // above) there's no Timer delay before the new data is actually
+            // in place. Safe to scroll immediately.
+            if (scrollAfter) {
+                msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
             }
         }
 
@@ -1932,8 +1974,7 @@ Page {
                 }
 
                 if (added) {
-                    chatViewPage.rebuildGroups();
-                    msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                    chatViewPage.rebuildGroups(true);
                 }
             }
 
@@ -2101,16 +2142,14 @@ Page {
                         var existingRow = msgModel.value(dupIdx);
                         if (msg.ts && String(msg.ts) !== String(existingRow.ts)) {
                             msgModel.replace(dupIdx, msg);
-                            chatViewPage.rebuildGroups();
-                            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                            chatViewPage.rebuildGroups(true);
                         }
                         return;
                     }
                     msgModel.append(msg);
                 }
 
-                chatViewPage.rebuildGroups();
-                msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                chatViewPage.rebuildGroups(true);
 
                 if (msg.msgType === 2 || msg.msgType === "2") {
                     if (!msg.localImage || msg.localImage.length === 0) {
@@ -2248,8 +2287,7 @@ Page {
                         selfName: chatViewPage.selfName
                     };
                     msgModel.append(mf);
-                    chatViewPage.rebuildGroups();
-                    msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                    chatViewPage.rebuildGroups(true);
                     zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
                 }
             }
