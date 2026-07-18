@@ -37,6 +37,25 @@ Page {
     property variant searchMatches: []   // indices into msgModel that contain the current query
     property int      searchMatchPos: -1 // which entry in searchMatches is currently focused
 
+    // Device clock vs. server clock can differ by hours (confirmed in the
+    // field: ~4h drift). Every OUTGOING message starts life as a "local_"
+    // placeholder timestamped with the DEVICE clock (new Date().getTime()),
+    // then gets swapped for the real row once the server confirms it — that
+    // confirmed row's ts is the SERVER clock instead. rebuildGroups()'s
+    // 5-minute grouping window compares ts across adjacent rows; as long as
+    // one neighbour is still an unconfirmed device-clock placeholder while
+    // the other has already been confirmed to server-clock ts, the raw
+    // difference between them is off by the full device/server drift, not
+    // just the real few-second gap — pushing it past the 300000ms window and
+    // splitting bubbles that were sent seconds apart. clockOffsetMs is
+    // (server ts - device ts) measured from the first confirmed outgoing
+    // message (its cliMsgId is the original device timestamp the placeholder
+    // was created with), then added to every still-local placeholder's ts
+    // before any grouping comparison — see toMs() in rebuildGroups() — so
+    // both clocks are normalized to the same reference before comparing.
+    property real clockOffsetMs: 0
+    property bool clockOffsetSet: false
+
     titleBar: TitleBar {
         // Sticky keeps the title bar (and the chat header inside it) pinned and
         // visible while the message list scrolls. Trade-off: once the user has
@@ -209,6 +228,23 @@ Page {
                 return;
             }
         }
+    }
+
+    // Measures clockOffsetMs (see its declaration above) from the first
+    // outgoing message that carries both a cliMsgId (the device-clock ts the
+    // "local_" placeholder was created with — Zalo echoes this back
+    // unchanged) and a confirmed server ts. Cheap sanity bounds (a few
+    // minutes of noise is normal network latency, not clock drift) avoid
+    // latching onto a bogus offset from a malformed/missing cliMsgId.
+    function updateClockOffset(cliMsgId, serverTs) {
+        var cli = parseInt(cliMsgId || "0", 10);
+        var srv = parseInt(serverTs || "0", 10);
+        if (srv > 0 && srv < 1e12) srv *= 1000;
+        if (cli <= 0 || srv <= 0) return;
+        var diff = srv - cli;
+        if (Math.abs(diff) < 60000) return; // negligible — normal latency, not drift
+        chatViewPage.clockOffsetMs = diff;
+        chatViewPage.clockOffsetSet = true;
     }
 
     // "Delete for me" (as opposed to applyRecall's "recall/undo"): the message
@@ -1519,9 +1555,15 @@ Page {
         }
 
         // Normalise a Zalo timestamp (may be seconds or ms) to milliseconds.
-        function toMs(ts) {
+        // isLocal rows (still-unconfirmed "local_"/"local_img_"/"local_file_"
+        // placeholders) carry a DEVICE-clock ts; confirmed rows carry a
+        // SERVER-clock ts. Bump local ones by clockOffsetMs so every ts being
+        // compared is on the same clock — see clockOffsetMs declaration above
+        // for why this is necessary.
+        function toMs(ts, isLocal) {
             var n = (ts || 0) * 1;
             if (n > 0 && n < 1e12) n *= 1000;
+            if (isLocal && chatViewPage.clockOffsetSet) n += chatViewPage.clockOffsetMs;
             return n;
         }
 
@@ -1546,9 +1588,16 @@ Page {
 
             // 5-minute grouping window: messages more than 5 min apart from the
             // same sender start a fresh bubble even with no reply in between.
-            var curTs  = toMs(cur.ts);
-            var prevTs = toMs(prev ? prev.ts : null);
-            var nextTs = toMs(next ? next.ts : null);
+            var curId  = cur.msgId  || "";
+            var prevId = prev ? (prev.msgId || "") : "";
+            var nextId = next ? (next.msgId || "") : "";
+            var curLocal  = curId.indexOf("local_")  === 0;
+            var prevLocal = prevId.indexOf("local_") === 0;
+            var nextLocal = nextId.indexOf("local_") === 0;
+
+            var curTs  = toMs(cur.ts,               curLocal);
+            var prevTs = toMs(prev ? prev.ts : null, prevLocal);
+            var nextTs = toMs(next ? next.ts : null, nextLocal);
             var withinPrev = prev !== null && (Math.abs(curTs - prevTs) < 300000);
             var withinNext = next !== null && (Math.abs(nextTs - curTs) < 300000);
 
@@ -1912,6 +1961,12 @@ Page {
                 var handledInPlace = false;
 
                 if (chatViewPage.normMine(msg.isMine)) {
+                    // This is the server's confirmation of one of our own outgoing
+                    // messages — cliMsgId is the device-clock ts its "local_"
+                    // placeholder was created with, msg.ts is the real server ts.
+                    // See updateClockOffset()/clockOffsetMs for why this is needed.
+                    chatViewPage.updateClockOffset(msg.cliMsgId, msg.ts);
+
                     if (msg.msgType === 2 || msg.msgType === "2") {
                         // Early dedup: if the model already has a confirmed row for this
                         // msgId, skip entirely (HTTP confirm + WS echo can both fire).
