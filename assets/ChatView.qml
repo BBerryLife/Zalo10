@@ -712,7 +712,33 @@ Page {
                             topPadding:    rowRoot.grouped ? 0 : 10
                             bottomPadding: 0
                             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                            attachedObjects: [ LayoutUpdateHandler { id: rowLUH } ]
+                            attachedObjects: [
+                                LayoutUpdateHandler {
+                                    id: rowLUH
+                                    // TEMP DIAGNOSTIC — logs the row's REAL measured
+                                    // height after layout, next to the grouped value
+                                    // that decided its topPadding. Everything logged
+                                    // so far (rebuildGroups' own dump, and the
+                                    // delegate's grouped/bubblePos bindings) only
+                                    // proves the JS-level values were correct — none
+                                    // of it proves Cascades actually shrank this
+                                    // Container's real height when topPadding dropped
+                                    // from 10 to 0. This is that missing proof: if
+                                    // height stays the same across a grouped:false→
+                                    // true transition, the padding change isn't
+                                    // reaching layout at all, confirming a
+                                    // Cascades-level measurement bug rather than
+                                    // anything left to fix in this file's own JS.
+                                    // Safe to delete once that's answered.
+                                    onLayoutFrameChanged: {
+                                        console.log("[Zalo QML] row layoutFrame CHANGED: msgId=" + String(ListItemData.msgId).slice(-6)
+                                            + " grouped=" + rowRoot.grouped + " bubblePos=" + rowRoot.bubblePos
+                                            + " height=" + layoutFrame.height
+                                            + " index=" + ListItem.indexPath[0]);
+                                    }
+                                }
+                            ]
+                        }
 
                         Container {
                             preferredWidth: rowRoot.mine ? 18 : 60
