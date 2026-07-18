@@ -738,7 +738,6 @@ Page {
                                     }
                                 }
                             ]
-                        }
 
                         Container {
                             preferredWidth: rowRoot.mine ? 18 : 60
