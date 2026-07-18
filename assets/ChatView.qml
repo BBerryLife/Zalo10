@@ -456,7 +456,11 @@ Page {
             flickMode: FlickMode.Momentum
 
             attachedObjects: [
-                ArrayDataModel { id: msgModel }
+                ArrayDataModel { id: msgModel },
+                // Exists purely as a bounce-through target for the hard
+                // remeasure trick in rebuildGroups() — see the comment there.
+                // Always stays empty; never populated or read directly.
+                ArrayDataModel { id: emptyMsgModel }
             ]
 
             // Bubble hold-menu action stubs. Wired to individual functions
@@ -1689,27 +1693,37 @@ Page {
             // reusing pooled Control instances whose already-measured height
             // Cascades wasn't recomputing off the padding-only change.
             //
-            // The previous attempt to fix that detached and reattached
-            // msgList.dataModel (set to null, then back to msgModel) to force
-            // Cascades to drop every pooled item Control. That had zero visible
-            // effect, which — combined with the diagnostics proving the data
-            // itself was right all along — points at that specific trick
-            // silently not doing anything: `dataModel` is typed as a
-            // (non-nullable) DataModel, so assigning `null` to it from QML/JS
-            // is plausibly just ignored, and the very next line re-assigns the
-            // exact same msgModel reference it already had, which QML property
-            // bindings treat as "unchanged" and skip re-notifying entirely. So
-            // that whole reset was likely a no-op both times.
+            // Two earlier attempts at forcing a hard remeasure both turned out
+            // unreliable in the field (confirmed by a fresh device log: some
+            // rows whose bubblePos changed — e.g. "bottom" becoming "middle"
+            // once a new message joins the group below them — never got a
+            // "row layoutFrame CHANGED" log line after either trick ran, i.e.
+            // Cascades silently kept the stale pooled height for that row):
+            //   1) detach/reattach msgList.dataModel by setting it to null,
+            //      then back to msgModel. dataModel is a non-nullable
+            //      DataModel-typed property, so assigning null is plausibly
+            //      just ignored, and re-assigning the SAME msgModel reference
+            //      afterwards is a no-op QML change-notification-wise. Never
+            //      had any visible effect.
+            //   2) toggling msgList.visible false→true. A real, distinct
+            //      bool change each time, but apparently still not a strong
+            //      enough signal for Cascades to unconditionally drop every
+            //      pooled item Control — it only sometimes forced a remeasure,
+            //      which is why some sends grouped correctly and others (the
+            //      very next message in the same run) silently didn't.
             //
-            // Toggling the ListView's own visibility off and back on is a much
-            // blunter, harder-to-swallow way to force the same outcome: it's a
-            // plain bool property (no nullability ambiguity), going false then
-            // true is guaranteed to be two real, distinct value changes, and
-            // Cascades tears down and reinstantiates a Control's rendered
-            // presentation on a visibility flip regardless of what's happening
-            // one level down in its data model.
-            msgList.visible = false;
-            msgList.visible = true;
+            // What neither trick above actually did was point msgList.dataModel
+            // at a genuinely DIFFERENT DataModel object — both kept reusing the
+            // exact same msgModel instance under the hood. emptyMsgModel is a
+            // second, permanently-empty ArrayDataModel that exists purely to
+            // give dataModel a real identity change to bounce through: pointing
+            // at it and then back at msgModel is two real reference changes on
+            // a non-nullable property, so Cascades has no pooled-Control state
+            // left to reuse from the (momentarily active) empty model when
+            // dataModel flips back to msgModel — forcing every row to be
+            // recreated fresh against the just-updated grouped/bubblePos data.
+            msgList.dataModel = emptyMsgModel;
+            msgList.dataModel = msgModel;
         } else {
             for (var i2 = 0; i2 < size; i2++) {
                 msgModel.replace(i2, items[i2]);
