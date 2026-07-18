@@ -455,48 +455,7 @@ Page {
             flickMode: FlickMode.Momentum
 
             attachedObjects: [
-                ArrayDataModel { id: msgModel },
-                // Exists purely as a bounce-through target for the hard
-                // remeasure trick in rebuildGroups() — see the comment there.
-                // Always stays empty; never populated or read directly.
-                ArrayDataModel { id: emptyMsgModel },
-                // Swapping dataModel to emptyMsgModel and immediately back to
-                // msgModel in the SAME synchronous block (the first version of
-                // this trick) turned out to only reliably remeasure a couple
-                // of rows per rebuild — a fresh device log matched against a
-                // screenshot showed rows further into the list (added a few
-                // messages earlier, whose bubblePos had since changed as newer
-                // messages joined their group) got no "layoutFrame CHANGED"
-                // line at all and rendered with their stale height. Cascades
-                // most likely coalesces the two dataModel writes within one
-                // event-loop tick and never actually tears down the pooled
-                // Controls for rows outside whatever it considers the
-                // "immediately affected" region. Re-attaching msgModel on a
-                // Timer instead forces the empty-model state to actually be
-                // rendered (a real, separate frame with zero rows) before
-                // msgModel comes back, so every previously-pooled Control is
-                // gone by the time the real data returns and ALL rows get
-                // freshly created against the current grouped/bubblePos.
-                Timer {
-                    id: dataModelReattachTimer
-                    interval: 0
-                    repeat: false
-                    // scrollAfter is set by rebuildGroups() right before
-                    // start() — callers used to call msgList.scrollToPosition()
-                    // themselves immediately after rebuildGroups() returned,
-                    // but now that the real dataModel isn't back in place
-                    // until this timer fires, scrolling immediately would hit
-                    // the still-empty emptyMsgModel and do nothing. Doing it
-                    // here instead, after dataModel is genuinely restored,
-                    // keeps the "jump to newest message" behavior working.
-                    property bool scrollAfter: false
-                    onTriggered: {
-                        msgList.dataModel = msgModel;
-                        if (dataModelReattachTimer.scrollAfter) {
-                            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
-                        }
-                    }
-                }
+                ArrayDataModel { id: msgModel }
             ]
 
             // Bubble hold-menu action stubs. Wired to individual functions
@@ -1727,49 +1686,35 @@ Page {
             // reusing pooled Control instances whose already-measured height
             // Cascades wasn't recomputing off the padding-only change.
             //
-            // Three earlier attempts at forcing a hard remeasure all turned
-            // out unreliable in the field:
-            //   1) detach/reattach msgList.dataModel by setting it to null,
-            //      then back to msgModel. dataModel is a non-nullable
-            //      DataModel-typed property, so assigning null is plausibly
-            //      just ignored, and re-assigning the SAME msgModel reference
-            //      afterwards is a no-op QML change-notification-wise. Never
-            //      had any visible effect.
-            //   2) toggling msgList.visible false→true. A real, distinct
-            //      bool change each time, but not a strong enough signal for
-            //      Cascades to unconditionally drop every pooled item Control.
-            //   3) bouncing dataModel to a permanently-empty second
-            //      ArrayDataModel (emptyMsgModel) and immediately back to
-            //      msgModel, both writes in the same synchronous block. Two
-            //      real reference changes, which sounded like it should work
-            //      — but a device log cross-checked against a screenshot
-            //      showed only 1-2 rows per rebuild actually got a "row
-            //      layoutFrame CHANGED" line; rows further into the list kept
-            //      their stale pooled height even though their bubblePos had
-            //      changed. Cascades most likely coalesces both dataModel
-            //      writes within the same event-loop tick and never actually
-            //      renders the empty-model state, so nothing gets torn down.
+            // Several approaches to forcing a hard remeasure were tried and
+            // rejected — see git history on this block for the details
+            // (empty-dataModel bounce via a second fixed ArrayDataModel done
+            // synchronously, deferred onto a Timer, via a fresh per-call
+            // ArrayDataModel, an unverified detachAttachedObjects() call, and
+            // toggling listItemComponents' `type` per row). Each relied on an
+            // unconfirmed Cascades API, broke msgModel's fixed QML id being
+            // read/written from ~50 other call sites in this file, or (the
+            // type-toggle) risked undefined/crash behavior from pointing rows
+            // at a type with no matching ListItemComponent.
             //
-            // Deferring the reattach onto a Timer (interval: 0) instead forces
-            // the empty-model state to actually be rendered — a real, separate
-            // frame with zero rows — before msgModel comes back on the next
-            // tick. By the time the real data returns, every previously-pooled
-            // Control is already gone, so all rows get freshly created against
-            // the current grouped/bubblePos.
-            msgList.dataModel = emptyMsgModel;
-            dataModelReattachTimer.scrollAfter = !!scrollAfter;
-            dataModelReattachTimer.start();
+            // dataModel is a plain QML property, and assigning `null` to it
+            // is always valid QML regardless of whether the underlying C++
+            // property is nullable — worst case it's silently ignored, which
+            // is a no-op, not a crash. Doing that detach, then reattaching
+            // the SAME msgModel object synchronously right after, is the one
+            // remaining option that's both a real (if unconfirmed-effective)
+            // attempt at forcing Cascades to drop pooled Controls AND
+            // provably can't crash or corrupt state if it turns out to do
+            // nothing at all.
+            msgList.dataModel = null;
+            msgList.dataModel = msgModel;
         } else {
             for (var i2 = 0; i2 < size; i2++) {
                 msgModel.replace(i2, items[i2]);
             }
-            // No dataModel swap needed here — msgList.dataModel is still
-            // pointing at msgModel the whole time, so (unlike the branch
-            // above) there's no Timer delay before the new data is actually
-            // in place. Safe to scroll immediately.
-            if (scrollAfter) {
-                msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
-            }
+        }
+        if (scrollAfter) {
+            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
         }
 
         // TEMP DIAGNOSTIC — investigating the "gap after delete+reopen+resend"
