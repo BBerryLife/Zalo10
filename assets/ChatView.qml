@@ -1613,13 +1613,29 @@ Page {
             // ALREADY arriving correctly at the delegate for the affected rows
             // even while the gap still showed — meaning the ListView itself was
             // reusing pooled Control instances whose already-measured height
-            // Cascades wasn't recomputing off the padding-only change. Detaching
-            // and reattaching the ListView's dataModel forces it to drop every
-            // pooled item Control and instantiate fresh ones against the new
-            // data, which is the only thing left that can invalidate that
-            // stale measured height.
-            msgList.dataModel = null;
-            msgList.dataModel = msgModel;
+            // Cascades wasn't recomputing off the padding-only change.
+            //
+            // The previous attempt to fix that detached and reattached
+            // msgList.dataModel (set to null, then back to msgModel) to force
+            // Cascades to drop every pooled item Control. That had zero visible
+            // effect, which — combined with the diagnostics proving the data
+            // itself was right all along — points at that specific trick
+            // silently not doing anything: `dataModel` is typed as a
+            // (non-nullable) DataModel, so assigning `null` to it from QML/JS
+            // is plausibly just ignored, and the very next line re-assigns the
+            // exact same msgModel reference it already had, which QML property
+            // bindings treat as "unchanged" and skip re-notifying entirely. So
+            // that whole reset was likely a no-op both times.
+            //
+            // Toggling the ListView's own visibility off and back on is a much
+            // blunter, harder-to-swallow way to force the same outcome: it's a
+            // plain bool property (no nullability ambiguity), going false then
+            // true is guaranteed to be two real, distinct value changes, and
+            // Cascades tears down and reinstantiates a Control's rendered
+            // presentation on a visibility flip regardless of what's happening
+            // one level down in its data model.
+            msgList.visible = false;
+            msgList.visible = true;
         } else {
             for (var i2 = 0; i2 < size; i2++) {
                 msgModel.replace(i2, items[i2]);
