@@ -272,6 +272,26 @@ Page {
         }
     }
 
+    // Companion to applyLocalDelete/applyRecall below — see
+    // onMessageTsCorrected's comment for why this exists. Patches an
+    // already-loaded row's ts to the just-arrived server value and re-runs
+    // grouping, since the 5-minute grouping window in rebuildGroups()
+    // compares ts across rows and a stale device-clock value can throw that
+    // comparison off by hours.
+    function applyTsCorrection(msgId, newTs) {
+        var size = msgModel.size();
+        for (var j = 0; j < size; j++) {
+            var d = msgModel.value(j);
+            if ((d.msgId || "") === msgId) {
+                if (d.ts === newTs) return; // already correct — avoid a pointless rebuild
+                d.ts = newTs;
+                msgModel.replace(j, d);
+                chatViewPage.rebuildGroups();
+                return;
+            }
+        }
+    }
+
     function applyRecall(msgId) {
         var size = msgModel.size();
         for (var j = 0; j < size; j++) {
@@ -2118,6 +2138,21 @@ Page {
             onMessageRecalled: {
                 if (threadId !== chatViewPage.threadId) return;
                 chatViewPage.applyRecall(msgId);
+            }
+
+            // Companion to the C++-side fix in ZaloService_WebSocket.cpp's
+            // m_seenMsgIds branch: an outgoing message saved via the HTTP
+            // send-confirm path (device-clock ts, since no server ts is
+            // available yet at that point) has just had its DB row corrected
+            // to the real server ts once the WS echo arrived. If this
+            // message happens to be currently loaded in msgModel, patch its
+            // ts in place here too and re-run grouping — otherwise the
+            // in-memory row would keep the stale device-clock ts (and the
+            // gap it causes) until the thread is closed and reopened, even
+            // though the DB itself is now correct.
+            onMessageTsCorrected: {
+                if (threadId !== chatViewPage.threadId) return;
+                chatViewPage.applyTsCorrection(msgId, newTs);
             }
 
             // Result of our OWN recallMessage() call. On success, apply the same

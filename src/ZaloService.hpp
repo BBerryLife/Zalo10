@@ -172,6 +172,15 @@ signals:
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
     void newMessage(const QString &threadId, const QVariantMap &message);
+    // Fired when a message already saved to the DB (almost always via the
+    // HTTP send-confirm path, which has no server timestamp yet and falls
+    // back to the device clock) gets its ts corrected once the WS echo
+    // brings the real server timestamp — see the m_seenMsgIds branch in
+    // ZaloService_WebSocket.cpp for the full explanation. If this message is
+    // currently loaded in ChatView's model, QML should patch its ts in place
+    // and re-run grouping; otherwise this is a no-op until the thread is
+    // next opened, since dbLoadMessages() will pick up the corrected value.
+    void messageTsCorrected(const QString &threadId, const QString &msgId, const QString &newTs);
     // Fired when a previously-displayed message gets recalled/unsent by its sender
     // (Zalo "chat.undo" event). QML should update the existing bubble in place.
     void messageRecalled(const QString &threadId, const QString &msgId);

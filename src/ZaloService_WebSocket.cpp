@@ -487,7 +487,36 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
 
             QString msgId = m["msgId"].toString();
             if (!msgId.isEmpty()) {
-                if (m_seenMsgIds.contains(msgId)) continue;
+                if (m_seenMsgIds.contains(msgId)) {
+                    // Already saved — almost always via onSendMsgDone()'s HTTP
+                    // response for our OWN outgoing message, which (unlike
+                    // this WS path) has no server timestamp available yet and
+                    // falls back to the DEVICE clock. That's routinely hours
+                    // off from server time (confirmed in the field), and
+                    // because dbLoadMessages() sorts strictly by ts, a row
+                    // stuck with that device-clock value stays permanently
+                    // out of order relative to its neighbors — including
+                    // after fully closing and reopening the thread, since
+                    // it's the value actually persisted in SQLite, not
+                    // something an in-memory reload could paper over. This WS
+                    // push carries the real server ts for the same message;
+                    // patch it in now so the DB row is corrected the first
+                    // time the authoritative value becomes available, rather
+                    // than being silently discarded by the continue below.
+                    QString serverTs = m["ts"].toString();
+                    if (!serverTs.isEmpty() && m_db) {
+                        const char *sqlFixTs = "UPDATE messages SET ts=? WHERE msgId=?";
+                        sqlite3_stmt *fixStmt = 0;
+                        if (sqlite3_prepare_v2(m_db, sqlFixTs, -1, &fixStmt, 0) == SQLITE_OK) {
+                            sqlite3_bind_text(fixStmt, 1, serverTs.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                            sqlite3_bind_text(fixStmt, 2, msgId.toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+                            sqlite3_step(fixStmt);
+                            sqlite3_finalize(fixStmt);
+                        }
+                        emit messageTsCorrected(threadId, msgId, serverTs);
+                    }
+                    continue;
+                }
                 m_seenMsgIds.insert(msgId);
             }
             QString cliMsgId = m["cliMsgId"].toString();
