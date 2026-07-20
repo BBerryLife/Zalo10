@@ -347,6 +347,17 @@ private:
     QSslSocket *m_webSocket;
     QStringList m_wsUrls;       // zpw_ws[] từ login response (dùng m_wsUrls thay m_zpwWsUrls nội bộ)
     int         m_wsUrlIndex;
+    // Set khi mất kết nối do lỗi tầng thấp trước khi handshake WS thành công
+    // (đặc biệt SSL handshake fail — xem onWsSocketError/onWsSslErrors) —
+    // báo cho onWsReconnectTimer biết lần reconnect tới nên thử HOST KHÁC
+    // trong m_wsUrls thay vì cứ quay lại đúng host cũ. Một số host trong
+    // pool zpw_ws (vd ws8-msg, ws12-msg) đã tắt TLS 1.0 phía server, mà
+    // BB10's Qt4/OpenSSL không có TLS 1.1/1.2 (giới hạn platform, không
+    // sửa được bằng QSsl::AnyProtocol — AnyProtocol trên stack này vẫn chỉ
+    // negotiate tối đa TLS 1.0) nên các host đó sẽ luôn handshake fail với
+    // BB10, retry cùng host mãi mãi không bao giờ connect được. Các host
+    // khác trong cùng pool (ws3, ws4...) vẫn chấp nhận TLS 1.0 bình thường.
+    bool        m_wsAdvanceUrlOnReconnect;
     QByteArray  m_wsCipherKey;  // raw AES key bytes (từ WS cmd=1 handshake)
     bool        m_wsConnected;
     bool        m_wsHandshakeSent;

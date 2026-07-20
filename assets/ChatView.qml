@@ -475,7 +475,30 @@ Page {
             flickMode: FlickMode.Momentum
 
             attachedObjects: [
-                ArrayDataModel { id: msgModel }
+                ArrayDataModel { id: msgModel },
+                // Pairs with the clear()+deferred-append rebuild path in
+                // rebuildGroups() below: clear() runs synchronously, then
+                // this timer's zero-interval singleShot fire on the NEXT
+                // event loop turn is what gives Cascades an actual empty-
+                // dataModel layout pass in between, forcing it to drop
+                // pooled item heights instead of recycling them stale.
+                Timer {
+                    id: rebuildFlushTimer
+                    property variant pendingItems: null
+                    property bool    pendingScroll: false
+                    interval: 0
+                    repeat: false
+                    onTriggered: {
+                        if (rebuildFlushTimer.pendingItems) {
+                            msgModel.append(rebuildFlushTimer.pendingItems);
+                            rebuildFlushTimer.pendingItems = null;
+                        }
+                        if (rebuildFlushTimer.pendingScroll) {
+                            msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
+                            rebuildFlushTimer.pendingScroll = false;
+                        }
+                    }
+                }
             ]
 
             // Bubble hold-menu action stubs. Wired to individual functions
@@ -565,6 +588,32 @@ Page {
                         // it here lets the inner Container's grouped-based padding be
                         // the only source of vertical spacing between rows.
                         topPadding: 0; bottomPadding: 0; leftPadding: 0; rightPadding: 0
+                        // The yellow-background diagnostic (see git history) proved
+                        // this: even with dividerVisible:false and topPadding:0 here,
+                        // and even with every inner Container's height/y confirmed
+                        // correct via layoutFrame diagnostics, a real gray gap (the
+                        // Page's own background, not any Container this file draws)
+                        // still cut across the FULL WIDTH of the row at every boundary
+                        // between two CustomListItems. That location — outside every
+                        // Container we control, but between rows — is exactly where
+                        // CustomListItem's built-in divider reserves space even when
+                        // it isn't painted. There's no direct QML property to zero out
+                        // that reserved space. Forcing rowRoot's own preferredHeight to
+                        // exactly match its content's real measured height overrides
+                        // whatever extra room CustomListItem was leaving beyond that
+                        // content for its (invisible but still-reserved) divider.
+                        preferredHeight: rowLUH.layoutFrame.height > 0 ? rowLUH.layoutFrame.height : -1
+                        // (Reverted a diagnostic "background: Color.create(...)" that
+                        // was here — CustomListItem has no `background` property, same
+                        // class of error documented for ActionItem/visible right below:
+                        // it extends UIObject-level API, not Control, so this crashed
+                        // the ENTIRE QML document on load with "Cannot assign to
+                        // non-existent property background" and made every ChatView
+                        // tap fail. Lesson: CustomListItem's 3 stylable surfaces are
+                        // highlightAppearance, dividerVisible, and its `content` — no
+                        // raw background paint. Any future "make the row itself a
+                        // color" diagnostic needs to go on the content Container
+                        // instead (the ones already declared just below/inside).
 
                         // Cascades ActionItem/DeleteActionItem has no "visible" property
                         // (they extend UIObject, not Control) — assigning one is a hard
@@ -788,6 +837,7 @@ Page {
                                     onLayoutFrameChanged: {
                                         console.log("[Zalo QML] row layoutFrame CHANGED: msgId=" + String(ListItemData.msgId).slice(-6)
                                             + " grouped=" + rowRoot.grouped + " bubblePos=" + rowRoot.bubblePos
+                                            + " y=" + layoutFrame.y
                                             + " height=" + layoutFrame.height
                                             + " index=" + ListItem.indexPath[0]);
                                     }
@@ -803,6 +853,26 @@ Page {
                         Container {
                             id: bubbleWrap
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            // Reverted the nine-patch bubble-PNG rendering
+                            // attempt (DockLayout + ImageView using
+                            // rowRoot.bubbleImage) — on device the bubble
+                            // PNGs stretched into a blurry white/blue smear
+                            // instead of a clean bubble shape. These source
+                            // images are mostly transparent/very thin-
+                            // bordered, so force-scaling them up to fill an
+                            // entire row is the wrong technique for this
+                            // asset set regardless of the ScalingMethod
+                            // used. Back to the flat solid-color fill that
+                            // was there originally. The real "gap between
+                            // messages 1-2 and 3-4" bug is a SEPARATE issue
+                            // from bubble rendering — grouped/bubblePos/
+                            // layoutFrame height all already compute
+                            // correctly per the diagnostics (all 4 rows
+                            // here are grp=true past the first, all
+                            // "middle" rows measure height=55), so the gap
+                            // is coming from somewhere else — being
+                            // investigated separately rather than papered
+                            // over here.
                             background: rowRoot.isDark
                                 ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
                                 : Color.White
@@ -819,6 +889,7 @@ Page {
                                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 bottomMargin: 2
+
 
                                 Label {
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -1076,11 +1147,31 @@ Page {
                             // otherwise every message in a group drew its own
                             // line, making a single grouped cluster look like it
                             // kept splitting into separate bubbles.
+                            //
+                            // NOT using visible: false to hide this anymore.
+                            // visible:false frequently does NOT collapse a
+                            // Container's reserved layout space in Cascades/
+                            // Qt4-era UI frameworks — the element stops being
+                            // painted but its preferredHeight can still get
+                            // counted by the parent's layout pass. That matches
+                            // exactly what device logs showed: a row that was
+                            // briefly "bottom" (strip visible, taller) when it
+                            // first arrived, then reclassified to "middle"
+                            // moments later once more messages arrived and
+                            // pushed it mid-cluster (strip should disappear),
+                            // never got a second "row layoutFrame CHANGED" log
+                            // line — its height/space from the strip never got
+                            // released. Setting height to 0 directly (instead
+                            // of toggling visible) forces the reserved space
+                            // itself to go to zero, not just the painting.
                             Container {
                                 horizontalAlignment: HorizontalAlignment.Fill
-                                preferredHeight: ui.du(0.8)
+                                property bool showStrip: rowRoot.bubblePos === "bottom" || rowRoot.bubblePos === "full"
+                                preferredHeight: showStrip ? ui.du(0.8) : 0
+                                minHeight: showStrip ? ui.du(0.8) : 0
+                                maxHeight: showStrip ? ui.du(0.8) : 0
+                                visible: showStrip
                                 background: rowRoot.mine ? Color.create("#999999") : Color.create("#0073BC")
-                                visible: rowRoot.bubblePos === "bottom" || rowRoot.bubblePos === "full"
                             }
                         } // bubbleWrap
 
@@ -1697,8 +1788,6 @@ Page {
             }
         }
         if (anyLayoutChanged) {
-            msgModel.clear();
-            msgModel.append(items);
             // clear()+append() alone updates the ArrayDataModel's data, but the
             // delegate-binding diagnostics above proved grouped/bubblePos were
             // ALREADY arriving correctly at the delegate for the affected rows
@@ -1717,17 +1806,53 @@ Page {
             // type-toggle) risked undefined/crash behavior from pointing rows
             // at a type with no matching ListItemComponent.
             //
-            // dataModel is a plain QML property, and assigning `null` to it
-            // is always valid QML regardless of whether the underlying C++
-            // property is nullable — worst case it's silently ignored, which
-            // is a no-op, not a crash. Doing that detach, then reattaching
-            // the SAME msgModel object synchronously right after, is the one
-            // remaining option that's both a real (if unconfirmed-effective)
-            // attempt at forcing Cascades to drop pooled Controls AND
-            // provably can't crash or corrupt state if it turns out to do
-            // nothing at all.
-            msgList.dataModel = null;
-            msgList.dataModel = msgModel;
+            // The dataModel=null;dataModel=msgModel bounce (previous attempt,
+            // see git history) turned out to be a no-op in practice: the
+            // delegate-binding diagnostics (grouped-binding/bubblePos-binding)
+            // fire correctly, but rowLUH's layoutFrameChanged never fires
+            // again for a row whose bubblePos changed without its INDEX
+            // changing — confirmed by a real device log capture where row
+            // 338345 went bubblePos "full"->"top" (a real padding/height
+            // change) with a bubblePos-binding log line proving the QML
+            // property updated, but no matching "row layoutFrame CHANGED"
+            // line, i.e. Cascades kept the row's originally-measured height.
+            // Reassigning the SAME msgModel object back to dataModel
+            // synchronously never gives Cascades an empty-model layout pass
+            // to actually drop its pooled/cached item heights — it's still
+            // the same model reference before and after, nothing to diff.
+            //
+            // Deferring the re-append to the NEXT event loop turn (via a
+            // zero-interval Timer) instead gives Cascades a real intervening
+            // layout pass over an EMPTY dataModel in between clear() and
+            // append(), which is what actually forces it to tear down and
+            // discard the pooled item Controls instead of recycling their
+            // stale measured heights back onto the new data.
+            // TEMP DIAGNOSTIC — investigating the "gap after delete+reopen+resend"
+            // bug report. Dumps every row's msgId/sender/content-length/grouped/
+            // bubblePos so a fresh log capture shows definitively whether there's
+            // a stray zero-content/ghost row still occupying a model slot near the
+            // deleted message, or whether bubblePos/grouped themselves are wrong.
+            // Reads from items[] (the just-computed values) rather than
+            // msgModel.value() here, since msgModel is deferred-empty until
+            // rebuildFlushTimer fires on the next event loop turn.
+            // Safe to delete once that bug is found — this is not a fix by itself.
+            var dbgLine = "[Zalo QML] rebuildGroups: size=" + size;
+            for (var di = 0; di < size; di++) {
+                var dv = items[di];
+                dbgLine += " | [" + di + "] id=" + String(dv.msgId).slice(-6)
+                    + " mine=" + chatViewPage.normMine(dv.isMine)
+                    + " sender=" + (dv.senderId || "")
+                    + " len=" + ((dv.content || "").length)
+                    + " grp=" + dv.grouped + " pos=" + dv.bubblePos
+                    + " ts=" + dv.ts;
+            }
+            console.log(dbgLine);
+
+            msgModel.clear();
+            rebuildFlushTimer.pendingItems = items;
+            rebuildFlushTimer.pendingScroll = !!scrollAfter;
+            rebuildFlushTimer.start();
+            return;
         } else {
             for (var i2 = 0; i2 < size; i2++) {
                 msgModel.replace(i2, items[i2]);
@@ -1737,24 +1862,21 @@ Page {
             msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
         }
 
-        // TEMP DIAGNOSTIC — investigating the "gap after delete+reopen+resend"
-        // bug report. Dumps every row's msgId/sender/content-length/grouped/
-        // bubblePos so a fresh log capture shows definitively whether there's
-        // a stray zero-content/ghost row still occupying a model slot near the
-        // deleted message, or whether bubblePos/grouped themselves are wrong.
-        // Safe to delete once that bug is found — this is not a fix by itself.
+        // TEMP DIAGNOSTIC — same dump as above, for the cheap-path (no
+        // layout change) branch, where msgModel already holds items[] via
+        // the in-place replace() calls just above.
         {
-            var dbgLine = "[Zalo QML] rebuildGroups: size=" + size;
-            for (var di = 0; di < size; di++) {
-                var dv = msgModel.value(di);
-                dbgLine += " | [" + di + "] id=" + String(dv.msgId).slice(-6)
-                    + " mine=" + chatViewPage.normMine(dv.isMine)
-                    + " sender=" + (dv.senderId || "")
-                    + " len=" + ((dv.content || "").length)
-                    + " grp=" + dv.grouped + " pos=" + dv.bubblePos
-                    + " ts=" + dv.ts;
+            var dbgLine2 = "[Zalo QML] rebuildGroups: size=" + size;
+            for (var di2 = 0; di2 < size; di2++) {
+                var dv2 = msgModel.value(di2);
+                dbgLine2 += " | [" + di2 + "] id=" + String(dv2.msgId).slice(-6)
+                    + " mine=" + chatViewPage.normMine(dv2.isMine)
+                    + " sender=" + (dv2.senderId || "")
+                    + " len=" + ((dv2.content || "").length)
+                    + " grp=" + dv2.grouped + " pos=" + dv2.bubblePos
+                    + " ts=" + dv2.ts;
             }
-            console.log(dbgLine);
+            console.log(dbgLine2);
         }
     }
 

@@ -204,6 +204,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled_white.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_forward_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_list.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_pin.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_quote_message.png) \
@@ -211,8 +212,10 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_replace_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_save.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_save_image.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_sb_notes.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_select_more.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_share.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_textmessage.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemess.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/action_icon_search.png) \
@@ -819,7 +822,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_mail.png) \
         $$quote($$BASEDIR/assets/images/ic_microphone.png) \
         $$quote($$BASEDIR/assets/images/ic_save.png) \
-        $$quote($$BASEDIR/assets/images/ic_sb_textmessage.png) \
         $$quote($$BASEDIR/assets/images/ic_settings.png) \
         $$quote($$BASEDIR/assets/images/ic_start_chat.png) \
         $$quote($$BASEDIR/assets/main.qml)

@@ -699,6 +699,12 @@ void ZaloService::onStep8Done()
 
     // Extract WebSocket URLs
     m_zpwWsUrls.clear();
+    // Also clear the working copy + its cycling index: connectWebSocket()
+    // only re-seeds m_wsUrls from m_zpwWsUrls when m_wsUrls is empty, so
+    // without this a fresh login would keep whatever pool host index a
+    // PREVIOUS session's failover had already advanced to.
+    m_wsUrls.clear();
+    m_wsUrlIndex = 0;
     QScriptValue wsArr = info.property("zpw_ws");
     if (wsArr.isArray()) {
         int len = wsArr.property("length").toInt32();

@@ -77,8 +77,23 @@ void ZaloService::connectWebSocket()
     }
     disconnectWebSocket();
 
-    m_wsUrlIndex = 0;
-    m_wsUrls = m_zpwWsUrls;
+    // m_wsUrls only needs (re)seeding from m_zpwWsUrls once — on subsequent
+    // reconnects after a flagged failure we advance m_wsUrlIndex within the
+    // SAME m_wsUrls list instead of overwriting it and resetting back to
+    // index 0 (which is what silently made every reconnect retry the exact
+    // same broken host forever — see m_wsAdvanceUrlOnReconnect declaration
+    // in ZaloService.hpp for the full story: some zpw_ws pool hosts reject
+    // BB10's TLS-1.0-ceiling handshake outright, so retrying them is never
+    // going to succeed no matter how many times we try).
+    if (m_wsUrls.isEmpty()) {
+        m_wsUrls     = m_zpwWsUrls;
+        m_wsUrlIndex = 0;
+    } else if (m_wsAdvanceUrlOnReconnect) {
+        m_wsUrlIndex = (m_wsUrlIndex + 1) % m_wsUrls.size();
+        qDebug() << "[Zalo WS] Previous host failed at the socket/SSL level, "
+                     "advancing to pool host index" << m_wsUrlIndex;
+    }
+    m_wsAdvanceUrlOnReconnect = false;
 
     QUrl url(m_wsUrls[m_wsUrlIndex]);
     // Thêm query params như zca-js
@@ -238,6 +253,12 @@ void ZaloService::onWsSocketError(QAbstractSocket::SocketError err)
     if (!m_webSocket) return;
     qDebug() << "[Zalo WS] Socket error:" << err
               << m_webSocket->errorString();
+    // Bất kỳ lỗi tầng thấp nào trước khi WS handshake xong (kể cả SSL
+    // handshake fail — err == SslHandshakeFailedError trên hầu hết lỗi TLS
+    // protocol-version) đều coi là dấu hiệu host hiện tại có vấn đề, không
+    // phải lỗi mạng thoáng qua — báo để lần reconnect tới thử host khác
+    // trong pool zpw_ws thay vì lặp lại đúng host cũ.
+    m_wsAdvanceUrlOnReconnect = true;
 }
 
 void ZaloService::onWsReadyRead()
