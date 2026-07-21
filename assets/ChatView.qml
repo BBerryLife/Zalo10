@@ -22,6 +22,18 @@ Page {
     property variant emojiPanelRef: null
     property string pendingAttachPath: ""
     property string pendingAttachName: ""
+    // Reply staging: set by doReply() when the user taps "Reply" on a bubble,
+    // cleared on send/cancel. Mirrors pendingAttachPath's role for photos —
+    // both are mutually exclusive "something is staged above the input bar"
+    // states, so starting a reply while a photo is staged clears the photo
+    // (and vice versa) rather than trying to send both at once.
+    property string pendingReplyMsgId:      ""
+    property string pendingReplyCliMsgId:   ""
+    property string pendingReplyOwnerId:    ""
+    property string pendingReplySenderName: ""
+    property string pendingReplyContent:    ""
+    property int    pendingReplyMsgType:    0   // our local msgType (1=text,2=photo) — used for preview only
+    property string pendingReplyTs:         ""
     property variant qmMatch: null
     property variant dbIsMineCache: ({})
     property bool   isMuted: false
@@ -36,6 +48,13 @@ Page {
     property string searchText: ""
     property variant searchMatches: []   // indices into msgModel that contain the current query
     property int      searchMatchPos: -1 // which entry in searchMatches is currently focused
+    // Set briefly when the user taps a pinned-message entry (or the quote
+    // strip inside a reply bubble) to jump to the original message. The
+    // delegate's rowRoot.isJumpHighlighted compares its own msgId against
+    // this to show the yellow highlight; jumpHighlightTimer clears it back
+    // to "" after a couple seconds so the highlight is transient like the
+    // search-match one, not a permanent state change on the row.
+    property string jumpHighlightMsgId: ""
 
     // Device clock vs. server clock can differ by hours (confirmed in the
     // field: ~4h drift). Every OUTGOING message starts life as a "local_"
@@ -368,6 +387,23 @@ Page {
         msgList.scrollToItem([idx], ScrollAnimation.Default);
     }
 
+    // Jump to any message by id (used by: tapping a pinned-message entry in
+    // the pinboard bar/dim overlay, and tapping the quote strip inside a
+    // reply bubble) — scrolls it into view and gives it the same yellow
+    // highlight search matches get, for a couple seconds.
+    function jumpToMessage(msgId) {
+        if (!msgId || msgId.length === 0) return;
+        var size = msgModel.size();
+        for (var i = 0; i < size; i++) {
+            if ((msgModel.value(i).msgId || "") === msgId) {
+                msgList.scrollToItem([i], ScrollAnimation.Default);
+                chatViewPage.jumpHighlightMsgId = msgId;
+                jumpHighlightTimer.restart();
+                return;
+            }
+        }
+    }
+
     // Escapes HTML-sensitive characters, then wraps every case-insensitive
     // occurrence of `query` in a yellow <span>, preserving the original
     // casing of the matched text. Returns plain (non-html) text unchanged
@@ -465,9 +501,23 @@ Page {
             property bool   isDark: chatViewPage.isDark
             property bool   showRecalledMessages: chatViewPage.showRecalledMessages
             property bool   isAdminOrOwner: chatViewPage.isCurrentUserAdminOrOwner
+            property bool   isGroupChat: chatViewPage.isGroup
+            property string threadNameProxy: chatViewPage.threadName
+            property string jumpHighlightMsgId: chatViewPage.jumpHighlightMsgId
             property string searchQuery: chatViewPage.searchVisible ? chatViewPage.searchText.toLowerCase().trim() : ""
             property int    searchCurrentMsgIndex: (chatViewPage.searchMatchPos >= 0 && chatViewPage.searchMatchPos < chatViewPage.searchMatches.length)
                                                      ? chatViewPage.searchMatches[chatViewPage.searchMatchPos] : -1
+            // Proxies for chatViewPage's own functions: ListItemComponent delegates
+            // (rowRoot and everything inside it) are a SEPARATE Cascades visual-root
+            // scope from the rest of the Page — a plain "chatViewPage.foo()" call from
+            // inside the delegate throws "ReferenceError: Can't find variable:
+            // chatViewPage" at runtime even though it looks like valid, in-scope QML
+            // (confirmed on-device; see doReply/doPin etc. above, which already work
+            // precisely because they go through "rowRoot.ListItem.view.doX(...)"
+            // instead of calling chatViewPage directly). highlightMatches()/
+            // jumpToMessage() need the same indirection.
+            function highlightMatchesProxy(text, query, color) { return chatViewPage.highlightMatches(text, query, color); }
+            function jumpToMessageProxy(msgId) { chatViewPage.jumpToMessage(msgId); }
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -524,7 +574,26 @@ Page {
                 app.copyToClipboard(content);
                 copyToast.show();
             }
-            function doReply(msgId)        { console.log("[bubble] Reply " + msgId); }
+            // Stages a reply above the input bar (see replyPreviewBar below),
+            // exactly like tapping an attachment stages a photo. A photo and a
+            // reply can't both be staged at once — starting a reply while a
+            // photo is pending clears the photo attach first, matching the
+            // "replace, don't stack" behaviour Jim asked for.
+            function doReply(msgId, cliMsgId, senderId, senderName, content, msgType, ts) {
+                if (chatViewPage.pendingAttachPath.length > 0) {
+                    chatViewPage.pendingAttachPath = "";
+                    chatViewPage.pendingAttachName = "";
+                }
+                chatViewPage.pendingReplyMsgId      = msgId || "";
+                chatViewPage.pendingReplyCliMsgId   = cliMsgId || "";
+                chatViewPage.pendingReplyOwnerId    = senderId || "";
+                chatViewPage.pendingReplySenderName = senderName || "";
+                chatViewPage.pendingReplyContent    = content || "";
+                chatViewPage.pendingReplyMsgType    = msgType || 0;
+                chatViewPage.pendingReplyTs         = String(ts || "");
+                sendAction.enabled = (inputField.text.trim().length > 0 || chatViewPage.pendingReplyMsgId.length > 0);
+                inputField.requestFocus();
+            }
             function doReaction(msgId)     { console.log("[bubble] Reaction " + msgId); }
             function doRecallMsg(msgId, cliMsgId, isMine) {
                 if (!isMine) {
@@ -637,7 +706,11 @@ Page {
                                 ActionItem {
                                     title: "Reply"
                                     imageSource: "asset:///images/ChatView/ic_quote_message.png"
-                                    onTriggered: { rowRoot.ListItem.view.doReply(ListItemData.msgId); }
+                                    onTriggered: {
+                                        rowRoot.ListItem.view.doReply(ListItemData.msgId, ListItemData.cliMsgId,
+                                            ListItemData.senderId, rowRoot.mine ? (ListItemData.selfName || "Me") : rowRoot.otherDisplayName,
+                                            ListItemData.content, ListItemData.msgType, ListItemData.ts);
+                                    }
                                 }
                                 ActionItem {
                                     title: "Reaction"
@@ -691,7 +764,11 @@ Page {
                                 ActionItem {
                                     title: "Reply"
                                     imageSource: "asset:///images/ChatView/ic_quote_message.png"
-                                    onTriggered: { rowRoot.ListItem.view.doReply(ListItemData.msgId); }
+                                    onTriggered: {
+                                        rowRoot.ListItem.view.doReply(ListItemData.msgId, ListItemData.cliMsgId,
+                                            ListItemData.senderId, rowRoot.mine ? (ListItemData.selfName || "Me") : rowRoot.otherDisplayName,
+                                            ListItemData.content, ListItemData.msgType, ListItemData.ts);
+                                    }
                                 }
                                 ActionItem {
                                     title: "Reaction"
@@ -811,6 +888,38 @@ Page {
                                                    ? (rowLUH.layoutFrame.width - 94)
                                                    : ui.du(40)
 
+                        // Reply/quote: true when this row is a reply to an earlier message
+                        // (quoteMsgId populated by dbSaveMessage/WS parsing — see doReply()/
+                        // sendMessageQuote() and the WS quote-object parsing in
+                        // ZaloService_WebSocket.cpp). Drives the separate dark quote-strip
+                        // block rendered above the message text below.
+                        property bool hasQuote: !!(ListItemData.quoteMsgId && ListItemData.quoteMsgId.length > 0)
+
+                        // Zalo's WS payload has a quirk for 1-1 (non-group) threads: the
+                        // "dName" field on an INCOMING message is not reliably the sender's
+                        // name — confirmed from a device log where a message actually sent
+                        // by the other person carried dName="Berrylife" (OUR OWN name)
+                        // instead of theirs. dbSaveMessage() persists whatever the wire
+                        // sent, so this is wrong both live and after reload. In a 1-1 thread
+                        // there's only one possible "other" person though — chatViewPage's
+                        // own threadName (set from the contact's profile when the chat was
+                        // opened, not from the message wire) is always correct and doesn't
+                        // have this bug. Groups aren't affected the same way (every member
+                        // needs their own per-message name, which threadName can't provide),
+                        // so this fallback only applies when isGroup is false.
+                        property string otherDisplayName: (!ListItem.view.isGroupChat && ListItem.view.threadNameProxy.length > 0)
+                                                           ? ListItem.view.threadNameProxy
+                                                           : (ListItemData.dName || "Unknown")
+
+                        // Yellow highlight: true either while this row is the active
+                        // in-chat search match (isCurrentSearchMatch, declared above) or
+                        // while it's the target of a "jump to pinned message" tap (see
+                        // chatViewPage.jumpHighlightMsgId, set by the pinboard bar's
+                        // scrollToMsgIndex+highlight call and cleared after a short delay).
+                        property bool isJumpHighlighted: ListItem.view.jumpHighlightMsgId.length > 0
+                                                          && ListItem.view.jumpHighlightMsgId === (ListItemData.msgId || "")
+                        property bool isHighlighted: rowRoot.isCurrentSearchMatch || rowRoot.isJumpHighlighted
+
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
                             topPadding:    rowRoot.grouped ? 0 : 10
@@ -873,9 +982,11 @@ Page {
                             // is coming from somewhere else — being
                             // investigated separately rather than papered
                             // over here.
-                            background: rowRoot.isDark
-                                ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
-                                : Color.White
+                            background: rowRoot.isHighlighted
+                                ? Color.create("#fff3b0")
+                                : (rowRoot.isDark
+                                    ? (rowRoot.mine ? Color.create("#1e3a5f") : Color.create("#2a2a2a"))
+                                    : Color.White)
 
                             Container {
                                 background: Color.Transparent
@@ -895,7 +1006,7 @@ Page {
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                     text: rowRoot.mine
                                           ? (ListItemData.selfName || "Me")
-                                          : (ListItemData.dName    || "Unknown")
+                                          : rowRoot.otherDisplayName
                                     textStyle {
                                         fontSize:   FontSize.Small
                                         fontWeight: FontWeight.Bold
@@ -947,7 +1058,7 @@ Page {
 
                                     Label {
                                         text: rowRoot.searchQuery.length > 0
-                                              ? "<html>" + chatViewPage.highlightMatches(rowRoot.recalledOriginal, rowRoot.searchQuery, rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b") + "</html>"
+                                              ? "<html>" + rowRoot.ListItem.view.highlightMatchesProxy(rowRoot.recalledOriginal, rowRoot.searchQuery, rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b") + "</html>"
                                               : rowRoot.recalledOriginal
                                         textStyle {
                                             base:  SystemDefaults.TextStyles.BodyText
@@ -997,6 +1108,57 @@ Page {
                                     }
                                 }
 
+                                // Reply/quote block — separate visual chunk sitting above the
+                                // actual message text, exactly like the photo-attachment bubble
+                                // is its own chunk rather than inline with text. Background is
+                                // darker than the bubble itself and colored by WHOSE bubble
+                                // this is (mine=gray strip color, theirs=blue strip color — the
+                                // same two colors the existing bottom accent-strip Container
+                                // already uses for mine/theirs, so the reply block visually
+                                // matches that established color language instead of inventing
+                                // a third color). Tapping it jumps to + highlights the original
+                                // quoted message (chatViewPage.jumpToMessage()).
+                                Container {
+                                    visible: !rowRoot.recalled && rowRoot.hasQuote
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    background: rowRoot.isDark
+                                        ? (rowRoot.mine ? Color.create("#3a3a3a") : Color.create("#1c3450"))
+                                        : (rowRoot.mine ? Color.create("#d9d9d9") : Color.create("#cfe3fa"))
+                                    topPadding: 6; bottomPadding: 6; leftPadding: 8; rightPadding: 8
+                                    bottomMargin: 4
+
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                rowRoot.ListItem.view.jumpToMessageProxy(ListItemData.quoteMsgId || "");
+                                            }
+                                        }
+                                    ]
+
+                                    Label {
+                                        text: ListItemData.quoteSenderName || "Unknown"
+                                        multiline: false
+                                        textStyle {
+                                            fontSize:   FontSize.XSmall
+                                            fontWeight: FontWeight.Bold
+                                            color: rowRoot.mine
+                                                ? (rowRoot.isDark ? Color.create("#cccccc") : Color.create("#444444"))
+                                                : (rowRoot.isDark ? Color.create("#8ec2ff") : Color.create("#0073BC"))
+                                        }
+                                        topMargin: 0; bottomMargin: 0
+                                    }
+                                    Label {
+                                        text: (ListItemData.quoteMsgType === 2 || ListItemData.quoteMsgType === "2")
+                                              ? "[Photo]" : (ListItemData.quoteContent || "")
+                                        multiline: false
+                                        textStyle {
+                                            fontSize: FontSize.XSmall
+                                            color: rowRoot.isDark ? Color.create("#bbbbbb") : Color.create("#555555")
+                                        }
+                                        topMargin: 0; bottomMargin: 0
+                                    }
+                                }
+
                                 Label {
                                     visible: !rowRoot.recalled
                                              && (ListItemData.msgType !== 2 && ListItemData.msgType !== "2")
@@ -1016,7 +1178,7 @@ Page {
                                                     ? "[Sticker]" : "[Photo]"));
                                         if (rowRoot.searchQuery.length > 0) {
                                             var hlColor = rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b";
-                                            return "<html>" + chatViewPage.highlightMatches(raw, rowRoot.searchQuery, hlColor) + "</html>";
+                                            return "<html>" + rowRoot.ListItem.view.highlightMatchesProxy(raw, rowRoot.searchQuery, hlColor) + "</html>";
                                         }
                                         return raw;
                                     }
@@ -1333,6 +1495,92 @@ Page {
             }
         }
 
+        // Reply staging bar — shown while a reply is pending, above the input.
+        // Same visual language as attachPreviewBar (same background colors,
+        // same [X] cancel pattern) so the two "something is queued to send"
+        // states read as one consistent affordance rather than two different
+        // UI languages. Layout: [X]  [colored quote strip]  [sender + snippet]
+        Container {
+            id: replyPreviewBar
+            visible: chatViewPage.pendingReplyMsgId.length > 0
+            horizontalAlignment: HorizontalAlignment.Fill
+            background: chatViewPage.isDark ? Color.create("#1e2a38") : Color.create("#dce8f5")
+            topPadding:    ui.du(1.0)
+            bottomPadding: ui.du(1.0)
+            leftPadding:   ui.du(1.0)
+            rightPadding:  ui.du(1.5)
+            layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
+            // X — cancel pending reply
+            Container {
+                verticalAlignment: VerticalAlignment.Center
+                preferredWidth:  ui.du(6)
+                preferredHeight: ui.du(6)
+                layout: DockLayout {}
+                gestureHandlers: [
+                    TapHandler {
+                        onTapped: {
+                            chatViewPage.pendingReplyMsgId      = "";
+                            chatViewPage.pendingReplyCliMsgId   = "";
+                            chatViewPage.pendingReplyOwnerId    = "";
+                            chatViewPage.pendingReplySenderName = "";
+                            chatViewPage.pendingReplyContent    = "";
+                            chatViewPage.pendingReplyMsgType    = 0;
+                            chatViewPage.pendingReplyTs         = "";
+                            sendAction.enabled = (inputField.text.trim().length > 0);
+                        }
+                    }
+                ]
+                Label {
+                    text: "✕"
+                    horizontalAlignment: HorizontalAlignment.Center
+                    verticalAlignment:   VerticalAlignment.Center
+                    textStyle {
+                        fontSize: FontSize.Medium
+                        fontWeight: FontWeight.Bold
+                        color: chatViewPage.isDark ? Color.create("#aaaaaa") : Color.create("#555555")
+                    }
+                }
+            }
+
+            // Colored accent strip — echoes the quote-block strip rendered
+            // inside the bubble itself, so the preview and the eventual sent
+            // bubble visually match.
+            Container {
+                verticalAlignment: VerticalAlignment.Fill
+                preferredWidth: ui.du(0.5)
+                minWidth: ui.du(0.5); maxWidth: ui.du(0.5)
+                leftMargin: ui.du(0.5); rightMargin: ui.du(1.0)
+                background: Color.create("#2575fc")
+            }
+
+            Container {
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                verticalAlignment: VerticalAlignment.Center
+
+                Label {
+                    text: chatViewPage.pendingReplySenderName
+                    multiline: false
+                    textStyle {
+                        fontSize: FontSize.Small
+                        fontWeight: FontWeight.Bold
+                        color: Color.create("#2575fc")
+                    }
+                    topMargin: 0; bottomMargin: 0
+                }
+                Label {
+                    text: (chatViewPage.pendingReplyMsgType === 2 || chatViewPage.pendingReplyMsgType === "2")
+                          ? "[Photo]" : chatViewPage.pendingReplyContent
+                    multiline: false
+                    textStyle {
+                        fontSize: FontSize.Small
+                        color: chatViewPage.isDark ? Color.create("#cfd8e3") : Color.create("#444444")
+                    }
+                    topMargin: 0; bottomMargin: 0
+                }
+            }
+        }
+
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             background: chatViewPage.isDark ? Color.create("#272727") : Color.White
@@ -1476,6 +1724,20 @@ Page {
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: { clearHistoryDialog.show() }
         },
+        // Group Board: entry point for viewing all pinned messages/polls/notes
+        // in this group (the actual board UI is a separate piece of work —
+        // this wires up the menu placement + group-only gating now so the
+        // feature has a home to land in). 1-1 threads have no group board
+        // concept server-side, hence disabled (not hidden — same convention
+        // "Block user"/"Leave group" already use above for their own
+        // thread-type restrictions) outside of groups.
+        ActionItem {
+            title: "Group board"
+            imageSource: "asset:///images/ChatView/ic_sb_notes.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            enabled: chatViewPage.isGroup
+            onTriggered: { groupBoardUnderDevDialog.show() }
+        },
         ActionItem {
             title: "Leave group"
             imageSource: "asset:///images/ChatView/ic_chat_leave.png"
@@ -1584,6 +1846,7 @@ Page {
             return;
         }
 
+        var isReply = chatViewPage.pendingReplyMsgId.length > 0;
         var placeholder = {
             msgId:    "local_" + new Date().getTime(),
             content:  txt,
@@ -1594,11 +1857,38 @@ Page {
             ts:       String(new Date().getTime()),
             selfName: chatViewPage.selfName
         };
+        if (isReply) {
+            placeholder.quoteMsgId      = chatViewPage.pendingReplyMsgId;
+            placeholder.quoteContent    = (chatViewPage.pendingReplyMsgType === 2 || chatViewPage.pendingReplyMsgType === "2")
+                                           ? "[Photo]" : chatViewPage.pendingReplyContent;
+            placeholder.quoteSenderName = chatViewPage.pendingReplySenderName;
+            placeholder.quoteMsgType    = chatViewPage.pendingReplyMsgType;
+        }
         msgModel.append(placeholder);
         chatViewPage.rebuildGroups(true);
 
         chatViewPage.pendingMsg = txt;
-        zService.sendMessage(chatViewPage.threadId, txt, chatViewPage.isGroup);
+
+        if (isReply) {
+            // qmsgType sent to the server is Zalo's own client-message-type code
+            // (1=text, 32=photo — see zca-js getClientMessageType()), which is
+            // NOT the same numbering as our local msgType (1=text, 2=photo).
+            var qServerType = (chatViewPage.pendingReplyMsgType === 2 || chatViewPage.pendingReplyMsgType === "2") ? 32 : 1;
+            var qContent = (chatViewPage.pendingReplyMsgType === 2 || chatViewPage.pendingReplyMsgType === "2")
+                           ? "[Photo]" : chatViewPage.pendingReplyContent;
+            zService.sendMessageQuote(chatViewPage.threadId, txt, chatViewPage.isGroup,
+                chatViewPage.pendingReplyMsgId, chatViewPage.pendingReplyCliMsgId,
+                chatViewPage.pendingReplyOwnerId, qContent, qServerType, chatViewPage.pendingReplyTs);
+            chatViewPage.pendingReplyMsgId      = "";
+            chatViewPage.pendingReplyCliMsgId   = "";
+            chatViewPage.pendingReplyOwnerId    = "";
+            chatViewPage.pendingReplySenderName = "";
+            chatViewPage.pendingReplyContent    = "";
+            chatViewPage.pendingReplyMsgType    = 0;
+            chatViewPage.pendingReplyTs         = "";
+        } else {
+            zService.sendMessage(chatViewPage.threadId, txt, chatViewPage.isGroup);
+        }
     }
 
     function normMine(v) {
@@ -1935,6 +2225,17 @@ Page {
             position: SystemUiPosition.MiddleCenter
         },
 
+        // Clears jumpHighlightMsgId a couple seconds after jumpToMessage()
+        // sets it, so the yellow "just jumped here" highlight is transient
+        // (matches the feel of the search-match highlight) instead of
+        // sticking on the row forever.
+        Timer {
+            id: jumpHighlightTimer
+            interval: 2000
+            repeat: false
+            onTriggered: { chatViewPage.jumpHighlightMsgId = ""; }
+        },
+
         // Generic error toast for Delete/Recall/Download failures — body is set
         // by the caller right before show().
         SystemToast {
@@ -2010,6 +2311,16 @@ Page {
         InfoDialog {
             id: createEventUnderDevDialog
             title: "Create Event"
+            body: "This feature is still under development."
+        },
+
+        // Placeholder for the upcoming pinned-messages/poll/note board (see
+        // "Group board" ActionItem above). Swap this for the real board Page
+        // once that work lands — the menu entry, gating, and icon are already
+        // final.
+        InfoDialog {
+            id: groupBoardUnderDevDialog
+            title: "Group Board"
             body: "This feature is still under development."
         },
 
@@ -2370,7 +2681,17 @@ Page {
                     // of what happens with the upload/WS echo afterwards.
                     var cachedPath = zService.cacheLocalImage(path);
                     // Stage the image — user can type a caption then press Send.
+                    // Clears any pending reply first: the two staging bars are
+                    // mutually exclusive (same reasoning as doReply() clearing
+                    // a pending photo when a reply is started).
                     var fname = path.substring(path.lastIndexOf('/') + 1);
+                    chatViewPage.pendingReplyMsgId      = "";
+                    chatViewPage.pendingReplyCliMsgId   = "";
+                    chatViewPage.pendingReplyOwnerId    = "";
+                    chatViewPage.pendingReplySenderName = "";
+                    chatViewPage.pendingReplyContent    = "";
+                    chatViewPage.pendingReplyMsgType    = 0;
+                    chatViewPage.pendingReplyTs         = "";
                     chatViewPage.pendingAttachPath = cachedPath;
                     chatViewPage.pendingAttachName = fname;
                     inputField.requestFocus();

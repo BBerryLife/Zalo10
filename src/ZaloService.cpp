@@ -120,6 +120,17 @@ ZaloService::ZaloService(QObject *parent)
         // shown (with a "(This message was recalled)" tag) when the user has
         // "Show Recalled Messages" enabled in Settings.
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN recalledOriginalContent TEXT DEFAULT '';", 0, 0, 0);
+        // Reply/quote support: when a message quotes an earlier one, we persist
+        // just enough of the quoted message to render the small preview strip
+        // inside the reply bubble (sender name + a short snippet of its
+        // content/type) without needing a second DB lookup at render time.
+        // quoteMsgId is what a tap on the preview jumps to (see ChatView.qml's
+        // scrollToMsgIndex + doJumpToQuoted()). Kept as flat columns (not a
+        // join) to match every other message field in this table.
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteMsgId     TEXT DEFAULT '';", 0, 0, 0);
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteContent   TEXT DEFAULT '';", 0, 0, 0);
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteSenderName TEXT DEFAULT '';", 0, 0, 0);
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteMsgType   INTEGER DEFAULT 0;", 0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
         // Track per-thread clear timestamps so re-fetched server msgs are filtered
         sqlite3_exec(m_db,

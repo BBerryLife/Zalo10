@@ -428,6 +428,125 @@ void ZaloService::sendMessage(const QString &threadId, const QString &content, b
     connect(reply, SIGNAL(finished()), this, SLOT(onSendMsgDone()));
 }
 
+// Reply/quote send. Ported from zca-js's sendMessage.ts "quote" branch: same
+// body shape as a plain sendMessage() but with qmsg* fields added and posted
+// to .../quote instead of .../sms|sendmsg. qmsgAttach is only ever sent for
+// group threads (matches zca-js: `isGroupMessage ? JSON.stringify(...) : undefined`);
+// for 1-1 it's simply omitted rather than sent empty.
+void ZaloService::sendMessageQuote(const QString &threadId, const QString &content, bool isGroup,
+                                    const QString &quoteMsgId, const QString &quoteCliMsgId,
+                                    const QString &quoteOwnerId, const QString &quoteContent,
+                                    int quoteMsgType, const QString &quoteTs)
+{
+    if (!m_loggedIn) return;
+
+    QVariantMap msgData;
+    msgData["message"]  = content;
+    msgData["clientId"] = QString::number(QDateTime::currentMSecsSinceEpoch());
+    msgData["ttl"]      = 0;
+    msgData["qmsgOwner"]  = quoteOwnerId;
+    msgData["qmsgId"]     = quoteMsgId;
+    msgData["qmsgCliId"]  = quoteCliMsgId;
+    msgData["qmsgType"]   = quoteMsgType;
+    msgData["qmsgTs"]     = quoteTs;
+    msgData["qmsg"]       = quoteContent;
+    if (isGroup) {
+        msgData["visibility"] = 0;
+        msgData["grid"]       = threadId;
+        // Group quote attach: for a plain text quote this is just the quoted
+        // text re-wrapped; photo quotes aren't wired up on the UI side yet
+        // (Reply is offered on the hold-menu for any message, but the
+        // preview/attach shape below only covers text — matches the current
+        // QML, which only builds a quote payload from ListItemData.content).
+        QVariantMap attach;
+        attach["title"] = quoteContent;
+        msgData["qmsgAttach"] = QString::fromUtf8(mapToJson(attach));
+        // group không gửi imei (theo zca-js)
+    } else {
+        msgData["toid"] = threadId;
+        msgData["imei"] = m_imei;
+    }
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(msgData)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    // Quote endpoint = base + "/quote" instead of "/sms" (1-1) or "/sendmsg" (group)
+    QString base = isGroup ? m_groupServiceUrl + "/api/group/quote"
+                           : m_chatServiceUrl  + "/api/message/quote";
+
+    QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
+                          + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest sendReq = buildRequest(urlStr, "https://chat.zalo.me/");
+    sendReq.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] sendMessageQuote POST" << urlStr << "isGroup:" << isGroup << "qmsgId:" << quoteMsgId;
+    QNetworkReply *reply = m_manager->post(sendReq, body);
+    reply->setProperty("threadId", threadId);
+    reply->setProperty("content",  content);
+    reply->setProperty("isGroup",  isGroup);
+    reply->setProperty("cliMsgId", msgData["clientId"].toString());
+    reply->setProperty("quoteMsgId",      quoteMsgId);
+    reply->setProperty("quoteContent",    quoteContent);
+    reply->setProperty("quoteSenderName", QString()); // filled in by caller-side QML placeholder; not needed server-side
+    reply->setProperty("quoteMsgType",    quoteMsgType);
+    connect(reply, SIGNAL(finished()), this, SLOT(onSendMsgQuoteDone()));
+}
+
+void ZaloService::onSendMsgQuoteDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    bool hasError   = (reply->error() != QNetworkReply::NoError);
+    QString tid     = reply->property("threadId").toString();
+    QString content = reply->property("content").toString();
+    bool isGroup    = reply->property("isGroup").toBool();
+    QString outCliMsgId = reply->property("cliMsgId").toString();
+    QString qMsgId       = reply->property("quoteMsgId").toString();
+    QString qContent     = reply->property("quoteContent").toString();
+    int     qMsgType     = reply->property("quoteMsgType").toInt();
+    QByteArray raw  = reply->readAll();
+    reply->deleteLater();
+    qDebug() << "[Zalo] sendMessageQuote response:" << raw.left(200);
+
+    if (!hasError) {
+        QVariantMap outer = jsonToMap(raw);
+        if (outer["error_code"].toInt() == 0) {
+            QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
+            QVariantMap decOuter = jsonToMap(dec.toUtf8());
+            QVariantMap data = decOuter["data"].toMap();
+            qint64 msgIdInt = data["msgId"].toLongLong();
+            QString msgId = (msgIdInt != 0) ? QString::number(msgIdInt)
+                                            : QString::number(QDateTime::currentMSecsSinceEpoch());
+            if (!m_seenMsgIds.contains(msgId)) {
+                QVariantMap out;
+                out["msgId"]    = msgId;
+                out["cliMsgId"] = outCliMsgId;
+                out["content"]  = content;
+                out["msgType"]  = 1;
+                out["isMine"]   = true;
+                out["isGroup"]  = isGroup;
+                out["senderId"] = m_uid;
+                out["dName"]    = m_displayName;
+                out["ts"]       = QString::number(QDateTime::currentMSecsSinceEpoch());
+                out["quoteMsgId"]      = qMsgId;
+                out["quoteContent"]    = qContent;
+                out["quoteMsgType"]    = qMsgType;
+                m_seenMsgIds.insert(msgId);
+                dbSaveMessage(out, tid);
+                emit newMessage(tid, out);
+            } else {
+                qDebug() << "[Zalo] sendMessageQuote: WS already delivered msgId=" << msgId << ", skipping duplicate";
+            }
+        } else {
+            hasError = true;
+            qDebug() << "[Zalo] sendMessageQuote error_code:" << outer["error_code"].toInt()
+                     << outer["error_message"].toString();
+        }
+    }
+    emit messageSent(!hasError, tid);
+}
+
 void ZaloService::onSendMsgDone()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());

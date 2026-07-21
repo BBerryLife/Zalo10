@@ -1,5 +1,5 @@
 1
-787
+789
 AboutSheet.qml
 ActiveFrameCover.qml
 ChangelogPage.qml
@@ -167,6 +167,7 @@ images/ChatView/ic_emoticon_enabled.png
 images/ChatView/ic_emoticon_enabled_white.png
 images/ChatView/ic_forward_message.png
 images/ChatView/ic_keyboard_enabled.png
+images/ChatView/ic_list.png
 images/ChatView/ic_notifications_off.png
 images/ChatView/ic_pin.png
 images/ChatView/ic_quote_message.png
@@ -174,8 +175,10 @@ images/ChatView/ic_recall.png
 images/ChatView/ic_replace_message.png
 images/ChatView/ic_save.png
 images/ChatView/ic_save_image.png
+images/ChatView/ic_sb_notes.png
 images/ChatView/ic_select_more.png
 images/ChatView/ic_share.png
+images/ChatView/ic_textmessage.png
 images/ChatView/timemess.png
 images/ChatView/timemesswhite.png
 images/ContactsTab/action_icon_search.png
@@ -748,7 +751,6 @@ images/ic_invite_to_bbm.png
 images/ic_mail.png
 images/ic_microphone.png
 images/ic_save.png
-images/ic_sb_textmessage.png
 images/ic_settings.png
 images/ic_start_chat.png
 images/InvitesTab/action_icon_search.png

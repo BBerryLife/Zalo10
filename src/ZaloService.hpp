@@ -48,6 +48,15 @@ public:
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
+    // Send a text message that quotes/replies to an earlier one. Ported from
+    // zca-js's sendMessage.ts "quote" path (params qmsgOwner/qmsgId/qmsgCliId/
+    // qmsgType/qmsgTs/qmsg, posted to .../quote instead of .../sms|sendmsg).
+    // quoteMsgType is Zalo's *client* message type code (1=text/webchat,
+    // 32=photo — see zca-js's getClientMessageType()), not our local msgType.
+    Q_INVOKABLE void sendMessageQuote(const QString &threadId, const QString &content, bool isGroup,
+                                       const QString &quoteMsgId, const QString &quoteCliMsgId,
+                                       const QString &quoteOwnerId, const QString &quoteContent,
+                                       int quoteMsgType, const QString &quoteTs);
     // Delete a message. Ported from zca-js's deleteMessage.ts:
     //   - onlyMe=true:  "delete for me" — always allowed, any thread.
     //   - onlyMe=false: "delete for everyone" — only allowed in groups; for a
@@ -246,6 +255,7 @@ private slots:
     void onFetchMsgDone();
     void onFetchPhotoDetailDone();  // HTTP fallback khi cmd=510 không trả HTTP URL
     void onSendMsgDone();
+    void onSendMsgQuoteDone();
     void onDeleteMsgDone();
     void onRecallMsgDone();
     void onSendPhotoDone();

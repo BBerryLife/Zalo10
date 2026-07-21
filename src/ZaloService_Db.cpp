@@ -163,15 +163,23 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         "localImage = CASE WHEN ?='' THEN localImage ELSE ? END,"
         "imgWidth   = CASE WHEN ?=0  THEN imgWidth   ELSE ? END,"
         "imgHeight  = CASE WHEN ?=0  THEN imgHeight  ELSE ? END,"
-        "cliMsgId   = CASE WHEN ?='' THEN cliMsgId   ELSE ? END "
+        "cliMsgId   = CASE WHEN ?='' THEN cliMsgId   ELSE ? END,"
+        "quoteMsgId      = CASE WHEN ?='' THEN quoteMsgId      ELSE ? END,"
+        "quoteContent    = CASE WHEN ?='' THEN quoteContent    ELSE ? END,"
+        "quoteSenderName = CASE WHEN ?='' THEN quoteSenderName ELSE ? END,"
+        "quoteMsgType    = CASE WHEN ?=0  THEN quoteMsgType    ELSE ? END "
         "WHERE msgId=?";
     sqlite3_stmt *upd = 0;
     bool updated = false;
     if (sqlite3_prepare_v2(m_db, sqlUpdate, -1, &upd, 0) == SQLITE_OK) {
         QByteArray localImageUtf8 = msg["localImage"].toString().toUtf8();
         QByteArray cliMsgIdUtf8   = msg["cliMsgId"].toString().toUtf8();
+        QByteArray quoteMsgIdUtf8   = msg["quoteMsgId"].toString().toUtf8();
+        QByteArray quoteContentUtf8 = msg["quoteContent"].toString().toUtf8();
+        QByteArray quoteSenderUtf8  = msg["quoteSenderName"].toString().toUtf8();
         int imgWidthVal  = msg["imgWidth"].toInt();
         int imgHeightVal = msg["imgHeight"].toInt();
+        int quoteMsgTypeVal = msg["quoteMsgType"].toInt();
         sqlite3_bind_text(upd, 1,  threadId.toUtf8().constData(),                    -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(upd, 2,  msg["content"].toString().toUtf8().constData(),   -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(upd, 3,  msg["senderId"].toString().toUtf8().constData(),  -1, SQLITE_TRANSIENT);
@@ -188,7 +196,15 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         sqlite3_bind_int (upd, 14, imgHeightVal);
         sqlite3_bind_text(upd, 15, cliMsgIdUtf8.constData(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(upd, 16, cliMsgIdUtf8.constData(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(upd, 17, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 17, quoteMsgIdUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 18, quoteMsgIdUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 19, quoteContentUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 20, quoteContentUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 21, quoteSenderUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 22, quoteSenderUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int (upd, 23, quoteMsgTypeVal);
+        sqlite3_bind_int (upd, 24, quoteMsgTypeVal);
+        sqlite3_bind_text(upd, 25, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
         sqlite3_step(upd);
         updated = sqlite3_changes(m_db) > 0;
         sqlite3_finalize(upd);
@@ -197,8 +213,9 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
 
     const char *sql =
         "INSERT INTO messages "
-        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,cliMsgId) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,cliMsgId,"
+        "quoteMsgId,quoteContent,quoteSenderName,quoteMsgType) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     sqlite3_stmt *stmt = 0;
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
     sqlite3_bind_text(stmt, 1,  msgId.toUtf8().constData(),                       -1, SQLITE_TRANSIENT);
@@ -214,6 +231,10 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     sqlite3_bind_int (stmt, 11, msg["imgWidth"].toInt());
     sqlite3_bind_int (stmt, 12, msg["imgHeight"].toInt());
     sqlite3_bind_text(stmt, 13, msg["cliMsgId"].toString().toUtf8().constData(),   -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 14, msg["quoteMsgId"].toString().toUtf8().constData(),      -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 15, msg["quoteContent"].toString().toUtf8().constData(),    -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 16, msg["quoteSenderName"].toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int (stmt, 17, msg["quoteMsgType"].toInt());
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
 }
@@ -224,7 +245,8 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     if (!m_db || threadId.isEmpty()) return result;
 
     const char *sql =
-        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,recalledOriginalContent,cliMsgId "
+        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,recalledOriginalContent,cliMsgId,"
+        "quoteMsgId,quoteContent,quoteSenderName,quoteMsgType "
         "FROM messages WHERE threadId=? "
         "ORDER BY CAST(ts AS INTEGER) ASC LIMIT 200;";
     sqlite3_stmt *stmt = 0;
@@ -245,6 +267,10 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
         m["imgHeight"]  = sqlite3_column_int(stmt, 10);
         m["recalledOriginalContent"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 11));
         m["cliMsgId"]   = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 12));
+        m["quoteMsgId"]      = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 13));
+        m["quoteContent"]    = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 14));
+        m["quoteSenderName"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 15));
+        m["quoteMsgType"]    = sqlite3_column_int(stmt, 16);
         result.append(m);
     }
     sqlite3_finalize(stmt);

@@ -583,6 +583,23 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             out["isMine"]   = isSelf;
             out["msgType"]  = m["msgType"].toInt();
 
+            // Reply/quote: Zalo WS delivers a "quote" object on any message that
+            // replies to an earlier one (see TQuote in zca-js's Message.ts —
+            // ownerId/cliMsgId/globalMsgId/cliMsgType/ts/msg/attach/fromD).
+            // globalMsgId is the quoted message's real msgId (what a tap should
+            // jump to); "msg" is its text snippet; "fromD" is the quoted
+            // sender's display name — everything the reply-preview strip needs
+            // without a second lookup. Absent entirely on normal messages, so
+            // an empty quoteMsgId downstream means "not a reply".
+            QVariantMap quoteObj = m["quote"].toMap();
+            if (!quoteObj.isEmpty()) {
+                qint64 qGlobalId = quoteObj["globalMsgId"].toLongLong();
+                out["quoteMsgId"]      = qGlobalId != 0 ? QString::number(qGlobalId) : quoteObj["globalMsgId"].toString();
+                out["quoteContent"]    = quoteObj["msg"].toString();
+                out["quoteSenderName"] = quoteObj["fromD"].toString();
+                out["quoteMsgType"]    = quoteObj["cliMsgType"].toInt();
+            }
+
             int mt = m["msgType"].toInt();
             // Also try alternate field names Zalo WS uses
             if (mt == 0) {
