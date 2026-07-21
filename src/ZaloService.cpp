@@ -131,6 +131,12 @@ ZaloService::ZaloService(QObject *parent)
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteContent   TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteSenderName TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteMsgType   INTEGER DEFAULT 0;", 0, 0, 0);
+        // Who sent the quoted message (their raw uid, "" if unknown) — lets
+        // the QML delegate tell "replying to myself" apart from "replying to
+        // the other party" (see quoteSenderResolved in ChatView.qml), which
+        // quoteSenderName alone can't disambiguate reliably given Zalo's wire
+        // dName/fromD quirks.
+        sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteOwnerId   TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
         // Track per-thread clear timestamps so re-fetched server msgs are filtered
         sqlite3_exec(m_db,

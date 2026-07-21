@@ -45,6 +45,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
         $$quote($$BASEDIR/assets/EmojiButton.qml) \
         $$quote($$BASEDIR/assets/EmojiPanel.qml) \
+        $$quote($$BASEDIR/assets/GroupBoardSheet.qml) \
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
@@ -191,6 +192,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/clear_chat.png) \
         $$quote($$BASEDIR/assets/images/ChatView/darkkeyboard.png) \
         $$quote($$BASEDIR/assets/images/ChatView/desktop.ini) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_action_new_note.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_attach.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_bbm_video_answer.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_bbm_voice_answer.png) \
@@ -210,6 +212,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_quote_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_recall.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_replace_message.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_review_add.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_save.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_save_image.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_sb_notes.png) \

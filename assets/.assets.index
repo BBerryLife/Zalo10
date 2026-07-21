@@ -1,5 +1,5 @@
 1
-789
+792
 AboutSheet.qml
 ActiveFrameCover.qml
 ChangelogPage.qml
@@ -9,6 +9,7 @@ ConfirmDialog.qml
 ContactsTab.qml
 EmojiButton.qml
 EmojiPanel.qml
+GroupBoardSheet.qml
 GroupsTab.qml
 images/AboutSheet/barcode.png
 images/AboutSheet/berrylife.png
@@ -154,6 +155,7 @@ images/ChatView/clear_chat.png
 images/ChatView/ConversationPaneSend.png
 images/ChatView/darkkeyboard.png
 images/ChatView/desktop.ini
+images/ChatView/ic_action_new_note.png
 images/ChatView/ic_attach.png
 images/ChatView/ic_bbm_video_answer.png
 images/ChatView/ic_bbm_voice_answer.png
@@ -173,6 +175,7 @@ images/ChatView/ic_pin.png
 images/ChatView/ic_quote_message.png
 images/ChatView/ic_recall.png
 images/ChatView/ic_replace_message.png
+images/ChatView/ic_review_add.png
 images/ChatView/ic_save.png
 images/ChatView/ic_save_image.png
 images/ChatView/ic_sb_notes.png

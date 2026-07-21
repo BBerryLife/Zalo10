@@ -40,6 +40,11 @@ Page {
     property bool   isBlocked: false
     property bool   popRequested: false
     property bool   qmRequested: false
+    // Same "flip a bool, the owning Nav watches for it and pushes the real
+    // page" pattern qmRequested uses (see ChatsTab.qml/GroupsTab.qml's
+    // onQmRequestedChanged) — ChatView itself can't push into the
+    // NavigationPane that owns it directly.
+    property bool   groupBoardRequested: false
     property variant pendingImageUpdates: ([])
     property bool   pageVisible: false
     property bool   isDark: app.getDarkTheme()
@@ -235,6 +240,7 @@ Page {
     }
 
     function applyImageUpdate(msgId, localPath, imgWidth, imgHeight) {
+        chatViewPage.flushPendingRebuild();
         var size = msgModel.size();
         if (size === 0) return;
         for (var j = 0; j < size; j++) {
@@ -273,6 +279,7 @@ Page {
     // extractDeleteInfo() self-only guard) — the other participant's
     // "delete for me" never reaches this function.
     function applyLocalDelete(msgId) {
+        chatViewPage.flushPendingRebuild();
         var size = msgModel.size();
         for (var j = 0; j < size; j++) {
             var d = msgModel.value(j);
@@ -298,6 +305,7 @@ Page {
     // compares ts across rows and a stale device-clock value can throw that
     // comparison off by hours.
     function applyTsCorrection(msgId, newTs) {
+        chatViewPage.flushPendingRebuild();
         var size = msgModel.size();
         for (var j = 0; j < size; j++) {
             var d = msgModel.value(j);
@@ -312,6 +320,7 @@ Page {
     }
 
     function applyRecall(msgId) {
+        chatViewPage.flushPendingRebuild();
         var size = msgModel.size();
         for (var j = 0; j < size; j++) {
             var d = msgModel.value(j);
@@ -454,6 +463,19 @@ Page {
         chatViewPage.isMuted   = zService.isMutedThread(chatViewPage.threadId);
         blockedBanner.visible  = chatViewPage.isBlocked;
 
+        // Cancel (not apply) any deferred rebuild flush left over from
+        // whatever thread was open before this one — see
+        // flushPendingRebuild()'s comment for the general race this guards
+        // against. Applying a stale pendingItems here would be wrong in a
+        // different way than the original bug: it would leak the PREVIOUS
+        // thread's messages into this one's freshly-cleared msgModel. The
+        // clear() + dbLoadMessages()/fetchMessages() below already fully
+        // repopulate this thread's own messages, so the old pending flush
+        // is simply discarded.
+        rebuildFlushTimer.stop();
+        rebuildFlushTimer.pendingItems = null;
+        rebuildFlushTimer.pendingScroll = false;
+
         msgModel.clear();
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
 
@@ -503,6 +525,8 @@ Page {
             property bool   isAdminOrOwner: chatViewPage.isCurrentUserAdminOrOwner
             property bool   isGroupChat: chatViewPage.isGroup
             property string threadNameProxy: chatViewPage.threadName
+            property string selfUidProxy: zService.selfUid
+            property string selfNameProxy: chatViewPage.selfName
             property string jumpHighlightMsgId: chatViewPage.jumpHighlightMsgId
             property string searchQuery: chatViewPage.searchVisible ? chatViewPage.searchText.toLowerCase().trim() : ""
             property int    searchCurrentMsgIndex: (chatViewPage.searchMatchPos >= 0 && chatViewPage.searchMatchPos < chatViewPage.searchMatches.length)
@@ -518,6 +542,11 @@ Page {
             // jumpToMessage() need the same indirection.
             function highlightMatchesProxy(text, query, color) { return chatViewPage.highlightMatches(text, query, color); }
             function jumpToMessageProxy(msgId) { chatViewPage.jumpToMessage(msgId); }
+            // Reliable group-member uid->name lookup (see m_memberNames in
+            // ZaloService — built from getmg-v2's currentMems, NOT the
+            // per-message wire dName field, which is unreliable for incoming
+            // messages in both 1-1 and group threads). Returns "" if unknown.
+            function memberDisplayNameProxy(uid) { return zService.memberDisplayName(uid); }
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -579,15 +608,45 @@ Page {
             // reply can't both be staged at once — starting a reply while a
             // photo is pending clears the photo attach first, matching the
             // "replace, don't stack" behaviour Jim asked for.
-            function doReply(msgId, cliMsgId, senderId, senderName, content, msgType, ts) {
+            //
+            // senderName resolution happens HERE rather than at the ActionItem
+            // call site in the delegate: rowRoot.otherDisplayName (computed via
+            // ListItem.view.threadNameProxy) looked right on paper but still
+            // came back "Unknown" on-device — ActionSet/ActionItem.onTriggered
+            // turned out to be yet another Cascades scope boundary, on top of
+            // the delegate-body one already worked around for
+            // highlightMatches/jumpToMessage. doReply() itself lives on
+            // msgList (confirmed reachable — chatViewPage.pendingAttachPath
+            // above already works), so resolving the name here sidesteps the
+            // problem instead of chasing another scope workaround.
+            function doReply(msgId, cliMsgId, senderId, isMine, rawDName, content, msgType, ts) {
                 if (chatViewPage.pendingAttachPath.length > 0) {
                     chatViewPage.pendingAttachPath = "";
                     chatViewPage.pendingAttachName = "";
                 }
+                var resolvedName;
+                if (isMine) {
+                    resolvedName = chatViewPage.selfName || "Me";
+                } else if (!chatViewPage.isGroup && chatViewPage.threadName.length > 0) {
+                    // 1-1 thread: Zalo's wire "dName" on an incoming message is
+                    // unreliable (confirmed on-device carrying OUR OWN name
+                    // instead of the sender's) — threadName is the contact's
+                    // real name from their profile, not from the message wire.
+                    resolvedName = chatViewPage.threadName;
+                } else if (chatViewPage.isGroup) {
+                    // Group: same wire-dName unreliability, confirmed on-device
+                    // in groups too (not just 1-1 as first assumed) — look the
+                    // real sender up by uid in zService's member-name cache
+                    // (built from getmg-v2's currentMems, not the message wire).
+                    var memName = zService.memberDisplayName(senderId || "");
+                    resolvedName = (memName && memName.length > 0) ? memName : (rawDName || "Unknown");
+                } else {
+                    resolvedName = rawDName || "Unknown";
+                }
                 chatViewPage.pendingReplyMsgId      = msgId || "";
                 chatViewPage.pendingReplyCliMsgId   = cliMsgId || "";
                 chatViewPage.pendingReplyOwnerId    = senderId || "";
-                chatViewPage.pendingReplySenderName = senderName || "";
+                chatViewPage.pendingReplySenderName = resolvedName;
                 chatViewPage.pendingReplyContent    = content || "";
                 chatViewPage.pendingReplyMsgType    = msgType || 0;
                 chatViewPage.pendingReplyTs         = String(ts || "");
@@ -708,7 +767,7 @@ Page {
                                     imageSource: "asset:///images/ChatView/ic_quote_message.png"
                                     onTriggered: {
                                         rowRoot.ListItem.view.doReply(ListItemData.msgId, ListItemData.cliMsgId,
-                                            ListItemData.senderId, rowRoot.mine ? (ListItemData.selfName || "Me") : rowRoot.otherDisplayName,
+                                            ListItemData.senderId, rowRoot.mine, ListItemData.dName,
                                             ListItemData.content, ListItemData.msgType, ListItemData.ts);
                                     }
                                 }
@@ -766,7 +825,7 @@ Page {
                                     imageSource: "asset:///images/ChatView/ic_quote_message.png"
                                     onTriggered: {
                                         rowRoot.ListItem.view.doReply(ListItemData.msgId, ListItemData.cliMsgId,
-                                            ListItemData.senderId, rowRoot.mine ? (ListItemData.selfName || "Me") : rowRoot.otherDisplayName,
+                                            ListItemData.senderId, rowRoot.mine, ListItemData.dName,
                                             ListItemData.content, ListItemData.msgType, ListItemData.ts);
                                     }
                                 }
@@ -895,21 +954,53 @@ Page {
                         // block rendered above the message text below.
                         property bool hasQuote: !!(ListItemData.quoteMsgId && ListItemData.quoteMsgId.length > 0)
 
-                        // Zalo's WS payload has a quirk for 1-1 (non-group) threads: the
-                        // "dName" field on an INCOMING message is not reliably the sender's
-                        // name — confirmed from a device log where a message actually sent
-                        // by the other person carried dName="Berrylife" (OUR OWN name)
-                        // instead of theirs. dbSaveMessage() persists whatever the wire
-                        // sent, so this is wrong both live and after reload. In a 1-1 thread
-                        // there's only one possible "other" person though — chatViewPage's
-                        // own threadName (set from the contact's profile when the chat was
-                        // opened, not from the message wire) is always correct and doesn't
-                        // have this bug. Groups aren't affected the same way (every member
-                        // needs their own per-message name, which threadName can't provide),
-                        // so this fallback only applies when isGroup is false.
+                        // Same "wire dName/quoteSenderName can be wrong" issue as
+                        // otherDisplayName below, but for the person being QUOTED —
+                        // which isn't necessarily "the other party": replying to your
+                        // own earlier message quotes yourself. quoteOwnerId (persisted
+                        // alongside quoteMsgId — see sendMessageQuote()'s qmsgOwner and
+                        // the WS quote.ownerId parsing) tells us which case this is;
+                        // ListItemData.selfUid is this device's own uid (already exposed
+                        // on ListView for the mine/theirs bubble-side logic elsewhere).
+                        property bool quoteIsMine: !!(ListItemData.quoteOwnerId && ListItemData.quoteOwnerId === ListItem.view.selfUidProxy)
+                        property string quoteMemberName: ListItem.view.isGroupChat
+                            ? ListItem.view.memberDisplayNameProxy(ListItemData.quoteOwnerId || "")
+                            : ""
+                        property string quoteSenderResolved: rowRoot.quoteIsMine
+                            ? (ListItem.view.selfNameProxy || "Me")
+                            : ((!ListItem.view.isGroupChat && ListItem.view.threadNameProxy.length > 0)
+                               ? ListItem.view.threadNameProxy
+                               : ((ListItem.view.isGroupChat && rowRoot.quoteMemberName.length > 0)
+                                  ? rowRoot.quoteMemberName
+                                  : (ListItemData.quoteSenderName || "Unknown")))
+
+                        // Zalo's WS payload has a quirk on incoming messages: the
+                        // "dName" field is not reliably the sender's own name —
+                        // confirmed from a device log where a message actually sent
+                        // by another person carried dName="Berrylife" (OUR OWN
+                        // name) instead of theirs. Confirmed in BOTH 1-1 and group
+                        // threads (not just 1-1, as first assumed) — dbSaveMessage()
+                        // persists whatever the wire sent, so this is wrong both
+                        // live and after reload.
+                        // - 1-1: there's only one possible "other" person, so
+                        //   chatViewPage.threadName (from the contact's profile,
+                        //   not the message wire) is always correct.
+                        // - Group: every member needs their own per-message name,
+                        //   which threadName can't provide — memberDisplayNameProxy
+                        //   looks the sender up in m_memberNames (built from
+                        //   getmg-v2's currentMems, a reliable per-member source
+                        //   completely separate from the message wire).
+                        // If neither source has an answer (e.g. group details
+                        // haven't loaded this session yet), falls back to the
+                        // wire dName rather than showing nothing.
+                        property string otherMemberName: ListItem.view.isGroupChat
+                            ? ListItem.view.memberDisplayNameProxy(ListItemData.senderId || "")
+                            : ""
                         property string otherDisplayName: (!ListItem.view.isGroupChat && ListItem.view.threadNameProxy.length > 0)
-                                                           ? ListItem.view.threadNameProxy
-                                                           : (ListItemData.dName || "Unknown")
+                            ? ListItem.view.threadNameProxy
+                            : ((ListItem.view.isGroupChat && rowRoot.otherMemberName.length > 0)
+                               ? rowRoot.otherMemberName
+                               : (ListItemData.dName || "Unknown"))
 
                         // Yellow highlight: true either while this row is the active
                         // in-chat search match (isCurrentSearchMatch, declared above) or
@@ -1136,7 +1227,7 @@ Page {
                                     ]
 
                                     Label {
-                                        text: ListItemData.quoteSenderName || "Unknown"
+                                        text: rowRoot.quoteSenderResolved
                                         multiline: false
                                         textStyle {
                                             fontSize:   FontSize.XSmall
@@ -1724,19 +1815,21 @@ Page {
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: { clearHistoryDialog.show() }
         },
-        // Group Board: entry point for viewing all pinned messages/polls/notes
-        // in this group (the actual board UI is a separate piece of work —
-        // this wires up the menu placement + group-only gating now so the
-        // feature has a home to land in). 1-1 threads have no group board
-        // concept server-side, hence disabled (not hidden — same convention
-        // "Block user"/"Leave group" already use above for their own
-        // thread-type restrictions) outside of groups.
+        // Group Board: shows all pinned messages/notes/polls in this group
+        // (GroupBoardSheet.qml, pushed via the groupBoardRequested flag —
+        // same "flip a bool, the owning NavigationPane watches and pushes"
+        // pattern qmRequested already uses just below in this same file,
+        // since ChatView itself can't push into its own parent Nav
+        // directly). 1-1 threads have no group board concept server-side,
+        // hence disabled (not hidden — same convention "Block user"/"Leave
+        // group" already use above for their own thread-type restrictions)
+        // outside of groups.
         ActionItem {
             title: "Group board"
             imageSource: "asset:///images/ChatView/ic_sb_notes.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: chatViewPage.isGroup
-            onTriggered: { groupBoardUnderDevDialog.show() }
+            onTriggered: { chatViewPage.groupBoardRequested = true; }
         },
         ActionItem {
             title: "Leave group"
@@ -1863,6 +1956,7 @@ Page {
                                            ? "[Photo]" : chatViewPage.pendingReplyContent;
             placeholder.quoteSenderName = chatViewPage.pendingReplySenderName;
             placeholder.quoteMsgType    = chatViewPage.pendingReplyMsgType;
+            placeholder.quoteOwnerId    = chatViewPage.pendingReplyOwnerId;
         }
         msgModel.append(placeholder);
         chatViewPage.rebuildGroups(true);
@@ -1926,7 +2020,51 @@ Page {
                    .replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
     }
 
+    // See the detailed race-condition comment inside rebuildGroups() below for
+    // why this exists. Call this before ANY direct msgModel.append()/clear()
+    // (not just before rebuildGroups() itself) so a pending deferred flush
+    // from an earlier rebuildGroups() call always lands, in order, before
+    // new data goes in — otherwise a message appended while msgModel is
+    // sitting cleared-but-not-yet-reflushed can end up ordered before
+    // earlier messages once the flush finally fires, or (worse, the
+    // originally reported bug) get silently overwritten and lost entirely
+    // if the append is itself followed by another deferring rebuildGroups().
+    function flushPendingRebuild() {
+        if (rebuildFlushTimer.running || rebuildFlushTimer.pendingItems) {
+            rebuildFlushTimer.stop();
+            if (rebuildFlushTimer.pendingItems) {
+                msgModel.append(rebuildFlushTimer.pendingItems);
+                rebuildFlushTimer.pendingItems = null;
+            }
+            rebuildFlushTimer.pendingScroll = false;
+        }
+    }
+
     function rebuildGroups(scrollAfter) {
+        // Data-loss race fix: rebuildGroups() below can defer its own update
+        // onto rebuildFlushTimer (msgModel.clear() now, real content
+        // re-appended on the NEXT event loop turn — see the big comment
+        // further down explaining why that deferral exists). If a SECOND
+        // message arrives and calls onNewMessage -> msgModel.append() ->
+        // rebuildGroups() again before that timer fires, msgModel is still
+        // sitting empty from the first call's clear(). The second call's own
+        // "var size = msgModel.size()" then sees only whatever it just
+        // appended, and if IT also needs to defer, its pendingItems
+        // (containing only the second message) overwrites the first call's
+        // still-pending pendingItems (containing everything, including the
+        // first message) — the first message is silently gone forever once
+        // the timer finally fires. Confirmed on-device: a reply sent right
+        // after an incoming photo made that photo disappear.
+        //
+        // Fix: if a flush is already pending when we're called, apply it
+        // synchronously RIGHT NOW (stop the timer, append its pendingItems
+        // immediately) before doing anything else. This closes the race
+        // window entirely — by the time this function reads msgModel.size()
+        // below, any earlier deferred update has already landed for real,
+        // so nothing gets appended into a still-cleared model or overwrites
+        // a not-yet-flushed pendingItems.
+        chatViewPage.flushPendingRebuild();
+
         var size = msgModel.size();
         if (size === 0) return;
 
@@ -2314,16 +2452,6 @@ Page {
             body: "This feature is still under development."
         },
 
-        // Placeholder for the upcoming pinned-messages/poll/note board (see
-        // "Group board" ActionItem above). Swap this for the real board Page
-        // once that work lands — the menu entry, gating, and icon are already
-        // final.
-        InfoDialog {
-            id: groupBoardUnderDevDialog
-            title: "Group Board"
-            body: "This feature is still under development."
-        },
-
         Connections {
             target: app
 
@@ -2337,6 +2465,10 @@ Page {
 
             onMessagesReady: {
                 if (threadId !== chatViewPage.threadId) return;
+                // See flushPendingRebuild()'s comment for why this must run
+                // before any direct msgModel read/append in a handler that
+                // can fire from an async C++ signal.
+                chatViewPage.flushPendingRebuild();
 
                 var existing = chatViewPage.buildExistingIds();
                 var added = false;
@@ -2378,6 +2510,7 @@ Page {
 
             onMessageSent: {
                 if (threadId !== chatViewPage.threadId) return;
+                chatViewPage.flushPendingRebuild();
                 if (!success) {
                     chatViewPage.removeLocalPlaceholder(chatViewPage.pendingMsg);
                     inputField.text = chatViewPage.pendingMsg;
@@ -2399,6 +2532,16 @@ Page {
 
             onNewMessage: {
                 if (threadId !== chatViewPage.threadId) return;
+                // Primary fix point for the reported "reply right after a
+                // photo makes the photo vanish" bug — see flushPendingRebuild()'s
+                // comment. This handler is exactly what fires back-to-back for
+                // two messages arriving close together (an incoming photo, then
+                // an outgoing reply's confirmation), and it does its own direct
+                // msgModel.append() further down without going through
+                // rebuildGroups() first — so without this, a pending deferred
+                // flush from the PREVIOUS message could still be sitting on
+                // rebuildFlushTimer when this one's append() runs.
+                chatViewPage.flushPendingRebuild();
 
                 var msg = message;
                 msg.selfName = chatViewPage.selfName || "Me";

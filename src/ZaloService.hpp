@@ -24,12 +24,26 @@ class ZaloService : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY loggedInChanged)
+    // Exposes our own uid to QML so a reply's quoteOwnerId can be compared
+    // against it (needed to tell "I'm replying to my own earlier message"
+    // apart from "I'm replying to the other person" — see quoteSenderResolved
+    // in ChatView.qml's delegate). No NOTIFY: set once during login and never
+    // changes for the lifetime of a session, same as how m_uid itself behaves.
+    Q_PROPERTY(QString selfUid READ selfUid CONSTANT)
 
 public:
     explicit ZaloService(QObject *parent = 0);
     virtual ~ZaloService();
 
     bool loggedIn() const { return m_loggedIn; }
+    QString selfUid() const { return m_uid; }
+    // Reliable uid -> display name lookup for group members, built from
+    // getmg-v2's currentMems (see m_memberNames above). Returns "" if the
+    // uid isn't known yet (e.g. group details haven't been fetched this
+    // session) — callers should fall back to something honest rather than
+    // the wire's per-message dName in that case, same as
+    // GroupBoardSheet.qml's creatorLabel() already does.
+    Q_INVOKABLE QString memberDisplayName(const QString &uid) const { return m_memberNames.value(uid, QString()); }
 
     Q_INVOKABLE void startQRLogin();
     Q_INVOKABLE void retryQRLogin();
@@ -46,6 +60,12 @@ public:
     Q_INVOKABLE void acceptFriendRequest(const QString &friendId);
     Q_INVOKABLE void rejectFriendRequest(const QString &friendId);
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
+    // Group board: fetches all pinned messages/notes/polls for a group.
+    // Ported from zca-js's getListBoard.ts (.../api/board/list, board_type=0
+    // = "all types"). page/count mirror that API's pagination knobs; the QML
+    // side currently always asks for page 1 with a generous count since the
+    // board sheet shows everything in one scrollable list rather than paging.
+    Q_INVOKABLE void fetchGroupBoard(const QString &groupId, int page, int count);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     // Send a text message that quotes/replies to an earlier one. Ported from
@@ -177,6 +197,11 @@ signals:
     void conversationsReady(const QVariantList &threads); // groups
     void friendsReady(const QVariantList &friends);       // 1-1 friends
     void invitesReady(const QVariantList &invites);       // friend requests
+    // Emitted after fetchGroupBoard() resolves — items is a flat list of
+    // QVariantMaps, each tagged with a "boardType" string ("note"/"pin"/"poll")
+    // so GroupBoardSheet.qml can filter into its 4 tabs without needing 3
+    // separate signals. error is "" on success.
+    void groupBoardReady(const QString &groupId, const QVariantList &items, const QString &error);
     void friendRequestResponded(const QString &friendId, bool accepted, bool success);
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
@@ -249,6 +274,7 @@ private slots:
     void onFetchFriendsDone();
     void onFetchServerQuickMessagesDone();
     void onFetchInvitesDone();
+    void onFetchGroupBoardDone();
     void onAcceptFriendDone();
     void onRejectFriendDone();
     void onGroupDetailsDone();
@@ -424,6 +450,16 @@ private:
     QString m_lastPollMsgId; // msgId cuối cùng đã biết, tránh emit trùng
     QMap<QString, QString> m_threadLastMsgId; // per-thread last msgId để fetch chính xác
     QMap<QString, QString> m_groupNames;        // groupId -> group name for notifications
+    // uid -> display name, built from every group's "currentMems" list as
+    // groups are fetched (see fetchGroupDetails()). This is the reliable
+    // source for "who sent this group message" — the per-message wire
+    // "dName" field is NOT reliable for incoming messages (confirmed
+    // on-device: an incoming message from another member can carry OUR OWN
+    // display name instead of theirs — same bug class the Reply feature's
+    // otherDisplayName/quoteSenderResolved fix in ChatView.qml works around
+    // for 1-1 threads via threadName; groups need this uid-keyed map instead
+    // since there's no single "the other person").
+    QMap<QString, QString> m_memberNames;
     QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
     QString m_pending510Toid; // Thread đang chờ WS cmd=510 response (chỉ 1 tại 1 thời điểm)
     QMap<QString, QString> m_pendingPhotoMsgIds; // msgId -> threadId, waiting for photo URL via WS cmd=510

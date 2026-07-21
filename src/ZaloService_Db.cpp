@@ -167,7 +167,8 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         "quoteMsgId      = CASE WHEN ?='' THEN quoteMsgId      ELSE ? END,"
         "quoteContent    = CASE WHEN ?='' THEN quoteContent    ELSE ? END,"
         "quoteSenderName = CASE WHEN ?='' THEN quoteSenderName ELSE ? END,"
-        "quoteMsgType    = CASE WHEN ?=0  THEN quoteMsgType    ELSE ? END "
+        "quoteMsgType    = CASE WHEN ?=0  THEN quoteMsgType    ELSE ? END,"
+        "quoteOwnerId    = CASE WHEN ?='' THEN quoteOwnerId    ELSE ? END "
         "WHERE msgId=?";
     sqlite3_stmt *upd = 0;
     bool updated = false;
@@ -177,6 +178,7 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         QByteArray quoteMsgIdUtf8   = msg["quoteMsgId"].toString().toUtf8();
         QByteArray quoteContentUtf8 = msg["quoteContent"].toString().toUtf8();
         QByteArray quoteSenderUtf8  = msg["quoteSenderName"].toString().toUtf8();
+        QByteArray quoteOwnerUtf8   = msg["quoteOwnerId"].toString().toUtf8();
         int imgWidthVal  = msg["imgWidth"].toInt();
         int imgHeightVal = msg["imgHeight"].toInt();
         int quoteMsgTypeVal = msg["quoteMsgType"].toInt();
@@ -204,7 +206,9 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
         sqlite3_bind_text(upd, 22, quoteSenderUtf8.constData(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_int (upd, 23, quoteMsgTypeVal);
         sqlite3_bind_int (upd, 24, quoteMsgTypeVal);
-        sqlite3_bind_text(upd, 25, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 25, quoteOwnerUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 26, quoteOwnerUtf8.constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(upd, 27, msgId.toUtf8().constData(),                        -1, SQLITE_TRANSIENT);
         sqlite3_step(upd);
         updated = sqlite3_changes(m_db) > 0;
         sqlite3_finalize(upd);
@@ -214,8 +218,8 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     const char *sql =
         "INSERT INTO messages "
         "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,cliMsgId,"
-        "quoteMsgId,quoteContent,quoteSenderName,quoteMsgType) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        "quoteMsgId,quoteContent,quoteSenderName,quoteMsgType,quoteOwnerId) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     sqlite3_stmt *stmt = 0;
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
     sqlite3_bind_text(stmt, 1,  msgId.toUtf8().constData(),                       -1, SQLITE_TRANSIENT);
@@ -235,6 +239,7 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     sqlite3_bind_text(stmt, 15, msg["quoteContent"].toString().toUtf8().constData(),    -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 16, msg["quoteSenderName"].toString().toUtf8().constData(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int (stmt, 17, msg["quoteMsgType"].toInt());
+    sqlite3_bind_text(stmt, 18, msg["quoteOwnerId"].toString().toUtf8().constData(),    -1, SQLITE_TRANSIENT);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
 }
@@ -246,7 +251,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
 
     const char *sql =
         "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,recalledOriginalContent,cliMsgId,"
-        "quoteMsgId,quoteContent,quoteSenderName,quoteMsgType "
+        "quoteMsgId,quoteContent,quoteSenderName,quoteMsgType,quoteOwnerId "
         "FROM messages WHERE threadId=? "
         "ORDER BY CAST(ts AS INTEGER) ASC LIMIT 200;";
     sqlite3_stmt *stmt = 0;
@@ -271,6 +276,7 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
         m["quoteContent"]    = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 14));
         m["quoteSenderName"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 15));
         m["quoteMsgType"]    = sqlite3_column_int(stmt, 16);
+        m["quoteOwnerId"]    = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 17));
         result.append(m);
     }
     sqlite3_finalize(stmt);

@@ -598,6 +598,12 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 out["quoteContent"]    = quoteObj["msg"].toString();
                 out["quoteSenderName"] = quoteObj["fromD"].toString();
                 out["quoteMsgType"]    = quoteObj["cliMsgType"].toInt();
+                // ownerId is Zalo's real numeric uid of whoever sent the quoted
+                // message — used by QML to tell "quoting myself" apart from
+                // "quoting the other party" (fromD/dName are not reliable
+                // enough alone; see quoteSenderResolved in ChatView.qml).
+                qint64 qOwnerId = quoteObj["ownerId"].toLongLong();
+                out["quoteOwnerId"] = qOwnerId != 0 ? QString::number(qOwnerId) : quoteObj["ownerId"].toString();
             }
 
             int mt = m["msgType"].toInt();

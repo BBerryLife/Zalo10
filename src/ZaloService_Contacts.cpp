@@ -229,6 +229,22 @@ void ZaloService::onGroupDetailsDone()
             t["unread"]   = 0;
             threads.append(t);
             m_groupNames[gid] = gname; // cache for notifications
+
+            // currentMems: per-member {id, dName, zaloName, ...} — see
+            // GroupCurrentMem in zca-js's Group.ts. This is the reliable
+            // source for uid->name (m_memberNames), unlike the per-message
+            // wire dName field which is not trustworthy for incoming
+            // messages (see m_memberNames' declaration comment in the header).
+            QVariantList mems = g["currentMems"].toList();
+            for (int j = 0; j < mems.size(); ++j) {
+                QVariantMap mem = mems[j].toMap();
+                QString memId = mem["id"].toString();
+                QString memName = mem["dName"].toString();
+                if (memName.isEmpty()) memName = mem["zaloName"].toString();
+                if (!memId.isEmpty() && !memName.isEmpty()) {
+                    m_memberNames[memId] = memName;
+                }
+            }
         }
     } else {
         QVariantList grids = inner["gridInfos"].toList();
@@ -243,6 +259,17 @@ void ZaloService::onGroupDetailsDone()
             t["unread"]   = 0;
             threads.append(t);
             m_groupNames[gid] = g["name"].toString(); // cache
+
+            QVariantList mems = g["currentMems"].toList();
+            for (int j = 0; j < mems.size(); ++j) {
+                QVariantMap mem = mems[j].toMap();
+                QString memId = mem["id"].toString();
+                QString memName = mem["dName"].toString();
+                if (memName.isEmpty()) memName = mem["zaloName"].toString();
+                if (!memId.isEmpty() && !memName.isEmpty()) {
+                    m_memberNames[memId] = memName;
+                }
+            }
         }
     }
 
@@ -745,6 +772,133 @@ void ZaloService::onFetchInvitesDone()
     }
     qDebug() << "[Zalo] fetchInvites found" << invites.size() << "pending requests";
     emit invitesReady(invites);
+}
+
+// ─── fetchGroupBoard ──────────────────────────────────────────────────────
+// Group board = pinned messages + notes + polls shown together in one place
+// (see GroupBoardSheet.qml). Ported from zca-js's getListBoard.ts:
+// GET {group_poll service}/api/board/list?params=AES({group_id, board_type:0,
+// page, count, last_id:0, last_type:0, imei}). board_type=0 asks the server
+// for every type at once rather than filtering server-side — the 4 tabs in
+// the sheet (All/Pinned Message/Note/Poll) are a client-side filter over one
+// fetched list, same design zca-js itself documents (BoardType enum: Note=1,
+// PinnedMessage=2, Poll=3 — used below to tag each item for the QML filter).
+void ZaloService::fetchGroupBoard(const QString &groupId, int page, int count)
+{
+    if (!m_loggedIn || groupId.isEmpty()) return;
+
+    QString base = m_groupPollServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupPollServiceUrl;
+
+    QVariantMap innerParams;
+    innerParams["group_id"]   = groupId;
+    innerParams["board_type"] = 0;
+    innerParams["page"]       = (page > 0) ? page : 1;
+    innerParams["count"]      = (count > 0) ? count : 50;
+    innerParams["last_id"]    = 0;
+    innerParams["last_type"]  = 0;
+    innerParams["imei"]       = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
+    QString urlStr = base + "/api/board/list"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
+
+    qDebug() << "[Zalo] fetchGroupBoard GET" << urlStr.left(120) << "groupId:" << groupId;
+    QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
+    reply->setProperty("groupId", groupId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onFetchGroupBoardDone()));
+}
+
+void ZaloService::onFetchGroupBoardDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString groupId = reply->property("groupId").toString();
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+
+    qDebug() << "[Zalo] fetchGroupBoard raw (first200):" << raw.left(200);
+    QVariantMap root = jsonToMap(raw);
+    int ec = root["error_code"].toInt();
+    if (ec != 0) {
+        qDebug() << "[Zalo] fetchGroupBoard error_code:" << ec << root["error_message"].toString();
+        emit groupBoardReady(groupId, QVariantList(), root["error_message"].toString().isEmpty()
+                              ? QString("Error %1").arg(ec) : root["error_message"].toString());
+        return;
+    }
+
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    qDebug() << "[Zalo] fetchGroupBoard decrypted (first400):" << dec.left(400);
+    QVariantMap outer = jsonToMap(dec.toUtf8());
+    QVariantList rawItems = outer["items"].toList();
+    qDebug() << "[Zalo] fetchGroupBoard items count:" << rawItems.size();
+
+    QVariantList items;
+    for (int i = 0; i < rawItems.size(); ++i) {
+        QVariantMap raw_ = rawItems[i].toMap();
+        int boardType = raw_["boardType"].toInt();
+        QVariantMap data = raw_["data"].toMap();
+
+        QVariantMap item;
+        // BoardType per zca-js: Note=1, PinnedMessage=2, Poll=3
+        if (boardType == 1) {
+            item["boardType"] = "note";
+        } else if (boardType == 2) {
+            item["boardType"] = "pin";
+        } else if (boardType == 3) {
+            item["boardType"] = "poll";
+        } else {
+            continue; // unknown type — skip rather than showing a broken card
+        }
+
+        // Fields common to all 3 detail shapes (Note/PinnedMessage share the
+        // exact same envelope per zca-js's NoteDetail/PinnedMessageDetail;
+        // Poll has its own distinct shape — see below).
+        if (boardType == 1 || boardType == 2) {
+            item["id"]         = data["id"].toString();
+            item["creatorId"]  = data["creatorId"].toString();
+            item["createTime"] = data["createTime"].toLongLong();
+            // "params" arrives as a JSON-string-within-JSON on the wire (zca-js
+            // itself JSON.parse()s it — see getListBoard.ts's "if boardType !=
+            // Poll, params = JSON.parse(params)" step); our jsonToMap() already
+            // decodes nested objects from the outer decrypt, but params can
+            // still show up as a raw string here if the server sent it
+            // double-encoded, so handle both shapes defensively.
+            QVariant paramsV = data["params"];
+            QVariantMap params_;
+            if (paramsV.type() == QVariant::String) {
+                params_ = jsonToMap(paramsV.toString().toUtf8());
+            } else {
+                params_ = paramsV.toMap();
+            }
+            item["title"] = params_["title"].toString();
+            item["extra"] = params_["extra"].toString();
+        } else {
+            // Poll
+            item["id"]              = QString::number(data["poll_id"].toLongLong());
+            item["creatorId"]       = data["creator"].toString();
+            item["createTime"]      = data["created_time"].toLongLong();
+            item["question"]        = data["question"].toString();
+            item["closed"]          = data["closed"].toBool();
+            item["numVote"]         = data["num_vote"].toInt();
+            item["allowMultiChoices"] = data["allow_multi_choices"].toBool();
+            QVariantList opts = data["options"].toList();
+            QVariantList outOpts;
+            for (int j = 0; j < opts.size(); ++j) {
+                QVariantMap o = opts[j].toMap();
+                QVariantMap oo;
+                oo["content"]  = o["content"].toString();
+                oo["votes"]    = o["votes"].toInt();
+                oo["voted"]    = o["voted"].toBool();
+                oo["optionId"] = o["option_id"].toInt();
+                outOpts.append(oo);
+            }
+            item["options"] = outOpts;
+        }
+        items.append(item);
+    }
+    emit groupBoardReady(groupId, items, QString());
 }
 
 // ─── acceptFriendRequest ──────────────────────────────────────────────────

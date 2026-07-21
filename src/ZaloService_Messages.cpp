@@ -488,7 +488,7 @@ void ZaloService::sendMessageQuote(const QString &threadId, const QString &conte
     reply->setProperty("cliMsgId", msgData["clientId"].toString());
     reply->setProperty("quoteMsgId",      quoteMsgId);
     reply->setProperty("quoteContent",    quoteContent);
-    reply->setProperty("quoteSenderName", QString()); // filled in by caller-side QML placeholder; not needed server-side
+    reply->setProperty("quoteOwnerId",    quoteOwnerId);
     reply->setProperty("quoteMsgType",    quoteMsgType);
     connect(reply, SIGNAL(finished()), this, SLOT(onSendMsgQuoteDone()));
 }
@@ -504,6 +504,7 @@ void ZaloService::onSendMsgQuoteDone()
     QString outCliMsgId = reply->property("cliMsgId").toString();
     QString qMsgId       = reply->property("quoteMsgId").toString();
     QString qContent     = reply->property("quoteContent").toString();
+    QString qOwnerId     = reply->property("quoteOwnerId").toString();
     int     qMsgType     = reply->property("quoteMsgType").toInt();
     QByteArray raw  = reply->readAll();
     reply->deleteLater();
@@ -532,6 +533,7 @@ void ZaloService::onSendMsgQuoteDone()
                 out["quoteMsgId"]      = qMsgId;
                 out["quoteContent"]    = qContent;
                 out["quoteMsgType"]    = qMsgType;
+                out["quoteOwnerId"]    = qOwnerId;
                 m_seenMsgIds.insert(msgId);
                 dbSaveMessage(out, tid);
                 emit newMessage(tid, out);

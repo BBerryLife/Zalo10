@@ -10,6 +10,7 @@ NavigationPane {
     signal onUnreadMessage()
     property variant currentPage: null
     property variant activeQmPage: null
+    property variant activeGroupBoardPage: null
     property bool searchVisible: false
     property string searchText: ""
     property variant allGroups: []
@@ -295,6 +296,7 @@ NavigationPane {
                     console.log("[GroupsTab] push() took " + (Date.now() - t1) + "ms, total tap-to-push " + (Date.now() - t0) + "ms");
                     groupsNav.currentPage = page;
                     groupQmTriggerConn.target = page;
+                    groupBoardTriggerConn.target = page;
                     page.startChat();
                 }
             }
@@ -328,6 +330,30 @@ NavigationPane {
             ComponentDefinition {
                 id: qmPageDef
                 source: "asset:///QuickMessagesSheet.qml"
+            },
+            ComponentDefinition {
+                id: groupBoardPageDef
+                source: "asset:///GroupBoardSheet.qml"
+            },
+            Connections {
+                // Group Board is only ever opened from a group ChatView (see
+                // chatViewPage's "Group board" overflow ActionItem — disabled
+                // outside of groups), so this only needs wiring in GroupsTab,
+                // not ChatsTab. Same null-target-then-assign pattern as
+                // groupQmTriggerConn above, for the same reason.
+                id: groupBoardTriggerConn
+                target: null
+                onGroupBoardRequestedChanged: {
+                    if (!groupsNav.currentPage || !groupsNav.currentPage.groupBoardRequested) return;
+                    groupsNav.currentPage.groupBoardRequested = false;
+                    var boardPage = groupBoardPageDef.createObject();
+                    if (!boardPage) return;
+                    boardPage.groupId = groupsNav.currentPage.threadId;
+                    boardPage.groupName = groupsNav.currentPage.threadName;
+                    boardPage.groupsNavRef = groupsNav;
+                    groupsNav.activeGroupBoardPage = boardPage;
+                    groupsNav.push(boardPage);
+                }
             },
             Connections {
                 // target starts null (see chatPageConn in ChatsTab.qml for why:
@@ -544,6 +570,7 @@ NavigationPane {
         groupsNav.push(page);
         groupsNav.currentPage = page;
         groupQmTriggerConn.target = page;
+        groupBoardTriggerConn.target = page;
         page.startChat();
     }
 }
