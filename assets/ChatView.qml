@@ -663,7 +663,32 @@ Page {
                 zService.recallMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId);
             }
             function doForward(msgId)      { console.log("[bubble] Forward " + msgId); }
-            function doPin(msgId)          { console.log("[bubble] Pin " + msgId); }
+            // Pin message: ported from zlapi's pinGroupMsg (a separate,
+            // independently reverse-engineered Zalo API for Python —
+            // zca-js has no equivalent call at all, which is why this used
+            // to be a silent console.log()-only stub; see pinGroupMessage()'s
+            // doc comment in ZaloService.hpp for the full story). Group-only,
+            // same as Zalo's own UI and zlapi itself (no 1-1 "pin" exists).
+            function doPin(msgId, cliMsgId, senderId, isMine, rawDName, content, msgType) {
+                if (!chatViewPage.isGroup) {
+                    errorToast.body = "Pinning is only available in group chats";
+                    errorToast.show();
+                    return;
+                }
+                var resolvedName;
+                if (isMine) {
+                    resolvedName = chatViewPage.selfName || "Me";
+                } else {
+                    var memName = zService.memberDisplayName(senderId || "");
+                    resolvedName = (memName && memName.length > 0) ? memName : (rawDName || "Unknown");
+                }
+                // Same local(1/2)->wire(1/32) msgType conversion sendMessageQuote()
+                // already does for quotes — see its comment a bit further down.
+                var wireMsgType = (msgType === 2 || msgType === "2") ? 32 : 1;
+                var pinContent  = (msgType === 2 || msgType === "2") ? "[Photo]" : (content || "");
+                zService.pinGroupMessage(chatViewPage.threadId, msgId || "", cliMsgId || "",
+                    senderId || "", resolvedName, pinContent, wireMsgType);
+            }
             function doDownload(msgId, localImage) {
                 if (!localImage || localImage.length === 0) {
                     errorToast.body = "Photo not downloaded yet";
@@ -789,7 +814,11 @@ Page {
                                 ActionItem {
                                     title: "Pin message"
                                     imageSource: "asset:///images/ChatView/ic_pin.png"
-                                    onTriggered: { rowRoot.ListItem.view.doPin(ListItemData.msgId); }
+                                    onTriggered: {
+                                        rowRoot.ListItem.view.doPin(ListItemData.msgId, ListItemData.cliMsgId,
+                                            ListItemData.senderId, rowRoot.mine, ListItemData.dName,
+                                            ListItemData.content, ListItemData.msgType);
+                                    }
                                 }
                                 ActionItem {
                                     title: "Download"
@@ -847,7 +876,11 @@ Page {
                                 ActionItem {
                                     title: "Pin message"
                                     imageSource: "asset:///images/ChatView/ic_pin.png"
-                                    onTriggered: { rowRoot.ListItem.view.doPin(ListItemData.msgId); }
+                                    onTriggered: {
+                                        rowRoot.ListItem.view.doPin(ListItemData.msgId, ListItemData.cliMsgId,
+                                            ListItemData.senderId, rowRoot.mine, ListItemData.dName,
+                                            ListItemData.content, ListItemData.msgType);
+                                    }
                                 }
                                 ActionItem {
                                     title: "Download"
@@ -2388,6 +2421,26 @@ Page {
             id: downloadToast
             body: "Saved to Downloads"
             position: SystemUiPosition.MiddleCenter
+        },
+
+        // Feedback for doPin()'s zService.pinGroupMessage() call — body is
+        // set right before show(), same pattern as errorToast.
+        SystemToast {
+            id: pinToast
+            position: SystemUiPosition.MiddleCenter
+        },
+
+        Connections {
+            target: zService
+            onPinMessageDone: {
+                if (success) {
+                    pinToast.body = "Message pinned";
+                    pinToast.show();
+                } else {
+                    errorToast.body = (error && error.length > 0) ? ("Pin failed: " + error) : "Pin failed";
+                    errorToast.show();
+                }
+            }
         },
 
         SharePickerSheet { id: sharePicker },

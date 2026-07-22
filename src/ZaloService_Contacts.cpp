@@ -901,6 +901,108 @@ void ZaloService::onFetchGroupBoardDone()
     emit groupBoardReady(groupId, items, QString());
 }
 
+// ─── pinGroupMessage ──────────────────────────────────────────────────────
+// Pin a message to the group board. zca-js (the JS reference library this
+// app otherwise ports its API calls from) has NO "pin message" endpoint —
+// confirmed by reading its full apis/ directory; only board LISTING
+// (getListBoard.ts, used by fetchGroupBoard above) and unrelated
+// whole-thread conversation pinning exist there. That's why this used to
+// be a silent console.log()-only stub on the QML side.
+//
+// zlapi (github.com/Its-VrxxDev/zlapi — a SEPARATE, independently
+// reverse-engineered "Zalo API for Python" library, unrelated to zca-js)
+// DOES implement this, as pinGroupMsg(). Verified against zlapi 1.0.3's
+// actual source (downloaded from PyPI, zlapi/_client.py) rather than
+// guessing: it POSTs to the exact same {group_board}/api/board/topic/
+// createv2 endpoint fetchGroupBoard's sibling createNote (zca-js) already
+// hits — just with type:2 (PinnedMessage board item) instead of type:0
+// (Note), and a JSON-string params.params payload describing the pinned
+// message instead of a note title. Ported 1:1 from that:
+//   payload.params = { grid, type:2, color:-14540254, emoji:"📌",
+//     startTime:-1, duration:-1, repeat:0, src:-1, imei, pinAct:1,
+//     params: JSON.stringify({ client_msg_id, global_msg_id, senderUid,
+//       senderName, title, msg_type }) }
+// Only the "webchat" (text) and "chat.photo" shapes are ported — those are
+// the only two message types this client actually creates/pins; zlapi
+// supports several more (voice/sticker/link/location/file/gif) this app
+// has nothing to pin from. msgType here is Zalo's client message type
+// code (1=webchat, 32=chat.photo — zlapi's getClientMessageType()), same
+// convention sendMessageQuote()'s qmsgType already uses; QML converts
+// from the local 1/2 msgType before calling this, same as it already does
+// when building a quote.
+void ZaloService::pinGroupMessage(const QString &groupId, const QString &msgId,
+                                   const QString &cliMsgId, const QString &senderId,
+                                   const QString &senderName, const QString &content,
+                                   int msgType)
+{
+    if (!m_loggedIn || groupId.isEmpty() || msgId.isEmpty()) {
+        emit pinMessageDone(false, "Not ready to pin");
+        return;
+    }
+
+    QString base = m_groupPollServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupPollServiceUrl;
+
+    QVariantMap pinParams;
+    pinParams["client_msg_id"] = cliMsgId;
+    pinParams["global_msg_id"] = msgId;
+    pinParams["senderUid"]     = senderId.isEmpty() ? m_uid : senderId;
+    pinParams["senderName"]    = senderName;
+    pinParams["title"]         = content;
+    pinParams["msg_type"]      = (msgType == 32) ? 32 : 1;
+
+    QVariantMap innerParams;
+    innerParams["grid"]      = groupId;
+    innerParams["type"]      = 2; // BoardType.PinnedMessage (zca-js's Board.ts enum)
+    innerParams["color"]     = -14540254;
+    innerParams["emoji"]     = QString::fromUtf8("\xF0\x9F\x93\x8C"); // 📌, matches zlapi
+    innerParams["startTime"] = -1;
+    innerParams["duration"]  = -1;
+    innerParams["repeat"]    = 0;
+    innerParams["src"]       = -1;
+    innerParams["imei"]      = m_imei;
+    innerParams["pinAct"]    = 1;
+    // Nested JSON-string field, same "flat mapToJson() twice" trick used
+    // nowhere else yet in this file — mapToJson() is flat-only (see its
+    // comment in ZaloServiceUtils.hpp), so the inner object is serialized
+    // to its own JSON string first, then embedded as an ordinary string
+    // value in the outer map, matching Python's json.dumps()-as-a-dict-
+    // value that zlapi does for this exact same field.
+    innerParams["params"]    = QString::fromUtf8(mapToJson(pinParams));
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = base + "/api/board/topic/createv2"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] pinGroupMessage POST" << urlStr.left(120) << "groupId:" << groupId << "msgId:" << msgId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    connect(reply, SIGNAL(finished()), this, SLOT(onPinGroupMessageDone()));
+}
+
+void ZaloService::onPinGroupMessageDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+
+    qDebug() << "[Zalo] pinGroupMessage raw (first200):" << raw.left(200);
+    QVariantMap root = jsonToMap(raw);
+    int ec = root["error_code"].toInt();
+    if (ec != 0) {
+        QString err = root["error_message"].toString();
+        qDebug() << "[Zalo] pinGroupMessage error_code:" << ec << err;
+        emit pinMessageDone(false, err.isEmpty() ? QString("Error %1").arg(ec) : err);
+        return;
+    }
+    emit pinMessageDone(true, QString());
+}
+
 // ─── acceptFriendRequest ──────────────────────────────────────────────────
 // zca-js: POST /api/friend/accept  body=params=AES({fid, language})
 void ZaloService::acceptFriendRequest(const QString &friendId)

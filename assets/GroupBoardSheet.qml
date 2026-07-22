@@ -89,69 +89,98 @@ Page {
         kind: TitleBarKind.FreeForm
         kindProperties: FreeFormTitleBarKindProperties {
             content: Container {
-                background: Color.White
+                background: Color.create("#2575fc")
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment:   VerticalAlignment.Fill
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
 
-                // No manual back button here: pushing this as a Page into
-                // groupsNav (see GroupsTab.qml's onGroupBoardRequestedChanged)
-                // gives it the native NavigationPane back chevron automatically,
-                // same as QuickMessagesSheet.qml — Cascades supplies this for
-                // free on any non-root page in the pane, so adding one here
-                // would just duplicate it (and there's no ic_back icon in this
-                // asset set to draw it with anyway).
+                // Explicit back button: TitleBarKind.FreeForm replaces the
+                // ENTIRE title bar area, including the slot Cascades would
+                // otherwise draw the native NavigationPane back chevron
+                // into — same reason ChatView.qml has to draw its own full
+                // header rather than relying on the system chrome. So this
+                // page needs its own back control too, wired to the
+                // groupsNavRef pop() this page already carries (same
+                // property used by the pin-tap "jump to message" flow
+                // below).
                 Container {
                     horizontalAlignment: HorizontalAlignment.Fill
                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                     topPadding: ui.du(1.2); bottomPadding: ui.du(1.2)
+
+                    ImageButton {
+                        verticalAlignment: VerticalAlignment.Center
+                        preferredWidth: ui.du(6); preferredHeight: ui.du(6)
+                        leftMargin: ui.du(1)
+                        defaultImageSource: "asset:///images/ic_back_white.png"
+                        pressedImageSource: "asset:///images/ic_back_white.png"
+                        onClicked: {
+                            if (groupBoardPage.groupsNavRef) groupBoardPage.groupsNavRef.pop();
+                        }
+                    }
 
                     Label {
                         text: "Group Board"
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         horizontalAlignment: HorizontalAlignment.Center
                         verticalAlignment: VerticalAlignment.Center
-                        textStyle { base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold; color: Color.Black }
+                        textStyle { base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold; color: Color.White }
                     }
-                }
 
-                Divider {}
-
-                // 4-way segmented tab strip: All / Pinned Message / Note / Poll.
-                // SegmentedControl gives the underline-active-tab look for free
-                // and matches the reference screenshot's style closely enough
-                // that no custom-drawn tab strip is needed.
-                SegmentedControl {
-                    id: tabStrip
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topMargin: ui.du(0.5); bottomMargin: ui.du(0.5)
-                    leftMargin: ui.du(1); rightMargin: ui.du(1)
-                    Option { text: "All" }
-                    Option { text: "Pinned Message" }
-                    Option { text: "Note" }
-                    Option { text: "Poll" }
-                    onSelectedIndexChanged: { groupBoardPage.applyFilter(); }
+                    // Balances the back button's width so the title stays
+                    // visually centered instead of drifting right.
+                    Container {
+                        preferredWidth: ui.du(6)
+                        rightMargin: ui.du(1)
+                    }
                 }
             }
         }
     }
 
     Container {
-        layout: DockLayout {}
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment:   VerticalAlignment.Fill
+        layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
 
-        ListView {
-            id: boardListView
+        // 4-way segmented tab strip: All / Pinned Message / Note / Poll.
+        // Lives in its own plain-background Container below the blue title
+        // bar rather than inside it — SegmentedControl is a system control
+        // with its own chrome (background pill + selection highlight), and
+        // nesting it directly inside the custom #2575fc-painted title
+        // Container made that chrome show through as a stray thin blue/teal
+        // bar under the header instead of a normal tab strip.
+        Container {
+            horizontalAlignment: HorizontalAlignment.Fill
+            SegmentedControl {
+                id: tabStrip
+                horizontalAlignment: HorizontalAlignment.Fill
+                topMargin: ui.du(0.5); bottomMargin: ui.du(0.5)
+                leftMargin: ui.du(1); rightMargin: ui.du(1)
+                Option { text: "All" }
+                Option { text: "Pinned Message" }
+                Option { text: "Note" }
+                Option { text: "Poll" }
+                onSelectedIndexChanged: { groupBoardPage.applyFilter(); }
+            }
+        }
+
+        Container {
+            layout: DockLayout {}
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
-            bottomPadding: ui.du(9) // room for the Create Note/Create Poll bar docked at bottom
+            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
 
-            dataModel: ArrayDataModel { id: boardModel }
+            ListView {
+                id: boardListView
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment:   VerticalAlignment.Fill
 
-            listItemComponents: [
-                ListItemComponent {
-                    type: ""
+                dataModel: ArrayDataModel { id: boardModel }
+
+                listItemComponents: [
+                    ListItemComponent {
+                        type: ""
                     CustomListItem {
                         id: boardRow
                         highlightAppearance: HighlightAppearance.None
@@ -400,35 +429,29 @@ Page {
             running: groupBoardPage.loading
             visible: groupBoardPage.loading
         }
-
-        // Create Note / Create Poll bar, docked at the bottom — matches the
-        // reference screenshot exactly (two full-width stacked buttons).
-        // Icons per Jim: ic_review_add for Create Poll, ic_action_new_note
-        // for Create Note. NOTE: neither file exists in assets/images/ChatView/
-        // yet as of this pass — add them before building, or these buttons
-        // will fail to load their icon.
-        Container {
-            horizontalAlignment: HorizontalAlignment.Fill
-            verticalAlignment: VerticalAlignment.Bottom
-            background: Color.White
-            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-
-            Divider {}
-
-            Button {
-                horizontalAlignment: HorizontalAlignment.Fill
-                text: "Create note"
-                imageSource: "asset:///images/ChatView/ic_action_new_note.png"
-                onClicked: { createNoteUnderDevDialog.show(); }
-            }
-            Button {
-                horizontalAlignment: HorizontalAlignment.Fill
-                text: "Create Poll"
-                imageSource: "asset:///images/ChatView/ic_review_add.png"
-                onClicked: { createPollUnderDevDialog.show(); }
-            }
         }
     }
+
+    // Create Note / Create Poll: real BB10 action-bar items (matches the
+    // convention every other page in this app uses — see ChatView.qml's
+    // `actions:` array — rather than two custom Buttons stacked in their
+    // own Container sitting just above the system action bar, which is
+    // what drew both an extra unwanted Divider and a visually "floating"
+    // pair of buttons instead of native action-bar chrome.
+    actions: [
+        ActionItem {
+            title: "Create note"
+            imageSource: "asset:///images/ChatView/ic_action_new_note.png"
+            ActionBar.placement: ActionBarPlacement.OnBar
+            onTriggered: { createNoteUnderDevDialog.show(); }
+        },
+        ActionItem {
+            title: "Create Poll"
+            imageSource: "asset:///images/ChatView/ic_review_add.png"
+            ActionBar.placement: ActionBarPlacement.OnBar
+            onTriggered: { createPollUnderDevDialog.show(); }
+        }
+    ]
 
     attachedObjects: [
         Connections {

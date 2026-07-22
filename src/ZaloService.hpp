@@ -66,6 +66,26 @@ public:
     // side currently always asks for page 1 with a generous count since the
     // board sheet shows everything in one scrollable list rather than paging.
     Q_INVOKABLE void fetchGroupBoard(const QString &groupId, int page, int count);
+    // Pin a message to the group board. zca-js (the JS reference library this
+    // app otherwise ports its API calls from) doesn't expose a "pin message"
+    // endpoint at all, which is why this used to be a silent no-op stub —
+    // but zlapi (a separate, independently-reverse-engineered Zalo API for
+    // Python: github.com/Its-VrxxDev/zlapi) does, as pinGroupMsg(). Ported
+    // from ITS actual request shape instead: POSTs to the SAME
+    // .../api/board/topic/createv2 endpoint fetchGroupBoard's sibling
+    // createNote already uses, just with type:2 (PinnedMessage) instead of
+    // type:0 (Note) and a params.params payload describing the pinned
+    // message rather than a note title. msgType here is Zalo's *client*
+    // message type code (1=text/webchat, 32=photo — see
+    // sendMessageQuote()'s qmsgType doc above), NOT our local 1/2 msgType;
+    // QML converts before calling this, same as it already does for quotes.
+    // Group-only: Zalo has no equivalent 1-1 "pin" endpoint (zlapi doesn't
+    // define one either), matching the "Group board" action's isGroup-only
+    // gating in ChatView.qml.
+    Q_INVOKABLE void pinGroupMessage(const QString &groupId, const QString &msgId,
+                                      const QString &cliMsgId, const QString &senderId,
+                                      const QString &senderName, const QString &content,
+                                      int msgType);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     // Send a text message that quotes/replies to an earlier one. Ported from
@@ -202,6 +222,8 @@ signals:
     // so GroupBoardSheet.qml can filter into its 4 tabs without needing 3
     // separate signals. error is "" on success.
     void groupBoardReady(const QString &groupId, const QVariantList &items, const QString &error);
+    // Result of pinGroupMessage(). error is "" on success.
+    void pinMessageDone(bool success, const QString &error);
     void friendRequestResponded(const QString &friendId, bool accepted, bool success);
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
@@ -275,6 +297,7 @@ private slots:
     void onFetchServerQuickMessagesDone();
     void onFetchInvitesDone();
     void onFetchGroupBoardDone();
+    void onPinGroupMessageDone();
     void onAcceptFriendDone();
     void onRejectFriendDone();
     void onGroupDetailsDone();

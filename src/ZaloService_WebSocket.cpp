@@ -602,8 +602,28 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // message — used by QML to tell "quoting myself" apart from
                 // "quoting the other party" (fromD/dName are not reliable
                 // enough alone; see quoteSenderResolved in ChatView.qml).
-                qint64 qOwnerId = quoteObj["ownerId"].toLongLong();
-                out["quoteOwnerId"] = qOwnerId != 0 ? QString::number(qOwnerId) : quoteObj["ownerId"].toString();
+                //
+                // BUG FIX: same "0" = self convention as the top-level uidFrom
+                // field (see isSelf/"Resolve \"0\" -> m_uid" a few lines above
+                // in this function) also applies INSIDE the nested quote
+                // object in 1-1 threads — when the quoted message was one WE
+                // sent, Zalo reports quote.ownerId = "0", not our real uid.
+                // Leaving it as the literal string "0" meant quoteOwnerId
+                // could never equal selfUid on the QML side, so
+                // quoteIsMine was always false and quoteSenderResolved fell
+                // through to threadNameProxy (the CONTACT's name) even when
+                // WE were the one being quoted — exactly the "shows
+                // 'Berrylife' instead of 'Hoàng Lâm'" bug seen when the
+                // other party replies to our message in a 1-1 chat. Group
+                // threads never hit this because group ownerId is always a
+                // real member uid, never "0".
+                QString qOwnerIdStr = quoteObj["ownerId"].toString();
+                if (qOwnerIdStr == "0") {
+                    out["quoteOwnerId"] = m_uid;
+                } else {
+                    qint64 qOwnerId = quoteObj["ownerId"].toLongLong();
+                    out["quoteOwnerId"] = qOwnerId != 0 ? QString::number(qOwnerId) : qOwnerIdStr;
+                }
             }
 
             int mt = m["msgType"].toInt();
