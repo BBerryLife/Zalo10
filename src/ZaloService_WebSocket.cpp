@@ -593,8 +593,20 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             // an empty quoteMsgId downstream means "not a reply".
             QVariantMap quoteObj = m["quote"].toMap();
             if (!quoteObj.isEmpty()) {
-                qint64 qGlobalId = quoteObj["globalMsgId"].toLongLong();
-                out["quoteMsgId"]      = qGlobalId != 0 ? QString::number(qGlobalId) : quoteObj["globalMsgId"].toString();
+                // globalMsgId/ownerId are read as plain .toString() now —
+                // jsonToMap() (see quoteBigJsonInts() in ZaloServiceUtils.hpp)
+                // already rewrites any bare 16+-digit JSON number into a
+                // quoted string before QScriptEngine's JSON.parse ever sees
+                // it, so these arrive as exact strings straight out of
+                // QVariantMap. Previously this code round-tripped them
+                // through toLongLong()/QString::number() to "recover" the
+                // real id — but by that point the value had ALREADY been
+                // silently rounded by JSON.parse's IEEE-754 double parsing
+                // (confirmed on-device: 860110201644973228 was coming back
+                // as 860110201644973200), so no amount of care here could
+                // undo it. Fixing it at the parse layer instead of here
+                // means every big-int field benefits, not just these two.
+                out["quoteMsgId"]      = quoteObj["globalMsgId"].toString();
                 out["quoteContent"]    = quoteObj["msg"].toString();
                 out["quoteSenderName"] = quoteObj["fromD"].toString();
                 out["quoteMsgType"]    = quoteObj["cliMsgType"].toInt();
@@ -603,27 +615,18 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // "quoting the other party" (fromD/dName are not reliable
                 // enough alone; see quoteSenderResolved in ChatView.qml).
                 //
-                // BUG FIX: same "0" = self convention as the top-level uidFrom
-                // field (see isSelf/"Resolve \"0\" -> m_uid" a few lines above
-                // in this function) also applies INSIDE the nested quote
-                // object in 1-1 threads — when the quoted message was one WE
-                // sent, Zalo reports quote.ownerId = "0", not our real uid.
-                // Leaving it as the literal string "0" meant quoteOwnerId
-                // could never equal selfUid on the QML side, so
-                // quoteIsMine was always false and quoteSenderResolved fell
-                // through to threadNameProxy (the CONTACT's name) even when
-                // WE were the one being quoted — exactly the "shows
-                // 'Berrylife' instead of 'Hoàng Lâm'" bug seen when the
-                // other party replies to our message in a 1-1 chat. Group
-                // threads never hit this because group ownerId is always a
-                // real member uid, never "0".
+                // "0" = self convention (same as the top-level uidFrom field —
+                // see isSelf/"Resolve \"0\" -> m_uid" a few lines above in
+                // this function) also applies INSIDE the nested quote object
+                // in 1-1 threads: when the quoted message was one WE sent,
+                // Zalo reports quote.ownerId = "0", not our real uid. Leaving
+                // it as the literal string "0" would mean quoteOwnerId could
+                // never equal selfUid on the QML side, so quoteIsMine would
+                // always be false and quoteSenderResolved would fall through
+                // to threadNameProxy (the CONTACT's name) even when WE were
+                // the one being quoted.
                 QString qOwnerIdStr = quoteObj["ownerId"].toString();
-                if (qOwnerIdStr == "0") {
-                    out["quoteOwnerId"] = m_uid;
-                } else {
-                    qint64 qOwnerId = quoteObj["ownerId"].toLongLong();
-                    out["quoteOwnerId"] = qOwnerId != 0 ? QString::number(qOwnerId) : qOwnerIdStr;
-                }
+                out["quoteOwnerId"] = (qOwnerIdStr == "0") ? m_uid : qOwnerIdStr;
             }
 
             int mt = m["msgType"].toInt();

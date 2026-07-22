@@ -96,7 +96,8 @@ public:
     Q_INVOKABLE void sendMessageQuote(const QString &threadId, const QString &content, bool isGroup,
                                        const QString &quoteMsgId, const QString &quoteCliMsgId,
                                        const QString &quoteOwnerId, const QString &quoteContent,
-                                       int quoteMsgType, const QString &quoteTs);
+                                       int quoteMsgType, const QString &quoteTs,
+                                       const QString &quoteSenderName);
     // Delete a message. Ported from zca-js's deleteMessage.ts:
     //   - onlyMe=true:  "delete for me" — always allowed, any thread.
     //   - onlyMe=false: "delete for everyone" — only allowed in groups; for a

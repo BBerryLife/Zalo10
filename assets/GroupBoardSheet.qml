@@ -92,47 +92,21 @@ Page {
                 background: Color.create("#2575fc")
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment:   VerticalAlignment.Fill
-                layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                leftPadding: ui.du(2)
 
-                // Explicit back button: TitleBarKind.FreeForm replaces the
-                // ENTIRE title bar area, including the slot Cascades would
-                // otherwise draw the native NavigationPane back chevron
-                // into — same reason ChatView.qml has to draw its own full
-                // header rather than relying on the system chrome. So this
-                // page needs its own back control too, wired to the
-                // groupsNavRef pop() this page already carries (same
-                // property used by the pin-tap "jump to message" flow
-                // below).
-                Container {
+                // Plain title label, no explicit back-arrow icon/button —
+                // matches QuickMessagesSheet.qml's header style. The native
+                // NavigationPane back chevron (from this page having been
+                // pushed onto groupsNav) still provides the actual back
+                // affordance; it was simply being duplicated by the custom
+                // ImageButton this container used to draw here.
+                Label {
+                    text: "Group Board"
+                    layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                     horizontalAlignment: HorizontalAlignment.Fill
-                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                    topPadding: ui.du(1.2); bottomPadding: ui.du(1.2)
-
-                    ImageButton {
-                        verticalAlignment: VerticalAlignment.Center
-                        preferredWidth: ui.du(6); preferredHeight: ui.du(6)
-                        leftMargin: ui.du(1)
-                        defaultImageSource: "asset:///images/ic_back_white.png"
-                        pressedImageSource: "asset:///images/ic_back_white.png"
-                        onClicked: {
-                            if (groupBoardPage.groupsNavRef) groupBoardPage.groupsNavRef.pop();
-                        }
-                    }
-
-                    Label {
-                        text: "Group Board"
-                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                        horizontalAlignment: HorizontalAlignment.Center
-                        verticalAlignment: VerticalAlignment.Center
-                        textStyle { base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold; color: Color.White }
-                    }
-
-                    // Balances the back button's width so the title stays
-                    // visually centered instead of drifting right.
-                    Container {
-                        preferredWidth: ui.du(6)
-                        rightMargin: ui.du(1)
-                    }
+                    verticalAlignment: VerticalAlignment.Center
+                    textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
                 }
             }
         }

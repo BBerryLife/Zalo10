@@ -436,7 +436,8 @@ void ZaloService::sendMessage(const QString &threadId, const QString &content, b
 void ZaloService::sendMessageQuote(const QString &threadId, const QString &content, bool isGroup,
                                     const QString &quoteMsgId, const QString &quoteCliMsgId,
                                     const QString &quoteOwnerId, const QString &quoteContent,
-                                    int quoteMsgType, const QString &quoteTs)
+                                    int quoteMsgType, const QString &quoteTs,
+                                    const QString &quoteSenderName)
 {
     if (!m_loggedIn) return;
 
@@ -490,6 +491,7 @@ void ZaloService::sendMessageQuote(const QString &threadId, const QString &conte
     reply->setProperty("quoteContent",    quoteContent);
     reply->setProperty("quoteOwnerId",    quoteOwnerId);
     reply->setProperty("quoteMsgType",    quoteMsgType);
+    reply->setProperty("quoteSenderName", quoteSenderName);
     connect(reply, SIGNAL(finished()), this, SLOT(onSendMsgQuoteDone()));
 }
 
@@ -505,6 +507,7 @@ void ZaloService::onSendMsgQuoteDone()
     QString qMsgId       = reply->property("quoteMsgId").toString();
     QString qContent     = reply->property("quoteContent").toString();
     QString qOwnerId     = reply->property("quoteOwnerId").toString();
+    QString qSenderName  = reply->property("quoteSenderName").toString();
     int     qMsgType     = reply->property("quoteMsgType").toInt();
     QByteArray raw  = reply->readAll();
     reply->deleteLater();
@@ -534,6 +537,7 @@ void ZaloService::onSendMsgQuoteDone()
                 out["quoteContent"]    = qContent;
                 out["quoteMsgType"]    = qMsgType;
                 out["quoteOwnerId"]    = qOwnerId;
+                out["quoteSenderName"] = qSenderName;
                 m_seenMsgIds.insert(msgId);
                 dbSaveMessage(out, tid);
                 emit newMessage(tid, out);

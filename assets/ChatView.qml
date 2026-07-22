@@ -2005,7 +2005,8 @@ Page {
                            ? "[Photo]" : chatViewPage.pendingReplyContent;
             zService.sendMessageQuote(chatViewPage.threadId, txt, chatViewPage.isGroup,
                 chatViewPage.pendingReplyMsgId, chatViewPage.pendingReplyCliMsgId,
-                chatViewPage.pendingReplyOwnerId, qContent, qServerType, chatViewPage.pendingReplyTs);
+                chatViewPage.pendingReplyOwnerId, qContent, qServerType, chatViewPage.pendingReplyTs,
+                chatViewPage.pendingReplySenderName);
             chatViewPage.pendingReplyMsgId      = "";
             chatViewPage.pendingReplyCliMsgId   = "";
             chatViewPage.pendingReplyOwnerId    = "";

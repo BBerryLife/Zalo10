@@ -14,16 +14,63 @@
 #include <QDebug>
 
 #include <openssl/evp.h>
+#include <QRegExp>
+
+// Zalo's wire JSON is inconsistent about how it encodes uids: some fields
+// (e.g. top-level "uidFrom") are always quoted strings, but others — notably
+// the nested quote object's "ownerId", and some "globalMsgId"/"msgId"
+// fields — are emitted as BARE JSON numbers. Zalo uids are ~19-digit
+// snowflake-style ints, which exceed 2^53 (~16 digits), the largest integer
+// a JS/IEEE-754 double can represent exactly. Since JSON (de)serialization
+// here goes through QScriptEngine (Qt4 has no QJson) — i.e. a REAL JS
+// engine — any bare number that big silently gets rounded the moment
+// JSON.parse touches it (confirmed: 860110201644973228 -> 860110201644973200),
+// long before QVariant::toLongLong()/toString() downstream ever sees it. No
+// amount of care in the C++ parsing code can recover the lost digits after
+// that point.
+//
+// Fix: rewrite any bare (unquoted) integer literal of 16+ digits into a
+// quoted JSON string BEFORE handing the text to JSON.parse, so it survives
+// as an exact string instead of being coerced through a double. This only
+// matches numbers in VALUE position (preceded by ':', '[' or ',' and
+// followed by ',', ']' or '}', with only whitespace between) so it can't
+// accidentally rewrite digits that happen to appear inside an existing
+// quoted string.
+inline QByteArray quoteBigJsonInts(const QByteArray &raw)
+{
+    QString s = QString::fromUtf8(raw);
+    // (^|[:\[,])   - value position: start of a number after :, [ or ,
+    // (\s*)        - optional whitespace before the number
+    // (-?\d{16,})  - the big integer itself (16+ digits, i.e. large enough
+    //                to risk exceeding 2^53's ~16 significant digits)
+    // (\s*)        - optional whitespace after
+    // ($|[,\]}])   - value position: end of a number before , ] or }
+    QRegExp re("([:\\[,])(\\s*)(-?\\d{16,})(\\s*)([,\\]}])");
+    re.setMinimal(true);
+    int pos = 0;
+    while ((pos = re.indexIn(s, pos)) != -1) {
+        QString replacement = re.cap(1) + re.cap(2) + "\"" + re.cap(3) + "\"" + re.cap(4) + re.cap(5);
+        s.replace(pos, re.matchedLength(), replacement);
+        // Resume scanning right BEFORE the trailing delimiter we just
+        // consumed, so that same delimiter can double as the LEADING
+        // delimiter for a following number — needed for back-to-back big
+        // ints like "[bigIdA,bigIdB]" where the middle "," is shared
+        // between both matches.
+        pos += replacement.length() - 1;
+    }
+    return s.toUtf8();
+}
 
 inline QVariantMap jsonToMap(const QByteArray &raw)
 {
     QByteArray trimmed = raw.trimmed();
     if (trimmed.isEmpty() || trimmed.startsWith("<")) return QVariantMap();
+    QByteArray safe = quoteBigJsonInts(trimmed);
     QScriptEngine eng;
     eng.evaluate("var __safeJSON = function(s){try{return JSON.parse(s);}catch(e){return null;}}");
     QScriptValue fn = eng.globalObject().property("__safeJSON");
     QScriptValue val = fn.call(QScriptValue(), QScriptValueList()
-                               << eng.toScriptValue(QString::fromUtf8(trimmed)));
+                               << eng.toScriptValue(QString::fromUtf8(safe)));
     if (!val.isValid() || val.isNull() || val.isUndefined() || val.isError())
         return QVariantMap();
     QVariant v = val.toVariant();
@@ -36,11 +83,12 @@ inline QVariantList jsonToList(const QByteArray &raw)
 {
     QByteArray trimmed = raw.trimmed();
     if (trimmed.isEmpty() || trimmed.startsWith("<")) return QVariantList();
+    QByteArray safe = quoteBigJsonInts(trimmed);
     QScriptEngine eng;
     eng.evaluate("var __safeJSON = function(s){try{return JSON.parse(s);}catch(e){return null;}}");
     QScriptValue fn = eng.globalObject().property("__safeJSON");
     QScriptValue val = fn.call(QScriptValue(), QScriptValueList()
-                               << eng.toScriptValue(QString::fromUtf8(trimmed)));
+                               << eng.toScriptValue(QString::fromUtf8(safe)));
     if (!val.isValid() || val.isNull() || val.isUndefined() || val.isError())
         return QVariantList();
     QVariant v = val.toVariant();
