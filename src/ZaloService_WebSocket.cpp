@@ -1289,14 +1289,22 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QString title;
             bool isSelf = false;
             bool relevant = true;
+            // Unified across all branches below so the single
+            // boardEventOccurred emit at the bottom doesn't need to know
+            // which branch produced it. -1/"" mean "unknown", not "none".
+            int topicType = -1;
+            QString topicId;
+            QString actorNameOut;
 
             if (act == "new_pin_topic" || act == "unpin_topic" || act == "update_pin_topic") {
                 QString actorId = eventData["actorId"].toString();
                 isSelf = (actorId == m_uid);
                 QVariantMap topic = eventData["topic"].toMap();
-                int topicType = topic["type"].toInt(); // GroupTopicType: Note=0 Message=2 Poll=3
+                topicType = topic["type"].toInt(); // GroupTopicType: Note=0 Message=2 Poll=3
+                topicId = topic["id"].toString();
                 QString actorName = isSelf ? "You" : memberDisplayName(actorId);
                 if (actorName.isEmpty()) actorName = "Someone";
+                actorNameOut = actorName;
                 QString what = (topicType == 3) ? "a poll" : (topicType == 0) ? "a note" : "a message";
                 if (act == "new_pin_topic")       title = actorName + " pinned " + what;
                 else if (act == "unpin_topic")    title = actorName + " unpinned " + what;
@@ -1306,9 +1314,11 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 isSelf = (sourceId == m_uid);
                 QVariant gtV = eventData["groupTopic"];
                 QVariantMap groupTopic = gtV.toMap();
-                int topicType = groupTopic["type"].toInt();
+                topicType = groupTopic["type"].toInt();
+                topicId = groupTopic["id"].toString();
                 QString actorName = isSelf ? "You" : memberDisplayName(sourceId);
                 if (actorName.isEmpty()) actorName = "Someone";
+                actorNameOut = actorName;
                 if (act == "remove_board") {
                     title = actorName + " removed a board item";
                 } else if (topicType == 3) {
@@ -1326,8 +1336,11 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 QString actorId = eventData.contains("creatorId") ? eventData["creatorId"].toString()
                                                                     : eventData["sourceId"].toString();
                 isSelf = (actorId == m_uid);
+                topicId = eventData.contains("topicId") ? eventData["topicId"].toString()
+                                                          : eventData["id"].toString();
                 QString actorName = isSelf ? "You" : memberDisplayName(actorId);
                 if (actorName.isEmpty()) actorName = "Someone";
+                actorNameOut = actorName;
                 title = (act == "remove_topic") ? (actorName + " removed a board item")
                                                  : (actorName + " updated the group board");
             } else {
@@ -1335,12 +1348,16 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             }
 
             if (relevant && !title.isEmpty()) {
+                emit boardEventOccurred(groupId, act, actorNameOut, isSelf, topicType, topicId, title);
+
                 // Self-actions already get a Hub notification from their own
                 // onPinGroupMessageDone()/onCreateGroupNoteDone()/
                 // onCreateGroupPollDone()/onVoteGroupPollDone() success path
                 // — skip here to avoid a duplicate. Also skip if this
                 // group's board is the one currently open (same
-                // "already looking at it" suppression as regular messages).
+                // "already looking at it" suppression as regular messages) —
+                // ChatView reacts to that case itself via boardEventOccurred
+                // above instead (inline notice row / poll-card refresh).
                 if (!isSelf && groupId != m_activeThreadId && !m_mutedThreads.contains(groupId)) {
                     QString grpName = m_groupNames.value(groupId, "Zalo10");
                     sendHubNotification(grpName, title, groupId, true);

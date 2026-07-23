@@ -45,6 +45,12 @@ Page {
     // onQmRequestedChanged) — ChatView itself can't push into the
     // NavigationPane that owns it directly.
     property bool   groupBoardRequested: false
+    // Raw items backing both the new PinboardBar strip below the header and
+    // (indirectly, since GroupBoardSheet does its own separate fetch) the
+    // full Group Board sheet — refreshed on thread open and after any
+    // pin/note/poll action this client performs. See loadBoardItems() and
+    // the groupBoardReady Connections block near the bottom of this file.
+    property variant boardItems: []
     property variant pendingImageUpdates: ([])
     property bool   pageVisible: false
     property bool   isDark: app.getDarkTheme()
@@ -413,6 +419,157 @@ Page {
         }
     }
 
+    // Refreshes chatViewPage.boardItems (pin/note/poll items for this
+    // group) — feeds PinboardBar. 1-1 threads have no board concept
+    // server-side (same restriction the "Group board" overflow ActionItem
+    // already enforces), so this is a no-op there. Result arrives async via
+    // the groupBoardReady Connections block further down this file.
+    function loadBoardItems() {
+        if (!chatViewPage.isGroup || chatViewPage.threadId.length === 0) {
+            chatViewPage.boardItems = [];
+            return;
+        }
+        zService.fetchGroupBoard(chatViewPage.threadId, 1, 50);
+    }
+
+    // ---- Inline poll cards in msgModel (kind: "poll" rows) -----------------
+    // See ChatView.qml's rowRoot delegate for how these render, and
+    // PollVotersSheet.qml for the "View voters" popup. Same vote-toggle
+    // logic as GroupBoardSheet.qml's doVoteOption (kept in sync manually —
+    // this codebase has no shared non-visual QML module to factor it into).
+    function doVotePollOption(pollId, optionId, allowMulti, options) {
+        if (!pollId || pollId.length === 0 || !options) return;
+        var newIds = [];
+        if (allowMulti) {
+            var alreadyVoted = false;
+            for (var i = 0; i < options.length; i++) {
+                if (options[i].optionId === optionId) alreadyVoted = !!options[i].voted;
+            }
+            for (var j = 0; j < options.length; j++) {
+                var thisId = options[j].optionId;
+                var voted = !!options[j].voted;
+                if (thisId === optionId) { if (!alreadyVoted) newIds.push(thisId); }
+                else if (voted) newIds.push(thisId);
+            }
+        } else {
+            var currentlyVotedHere = false;
+            for (var k = 0; k < options.length; k++) {
+                if (options[k].optionId === optionId && options[k].voted) currentlyVotedHere = true;
+            }
+            if (!currentlyVotedHere) newIds = [optionId];
+        }
+        zService.voteGroupPoll(chatViewPage.threadId, pollId, newIds);
+    }
+
+    function openPollVoters(pollId) {
+        if (!pollId || pollId.length === 0) return;
+        pollVotersSheet.isDark = chatViewPage.isDark;
+        pollVotersSheet.openFor(pollId);
+    }
+
+    function findPollRowIndex(pollId) {
+        for (var i = 0; i < msgModel.size(); i++) {
+            var r = msgModel.value(i);
+            if (r && r.kind === "poll" && r.pollId === pollId) return i;
+        }
+        return -1;
+    }
+
+    function buildPollRow(item) {
+        return {
+            kind: "poll",
+            msgId: "poll_" + item.id,
+            pollId: item.id,
+            ts: item.createTime || Date.now(),
+            pollQuestion: item.title || "",
+            pollOptions: item.options || [],
+            pollAllowMulti: !!item.allowMultiChoices,
+            pollCreatorId: item.creatorId || ""
+        };
+    }
+
+    // Inserts a synthetic row at the position matching its ts among the
+    // existing chronological rows (regular messages all carry a "ts", set
+    // by dbSaveMessage/the WS parsing — reused here rather than a new
+    // field). Falls back to the very end when nothing newer is found,
+    // which is the common case for a poll created "now".
+    function insertPollAtChronological(row) {
+        var insertIdx = msgModel.size();
+        for (var i = 0; i < msgModel.size(); i++) {
+            var r = msgModel.value(i);
+            var rts = r ? (r.latestTs || r.ts || 0) : 0;
+            if (rts && rts > row.ts) { insertIdx = i; break; }
+        }
+        msgModel.insert(insertIdx, row);
+    }
+
+    // Refresh-in-place: called from the groupBoardReady handler for every
+    // poll item currently on the board. Never repositions an ALREADY-known
+    // poll row (a plain board refresh isn't necessarily a vote — e.g. it
+    // also runs on every thread open); a poll seen for the first time gets
+    // inserted at its natural chronological slot. Compare with
+    // bumpPollToBottom() below, which is the one that actually moves a
+    // card, and is only called from an explicit vote signal.
+    function upsertPollRow(item) {
+        var idx = chatViewPage.findPollRowIndex(item.id);
+        var row = chatViewPage.buildPollRow(item);
+        if (idx >= 0) { msgModel.removeAt(idx); msgModel.insert(idx, row); }
+        else chatViewPage.insertPollAtChronological(row);
+    }
+
+    // The one place that actually moves a poll card: removes it from
+    // wherever it currently sits and re-appends it at the very bottom of
+    // msgModel with the fresh option data — the "poll trước khi ai đó vote
+    // đang ở dòng tin nào đó sẽ bị xóa đi và thêm lại ở bottom" behavior.
+    // detail (optional) is the full map from getPollDetail's pollDetailReady
+    // — only needed to seed a brand-new row (see call sites) when we don't
+    // already have one to update in place.
+    function bumpPollToBottom(pollId, updatedOptions, detail) {
+        var idx = chatViewPage.findPollRowIndex(pollId);
+        var row;
+        if (idx >= 0) {
+            row = msgModel.value(idx);
+            msgModel.removeAt(idx);
+            // Shallow clone so ArrayDataModel sees a distinct object (it
+            // compares by reference for change notification on append/
+            // insert, same assumption the rest of this file already makes
+            // for msgModel rows built fresh each time).
+            row = JSON.parse(JSON.stringify(row));
+        } else if (detail) {
+            row = {
+                kind: "poll", msgId: "poll_" + pollId, pollId: pollId, ts: Date.now(),
+                pollQuestion: detail.question || "", pollAllowMulti: !!detail.allowMultiChoices,
+                pollCreatorId: detail.creator || ""
+            };
+        } else {
+            return; // nothing to update and nothing to seed a new row with
+        }
+        row.pollOptions = updatedOptions || [];
+        row.ts = Date.now();
+        msgModel.append(row);
+    }
+
+    // ---- Inline board-event pills (kind: "boardEvent" rows) ----------------
+    // Always appended at the bottom — these represent something that just
+    // happened, so "now" is always their correct position; unlike polls,
+    // they never move again once added.
+    function appendBoardEventRow(act, actorName, topicType, topicId, title) {
+        var evtKind = "note";
+        if (act === "unpin_topic") evtKind = "unpin";
+        else if (act === "new_pin_topic" || act === "update_pin_topic") evtKind = "pin";
+        else if (act === "remove_board" || act === "remove_topic") evtKind = "remove";
+        else if (topicType === 3) evtKind = "poll";
+        else if (topicType === 0) evtKind = "note";
+        msgModel.append({
+            kind: "boardEvent",
+            msgId: "ev_" + Date.now() + "_" + Math.floor(Math.random() * 100000),
+            ts: Date.now(),
+            boardEvtKind: evtKind,
+            boardEvtText: title || "",
+            boardEvtPollId: (topicType === 3) ? (topicId || "") : ""
+        });
+    }
+
     // Escapes HTML-sensitive characters, then wraps every case-insensitive
     // occurrence of `query` in a yellow <span>, preserving the original
     // casing of the matched text. Returns plain (non-html) text unchanged
@@ -502,6 +659,7 @@ Page {
         }
 
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
+        chatViewPage.loadBoardItems();
     }
 
     onThreadIdChanged: {
@@ -510,6 +668,7 @@ Page {
         chatViewPage.pendingImageUpdates = [];
         msgModel.clear();
         chatViewPage.dbIsMineCache = {};
+        chatViewPage.boardItems = [];
     }
 
     content: Container {
@@ -517,6 +676,32 @@ Page {
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment:   VerticalAlignment.Fill
         background: chatViewPage.isDark ? Color.create("#1a1a1a") : Color.create("#d6d6d6")
+
+        // Pinned-items strip — see PinboardBar.qml's own header comment for
+        // exactly what it shows and why. Only relevant for groups (1-1
+        // threads have no board concept server-side); boardItems stays []
+        // there so the bar's own `visible: topItems.length > 0` keeps it
+        // collapsed to nothing without needing an isGroup check here too.
+        PinboardBar {
+            id: pinboardBar
+            items: chatViewPage.boardItems
+            isDark: chatViewPage.isDark
+            horizontalAlignment: HorizontalAlignment.Fill
+            onItemTapped: {
+                // boardType/itemId/title/creatorId — signal args, matching
+                // PinboardBar's `signal itemTapped(...)` declaration.
+                if (boardType === "pin") {
+                    chatViewPage.jumpToMessage(itemId);
+                } else {
+                    // Notes/polls don't have an inline viewer wired into
+                    // ChatView itself yet — fall back to the full Group
+                    // Board sheet, same screen "Group board" in the
+                    // overflow menu already opens.
+                    chatViewPage.groupBoardRequested = true;
+                }
+            }
+            onMoreRequested: { chatViewPage.groupBoardRequested = true; }
+        }
 
         ListView {
             id: msgList
@@ -547,6 +732,9 @@ Page {
             // per-message wire dName field, which is unreliable for incoming
             // messages in both 1-1 and group threads). Returns "" if unknown.
             function memberDisplayNameProxy(uid) { return zService.memberDisplayName(uid); }
+            function votePollOptionProxy(pollId, optionId, allowMulti, options) { chatViewPage.doVotePollOption(pollId, optionId, allowMulti, options); }
+            function viewPollVotersProxy(pollId) { chatViewPage.openPollVoters(pollId); }
+            function openGroupBoardProxy() { chatViewPage.groupBoardRequested = true; }
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -662,7 +850,7 @@ Page {
                 }
                 zService.recallMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId);
             }
-            function doForward(msgId)      { console.log("[bubble] Forward " + msgId); }
+            function doForward(msgId, content, msgType) { forwardPickerSheet.openFor(content || "", msgType || 0); }
             // Pin message: ported from zlapi's pinGroupMsg (a separate,
             // independently reverse-engineered Zalo API for Python —
             // zca-js has no equivalent call at all, which is why this used
@@ -755,7 +943,8 @@ Page {
                         // exactly match its content's real measured height overrides
                         // whatever extra room CustomListItem was leaving beyond that
                         // content for its (invisible but still-reserved) divider.
-                        preferredHeight: rowLUH.layoutFrame.height > 0 ? rowLUH.layoutFrame.height : -1
+                        preferredHeight: rowRoot.kind !== "message" ? -1
+                            : (rowLUH.layoutFrame.height > 0 ? rowLUH.layoutFrame.height : -1)
                         // (Reverted a diagnostic "background: Color.create(...)" that
                         // was here — CustomListItem has no `background` property, same
                         // class of error documented for ActionItem/visible right below:
@@ -809,7 +998,7 @@ Page {
                                 ActionItem {
                                     title: "Forward"
                                     imageSource: "asset:///images/ChatView/ic_forward_message.png"
-                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId); }
+                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId, ListItemData.content, ListItemData.msgType); }
                                 }
                                 ActionItem {
                                     title: "Pin message"
@@ -871,7 +1060,7 @@ Page {
                                 ActionItem {
                                     title: "Forward"
                                     imageSource: "asset:///images/ChatView/ic_forward_message.png"
-                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId); }
+                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId, ListItemData.content, ListItemData.msgType); }
                                 }
                                 ActionItem {
                                     title: "Pin message"
@@ -923,6 +1112,18 @@ Page {
                         property bool mine: (ListItemData.isMine === true
                                              || ListItemData.isMine === "true"
                                              || ListItemData.isMine === 1)
+                        // Row kind: "message" (default, normal chat bubble — every
+                        // existing row already in msgModel has no "kind" field at
+                        // all, so the "|| " fallback keeps them exactly as before),
+                        // "poll" (inline poll card, see pollCardRow below) or
+                        // "boardEvent" (small colored system-notice pill, see
+                        // boardEventRow below). Deliberately a plain visible-toggle
+                        // on sibling Containers within this SAME ListItemComponent
+                        // rather than a second `type:` in listItemComponents — see
+                        // the "toggling listItemComponents' type per row" rejection
+                        // note further down this file (search "type-toggle") for
+                        // why that approach was already tried and abandoned here.
+                        property string kind: ListItemData.kind || "message"
                         property bool grouped: ListItemData.grouped === true
                         // TEMP DIAGNOSTIC — pinpointing whether the "always caps at 2"
                         // grouping bug is a QML binding problem (ListItemData.grouped
@@ -1046,6 +1247,7 @@ Page {
 
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
+                            visible: rowRoot.kind === "message"
                             topPadding:    rowRoot.grouped ? 0 : 10
                             bottomPadding: 0
                             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
@@ -1467,6 +1669,242 @@ Page {
                             maxWidth:       rowRoot.mine ? 60 : 18
                         }
                         } // inner row Container
+
+                        // ---- Inline poll card (kind === "poll") -----------------
+                        // Mirrors GroupBoardSheet.qml's own poll-option rendering
+                        // (background #cfe3fa when voted else #f0f0f0, tap-to-vote,
+                        // fixed 0..5 option slots — see that file's long comment on
+                        // why no Repeater is used) so the same poll looks the same
+                        // whether seen here or in the full Group Board sheet. The
+                        // one addition here is "View voters", which the sheet
+                        // doesn't have.
+                        Container {
+                            id: pollCardRoot
+                            visible: rowRoot.kind === "poll"
+                            horizontalAlignment: HorizontalAlignment.Fill
+                            topPadding: 8; bottomPadding: 8; leftPadding: 14; rightPadding: 14
+
+                            Container {
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+                                background: rowRoot.isDark ? Color.create("#26323d") : Color.create("#eef3f8")
+                                topPadding: ui.du(1.2); bottomPadding: ui.du(1.2)
+                                leftPadding: ui.du(1.2); rightPadding: ui.du(1.2)
+
+                                Container {
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    bottomMargin: ui.du(0.6)
+                                    ImageView {
+                                        preferredWidth: ui.du(2.6); preferredHeight: ui.du(2.6)
+                                        rightMargin: ui.du(0.8)
+                                        imageSource: "asset:///images/ChatView/ic_list.png"
+                                    }
+                                    Label {
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        text: ListItemData.pollQuestion || ""
+                                        multiline: true
+                                        textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Medium
+                                                    color: rowRoot.isDark ? Color.White : Color.Black }
+                                    }
+                                }
+                                Label {
+                                    text: ListItemData.pollAllowMulti ? "Choose multiple options" : "Choose one option"
+                                    textStyle { color: Color.Gray; fontSize: FontSize.XSmall }
+                                    bottomMargin: ui.du(0.6)
+                                }
+
+                                Container {
+                                    visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 0)
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    background: (ListItemData.pollOptions && ListItemData.pollOptions[0] && ListItemData.pollOptions[0].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    bottomMargin: ui.du(0.5)
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        rowRoot.ListItem.view.votePollOptionProxy(ListItemData.pollId, ListItemData.pollOptions[0].optionId,
+                                            !!ListItemData.pollAllowMulti, ListItemData.pollOptions);
+                                    } } ]
+                                    Label {
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[0]) ? (ListItemData.pollOptions[0].content || "") : ""
+                                        multiline: true
+                                        textStyle { color: rowRoot.isDark ? Color.White : Color.Black }
+                                    }
+                                    Label {
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[0]) ? String(ListItemData.pollOptions[0].votes || 0) : ""
+                                        textStyle { color: Color.Gray }
+                                    }
+                                }
+                                Container {
+                                    visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 1)
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    background: (ListItemData.pollOptions && ListItemData.pollOptions[1] && ListItemData.pollOptions[1].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    bottomMargin: ui.du(0.5)
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        rowRoot.ListItem.view.votePollOptionProxy(ListItemData.pollId, ListItemData.pollOptions[1].optionId,
+                                            !!ListItemData.pollAllowMulti, ListItemData.pollOptions);
+                                    } } ]
+                                    Label {
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[1]) ? (ListItemData.pollOptions[1].content || "") : ""
+                                        multiline: true
+                                        textStyle { color: rowRoot.isDark ? Color.White : Color.Black }
+                                    }
+                                    Label {
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[1]) ? String(ListItemData.pollOptions[1].votes || 0) : ""
+                                        textStyle { color: Color.Gray }
+                                    }
+                                }
+                                Container {
+                                    visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 2)
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    background: (ListItemData.pollOptions && ListItemData.pollOptions[2] && ListItemData.pollOptions[2].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    bottomMargin: ui.du(0.5)
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        rowRoot.ListItem.view.votePollOptionProxy(ListItemData.pollId, ListItemData.pollOptions[2].optionId,
+                                            !!ListItemData.pollAllowMulti, ListItemData.pollOptions);
+                                    } } ]
+                                    Label {
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[2]) ? (ListItemData.pollOptions[2].content || "") : ""
+                                        multiline: true
+                                        textStyle { color: rowRoot.isDark ? Color.White : Color.Black }
+                                    }
+                                    Label {
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[2]) ? String(ListItemData.pollOptions[2].votes || 0) : ""
+                                        textStyle { color: Color.Gray }
+                                    }
+                                }
+                                Container {
+                                    visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 3)
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    background: (ListItemData.pollOptions && ListItemData.pollOptions[3] && ListItemData.pollOptions[3].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    bottomMargin: ui.du(0.5)
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        rowRoot.ListItem.view.votePollOptionProxy(ListItemData.pollId, ListItemData.pollOptions[3].optionId,
+                                            !!ListItemData.pollAllowMulti, ListItemData.pollOptions);
+                                    } } ]
+                                    Label {
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[3]) ? (ListItemData.pollOptions[3].content || "") : ""
+                                        multiline: true
+                                        textStyle { color: rowRoot.isDark ? Color.White : Color.Black }
+                                    }
+                                    Label {
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[3]) ? String(ListItemData.pollOptions[3].votes || 0) : ""
+                                        textStyle { color: Color.Gray }
+                                    }
+                                }
+                                Container {
+                                    visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 4)
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    background: (ListItemData.pollOptions && ListItemData.pollOptions[4] && ListItemData.pollOptions[4].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    bottomMargin: ui.du(0.5)
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        rowRoot.ListItem.view.votePollOptionProxy(ListItemData.pollId, ListItemData.pollOptions[4].optionId,
+                                            !!ListItemData.pollAllowMulti, ListItemData.pollOptions);
+                                    } } ]
+                                    Label {
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[4]) ? (ListItemData.pollOptions[4].content || "") : ""
+                                        multiline: true
+                                        textStyle { color: rowRoot.isDark ? Color.White : Color.Black }
+                                    }
+                                    Label {
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[4]) ? String(ListItemData.pollOptions[4].votes || 0) : ""
+                                        textStyle { color: Color.Gray }
+                                    }
+                                }
+                                Container {
+                                    visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 5)
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    background: (ListItemData.pollOptions && ListItemData.pollOptions[5] && ListItemData.pollOptions[5].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    bottomMargin: ui.du(0.5)
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        rowRoot.ListItem.view.votePollOptionProxy(ListItemData.pollId, ListItemData.pollOptions[5].optionId,
+                                            !!ListItemData.pollAllowMulti, ListItemData.pollOptions);
+                                    } } ]
+                                    Label {
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[5]) ? (ListItemData.pollOptions[5].content || "") : ""
+                                        multiline: true
+                                        textStyle { color: rowRoot.isDark ? Color.White : Color.Black }
+                                    }
+                                    Label {
+                                        text: (ListItemData.pollOptions && ListItemData.pollOptions[5]) ? String(ListItemData.pollOptions[5].votes || 0) : ""
+                                        textStyle { color: Color.Gray }
+                                    }
+                                }
+
+                                Label {
+                                    text: "View voters"
+                                    topMargin: ui.du(0.6)
+                                    textStyle { color: Color.create("#2575fc"); fontSize: FontSize.Small }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        rowRoot.ListItem.view.viewPollVotersProxy(ListItemData.pollId);
+                                    } } ]
+                                }
+                            }
+                        }
+
+                        // ---- Inline board-event pill (kind === "boardEvent") -----
+                        // Small centered system-notice row for pin/unpin/poll-
+                        // created/note-created board activity — no icon (matches
+                        // the request: color alone distinguishes the type), a
+                        // light tint of the type's accent color as background,
+                        // the accent color for the leading word. "View" only
+                        // shown for kinds that have somewhere useful to jump to.
+                        Container {
+                            id: boardEventRoot
+                            visible: rowRoot.kind === "boardEvent"
+                            horizontalAlignment: HorizontalAlignment.Center
+                            topPadding: 6; bottomPadding: 6
+
+                            property string evtColor: {
+                                var k = ListItemData.boardEvtKind || "";
+                                if (k === "pin") return "#ff9800";
+                                if (k === "unpin" || k === "remove") return "#e53935";
+                                if (k === "poll") return "#43a047";
+                                return "#1e88e5"; // note / fallback
+                            }
+                            property color evtBg: Color.create(rowRoot.isDark ? "#2a2a2a" : "#f2f2f2")
+
+                            Container {
+                                background: boardEventRoot.evtBg
+                                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                topPadding: ui.du(0.6); bottomPadding: ui.du(0.6)
+                                leftPadding: ui.du(1.4); rightPadding: ui.du(1.4)
+
+                                Label {
+                                    text: ListItemData.boardEvtText || ""
+                                    textStyle { fontSize: FontSize.Small; color: Color.create(boardEventRoot.evtColor) }
+                                }
+                                Label {
+                                    visible: !!(ListItemData.boardEvtKind === "poll" || ListItemData.boardEvtKind === "pin" || ListItemData.boardEvtKind === "unpin")
+                                    text: "  View"
+                                    textStyle { fontSize: FontSize.Small; fontWeight: FontWeight.Bold; color: Color.create(boardEventRoot.evtColor) }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        if (ListItemData.boardEvtKind === "poll" && ListItemData.boardEvtPollId) {
+                                            rowRoot.ListItem.view.viewPollVotersProxy(ListItemData.boardEvtPollId);
+                                        } else {
+                                            rowRoot.ListItem.view.openGroupBoardProxy();
+                                        }
+                                    } } ]
+                                }
+                            }
+                        }
+
                     }
                 }
             ]
@@ -2466,8 +2904,95 @@ Page {
                 pinResultTimer.pendingSuccess = success;
                 pinResultTimer.pendingError = error || "";
                 pinResultTimer.restart();
+                if (success) {
+                    chatViewPage.loadBoardItems();
+                    chatViewPage.appendBoardEventRow("new_pin_topic", "You", 2, "", "You pinned a message");
+                }
             }
         },
+
+        // Feeds PinboardBar (see its own header comment for the "3 newest
+        // board items of any type" shown there) and upserts every poll
+        // item into msgModel as an inline poll card (see upsertPollRow's
+        // own comment for why this never repositions an existing row).
+        // Filtered by groupId so a fetch kicked off for a DIFFERENT group/
+        // thread the user has since navigated away from can't clobber this
+        // one's bar/cards — same "ignore stale replies for a thread we've
+        // left" guard the rest of this file already applies to
+        // messagesReady/etc.
+        Connections {
+            target: zService
+            onGroupBoardReady: {
+                if (groupId !== chatViewPage.threadId) return;
+                chatViewPage.boardItems = items;
+                for (var i = 0; i < items.length; i++) {
+                    if (items[i].boardType === "poll") chatViewPage.upsertPollRow(items[i]);
+                }
+            }
+        },
+        Connections {
+            target: zService
+            onCreatePollDone: {
+                if (success) {
+                    chatViewPage.loadBoardItems();
+                    chatViewPage.appendBoardEventRow("update_board", "You", 3, "", "You created a poll");
+                }
+            }
+        },
+        Connections {
+            target: zService
+            onCreateNoteDone: {
+                if (success) {
+                    chatViewPage.loadBoardItems();
+                    chatViewPage.appendBoardEventRow("update_board", "You", 0, "", "You created a note");
+                }
+            }
+        },
+        Connections {
+            target: zService
+            onVotePollDone: {
+                if (success) {
+                    chatViewPage.loadBoardItems();
+                    chatViewPage.bumpPollToBottom(pollId, updatedOptions, null);
+                    chatViewPage.appendBoardEventRow("update_board", "You", 3, pollId, "You voted in a poll");
+                }
+            }
+        },
+
+        // Others' board activity while this exact thread is open — see
+        // ZaloService_WebSocket.cpp's cmd601 handler for why this is a
+        // SEPARATE signal from the Hub OS notification (that one is
+        // deliberately suppressed for the active thread; this one exists
+        // precisely to cover that gap in-app instead). isSelf events are
+        // skipped here since the *Done handlers above already cover this
+        // client's own actions more reliably (no dependency on whether
+        // Zalo's WS actually echoes a client's own action back).
+        Connections {
+            target: zService
+            onBoardEventOccurred: {
+                if (groupId !== chatViewPage.threadId || isSelf) return;
+                chatViewPage.appendBoardEventRow(act, actorName, topicType, topicId, title);
+                // update_board fires for both "poll created" and "someone
+                // voted" alike (can't tell them apart from the WS event —
+                // see the C++ handler's comment) — fetching full detail
+                // covers both: bumpPollToBottom seeds a brand-new row from
+                // `detail` when this poll has no card yet, or just
+                // refreshes+repositions an existing one.
+                if (topicType === 3 && topicId.length > 0 && act !== "remove_board" && act !== "remove_topic") {
+                    zService.getPollDetail(topicId);
+                }
+            }
+        },
+        Connections {
+            target: zService
+            onPollDetailReady: {
+                if (error && error.length > 0) return;
+                chatViewPage.bumpPollToBottom(pollId, detail.options || [], detail);
+            }
+        },
+
+        PollVotersSheet { id: pollVotersSheet },
+        ForwardPickerSheet { id: forwardPickerSheet; isDark: chatViewPage.isDark },
 
         SharePickerSheet { id: sharePicker },
 

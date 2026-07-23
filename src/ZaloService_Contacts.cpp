@@ -1313,6 +1313,108 @@ void ZaloService::onVoteGroupPollDone()
     sendHubNotification(m_groupNames.value(groupId, "Zalo10"), "You voted in a poll", groupId, true);
 }
 
+// ─── getPollDetail ────────────────────────────────────────────────────────
+// Ported from zca-js's getPollDetail.ts — POST with encrypted params in the
+// body (same shape createGroupPoll above uses), hits m_groupServiceUrl same
+// as create/vote (NOT group_board, NOT group_poll — see createGroupPoll's
+// comment). Only the per-option "voters" uid list is new information here;
+// everything else duplicates what groupBoardReady/votePollDone already
+// carry, so it's kept in its own map under "options" rather than merged
+// into any existing model.
+void ZaloService::getPollDetail(const QString &pollId)
+{
+    if (!m_loggedIn || pollId.isEmpty()) {
+        emit pollDetailReady(pollId, QVariantMap(), "Not ready");
+        return;
+    }
+
+    QVariantMap params;
+    params["poll_id"] = pollId.toLongLong();
+    params["imei"]    = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_groupServiceUrl + "/api/poll/detail"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] getPollDetail POST" << urlStr.left(120) << "pollId:" << pollId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("pollId", pollId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onGetPollDetailDone()));
+}
+
+void ZaloService::onGetPollDetailDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString pollId = reply->property("pollId").toString();
+    QByteArray raw = reply->readAll();
+    int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QNetworkReply::NetworkError netErr = reply->error();
+    reply->deleteLater();
+
+    qDebug() << "[Zalo] getPollDetail raw (first200):" << raw.left(200);
+
+    if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
+        qDebug() << "[Zalo] getPollDetail HTTP failure, status:" << httpStatus << "netErr:" << netErr;
+        emit pollDetailReady(pollId, QVariantMap(), QString("HTTP %1").arg(httpStatus));
+        return;
+    }
+
+    QVariantMap root = jsonToMap(raw);
+    if (root.isEmpty()) {
+        qDebug() << "[Zalo] getPollDetail: response did not parse as JSON";
+        emit pollDetailReady(pollId, QVariantMap(), "Invalid response");
+        return;
+    }
+    int ec = root["error_code"].toInt();
+    if (ec != 0) {
+        QString err = root["error_message"].toString();
+        qDebug() << "[Zalo] getPollDetail error_code:" << ec << err;
+        emit pollDetailReady(pollId, QVariantMap(), err.isEmpty() ? QString("Error %1").arg(ec) : err);
+        return;
+    }
+
+    // zca-js's PollDetail: { creator, question, options: PollOptions[]
+    // (content/votes/voted/voters[]/option_id), joined, closed, poll_id,
+    // allow_multi_choices, ..., num_vote } — same decrypt-then-jsonToMap
+    // step every other poll/board endpoint here already uses.
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    qDebug() << "[Zalo] getPollDetail decrypted (first300):" << dec.left(300);
+    QVariantMap outer = jsonToMap(dec.toUtf8());
+
+    QVariantList rawOpts = outer["options"].toList();
+    QVariantList outOpts;
+    for (int i = 0; i < rawOpts.size(); ++i) {
+        QVariantMap o = rawOpts[i].toMap();
+        QVariantMap oo;
+        oo["content"]  = o["content"].toString();
+        oo["votes"]    = o["votes"].toInt();
+        oo["voted"]    = o["voted"].toBool();
+        oo["optionId"] = o["option_id"].toInt();
+        QVariantList votersList;
+        QVariantList rawVoters = o["voters"].toList();
+        for (int j = 0; j < rawVoters.size(); ++j) votersList.append(rawVoters[j].toString());
+        oo["voters"] = votersList;
+        outOpts.append(oo);
+    }
+
+    QVariantMap detail;
+    detail["question"]           = outer["question"].toString();
+    detail["creator"]            = outer["creator"].toString();
+    detail["closed"]             = outer["closed"].toBool();
+    detail["allowMultiChoices"]  = outer["allow_multi_choices"].toBool();
+    detail["numVote"]            = outer["num_vote"].toInt();
+    detail["options"]            = outOpts;
+
+    emit pollDetailReady(pollId, detail, QString());
+}
+
 // ─── acceptFriendRequest ──────────────────────────────────────────────────
 // zca-js: POST /api/friend/accept  body=params=AES({fid, language})
 void ZaloService::acceptFriendRequest(const QString &friendId)

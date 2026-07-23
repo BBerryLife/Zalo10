@@ -109,6 +109,16 @@ public:
     // through so onVoteGroupPollDone can target the Hub notification at
     // the right thread (votePoll.ts's endpoint has no group_id parameter).
     Q_INVOKABLE void voteGroupPoll(const QString &groupId, const QString &pollId, const QList<int> &optionIds);
+    // "Who voted" detail for a single poll. Ported from zca-js's
+    // getPollDetail.ts (POST .../api/poll/detail on the plain "group"
+    // service, same host as create/vote above) — unlike the vote-result
+    // payload, PollDetail's per-option shape includes a `voters` array of
+    // uids (zca-js's models/Board.ts: PollOptions.voters: string[]), which
+    // is what the inline poll card's "View voters" link needs and nothing
+    // else here currently fetches. Result arrives via pollDetailReady;
+    // resolving voter uids to display names is left to QML
+    // (zService.memberDisplayName), same as everywhere else names are shown.
+    Q_INVOKABLE void getPollDetail(const QString &pollId);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     // Send a text message that quotes/replies to an earlier one. Ported from
@@ -121,6 +131,23 @@ public:
                                        const QString &quoteOwnerId, const QString &quoteContent,
                                        int quoteMsgType, const QString &quoteTs,
                                        const QString &quoteSenderName);
+    // Forward an already-sent message's content to one or more OTHER
+    // threads of the same type (all groups, or all 1-1 chats — never
+    // mixed in one call, matching the two-step "pick Groups OR Chats, then
+    // pick from that list" dialog flow in ChatView.qml). Ported from
+    // zca-js's forwardMessage.ts: both the group and 1-1 variants post to
+    // the FILE service host (m_fileServiceUrl, zpwServiceMap.file[0]) —
+    // NOT m_groupServiceUrl/m_chatServiceUrl like plain sendMessage() uses
+    // — at .../api/group/mforward or .../api/message/mforward respectively.
+    // `content` is the raw message content to replicate verbatim: for a
+    // text message that's its plain text; for a photo message it's the
+    // same content JSON blob normalizePhotoContent()'s callers already
+    // work with elsewhere (href/thumb/params etc.) — forwarding a photo
+    // needs no re-upload, same as Zalo's own client, since the server
+    // resolves the already-uploaded CDN URLs embedded in that JSON.
+    // threadIds must all be the same isGroup type. Result via
+    // forwardMessageDone.
+    Q_INVOKABLE void forwardMessage(const QString &content, const QStringList &threadIds, bool isGroup);
     // Delete a message. Ported from zca-js's deleteMessage.ts:
     //   - onlyMe=true:  "delete for me" — always allowed, any thread.
     //   - onlyMe=false: "delete for everyone" — only allowed in groups; for a
@@ -261,6 +288,32 @@ signals:
     // round-trip. pollId lets QML find the right card if more than one
     // poll is visible. error is "" on success (updatedOptions then valid).
     void votePollDone(bool success, const QString &pollId, const QVariantList &updatedOptions, const QString &error);
+    // Result of getPollDetail(). detail's "options" entries carry a
+    // "voters" QStringList of uids alongside the usual content/votes/
+    // optionId fields (see getPollDetail()'s doc comment above). error is
+    // "" on success.
+    void pollDetailReady(const QString &pollId, const QVariantMap &detail, const QString &error);
+    // Fired for EVERY relevant cmd601 group-board WS event (pin/unpin/
+    // update_board/update_topic/remove_*), regardless of whether a Hub OS
+    // notification was also sent for it — unlike sendHubNotification(),
+    // which is deliberately suppressed for self-actions and for the
+    // currently-open thread (see the cmd601 handler's own comment), this
+    // signal is NOT suppressed in either case, so ChatView can react
+    // in-app (inline system-notice row, poll-card refresh/reposition) even
+    // while the user is actively looking at the thread — which is exactly
+    // the situation the Hub suppression exists to avoid double-notifying
+    // for. QML is expected to filter by groupId itself, same as
+    // groupBoardReady. topicType follows GroupTopicType (Note=0,
+    // Message=2, Poll=3) where known, else -1. topicId is the pin/poll/
+    // note id when the event carried one, else "".
+    void boardEventOccurred(const QString &groupId, const QString &act, const QString &actorName,
+                             bool isSelf, int topicType, const QString &topicId, const QString &title);
+    // successCount/failCount straight from forwardMessage.ts's response
+    // shape ({success:[...], fail:[...]}) — per-target error detail isn't
+    // surfaced individually here (nothing else in this codebase's UI does
+    // per-target results either, e.g. sendMessage's own onSendMsgDone),
+    // just an aggregate the forward dialog can show as a toast/summary.
+    void forwardMessageDone(bool success, int successCount, int failCount, const QString &error);
     void friendRequestResponded(const QString &friendId, bool accepted, bool success);
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
@@ -338,6 +391,8 @@ private slots:
     void onCreateGroupNoteDone();
     void onCreateGroupPollDone();
     void onVoteGroupPollDone();
+    void onGetPollDetailDone();
+    void onForwardMessageDone();
     void onAcceptFriendDone();
     void onRejectFriendDone();
     void onGroupDetailsDone();

@@ -495,6 +495,119 @@ void ZaloService::sendMessageQuote(const QString &threadId, const QString &conte
     connect(reply, SIGNAL(finished()), this, SLOT(onSendMsgQuoteDone()));
 }
 
+// ─── forwardMessage ─────────────────────────────────────────────────────
+// See the Q_INVOKABLE declaration's doc comment in ZaloService.hpp for the
+// full rationale (file-service host, verbatim content reuse, single-type
+// batch). Ported field-for-field from zca-js's forwardMessage.ts.
+void ZaloService::forwardMessage(const QString &content, const QStringList &threadIds, bool isGroup)
+{
+    if (!m_loggedIn || content.isEmpty() || threadIds.isEmpty()) {
+        emit forwardMessageDone(false, 0, 0, "Nothing to forward");
+        return;
+    }
+
+    QString clientId = QString::number(QDateTime::currentMSecsSinceEpoch());
+
+    QVariantMap msgInfo;
+    msgInfo["message"] = content;
+    // No "reference" (quote-of-the-original) support in this first pass —
+    // zca-js's payload.reference is optional and this always omits it, so
+    // a forwarded message always arrives as a plain (unquoted) message on
+    // the receiving end, same as manually retyping/pasting it would.
+
+    QVariantMap params;
+    if (isGroup) {
+        QVariantList grids;
+        foreach (const QString &tid, threadIds) {
+            QVariantMap g;
+            g["clientId"] = clientId;
+            g["grid"]     = tid;
+            g["ttl"]      = 0;
+            grids.append(g);
+        }
+        params["grids"] = grids;
+    } else {
+        QVariantList toIds;
+        foreach (const QString &tid, threadIds) {
+            QVariantMap t;
+            t["clientId"] = clientId;
+            t["toUid"]    = tid;
+            t["ttl"]      = 0;
+            toIds.append(t);
+        }
+        params["toIds"] = toIds;
+        params["imei"]  = m_imei; // zca-js: only the User-thread branch sends imei, same as sendMessage() above
+    }
+    params["ttl"]      = 0;
+    params["msgType"]  = "1";
+    params["totalIds"] = threadIds.size();
+    params["msgInfo"]  = QString::fromUtf8(variantToJsonCompact(msgInfo));
+    // decorLog stays entirely omitted (zca-js sends JSON.stringify(null) =
+    // the string "null" when there's no reference) — matched here by simply
+    // not setting the key at all, since the server only consults it when a
+    // "reference" was actually provided, which this pass never does.
+
+    // variantToJsonCompact() (not mapToJson()) because params.grids/toIds
+    // is an array of OBJECTS — see that function's own comment on why
+    // mapToJson()'s QVariant::List branch can't be used for that shape
+    // (deleteMessage()'s "msgs" array is the other existing example).
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(variantToJsonCompact(params)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    // Both variants hit the FILE service host, not m_groupServiceUrl/
+    // m_chatServiceUrl like plain sendMessage() — see forwardMessage.ts's
+    // serviceURL map (api.zpwServiceMap.file[0] for both ThreadType.User
+    // and ThreadType.Group).
+    QString base = isGroup ? m_fileServiceUrl + "/api/group/mforward"
+                           : m_fileServiceUrl + "/api/message/mforward";
+    QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
+                          + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] forwardMessage POST" << urlStr << "isGroup:" << isGroup << "targets:" << threadIds.size();
+    QNetworkReply *reply = m_manager->post(req, body);
+    connect(reply, SIGNAL(finished()), this, SLOT(onForwardMessageDone()));
+}
+
+void ZaloService::onForwardMessageDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QByteArray raw = reply->readAll();
+    int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QNetworkReply::NetworkError netErr = reply->error();
+    reply->deleteLater();
+
+    qDebug() << "[Zalo] forwardMessage raw (first200):" << raw.left(200);
+
+    if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
+        emit forwardMessageDone(false, 0, 0, QString("HTTP %1").arg(httpStatus));
+        return;
+    }
+
+    QVariantMap root = jsonToMap(raw);
+    if (root.isEmpty()) {
+        emit forwardMessageDone(false, 0, 0, "Invalid response");
+        return;
+    }
+    int ec = root["error_code"].toInt();
+    if (ec != 0) {
+        QString err = root["error_message"].toString();
+        emit forwardMessageDone(false, 0, 0, err.isEmpty() ? QString("Error %1").arg(ec) : err);
+        return;
+    }
+
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    QVariantMap outer = jsonToMap(dec.toUtf8());
+    int successCount = outer["success"].toList().size();
+    int failCount    = outer["fail"].toList().size();
+
+    emit forwardMessageDone(successCount > 0, successCount, failCount,
+                             (successCount == 0) ? "All targets failed" : QString());
+}
+
 void ZaloService::onSendMsgQuoteDone()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
