@@ -1871,13 +1871,10 @@ Page {
                             horizontalAlignment: HorizontalAlignment.Center
                             topPadding: 6; bottomPadding: 6
 
-                            property string evtColor: {
-                                var k = ListItemData.boardEvtKind || "";
-                                if (k === "pin") return "#ff9800";
-                                if (k === "unpin" || k === "remove") return "#e53935";
-                                if (k === "poll") return "#43a047";
-                                return "#1e88e5"; // note / fallback
-                            }
+                            property string evtColor: ListItemData.boardEvtKind === "pin" ? "#ff9800" :
+                                                       (ListItemData.boardEvtKind === "unpin" || ListItemData.boardEvtKind === "remove") ? "#e53935" :
+                                                       ListItemData.boardEvtKind === "poll" ? "#43a047" :
+                                                       "#1e88e5" // note / fallback
                             property color evtBg: Color.create(rowRoot.isDark ? "#2a2a2a" : "#f2f2f2")
 
                             Container {
