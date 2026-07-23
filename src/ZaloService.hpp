@@ -86,6 +86,29 @@ public:
                                       const QString &cliMsgId, const QString &senderId,
                                       const QString &senderName, const QString &content,
                                       int msgType);
+    // Create a note in the group board. Ported from zca-js's createNote.ts:
+    // same .../api/board/topic/createv2 endpoint pinGroupMessage() uses,
+    // type:0 (BoardType.Note) instead of type:2 (PinnedMessage), and
+    // params.params only carries {title} — no client_msg_id/global_msg_id/
+    // senderUid, since a note isn't tied to an existing chat message.
+    Q_INVOKABLE void createGroupNote(const QString &groupId, const QString &title, bool pinAct);
+    // Create a poll in the group. Ported from zca-js's createPoll.ts —
+    // NOTE this hits the plain "group" service (m_groupServiceUrl), NOT
+    // group_board and NOT group_poll; see fetchGroupBoard()'s doc comment
+    // for why those two are easy to confuse with each other here.
+    // optionsList is a plain list of option strings (2+ required by Zalo).
+    Q_INVOKABLE void createGroupPoll(const QString &groupId, const QString &question,
+                                      const QStringList &optionsList, bool allowMultiChoices,
+                                      bool allowAddNewOption, bool hideVotePreview,
+                                      bool isAnonymous);
+    // Vote (or change vote / unvote with an empty optionIds) on a poll.
+    // Ported from zca-js's votePoll.ts — GET with encrypted params in the
+    // query string (like fetchGroupBoard), hits m_groupServiceUrl same as
+    // createGroupPoll above. optionIds empty = clear the caller's vote.
+    // groupId isn't part of Zalo's vote API itself — it's only carried
+    // through so onVoteGroupPollDone can target the Hub notification at
+    // the right thread (votePoll.ts's endpoint has no group_id parameter).
+    Q_INVOKABLE void voteGroupPoll(const QString &groupId, const QString &pollId, const QList<int> &optionIds);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     // Send a text message that quotes/replies to an earlier one. Ported from
@@ -225,6 +248,19 @@ signals:
     void groupBoardReady(const QString &groupId, const QVariantList &items, const QString &error);
     // Result of pinGroupMessage(). error is "" on success.
     void pinMessageDone(bool success, const QString &error);
+    // Result of createGroupNote(). error is "" on success. QML re-calls
+    // fetchGroupBoard() on success to pick up the new item, same pattern
+    // as other create/send actions in this app that don't locally splice
+    // their own result into an existing list.
+    void createNoteDone(bool success, const QString &error);
+    // Result of createGroupPoll(). error is "" on success.
+    void createPollDone(bool success, const QString &error);
+    // Result of voteGroupPoll(). Carries the updated option list straight
+    // from Zalo's response (zca-js's VotePollResponse) so QML can update
+    // the poll card in place without needing a full fetchGroupBoard()
+    // round-trip. pollId lets QML find the right card if more than one
+    // poll is visible. error is "" on success (updatedOptions then valid).
+    void votePollDone(bool success, const QString &pollId, const QVariantList &updatedOptions, const QString &error);
     void friendRequestResponded(const QString &friendId, bool accepted, bool success);
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
@@ -299,6 +335,9 @@ private slots:
     void onFetchInvitesDone();
     void onFetchGroupBoardDone();
     void onPinGroupMessageDone();
+    void onCreateGroupNoteDone();
+    void onCreateGroupPollDone();
+    void onVoteGroupPollDone();
     void onAcceptFriendDone();
     void onRejectFriendDone();
     void onGroupDetailsDone();
@@ -431,6 +470,14 @@ private:
     bool parseWsHandshakeResponse(const QByteArray &data, int &headerEnd);
     void handleWsFrame(int opcode, const QByteArray &payload);
     void handleWsMessage(int opcode, const QByteArray &payload);
+    // Decodes a WS command's raw payload body { data: "<base64>", encrypt:
+    // 0|1|2|3 } into its inner QVariantMap. Extracted from the cmd=501/521
+    // (new message) handling so cmd=601 (group_event — pin/note/poll
+    // activity, see handleWsMessage) can reuse the exact same
+    // GCM-decrypt/gzip-inflate/AES-CBC-fallback pipeline instead of a third
+    // copy-pasted version. debugTag is only used in qDebug() lines to tell
+    // which caller's log output is which (e.g. "cmd501", "cmd601").
+    QVariantMap decodeWsEnvelope(const QVariantMap &outer, const QString &debugTag);
     QByteArray maskWsFrame(int opcode, const QByteArray &data); // client→server cần mask
     void sendWsPing();                                            // cmd=2 subCmd=1 keepalive
     void sendWsRequest(int cmd, int subCmd, const QString &jsonData); // generic WS send
@@ -459,7 +506,24 @@ private:
     QString m_chatServiceUrl;
     QString m_groupServiceUrl;
     QString m_profileServiceUrl;   // zpwServiceMap.profile[0]
-    QString m_groupPollServiceUrl; // zpwServiceMap.group_poll[0]
+    QString m_groupPollServiceUrl; // zpwServiceMap.group_poll[0] — NOT used by
+                                    // board/pin/note or even poll vote/create/lock
+                                    // actions (those use group_board / group — see
+                                    // m_groupBoardServiceUrl below); kept parsed
+                                    // since it's a distinct real service key, in
+                                    // case something future needs it specifically.
+    QString m_groupBoardServiceUrl; // zpwServiceMap.group_board[0] — the actual
+                                     // host for /api/board/list and
+                                     // /api/board/topic/createv2|updatev2 (board
+                                     // listing, pin, note create/edit). Confirmed
+                                     // against zca-js's getListBoard.ts/
+                                     // createNote.ts/editNote.ts, which all build
+                                     // their serviceURL from zpwServiceMap.group_board,
+                                     // a DIFFERENT array from zpwServiceMap.group_poll.
+                                     // Poll actions themselves (detail/create/vote/
+                                     // end/option/add/share) use plain
+                                     // zpwServiceMap.group == m_groupServiceUrl,
+                                     // already parsed above — not this one either.
     QString m_friendServiceUrl;    // zpwServiceMap.friend[0]
     QString m_fileServiceUrl;      // zpwServiceMap.file[0]
     QString m_quickMessageServiceUrl; // zpwServiceMap.quick_message[0]

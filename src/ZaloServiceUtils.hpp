@@ -114,8 +114,28 @@ inline QByteArray mapToJson(const QVariantMap &map)
         case QVariant::List: {
             QVariantList lst = v.toList();
             QScriptValue arr = eng.newArray(lst.size());
-            for (int i = 0; i < lst.size(); ++i)
-                arr.setProperty(i, lst[i].toString());
+            for (int i = 0; i < lst.size(); ++i) {
+                QVariant elem = lst[i];
+                switch (elem.type()) {
+                case QVariant::Int:
+                case QVariant::LongLong:
+                    arr.setProperty(i, (double)elem.toLongLong());
+                    break;
+                case QVariant::UInt:
+                case QVariant::ULongLong:
+                    arr.setProperty(i, (double)elem.toULongLong());
+                    break;
+                case QVariant::Double:
+                    arr.setProperty(i, elem.toDouble());
+                    break;
+                case QVariant::Bool:
+                    arr.setProperty(i, elem.toBool());
+                    break;
+                default:
+                    arr.setProperty(i, elem.toString());
+                    break;
+                }
+            }
             obj.setProperty(it.key(), arr);
             break;
         }

@@ -2431,16 +2431,41 @@ Page {
             position: SystemUiPosition.MiddleCenter
         },
 
-        Connections {
-            target: zService
-            onPinMessageDone: {
-                if (success) {
+        // pinMessageDone fires while the "Pin message" ActionSet/context-menu
+        // is still animating closed (the user just tapped an item in that
+        // overlay). Calling SystemToast.show() immediately races that
+        // dismiss animation on Cascades — the toast can end up stuck
+        // showing (or appearing to loop) until something else forces the
+        // overlay stack to resolve, e.g. tapping elsewhere to move the
+        // ListItem's highlighted/active state off that row (exactly the
+        // symptom reported: toast won't go away until focus moves off the
+        // pinned message). Deferring show() by one tick via a Timer lets
+        // the context-menu's own dismissal finish first, same category of
+        // fix as jumpHighlightTimer above being used to keep a
+        // row-triggered visual effect from fighting other row state.
+        Timer {
+            id: pinResultTimer
+            interval: 150
+            repeat: false
+            property bool pendingSuccess: false
+            property string pendingError: ""
+            onTriggered: {
+                if (pendingSuccess) {
                     pinToast.body = "Message pinned";
                     pinToast.show();
                 } else {
-                    errorToast.body = (error && error.length > 0) ? ("Pin failed: " + error) : "Pin failed";
+                    errorToast.body = (pendingError && pendingError.length > 0) ? ("Pin failed: " + pendingError) : "Pin failed";
                     errorToast.show();
                 }
+            }
+        },
+
+        Connections {
+            target: zService
+            onPinMessageDone: {
+                pinResultTimer.pendingSuccess = success;
+                pinResultTimer.pendingError = error || "";
+                pinResultTimer.restart();
             }
         },
 

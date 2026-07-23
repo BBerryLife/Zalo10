@@ -53,8 +53,7 @@ void ZaloService::fetchConversations(){
     qp["zpw_ver"]  = QString::number(API_VERSION);
     qp["zpw_type"] = QString::number(API_TYPE);
 
-    QString base = m_groupPollServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupPollServiceUrl;
-    QString urlStr = buildRawUrl(base + "/api/group/getlg/v4", qp);
+    QString urlStr = buildRawUrl(m_groupServiceUrl + "/api/group/getlg/v4", qp);
     qDebug() << "[Zalo] fetchConversations URL:" << urlStr;
     QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
     connect(reply, SIGNAL(finished()), this, SLOT(onFetchConvoDone()));
@@ -777,17 +776,26 @@ void ZaloService::onFetchInvitesDone()
 // ─── fetchGroupBoard ──────────────────────────────────────────────────────
 // Group board = pinned messages + notes + polls shown together in one place
 // (see GroupBoardSheet.qml). Ported from zca-js's getListBoard.ts:
-// GET {group_poll service}/api/board/list?params=AES({group_id, board_type:0,
+// GET {group_board service}/api/board/list?params=AES({group_id, board_type:0,
 // page, count, last_id:0, last_type:0, imei}). board_type=0 asks the server
 // for every type at once rather than filtering server-side — the 4 tabs in
 // the sheet (All/Pinned Message/Note/Poll) are a client-side filter over one
 // fetched list, same design zca-js itself documents (BoardType enum: Note=1,
 // PinnedMessage=2, Poll=3 — used below to tag each item for the QML filter).
+//
+// NOTE: zpw_service_map_v3 has BOTH a "group_poll" key and a separate
+// "group_board" key — these are two different hosts, not aliases of each
+// other. zca-js's getListBoard.ts/createNote.ts/editNote.ts all build their
+// serviceURL from zpwServiceMap.group_board specifically; "group_poll" is
+// not used by the board endpoints at all (and isn't used by poll vote/
+// create/lock either — see votePoll below, which uses the plain "group"
+// service same as m_groupServiceUrl). Using m_groupPollServiceUrl here was
+// hitting the wrong host and 404ing every board fetch.
 void ZaloService::fetchGroupBoard(const QString &groupId, int page, int count)
 {
     if (!m_loggedIn || groupId.isEmpty()) return;
 
-    QString base = m_groupPollServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupPollServiceUrl;
+    QString base = m_groupBoardServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupBoardServiceUrl;
 
     QVariantMap innerParams;
     innerParams["group_id"]   = groupId;
@@ -816,10 +824,28 @@ void ZaloService::onFetchGroupBoardDone()
     if (!reply) return;
     QString groupId = reply->property("groupId").toString();
     QByteArray raw = reply->readAll();
+    int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QNetworkReply::NetworkError netErr = reply->error();
     reply->deleteLater();
 
     qDebug() << "[Zalo] fetchGroupBoard raw (first200):" << raw.left(200);
+
+    // Same false-positive-success risk as onPinGroupMessageDone: an HTML
+    // error page (e.g. a 404 from hitting the wrong service host) parses
+    // as an empty QVariantMap via jsonToMap(), so error_code silently
+    // defaults to 0 unless we check the HTTP status / parse result first.
+    if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
+        qDebug() << "[Zalo] fetchGroupBoard HTTP failure, status:" << httpStatus << "netErr:" << netErr;
+        emit groupBoardReady(groupId, QVariantList(), QString("HTTP %1").arg(httpStatus));
+        return;
+    }
+
     QVariantMap root = jsonToMap(raw);
+    if (root.isEmpty()) {
+        qDebug() << "[Zalo] fetchGroupBoard: response did not parse as JSON";
+        emit groupBoardReady(groupId, QVariantList(), "Invalid response");
+        return;
+    }
     int ec = root["error_code"].toInt();
     if (ec != 0) {
         qDebug() << "[Zalo] fetchGroupBoard error_code:" << ec << root["error_message"].toString();
@@ -940,7 +966,7 @@ void ZaloService::pinGroupMessage(const QString &groupId, const QString &msgId,
         return;
     }
 
-    QString base = m_groupPollServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupPollServiceUrl;
+    QString base = m_groupBoardServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupBoardServiceUrl;
 
     QVariantMap pinParams;
     pinParams["client_msg_id"] = cliMsgId;
@@ -981,6 +1007,7 @@ void ZaloService::pinGroupMessage(const QString &groupId, const QString &msgId,
 
     qDebug() << "[Zalo] pinGroupMessage POST" << urlStr.left(120) << "groupId:" << groupId << "msgId:" << msgId;
     QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("groupId", groupId);
     connect(reply, SIGNAL(finished()), this, SLOT(onPinGroupMessageDone()));
 }
 
@@ -988,11 +1015,34 @@ void ZaloService::onPinGroupMessageDone()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
+    QString groupId = reply->property("groupId").toString();
     QByteArray raw = reply->readAll();
+    int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QNetworkReply::NetworkError netErr = reply->error();
     reply->deleteLater();
 
     qDebug() << "[Zalo] pinGroupMessage raw (first200):" << raw.left(200);
+
+    // A non-2xx HTTP status (e.g. the 404 nginx error page returned while
+    // this hit the wrong service host) or a network-level error means the
+    // request never reached real API logic at all. jsonToMap() on an HTML
+    // error page silently returns an EMPTY QVariantMap (it's not JSON), so
+    // root["error_code"].toInt() previously defaulted to 0 — which reads
+    // identically to Zalo's own "no error" success code and was reporting
+    // pin as successful even on a full 404. Guard against that explicitly
+    // rather than trusting error_code on an empty/unparsed body.
+    if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
+        qDebug() << "[Zalo] pinGroupMessage HTTP failure, status:" << httpStatus << "netErr:" << netErr;
+        emit pinMessageDone(false, QString("HTTP %1").arg(httpStatus));
+        return;
+    }
+
     QVariantMap root = jsonToMap(raw);
+    if (root.isEmpty()) {
+        qDebug() << "[Zalo] pinGroupMessage: response did not parse as JSON";
+        emit pinMessageDone(false, "Invalid response");
+        return;
+    }
     int ec = root["error_code"].toInt();
     if (ec != 0) {
         QString err = root["error_message"].toString();
@@ -1001,6 +1051,266 @@ void ZaloService::onPinGroupMessageDone()
         return;
     }
     emit pinMessageDone(true, QString());
+    sendHubNotification(m_groupNames.value(groupId, "Zalo10"), "You pinned a message", groupId, true);
+}
+
+// ─── createGroupNote ──────────────────────────────────────────────────────
+// Ported from zca-js's createNote.ts: same {group_board}/api/board/topic/
+// createv2 endpoint pinGroupMessage() uses, type:0 (BoardType.Note) instead
+// of type:2 (PinnedMessage), and params.params only carries {title} — no
+// client_msg_id/global_msg_id/senderUid, since a note isn't tied to an
+// existing chat message the way a pin is.
+void ZaloService::createGroupNote(const QString &groupId, const QString &title, bool pinAct)
+{
+    if (!m_loggedIn || groupId.isEmpty() || title.trimmed().isEmpty()) {
+        emit createNoteDone(false, "Not ready to create note");
+        return;
+    }
+
+    QString base = m_groupBoardServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupBoardServiceUrl;
+
+    QVariantMap noteParams;
+    noteParams["title"] = title;
+
+    QVariantMap innerParams;
+    innerParams["grid"]      = groupId;
+    innerParams["type"]      = 0; // BoardType.Note
+    innerParams["color"]     = -16777216; // matches zca-js's createNote.ts default
+    innerParams["emoji"]     = QString();
+    innerParams["startTime"] = -1;
+    innerParams["duration"]  = -1;
+    innerParams["repeat"]    = 0;
+    innerParams["src"]       = 1; // zca-js uses src:1 for notes (pinGroupMessage's
+                                  // zlapi-derived pin uses src:-1 — kept distinct
+                                  // to match each reference source exactly)
+    innerParams["imei"]      = m_imei;
+    innerParams["pinAct"]    = pinAct ? 1 : 0;
+    innerParams["params"]    = QString::fromUtf8(mapToJson(noteParams));
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = base + "/api/board/topic/createv2"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] createGroupNote POST" << urlStr.left(120) << "groupId:" << groupId;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("groupId", groupId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onCreateGroupNoteDone()));
+}
+
+void ZaloService::onCreateGroupNoteDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString groupId = reply->property("groupId").toString();
+    QByteArray raw = reply->readAll();
+    int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QNetworkReply::NetworkError netErr = reply->error();
+    reply->deleteLater();
+
+    qDebug() << "[Zalo] createGroupNote raw (first200):" << raw.left(200);
+
+    if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
+        qDebug() << "[Zalo] createGroupNote HTTP failure, status:" << httpStatus << "netErr:" << netErr;
+        emit createNoteDone(false, QString("HTTP %1").arg(httpStatus));
+        return;
+    }
+
+    QVariantMap root = jsonToMap(raw);
+    if (root.isEmpty()) {
+        qDebug() << "[Zalo] createGroupNote: response did not parse as JSON";
+        emit createNoteDone(false, "Invalid response");
+        return;
+    }
+    int ec = root["error_code"].toInt();
+    if (ec != 0) {
+        QString err = root["error_message"].toString();
+        qDebug() << "[Zalo] createGroupNote error_code:" << ec << err;
+        emit createNoteDone(false, err.isEmpty() ? QString("Error %1").arg(ec) : err);
+        return;
+    }
+    emit createNoteDone(true, QString());
+    sendHubNotification(m_groupNames.value(groupId, "Zalo10"), "You created a note", groupId, true);
+}
+
+// ─── createGroupPoll ──────────────────────────────────────────────────────
+// Ported from zca-js's createPoll.ts. Unlike createGroupNote/pinGroupMessage,
+// this hits the PLAIN "group" service (m_groupServiceUrl) — NOT group_board
+// and NOT group_poll. See fetchGroupBoard()'s doc comment for why those two
+// are easy to mix up here; poll actions (create/vote/lock/detail/option-add/
+// share) are consistently on "group" in zca-js, board listing/pin/note are
+// consistently on "group_board".
+void ZaloService::createGroupPoll(const QString &groupId, const QString &question,
+                                   const QStringList &optionsList, bool allowMultiChoices,
+                                   bool allowAddNewOption, bool hideVotePreview,
+                                   bool isAnonymous)
+{
+    if (!m_loggedIn || groupId.isEmpty() || question.trimmed().isEmpty() || optionsList.size() < 2) {
+        emit createPollDone(false, "Poll needs a question and at least 2 options");
+        return;
+    }
+
+    QVariantMap params;
+    params["group_id"]             = groupId;
+    params["question"]             = question;
+    QVariantList optsVariant;
+    foreach (const QString &opt, optionsList) optsVariant.append(opt);
+    params["options"]               = optsVariant;
+    params["expired_time"]          = 0; // "Set deadline" UI not wired yet — 0 = no expiration,
+                                          // matches zca-js's createPoll.ts default
+    params["pinAct"]                = false;
+    params["allow_multi_choices"]   = allowMultiChoices;
+    params["allow_add_new_option"]  = allowAddNewOption;
+    params["is_hide_vote_preview"]  = hideVotePreview;
+    params["is_anonymous"]          = isAnonymous;
+    params["poll_type"]             = 0;
+    params["src"]                   = 1;
+    params["imei"]                  = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_groupServiceUrl + "/api/poll/create"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] createGroupPoll POST" << urlStr.left(120) << "groupId:" << groupId << "options:" << optionsList.size();
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("groupId", groupId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onCreateGroupPollDone()));
+}
+
+void ZaloService::onCreateGroupPollDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString groupId = reply->property("groupId").toString();
+    QByteArray raw = reply->readAll();
+    int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QNetworkReply::NetworkError netErr = reply->error();
+    reply->deleteLater();
+
+    qDebug() << "[Zalo] createGroupPoll raw (first200):" << raw.left(200);
+
+    if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
+        qDebug() << "[Zalo] createGroupPoll HTTP failure, status:" << httpStatus << "netErr:" << netErr;
+        emit createPollDone(false, QString("HTTP %1").arg(httpStatus));
+        return;
+    }
+
+    QVariantMap root = jsonToMap(raw);
+    if (root.isEmpty()) {
+        qDebug() << "[Zalo] createGroupPoll: response did not parse as JSON";
+        emit createPollDone(false, "Invalid response");
+        return;
+    }
+    int ec = root["error_code"].toInt();
+    if (ec != 0) {
+        QString err = root["error_message"].toString();
+        qDebug() << "[Zalo] createGroupPoll error_code:" << ec << err;
+        emit createPollDone(false, err.isEmpty() ? QString("Error %1").arg(ec) : err);
+        return;
+    }
+    emit createPollDone(true, QString());
+    sendHubNotification(m_groupNames.value(groupId, "Zalo10"), "You created a poll", groupId, true);
+}
+
+// ─── voteGroupPoll ────────────────────────────────────────────────────────
+// Ported from zca-js's votePoll.ts — GET with encrypted params in the query
+// string (same GET-with-encrypted-query-params shape fetchGroupBoard already
+// uses), hits m_groupServiceUrl same as createGroupPoll above (NOT
+// group_board, NOT group_poll — see createGroupPoll's comment).
+// optionIds empty = clear the caller's vote (zca-js: "unvote = empty array").
+void ZaloService::voteGroupPoll(const QString &groupId, const QString &pollId, const QList<int> &optionIds)
+{
+    if (!m_loggedIn || pollId.isEmpty()) {
+        emit votePollDone(false, pollId, QVariantList(), "Not ready to vote");
+        return;
+    }
+
+    QVariantMap params;
+    params["poll_id"] = pollId.toLongLong();
+    QVariantList optIdsVariant;
+    foreach (int optId, optionIds) optIdsVariant.append(optId);
+    params["option_ids"] = optIdsVariant;
+    params["imei"] = m_imei;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QString urlStr = m_groupServiceUrl + "/api/poll/vote"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
+
+    qDebug() << "[Zalo] voteGroupPoll GET" << urlStr.left(120) << "pollId:" << pollId << "options:" << optionIds.size();
+    QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
+    reply->setProperty("pollId", pollId);
+    reply->setProperty("groupId", groupId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onVoteGroupPollDone()));
+}
+
+void ZaloService::onVoteGroupPollDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QString pollId  = reply->property("pollId").toString();
+    QString groupId = reply->property("groupId").toString();
+    QByteArray raw = reply->readAll();
+    int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    QNetworkReply::NetworkError netErr = reply->error();
+    reply->deleteLater();
+
+    qDebug() << "[Zalo] voteGroupPoll raw (first200):" << raw.left(200);
+
+    if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
+        qDebug() << "[Zalo] voteGroupPoll HTTP failure, status:" << httpStatus << "netErr:" << netErr;
+        emit votePollDone(false, pollId, QVariantList(), QString("HTTP %1").arg(httpStatus));
+        return;
+    }
+
+    QVariantMap root = jsonToMap(raw);
+    if (root.isEmpty()) {
+        qDebug() << "[Zalo] voteGroupPoll: response did not parse as JSON";
+        emit votePollDone(false, pollId, QVariantList(), "Invalid response");
+        return;
+    }
+    int ec = root["error_code"].toInt();
+    if (ec != 0) {
+        QString err = root["error_message"].toString();
+        qDebug() << "[Zalo] voteGroupPoll error_code:" << ec << err;
+        emit votePollDone(false, pollId, QVariantList(), err.isEmpty() ? QString("Error %1").arg(ec) : err);
+        return;
+    }
+
+    // zca-js's VotePollResponse: { options: PollOptions[] } — decrypt+parse
+    // the same way fetchGroupBoard() does, then map option_id/votes/voted
+    // into the same shape QML's poll card already expects from
+    // groupBoardReady()'s "options" field, so QML can reuse one rendering
+    // path for both the initial fetch and a live vote update.
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    qDebug() << "[Zalo] voteGroupPoll decrypted (first300):" << dec.left(300);
+    QVariantMap outer = jsonToMap(dec.toUtf8());
+    QVariantList rawOpts = outer["options"].toList();
+
+    QVariantList outOpts;
+    for (int i = 0; i < rawOpts.size(); ++i) {
+        QVariantMap o = rawOpts[i].toMap();
+        QVariantMap oo;
+        oo["content"]  = o["content"].toString();
+        oo["votes"]    = o["votes"].toInt();
+        oo["voted"]    = o["voted"].toBool();
+        oo["optionId"] = o["option_id"].toInt();
+        outOpts.append(oo);
+    }
+    emit votePollDone(true, pollId, outOpts, QString());
+    sendHubNotification(m_groupNames.value(groupId, "Zalo10"), "You voted in a poll", groupId, true);
 }
 
 // ─── acceptFriendRequest ──────────────────────────────────────────────────

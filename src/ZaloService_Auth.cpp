@@ -195,9 +195,11 @@ void ZaloService::onCookieStep1Done()
     QVariantList chatA  = svcMap["chat"].toList();
     QVariantList groupA = svcMap["group"].toList();
     QVariantList qmA    = svcMap["quick_message"].toList();
+    QVariantList boardA = svcMap["group_board"].toList();
     if (!chatA.isEmpty())  m_chatServiceUrl  = chatA[0].toString();
     if (!groupA.isEmpty()) m_groupServiceUrl = groupA[0].toString();
     if (!qmA.isEmpty())    m_quickMessageServiceUrl = qmA[0].toString();
+    if (!boardA.isEmpty()) m_groupBoardServiceUrl = boardA[0].toString();
 
     if (m_uid.isEmpty()) {
         emit loginFailed("Cookie het han hoac sai - Lay lai ZPSID/ZPW_SEK moi");
@@ -674,6 +676,7 @@ void ZaloService::onStep8Done()
     m_groupServiceUrl.clear();
     m_profileServiceUrl.clear();
     m_groupPollServiceUrl.clear();
+    m_groupBoardServiceUrl.clear();
     m_friendServiceUrl.clear();
     m_fileServiceUrl.clear();
     m_quickMessageServiceUrl.clear();
@@ -684,6 +687,7 @@ void ZaloService::onStep8Done()
         QScriptValue groupArr  = svcMap.property("group");
         QScriptValue profArr   = svcMap.property("profile");
         QScriptValue pollArr   = svcMap.property("group_poll");
+        QScriptValue boardArr  = svcMap.property("group_board");
         QScriptValue friendArr = svcMap.property("friend");
         QScriptValue fileArr   = svcMap.property("file");
         QScriptValue qmArr     = svcMap.property("quick_message");
@@ -692,6 +696,7 @@ void ZaloService::onStep8Done()
         if (groupArr.isArray())  m_groupServiceUrl     = groupArr.property(0).toString();
         if (profArr.isArray())   m_profileServiceUrl   = profArr.property(0).toString();
         if (pollArr.isArray())   m_groupPollServiceUrl = pollArr.property(0).toString();
+        if (boardArr.isArray())  m_groupBoardServiceUrl = boardArr.property(0).toString();
         if (friendArr.isArray()) m_friendServiceUrl    = friendArr.property(0).toString();
         if (fileArr.isArray())   m_fileServiceUrl      = fileArr.property(0).toString();
         if (qmArr.isArray())     m_quickMessageServiceUrl = qmArr.property(0).toString();
@@ -719,6 +724,7 @@ void ZaloService::onStep8Done()
     qDebug() << "[Zalo] group:"       << m_groupServiceUrl;
     qDebug() << "[Zalo] profile:"     << m_profileServiceUrl;
     qDebug() << "[Zalo] group_poll:"  << m_groupPollServiceUrl;
+    qDebug() << "[Zalo] group_board:" << m_groupBoardServiceUrl;
     qDebug() << "[Zalo] friend:"      << m_friendServiceUrl;
     qDebug() << "[Zalo] file:"        << m_fileServiceUrl;
     qDebug() << "[Zalo] zpw_ws count:" << m_zpwWsUrls.size()

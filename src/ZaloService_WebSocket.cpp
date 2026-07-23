@@ -349,6 +349,91 @@ void ZaloService::handleWsFrame(int opcode, const QByteArray &payload)
     handleWsMessage(opcode, payload);
 }
 
+// Decodes a WS command's raw payload body { data: "<base64>", encrypt:
+// 0|1|2|3 } into its inner QVariantMap. Extracted (unchanged logic) from
+// the cmd=501/521 (new message) handling so cmd=601 (group_event) can
+// reuse the exact same GCM-decrypt/gzip-inflate/AES-CBC-fallback pipeline.
+// debugTag only affects qDebug() line prefixes.
+QVariantMap ZaloService::decodeWsEnvelope(const QVariantMap &outer, const QString &debugTag)
+{
+    QVariantMap d;
+    int encType = outer.contains("encrypt") ? outer["encrypt"].toInt() : 1;
+    if (encType == 0) {
+        // Không mã hoá
+        d = outer.contains("data") && outer["data"].type() == QVariant::Map
+            ? outer["data"].toMap() : outer;
+    } else if ((encType == 2 || encType == 3) && !m_wsCipherKey.isEmpty()) {
+        QString rawB64 = outer["data"].toString();
+        if (encType == 2) rawB64 = QUrl::fromPercentEncoding(rawB64.toUtf8());
+        QByteArray cipherBytes = QByteArray::fromBase64(rawB64.toUtf8());
+        qDebug() << "[Zalo WS] GCM decrypt" << debugTag << ": keyLen=" << m_wsCipherKey.size()
+                 << "cipherLen=" << cipherBytes.size()
+                 << "keyHex8=" << m_wsCipherKey.left(8).toHex()
+                 << "ivHex8=" << cipherBytes.left(8).toHex();
+        QByteArray plain = aesGcmDecrypt(m_wsCipherKey, cipherBytes);
+        qDebug() << "[Zalo WS] GCM result" << debugTag << ": plainLen=" << plain.size();
+        if (encType == 2 && !plain.isEmpty()) {
+            // Format: gzip (1f 8b ...) — windowBits = 15+16
+            QByteArray inflated;
+            inflated.resize(plain.size() * 8 + 4096);
+            z_stream zs;
+            memset(&zs, 0, sizeof(zs));
+            zs.next_in  = (Bytef*)plain.constData();
+            zs.avail_in = plain.size();
+            bool inflateOk = false;
+            if (inflateInit2(&zs, 15 + 16) == Z_OK) {
+                int outPos = 0, ret2 = Z_OK;
+                do {
+                    if (outPos >= inflated.size())
+                        inflated.resize(inflated.size() * 2);
+                    zs.next_out  = (Bytef*)(inflated.data() + outPos);
+                    zs.avail_out = inflated.size() - outPos;
+                    ret2 = inflate(&zs, Z_SYNC_FLUSH);
+                    outPos = zs.total_out;
+                } while ((ret2 == Z_OK || ret2 == Z_BUF_ERROR) && zs.avail_in > 0);
+                inflateEnd(&zs);
+                if ((ret2 == Z_STREAM_END || ret2 == Z_OK) && zs.total_out > 0) {
+                    inflated.resize(zs.total_out);
+                    inflateOk = true;
+                }
+            }
+            if (inflateOk) {
+                qDebug() << "[Zalo WS] inflated" << debugTag << "(first500):" << QString::fromUtf8(inflated.left(500));
+                QVariantMap parsed = jsonToMap(inflated);
+                // zca-js: inflate result is direct JSON, no "data" wrapper
+                if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                    d = parsed["data"].toMap();
+                else
+                    d = parsed; // direct struct: { ms:[], msgs:[], controls:[], ... }
+            } else {
+                qDebug() << "[Zalo WS] inflate FAILED" << debugTag << ", trying raw plain";
+                qDebug() << "[Zalo WS] plain (first150):" << QString::fromUtf8(plain.left(150));
+                QVariantMap parsed = jsonToMap(plain);
+                if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                    d = parsed["data"].toMap();
+                else
+                    d = parsed;
+            }
+        } else if (!plain.isEmpty()) {
+            qDebug() << "[Zalo WS] encType=3 plain" << debugTag << "(first150):" << QString::fromUtf8(plain.left(150));
+            QVariantMap parsed = jsonToMap(plain);
+            if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
+                d = parsed["data"].toMap();
+            else
+                d = parsed;
+        } else {
+            qDebug() << "[Zalo WS] decrypt returned empty" << debugTag << "for encType=" << encType;
+        }
+    } else {
+        QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
+        if (dec.isEmpty() || dec.trimmed() == "{}")
+            dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
+        QVariantMap r = jsonToMap(dec.toUtf8());
+        d = r.contains("data") ? r["data"].toMap() : r;
+    }
+    return d;
+}
+
 void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
 {
     // Zalo WS header: version(1B) + cmd(2B LE) + subCmd(1B) = 4 bytes
@@ -387,81 +472,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
         // WS event: JSON { data: "<base64>", encrypt: 0|1|2|3 }
         // encrypt=0: plaintext JSON, encrypt=2/3: AES-GCM
         QVariantMap outer = jsonToMap(data);
-        QVariantMap d;
-        int encType = outer.contains("encrypt") ? outer["encrypt"].toInt() : 1;
-        if (encType == 0) {
-            // Không mã hoá
-            d = outer.contains("data") && outer["data"].type() == QVariant::Map
-                ? outer["data"].toMap() : outer;
-        } else if ((encType == 2 || encType == 3) && !m_wsCipherKey.isEmpty()) {
-            QString rawB64 = outer["data"].toString();
-            if (encType == 2) rawB64 = QUrl::fromPercentEncoding(rawB64.toUtf8());
-            QByteArray cipherBytes = QByteArray::fromBase64(rawB64.toUtf8());
-            qDebug() << "[Zalo WS] GCM decrypt cmd501: keyLen=" << m_wsCipherKey.size()
-                     << "cipherLen=" << cipherBytes.size()
-                     << "keyHex8=" << m_wsCipherKey.left(8).toHex()
-                     << "ivHex8=" << cipherBytes.left(8).toHex();
-            QByteArray plain = aesGcmDecrypt(m_wsCipherKey, cipherBytes);
-            qDebug() << "[Zalo WS] GCM result501: plainLen=" << plain.size();
-            if (encType == 2 && !plain.isEmpty()) {
-                // Format: gzip (1f 8b ...) — windowBits = 15+16
-                QByteArray inflated;
-                inflated.resize(plain.size() * 8 + 4096);
-                z_stream zs;
-                memset(&zs, 0, sizeof(zs));
-                zs.next_in  = (Bytef*)plain.constData();
-                zs.avail_in = plain.size();
-                bool inflateOk = false;
-                if (inflateInit2(&zs, 15 + 16) == Z_OK) {
-                    int outPos = 0, ret2 = Z_OK;
-                    do {
-                        if (outPos >= inflated.size())
-                            inflated.resize(inflated.size() * 2);
-                        zs.next_out  = (Bytef*)(inflated.data() + outPos);
-                        zs.avail_out = inflated.size() - outPos;
-                        ret2 = inflate(&zs, Z_SYNC_FLUSH);
-                        outPos = zs.total_out;
-                    } while ((ret2 == Z_OK || ret2 == Z_BUF_ERROR) && zs.avail_in > 0);
-                    inflateEnd(&zs);
-                    if ((ret2 == Z_STREAM_END || ret2 == Z_OK) && zs.total_out > 0) {
-                        inflated.resize(zs.total_out);
-                        inflateOk = true;
-                    }
-                }
-                if (inflateOk) {
-                    qDebug() << "[Zalo WS] inflated (first500):" << QString::fromUtf8(inflated.left(500));
-                    QVariantMap parsed = jsonToMap(inflated);
-                    // zca-js: inflate result is direct JSON, no "data" wrapper
-                    if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
-                        d = parsed["data"].toMap();
-                    else
-                        d = parsed; // direct struct: { ms:[], msgs:[], ... }
-                } else {
-                    qDebug() << "[Zalo WS] inflate FAILED, trying raw plain";
-                    qDebug() << "[Zalo WS] plain (first150):" << QString::fromUtf8(plain.left(150));
-                    QVariantMap parsed = jsonToMap(plain);
-                    if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
-                        d = parsed["data"].toMap();
-                    else
-                        d = parsed;
-                }
-            } else if (!plain.isEmpty()) {
-                qDebug() << "[Zalo WS] encType=3 plain (first150):" << QString::fromUtf8(plain.left(150));
-                QVariantMap parsed = jsonToMap(plain);
-                if (parsed.contains("data") && parsed["data"].type() == QVariant::Map)
-                    d = parsed["data"].toMap();
-                else
-                    d = parsed;
-            } else {
-                qDebug() << "[Zalo WS] decrypt returned empty for encType=" << encType;
-            }
-        } else {
-            QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
-            if (dec.isEmpty() || dec.trimmed() == "{}")
-                dec = aesDecryptBase64(QString::fromUtf8(m_wsCipherKey.toBase64()), outer["data"].toString());
-            QVariantMap r = jsonToMap(dec.toUtf8());
-            d = r.contains("data") ? r["data"].toMap() : r;
-        }
+        QVariantMap d = decodeWsEnvelope(outer, "cmd501");
 
         // zca-js real-time: field "ms" (not "msgs") for cmd=501/521
         QVariantList msgs;
@@ -1229,6 +1240,113 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             m_threadLastMsgId[emitThread] = newestMsgId;
 
         emit messagesReady(emitThread, msgs);
+    }
+
+    // cmd=601 subCmd=0: group_event — pin/note/poll board activity from
+    // ANY group member (self included), plus membership/settings/etc.
+    // changes not relevant here. Ported from zca-js's listen.ts
+    // ("act_type == 'group'" branch) + initializeGroupEvent()'s isSelf
+    // computation + getGroupEventType()'s act-string→type mapping.
+    // Same envelope shape as cmd=501/521 (decodeWsEnvelope() handles both),
+    // but the payload's outer structure is { controls: [...] } rather than
+    // { msgs: [...] } — each control entry that matters here has
+    // content.act_type == "group" and a content.act string identifying
+    // which kind of group event it is; content.data is the per-type
+    // payload (sometimes double-JSON-encoded as a string, same defensive
+    // handling fetchGroupBoard() already needs for its own "params" field).
+    //
+    // This is new/unverified against a live server in this pass — if the
+    // wire shape turns out to differ (e.g. controls under a different key,
+    // or content nested one level differently), the qDebug() lines below
+    // print the raw envelope and per-control content so it's debuggable
+    // from a device log without needing to re-derive any of this blind.
+    if (cmd == 601 && subCmd == 0) {
+        QVariantMap outer = jsonToMap(data);
+        QVariantMap d = decodeWsEnvelope(outer, "cmd601");
+        qDebug() << "[Zalo WS] cmd601 envelope keys:" << d.keys();
+
+        QVariantList controls = d["controls"].toList();
+        for (int i = 0; i < controls.size(); ++i) {
+            QVariantMap control = controls[i].toMap();
+            QVariantMap content = control["content"].toMap();
+            QString actType = content["act_type"].toString();
+            if (actType != "group") continue;
+
+            QString act = content["act"].toString();
+            if (act == "join_reject") continue; // zca-js: known-noisy dupe of join, ignored there too
+
+            QVariant dataV = content["data"];
+            QVariantMap eventData = (dataV.type() == QVariant::String)
+                ? jsonToMap(dataV.toString().toUtf8())
+                : dataV.toMap();
+
+            qDebug() << "[Zalo WS] cmd601 group_event act=" << act << "keys=" << eventData.keys();
+
+            QString groupId = eventData.contains("groupId") ? eventData["groupId"].toString()
+                                                              : eventData["group_id"].toString();
+            if (groupId.isEmpty()) continue;
+
+            QString title;
+            bool isSelf = false;
+            bool relevant = true;
+
+            if (act == "new_pin_topic" || act == "unpin_topic" || act == "update_pin_topic") {
+                QString actorId = eventData["actorId"].toString();
+                isSelf = (actorId == m_uid);
+                QVariantMap topic = eventData["topic"].toMap();
+                int topicType = topic["type"].toInt(); // GroupTopicType: Note=0 Message=2 Poll=3
+                QString actorName = isSelf ? "You" : memberDisplayName(actorId);
+                if (actorName.isEmpty()) actorName = "Someone";
+                QString what = (topicType == 3) ? "a poll" : (topicType == 0) ? "a note" : "a message";
+                if (act == "new_pin_topic")       title = actorName + " pinned " + what;
+                else if (act == "unpin_topic")    title = actorName + " unpinned " + what;
+                else                              title = actorName + " updated a pinned item";
+            } else if (act == "update_board" || act == "remove_board") {
+                QString sourceId = eventData["sourceId"].toString();
+                isSelf = (sourceId == m_uid);
+                QVariant gtV = eventData["groupTopic"];
+                QVariantMap groupTopic = gtV.toMap();
+                int topicType = groupTopic["type"].toInt();
+                QString actorName = isSelf ? "You" : memberDisplayName(sourceId);
+                if (actorName.isEmpty()) actorName = "Someone";
+                if (act == "remove_board") {
+                    title = actorName + " removed a board item";
+                } else if (topicType == 3) {
+                    title = actorName + " created a poll";
+                } else if (topicType == 0) {
+                    title = actorName + " created a note";
+                } else {
+                    // update_board also covers poll votes (Zalo re-sends the
+                    // whole topic on any vote change) — can't tell "created"
+                    // from "voted" apart from topicType alone here, so this
+                    // falls back to a generic phrasing rather than guessing.
+                    title = actorName + " updated the group board";
+                }
+            } else if (act == "update_topic" || act == "remove_topic") {
+                QString actorId = eventData.contains("creatorId") ? eventData["creatorId"].toString()
+                                                                    : eventData["sourceId"].toString();
+                isSelf = (actorId == m_uid);
+                QString actorName = isSelf ? "You" : memberDisplayName(actorId);
+                if (actorName.isEmpty()) actorName = "Someone";
+                title = (act == "remove_topic") ? (actorName + " removed a board item")
+                                                 : (actorName + " updated the group board");
+            } else {
+                relevant = false; // membership/settings/etc. — not board activity, not our concern here
+            }
+
+            if (relevant && !title.isEmpty()) {
+                // Self-actions already get a Hub notification from their own
+                // onPinGroupMessageDone()/onCreateGroupNoteDone()/
+                // onCreateGroupPollDone()/onVoteGroupPollDone() success path
+                // — skip here to avoid a duplicate. Also skip if this
+                // group's board is the one currently open (same
+                // "already looking at it" suppression as regular messages).
+                if (!isSelf && groupId != m_activeThreadId && !m_mutedThreads.contains(groupId)) {
+                    QString grpName = m_groupNames.value(groupId, "Zalo10");
+                    sendHubNotification(grpName, title, groupId, true);
+                }
+            }
+        }
     }
 }
 

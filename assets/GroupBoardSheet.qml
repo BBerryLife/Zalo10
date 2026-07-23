@@ -71,15 +71,73 @@ Page {
 
     function creatorLabel(creatorId) {
         if (creatorId && creatorId.length > 0 && creatorId === zService.selfUid) return "Me";
-        // No group-member directory is wired up in this build yet (see
-        // ZaloService — there's no uid→displayName lookup exposed to QML),
-        // so anyone other than "me" shows as a short uid fragment rather
-        // than silently mislabeling them with the wrong name (the same class
-        // of bug the Reply feature's dName fix just fixed the hard way —
-        // better to show something honestly unresolved than something that
-        // LOOKS like a name but is wrong).
         if (!creatorId || creatorId.length === 0) return "Unknown";
-        return "User " + creatorId.slice(-4);
+        var memName = zService.memberDisplayName(creatorId);
+        return (memName && memName.length > 0) ? memName : ("User " + creatorId.slice(-4));
+    }
+
+    // Tapping a poll option toggles that option's vote and calls
+    // zService.voteGroupPoll() with the FULL resulting set of voted option
+    // ids (Zalo's /api/poll/vote replaces the caller's whole vote set each
+    // call — zca-js's votePoll.ts: "unvote = empty array" — it isn't an
+    // incremental add/remove). allowMulti false: tapping an unvoted option
+    // replaces any existing single vote; tapping the already-voted option
+    // again clears it (matches the reference screenshot's tap-to-toggle
+    // radio behavior). allowMulti true: tapping toggles just that option
+    // in/out of the existing set, same as a checkbox.
+    function doVoteOption(pollId, optionId, allowMulti, options) {
+        if (!pollId || pollId.length === 0 || !options) return;
+        var newIds = [];
+        if (allowMulti) {
+            var alreadyVoted = false;
+            for (var i = 0; i < options.length; i++) {
+                var isThisOne = (options[i].optionId === optionId);
+                var wasVoted = !!options[i].voted;
+                if (isThisOne) alreadyVoted = wasVoted;
+            }
+            for (var j = 0; j < options.length; j++) {
+                var thisId = options[j].optionId;
+                var voted = !!options[j].voted;
+                if (thisId === optionId) {
+                    if (!alreadyVoted) newIds.push(thisId); // turning on
+                    // turning off: simply omitted
+                } else if (voted) {
+                    newIds.push(thisId);
+                }
+            }
+        } else {
+            var currentlyVotedHere = false;
+            for (var k = 0; k < options.length; k++) {
+                if (options[k].optionId === optionId && options[k].voted) currentlyVotedHere = true;
+            }
+            if (!currentlyVotedHere) newIds = [optionId];
+            // else: tapping the already-voted single-choice option clears the vote (newIds stays [])
+        }
+        zService.voteGroupPoll(groupBoardPage.groupId, pollId, newIds);
+    }
+
+    // Applies a fresh options[] array (from votePollDone or a later
+    // groupBoardReady refresh) onto the matching poll's row in boardModel
+    // in place, and mirrors that same update into allItems so switching
+    // tabs and back doesn't revert the vote counts to the stale list.
+    function applyVoteUpdate(pollId, updatedOptions) {
+        for (var i = 0; i < groupBoardPage.allItems.length; i++) {
+            if (groupBoardPage.allItems[i].boardType === "poll" && groupBoardPage.allItems[i].id === pollId) {
+                var item = groupBoardPage.allItems[i];
+                item.options = updatedOptions;
+                var totalVotes = 0;
+                for (var j = 0; j < updatedOptions.length; j++) totalVotes += (updatedOptions[j].votes || 0);
+                // numVote in this codebase's fetchGroupBoard mapping is
+                // Zalo's num_vote (member count who voted, not total ticks) —
+                // votePollDone doesn't return that count directly, so leave
+                // it as-is rather than substituting total ticks, which would
+                // be wrong for multi-choice polls (one member can hold
+                // several ticks). Good enough until a full re-fetch happens.
+                groupBoardPage.allItems[i] = item;
+                break;
+            }
+        }
+        groupBoardPage.applyFilter();
     }
 
     onCreationCompleted: { reload(); }
@@ -245,6 +303,15 @@ Page {
                                     leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                if (ListItemData.closed) return;
+                                                groupBoardPage.doVoteOption(ListItemData.id, ListItemData.options[0].optionId,
+                                                    !!ListItemData.allowMultiChoices, ListItemData.options);
+                                            }
+                                        }
+                                    ]
                                     Label {
                                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         text: (ListItemData.options && ListItemData.options[0]) ? (ListItemData.options[0].content || "") : ""
@@ -263,6 +330,15 @@ Page {
                                     leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                if (ListItemData.closed) return;
+                                                groupBoardPage.doVoteOption(ListItemData.id, ListItemData.options[1].optionId,
+                                                    !!ListItemData.allowMultiChoices, ListItemData.options);
+                                            }
+                                        }
+                                    ]
                                     Label {
                                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         text: (ListItemData.options && ListItemData.options[1]) ? (ListItemData.options[1].content || "") : ""
@@ -281,6 +357,15 @@ Page {
                                     leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                if (ListItemData.closed) return;
+                                                groupBoardPage.doVoteOption(ListItemData.id, ListItemData.options[2].optionId,
+                                                    !!ListItemData.allowMultiChoices, ListItemData.options);
+                                            }
+                                        }
+                                    ]
                                     Label {
                                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         text: (ListItemData.options && ListItemData.options[2]) ? (ListItemData.options[2].content || "") : ""
@@ -299,6 +384,15 @@ Page {
                                     leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                if (ListItemData.closed) return;
+                                                groupBoardPage.doVoteOption(ListItemData.id, ListItemData.options[3].optionId,
+                                                    !!ListItemData.allowMultiChoices, ListItemData.options);
+                                            }
+                                        }
+                                    ]
                                     Label {
                                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         text: (ListItemData.options && ListItemData.options[3]) ? (ListItemData.options[3].content || "") : ""
@@ -317,6 +411,15 @@ Page {
                                     leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                if (ListItemData.closed) return;
+                                                groupBoardPage.doVoteOption(ListItemData.id, ListItemData.options[4].optionId,
+                                                    !!ListItemData.allowMultiChoices, ListItemData.options);
+                                            }
+                                        }
+                                    ]
                                     Label {
                                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         text: (ListItemData.options && ListItemData.options[4]) ? (ListItemData.options[4].content || "") : ""
@@ -335,6 +438,15 @@ Page {
                                     leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                if (ListItemData.closed) return;
+                                                groupBoardPage.doVoteOption(ListItemData.id, ListItemData.options[5].optionId,
+                                                    !!ListItemData.allowMultiChoices, ListItemData.options);
+                                            }
+                                        }
+                                    ]
                                     Label {
                                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                         text: (ListItemData.options && ListItemData.options[5]) ? (ListItemData.options[5].content || "") : ""
@@ -372,10 +484,11 @@ Page {
                                                     if (groupBoardPage.groupsNavRef.currentPage) {
                                                         groupBoardPage.groupsNavRef.currentPage.jumpToMessage(ListItemData.id || "");
                                                     }
+                                                } else if (ListItemData.boardType === "note") {
+                                                    noteViewerSheet.noteContent = ListItemData.title || "";
+                                                    noteViewerSheet.creatorLabel = groupBoardPage.creatorLabel(ListItemData.creatorId);
+                                                    noteViewerSheet.open();
                                                 }
-                                                // Note detail viewing isn't wired up yet — Note
-                                                // creation/board listing is the scope of this
-                                                // pass; a dedicated note-viewer is follow-up work.
                                             }
                                         }
                                     ]
@@ -417,13 +530,13 @@ Page {
             title: "Create note"
             imageSource: "asset:///images/ChatView/ic_action_new_note.png"
             ActionBar.placement: ActionBarPlacement.OnBar
-            onTriggered: { createNoteUnderDevDialog.show(); }
+            onTriggered: { createNoteSheet.open(); }
         },
         ActionItem {
             title: "Create Poll"
             imageSource: "asset:///images/ChatView/ic_review_add.png"
             ActionBar.placement: ActionBarPlacement.OnBar
-            onTriggered: { createPollUnderDevDialog.show(); }
+            onTriggered: { createPollSheet.open(); }
         }
     ]
 
@@ -442,25 +555,57 @@ Page {
                 }
             }
         },
+        Connections {
+            target: zService
+            onVotePollDone: {
+                if (!success) {
+                    boardErrorToast.body = "Couldn't submit vote: " + error;
+                    boardErrorToast.show();
+                    return;
+                }
+                groupBoardPage.applyVoteUpdate(pollId, updatedOptions);
+            }
+        },
+        Connections {
+            target: zService
+            onCreateNoteDone: {
+                if (success) {
+                    boardErrorToast.body = "Note created";
+                    boardErrorToast.show();
+                    groupBoardPage.reload();
+                } else {
+                    boardErrorToast.body = "Couldn't create note: " + error;
+                    boardErrorToast.show();
+                }
+            }
+        },
+        Connections {
+            target: zService
+            onCreatePollDone: {
+                if (success) {
+                    boardErrorToast.body = "Poll created";
+                    boardErrorToast.show();
+                    groupBoardPage.reload();
+                } else {
+                    boardErrorToast.body = "Couldn't create poll: " + error;
+                    boardErrorToast.show();
+                }
+            }
+        },
         SystemToast {
             id: boardErrorToast
             body: ""
         },
-        // Create Note / Create Poll composer UIs aren't built yet in this
-        // pass (board LISTING was the scope) — these are honest placeholders
-        // so the buttons do something rather than nothing, same convention
-        // as the rest of this codebase's not-yet-built features (see
-        // voiceCallUnderDevDialog / createEventUnderDevDialog in ChatView.qml,
-        // which use this same InfoDialog.qml wrapper).
-        InfoDialog {
-            id: createNoteUnderDevDialog
-            title: "Create Note"
-            body: "This feature is still under development."
+        CreateNoteSheet {
+            id: createNoteSheet
+            groupId: groupBoardPage.groupId
         },
-        InfoDialog {
-            id: createPollUnderDevDialog
-            title: "Create Poll"
-            body: "This feature is still under development."
+        CreatePollSheet {
+            id: createPollSheet
+            groupId: groupBoardPage.groupId
+        },
+        NoteViewerSheet {
+            id: noteViewerSheet
         }
     ]
 }
