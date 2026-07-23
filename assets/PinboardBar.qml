@@ -78,8 +78,6 @@ Container {
     function previewText(it) { return (it && it.title) ? it.title : ""; }
     function itemAt(idx) { return (pinboardBar.topItems.length > idx) ? pinboardBar.topItems[idx] : null; }
 
-    divider: true
-
     // ---- Collapsed row -----------------------------------------------
     Container {
         id: collapsedRow
