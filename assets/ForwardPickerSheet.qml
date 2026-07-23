@@ -1,5 +1,6 @@
 import bb.cascades 1.4
 import bb.system 1.0
+import QtQuick 1.0
 
 // ForwardPickerSheet — "Forward" flow for a chat bubble. Two steps, per the
 // request:

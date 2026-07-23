@@ -1,4 +1,5 @@
 import bb.cascades 1.4
+import QtQuick 1.0
 
 // PollVotersSheet — "who voted" detail for a single poll, opened from the
 // inline poll card's "View voters" link and from boardEvent rows of kind
