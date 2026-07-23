@@ -41,11 +41,16 @@ Container {
     // sheet's contents change since QML variant properties aren't deep-
     // watched, chatViewPage always assigns a fresh array rather than
     // mutating in place (see onGroupBoardReady's wiring in ChatView.qml).
-    property variant topItems: {
+    property variant topItems: []
+
+    function recomputeTopItems() {
         var src = pinboardBar.items || [];
         var sorted = src.slice().sort(function (a, b) { return (b.createTime || 0) - (a.createTime || 0); });
-        return sorted.slice(0, 3);
+        pinboardBar.topItems = sorted.slice(0, 3);
     }
+
+    onItemsChanged: recomputeTopItems()
+    Component.onCompleted: recomputeTopItems()
 
     // boardType, id, title, creatorId of whichever row was tapped — ChatView
     // decides what "open" means per type (jump to message / open GroupBoard
