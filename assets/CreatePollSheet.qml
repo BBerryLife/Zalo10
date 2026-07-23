@@ -26,7 +26,7 @@ Sheet {
     property bool hideVotePreview: false
     property bool isAnonymous: false
 
-    readonly property int maxOptions: 10
+    property int maxOptions: 10
 
     function resetFields() {
         questionField.text = "";
