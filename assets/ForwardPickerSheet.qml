@@ -149,11 +149,13 @@ Sheet {
                     ListItemComponent {
                         CustomListItem {
                             dividerVisible: true
-                            background: (ListItemData.checked === true)
-                                ? Color.create("#cfe3fa")
-                                : (ListItem.view.isDarkProxy ? Color.create("#1a1a1a") : Color.White)
                             Container {
+                                id: rowRoot
+                                background: (ListItemData.checked === true)
+                                    ? Color.create("#cfe3fa")
+                                    : (ListItem.view.isDarkProxy ? Color.create("#1a1a1a") : Color.White)
                                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                horizontalAlignment: HorizontalAlignment.Fill
                                 verticalAlignment: VerticalAlignment.Center
                                 topPadding: ui.du(1); bottomPadding: ui.du(1)
                                 leftPadding: ui.du(1.2); rightPadding: ui.du(1.2)
