@@ -1528,8 +1528,23 @@ Page {
                                 }
 
                                 Container {
-                                    preferredWidth: Math.max(rowRoot.bubbleMaxW - 28, ui.du(10))
-                                    maxWidth:       Math.max(rowRoot.bubbleMaxW - 28, ui.du(10))
+                                    // Deliberately NOT using rowRoot.bubbleMaxW here (that's still
+                                    // used for the photo bubble sizing further below, where it's
+                                    // fine). bubbleMaxW depends on rowLUH.layoutFrame.width, which
+                                    // is only populated AFTER the first layout pass completes —
+                                    // starts at 0 the instant this delegate is created. A multiline
+                                    // Label's internal text-wrap decision appears to run once at
+                                    // creation time using whatever width is available at that exact
+                                    // instant (matches this file's own repeatedly-documented
+                                    // Cascades/QNX pattern of properties updating via binding but
+                                    // not retriggering an internal remeasure — same root cause as
+                                    // ArrayDataModel.replace() not refreshing ImageView.imageSource,
+                                    // fixed earlier via forced recreation). Using chatViewPage.width
+                                    // instead — the Page's own width, known immediately from the
+                                    // first frame, no layout-pass dependency — so the constrained
+                                    // width is correct from the very first measurement pass.
+                                    preferredWidth: Math.max(chatViewPage.width * 0.72 - 28, ui.du(10))
+                                    maxWidth:       Math.max(chatViewPage.width * 0.72 - 28, ui.du(10))
                                     layout: DockLayout {}
 
                                     Label {
