@@ -1537,6 +1537,7 @@ Page {
                                                       || ListItemData.content.indexOf("thumbUrl") >= 0
                                                       || ListItemData.content.indexOf("thumb") >= 0
                                                       || ListItemData.content.indexOf("href") >= 0))
+                                    preferredWidth: Math.max(rowRoot.bubbleMaxW - 28, ui.du(10))
                                     text: {
                                         var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
                                               ? ListItemData.content
