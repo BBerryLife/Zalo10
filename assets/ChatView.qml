@@ -1540,21 +1540,6 @@ Page {
                                                       || ListItemData.content.indexOf("href") >= 0))
                                     preferredWidth: Math.max(rowRoot.bubbleMaxW - 28, ui.du(10))
                                     maxWidth:       Math.max(rowRoot.bubbleMaxW - 28, ui.du(10))
-                                    // TEMP DIAGNOSTIC — the bubble-doesn't-wrap bug report persisted
-                                    // through both a Fill-propagation fix and a preferredWidth/maxWidth
-                                    // fix on this Label, so logging the REAL on-device numbers instead
-                                    // of continuing to guess blind. Safe to delete once that's answered.
-                                    attachedObjects: [
-                                        LayoutUpdateHandler {
-                                            onLayoutFrameChanged: {
-                                                console.log("[Zalo QML] msgTextLbl layoutFrame: msgId=" + String(ListItemData.msgId).slice(-6)
-                                                    + " labelWidth=" + layoutFrame.width
-                                                    + " bubbleMaxW=" + rowRoot.bubbleMaxW
-                                                    + " constrainedTo=" + msgTextLbl.maxWidth
-                                                    + " textLen=" + (msgTextLbl.text ? msgTextLbl.text.length : -1));
-                                            }
-                                        }
-                                    ]
                                     text: {
                                         var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
                                               ? ListItemData.content
