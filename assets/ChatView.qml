@@ -1326,6 +1326,8 @@ Page {
                         Container {
                             id: bubbleWrap
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            preferredWidth: rowRoot.bubbleMaxW
+                            maxWidth:       rowRoot.bubbleMaxW
                             // Reverted the nine-patch bubble-PNG rendering
                             // attempt (DockLayout + ImageView using
                             // rowRoot.bubbleImage) — on device the bubble
