@@ -255,7 +255,17 @@ Page {
                 d.localImage = localPath;
                 if (imgWidth  > 0) d.imgWidth  = imgWidth;
                 if (imgHeight > 0) d.imgHeight = imgHeight;
-                msgModel.replace(j, d);
+                // NOT msgModel.replace(j, d) — ArrayDataModel.replace() does
+                // not trigger the ImageView delegate to re-bind imageSource
+                // on BB10/Cascades (same class of stale-render issue as
+                // rebuildGroups()'s remove+insert remeasure fix above). The
+                // row already rendered once with an empty/failed
+                // imageSource before the download finished, baking in the
+                // broken-image placeholder; only removing and re-inserting
+                // the item forces the ListView to actually recreate that
+                // ImageView against the now-valid localPath.
+                msgModel.removeAt(j);
+                msgModel.insert(j, d);
                 return;
             }
         }
@@ -1887,7 +1897,7 @@ Page {
                                                        (ListItemData.boardEvtKind === "unpin" || ListItemData.boardEvtKind === "remove") ? "#e53935" :
                                                        ListItemData.boardEvtKind === "poll" ? "#43a047" :
                                                        "#1e88e5" // note / fallback
-                            property color evtBg: Color.create(rowRoot.isDark ? "#2a2a2a" : "#f2f2f2")
+                            property color evtBg: rowRoot.isDark ? Color.create("#2a2a2a") : Color.create("#f2f2f2")
 
                             Container {
                                 background: boardEventRoot.evtBg
