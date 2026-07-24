@@ -29,25 +29,25 @@ NavigationPane {
             interval: 11000
             repeat: false
             onTriggered: chatsNav.refreshCooldown = false
-        },
-        // Forces the (large, ~1400-line) ChatView.qml document to be parsed
-        // and its component type cached by the QML engine once, in the
-        // background, instead of paying that cost on the user's first real
-        // tap into a conversation. Creates a throwaway instance and destroys
-        // it immediately — it's never pushed, never given a threadId, and
-        // startChat() is never called on it, so it has no visible effect and
-        // never touches zService. Delayed so it doesn't compete with the
-        // friend list's own initial render.
-        Timer {
-            id: chatViewWarmupTimer
-            interval: 800
-            repeat: false
-            running: true
-            onTriggered: {
-                var w = chatsDef.createObject();
-                if (w) w.destroy();
-            }
         }
+        // NOTE: previously had a "warm-up" Timer here that pre-parsed
+        // ChatView.qml via chatsDef.createObject() + immediate destroy(),
+        // to avoid paying parse cost on the user's first real tap into a
+        // conversation. Removed — creating a Page-derived UIObject with no
+        // parent and destroying it while Cascades is still validating its
+        // trigger-signal bindings logged "Encountered unexpected parent
+        // QObject(0x0)... when validating trigger-signal" for two separate
+        // ChatView instances right before a SIGSEGV in QString::clear()
+        // moments later (device log, post-QR-scan). ChatView.qml has grown
+        // substantially heavier since this trick was added (poll cards,
+        // board-event pills, forward picker, multiple Connections blocks),
+        // and createObject()-without-a-parent + destroy() on a document
+        // this size is exactly the pattern BB10/QNX's older Qt4 Cascades
+        // runtime warns is unsafe ("not allowed to change parent on
+        // UIObjects that belongs to other UIObjects"). This was a pure
+        // perf optimization with admittedly "no visible effect" — not
+        // required for correctness — so removing it trades a marginally
+        // slower first chat-open for not risking a native crash.
     ]
 
     Page {
