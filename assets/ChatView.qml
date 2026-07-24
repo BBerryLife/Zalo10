@@ -1987,7 +1987,6 @@ Page {
                 text: "You have blocked this person. They cannot send you messages."
                 textStyle { color: Color.White; fontSize: FontSize.Small }
                 multiline: true
-                horizontalAlignment: HorizontalAlignment.Fill
             }
         }
 
