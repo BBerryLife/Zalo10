@@ -1527,38 +1527,42 @@ Page {
                                     }
                                 }
 
-                                Label {
-                                    id: msgTextLbl
-                                    visible: !rowRoot.recalled
-                                             && (ListItemData.msgType !== 2 && ListItemData.msgType !== "2")
-                                             && !(typeof ListItemData.content === "string"
-                                                  && ListItemData.content.length > 1
-                                                  && ListItemData.content.charAt(0) === "{"
-                                                  && (ListItemData.content.indexOf("normalUrl") >= 0
-                                                      || ListItemData.content.indexOf("thumbUrl") >= 0
-                                                      || ListItemData.content.indexOf("thumb") >= 0
-                                                      || ListItemData.content.indexOf("href") >= 0))
+                                Container {
                                     preferredWidth: Math.max(rowRoot.bubbleMaxW - 28, ui.du(10))
                                     maxWidth:       Math.max(rowRoot.bubbleMaxW - 28, ui.du(10))
-                                    text: {
-                                        var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
-                                              ? ListItemData.content
-                                              : ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
-                                                 ? "[Photo]"
-                                                 : ((ListItemData.msgType === 6 || ListItemData.msgType === "6")
-                                                    ? "[Sticker]" : "[Photo]"));
-                                        if (rowRoot.searchQuery.length > 0) {
-                                            var hlColor = rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b";
-                                            return "<html>" + rowRoot.ListItem.view.highlightMatchesProxy(raw, rowRoot.searchQuery, hlColor) + "</html>";
+                                    layout: DockLayout {}
+
+                                    Label {
+                                        id: msgTextLbl
+                                        visible: !rowRoot.recalled
+                                                 && (ListItemData.msgType !== 2 && ListItemData.msgType !== "2")
+                                                 && !(typeof ListItemData.content === "string"
+                                                      && ListItemData.content.length > 1
+                                                      && ListItemData.content.charAt(0) === "{"
+                                                      && (ListItemData.content.indexOf("normalUrl") >= 0
+                                                          || ListItemData.content.indexOf("thumbUrl") >= 0
+                                                          || ListItemData.content.indexOf("thumb") >= 0
+                                                          || ListItemData.content.indexOf("href") >= 0))
+                                        text: {
+                                            var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
+                                                  ? ListItemData.content
+                                                  : ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
+                                                     ? "[Photo]"
+                                                     : ((ListItemData.msgType === 6 || ListItemData.msgType === "6")
+                                                        ? "[Sticker]" : "[Photo]"));
+                                            if (rowRoot.searchQuery.length > 0) {
+                                                var hlColor = rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b";
+                                                return "<html>" + rowRoot.ListItem.view.highlightMatchesProxy(raw, rowRoot.searchQuery, hlColor) + "</html>";
+                                            }
+                                            return raw;
                                         }
-                                        return raw;
+                                        textStyle {
+                                            base:  SystemDefaults.TextStyles.BodyText
+                                            color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
+                                        }
+                                        multiline: true
+                                        topMargin: 0; bottomMargin: 0
                                     }
-                                    textStyle {
-                                        base:  SystemDefaults.TextStyles.BodyText
-                                        color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
-                                    }
-                                    multiline: true
-                                    topMargin: 0; bottomMargin: 0
                                 }
 
                                 // Photo attachment bubble.
