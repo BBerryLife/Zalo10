@@ -1245,6 +1245,18 @@ Page {
                                                           && ListItem.view.jumpHighlightMsgId === (ListItemData.msgId || "")
                         property bool isHighlighted: rowRoot.isCurrentSearchMatch || rowRoot.isJumpHighlighted
 
+                        // rowRoot (CustomListItem) accepts exactly one default-property
+                        // child — this wraps the three mutually-exclusive per-kind
+                        // sub-rows (message bubble / poll card / boardEvent pill) that
+                        // used to be declared as three illegal siblings directly under
+                        // rowRoot (visible:false-toggled, not removed, so only one is
+                        // ever actually shown at a time — that's still true here, just
+                        // now nested one level deeper to satisfy the single-child rule).
+                        Container {
+                            id: rowContentRoot
+                            horizontalAlignment: HorizontalAlignment.Fill
+                            layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
                             visible: rowRoot.kind === "message"
@@ -1901,6 +1913,8 @@ Page {
                                 }
                             }
                         }
+
+                        } // rowContentRoot
 
                     }
                 }
