@@ -249,26 +249,42 @@ Page {
         chatViewPage.flushPendingRebuild();
         var size = msgModel.size();
         if (size === 0) return;
+        var items = [];
+        var found = false;
         for (var j = 0; j < size; j++) {
             var d = msgModel.value(j);
-            if ((d.msgId || "") === msgId) {
+            if (!found && (d.msgId || "") === msgId) {
                 d.localImage = localPath;
                 if (imgWidth  > 0) d.imgWidth  = imgWidth;
                 if (imgHeight > 0) d.imgHeight = imgHeight;
-                // NOT msgModel.replace(j, d) — ArrayDataModel.replace() does
-                // not trigger the ImageView delegate to re-bind imageSource
-                // on BB10/Cascades (same class of stale-render issue as
-                // rebuildGroups()'s remove+insert remeasure fix above). The
-                // row already rendered once with an empty/failed
-                // imageSource before the download finished, baking in the
-                // broken-image placeholder; only removing and re-inserting
-                // the item forces the ListView to actually recreate that
-                // ImageView against the now-valid localPath.
-                msgModel.removeAt(j);
-                msgModel.insert(j, d);
-                return;
+                found = true;
             }
+            items.push(d);
         }
+        if (!found) return;
+        // Plain msgModel.replace(j, d) does not make the existing ImageView
+        // delegate re-bind imageSource on BB10/Cascades — the row already
+        // rendered once with an empty/failed source before the download
+        // finished, and that broken/blank state sticks even after the data
+        // is correct (confirmed on device: broken-image glyph stayed put).
+        // A lighter removeAt()+insert() of just this one row was also tried,
+        // but this delegate (kind === "message") is the one with
+        // rowRoot.preferredHeight wired to rowLUH.layoutFrame.height
+        // (attachedObjects, set up once at delegate creation) — recreating
+        // only this row in isolation left it with no valid layoutFrame yet
+        // and it rendered nothing at all, worse than the broken-icon state.
+        // rebuildGroups()'s OWN cheap path (no grouped/bubblePos change,
+        // which an image finishing download never causes) is just
+        // replace() per row too, so calling rebuildGroups() here wouldn't
+        // help either — this needs its proven heavy path specifically:
+        // clear() now, real re-append deferred to the next event-loop turn
+        // via rebuildFlushTimer, which is what actually gives Cascades an
+        // intervening empty-model layout pass to drop pooled/cached item
+        // Controls instead of recycling their stale imageSource binding.
+        msgModel.clear();
+        rebuildFlushTimer.pendingItems = items;
+        rebuildFlushTimer.pendingScroll = false;
+        rebuildFlushTimer.start();
     }
 
     // Measures clockOffsetMs (see its declaration above) from the first
@@ -1338,6 +1354,7 @@ Page {
 
                             Container {
                                 background: Color.Transparent
+                                horizontalAlignment: HorizontalAlignment.Fill
                                 topPadding:    rowRoot.grouped ? 6 : 10
                                 bottomPadding: 10
                                 leftPadding:   14
@@ -1387,6 +1404,7 @@ Page {
 
                             Container {
                                 id: msgContentRoot
+                                horizontalAlignment: HorizontalAlignment.Fill
                                 topMargin: 0; bottomMargin: 0
 
                                 Label {
