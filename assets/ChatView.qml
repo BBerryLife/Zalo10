@@ -740,6 +740,7 @@ Page {
             property string selfNameProxy: chatViewPage.selfName
             property string jumpHighlightMsgId: chatViewPage.jumpHighlightMsgId
             property string searchQuery: chatViewPage.searchVisible ? chatViewPage.searchText.toLowerCase().trim() : ""
+            property real   pageWidthProxy: chatViewPage.width
             property int    searchCurrentMsgIndex: (chatViewPage.searchMatchPos >= 0 && chatViewPage.searchMatchPos < chatViewPage.searchMatches.length)
                                                      ? chatViewPage.searchMatches[chatViewPage.searchMatchPos] : -1
             // Proxies for chatViewPage's own functions: ListItemComponent delegates
@@ -1532,19 +1533,21 @@ Page {
                                     // used for the photo bubble sizing further below, where it's
                                     // fine). bubbleMaxW depends on rowLUH.layoutFrame.width, which
                                     // is only populated AFTER the first layout pass completes —
-                                    // starts at 0 the instant this delegate is created. A multiline
-                                    // Label's internal text-wrap decision appears to run once at
-                                    // creation time using whatever width is available at that exact
-                                    // instant (matches this file's own repeatedly-documented
-                                    // Cascades/QNX pattern of properties updating via binding but
-                                    // not retriggering an internal remeasure — same root cause as
-                                    // ArrayDataModel.replace() not refreshing ImageView.imageSource,
-                                    // fixed earlier via forced recreation). Using chatViewPage.width
-                                    // instead — the Page's own width, known immediately from the
-                                    // first frame, no layout-pass dependency — so the constrained
-                                    // width is correct from the very first measurement pass.
-                                    preferredWidth: Math.max(chatViewPage.width * 0.72 - 28, ui.du(10))
-                                    maxWidth:       Math.max(chatViewPage.width * 0.72 - 28, ui.du(10))
+                                    // starts at 0 the instant this delegate is created, which is a
+                                    // plausible reason a multiline Label's wrap could commit to the
+                                    // wrong width early on. Using the Page's own width instead —
+                                    // known immediately, no per-row layout-pass dependency.
+                                    //
+                                    // NOTE: chatViewPage.width directly here throws "ReferenceError:
+                                    // Can't find variable: chatViewPage" — confirmed on-device.
+                                    // Delegates inside this ListItemComponent cannot reference the
+                                    // outer Page's id directly (this file's own established rule —
+                                    // see msgList's threadNameProxy/selfNameProxy/etc. and the
+                                    // doReply() comment above). Must tunnel through msgList as a
+                                    // proxy property (pageWidthProxy) and read it here via
+                                    // ListItem.view, same pattern as isDark/searchQuery below.
+                                    preferredWidth: Math.max(ListItem.view.pageWidthProxy * 0.72 - 28, ui.du(10))
+                                    maxWidth:       Math.max(ListItem.view.pageWidthProxy * 0.72 - 28, ui.du(10))
                                     layout: DockLayout {}
 
                                     Label {
