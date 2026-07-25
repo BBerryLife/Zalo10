@@ -43,13 +43,19 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ChatsTab.qml) \
         $$quote($$BASEDIR/assets/ConfirmDialog.qml) \
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
+        $$quote($$BASEDIR/assets/CreateNoteSheet.qml) \
+        $$quote($$BASEDIR/assets/CreatePollSheet.qml) \
         $$quote($$BASEDIR/assets/EmojiButton.qml) \
         $$quote($$BASEDIR/assets/EmojiPanel.qml) \
+        $$quote($$BASEDIR/assets/ForwardPickerSheet.qml) \
         $$quote($$BASEDIR/assets/GroupBoardSheet.qml) \
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
+        $$quote($$BASEDIR/assets/NoteViewerSheet.qml) \
+        $$quote($$BASEDIR/assets/PinboardBar.qml) \
+        $$quote($$BASEDIR/assets/PollVotersSheet.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/QuickMessageEditSheet.qml) \
         $$quote($$BASEDIR/assets/QuickMessagesSheet.qml) \

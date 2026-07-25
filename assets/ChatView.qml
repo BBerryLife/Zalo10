@@ -965,12 +965,32 @@ Page {
                         // Container we control, but between rows — is exactly where
                         // CustomListItem's built-in divider reserves space even when
                         // it isn't painted. There's no direct QML property to zero out
-                        // that reserved space. Forcing rowRoot's own preferredHeight to
-                        // exactly match its content's real measured height overrides
-                        // whatever extra room CustomListItem was leaving beyond that
-                        // content for its (invisible but still-reserved) divider.
-                        preferredHeight: rowRoot.kind !== "message" ? -1
-                            : (rowLUH.layoutFrame.height > 0 ? rowLUH.layoutFrame.height : -1)
+                        // that reserved space.
+                        //
+                        // FIXED: this used to force rowRoot's own preferredHeight to
+                        // equal rowLUH.layoutFrame.height — the measured height of a
+                        // Container living INSIDE rowRoot itself. That's a
+                        // self-referential binding: once Cascades measured the row at
+                        // some height H (e.g. a 2-line bubble), preferredHeight got
+                        // locked to H. Any later growth of the same row's content
+                        // (a 3rd text line, a taller photo) then had to be squeezed
+                        // into that already-locked H, so it got clipped — and because
+                        // the clipped content still only measures out to H,
+                        // layoutFrame.height never reports the larger size either, so
+                        // the binding can never correct itself. This is exactly the
+                        // "always caps" bug the onLayoutFrameChanged diagnostic above
+                        // was trying to pin down: bubbles/images silently stuck at
+                        // their first-measured height forever.
+                        //
+                        // Fix: let rowRoot size itself normally (auto, like every
+                        // non-"message" kind already does) so content is always
+                        // measured fresh instead of being pre-clamped to a stale
+                        // self-measurement. The CustomListItem divider gap this was
+                        // originally working around is instead cancelled with a small
+                        // fixed negative bottomMargin on rowContentRoot below — a
+                        // constant offset, not a live binding back into this row's
+                        // own measured height, so it can't create the same loop.
+                        preferredHeight: -1
                         // (Reverted a diagnostic "background: Color.create(...)" that
                         // was here — CustomListItem has no `background` property, same
                         // class of error documented for ActionItem/visible right below:
@@ -1282,6 +1302,13 @@ Page {
                             id: rowContentRoot
                             horizontalAlignment: HorizontalAlignment.Fill
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+                            // Fixed offset cancelling CustomListItem's always-on,
+                            // invisible divider gap (see preferredHeight comment on
+                            // rowRoot above for why that gap can no longer be closed
+                            // by clamping this row's height). This is a constant, not
+                            // a binding back into this row's own measured size, so it
+                            // stays correct no matter how tall the content grows.
+                            bottomMargin: rowRoot.kind === "message" ? -4 : 0
 
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
@@ -1537,6 +1564,16 @@ Page {
                                                       || ListItemData.content.indexOf("thumbUrl") >= 0
                                                       || ListItemData.content.indexOf("thumb") >= 0
                                                       || ListItemData.content.indexOf("href") >= 0))
+                                    // Explicit width instead of inheriting one from the
+                                    // spaceQuota-flexed ancestor chain (bubbleWrap etc).
+                                    // Without this, Cascades' first layout pass can measure
+                                    // this Label's wrapped height against a wider width than
+                                    // it's finally rendered at, lock in a too-short height for
+                                    // that pass, and silently clip any wrapped line beyond it —
+                                    // this is the root cause of the "3rd line never shows up"
+                                    // bug. 28 = bubbleWrap's own leftPadding(14)+rightPadding(14).
+                                    preferredWidth: Math.max(0, rowRoot.bubbleMaxW - 28)
+                                    maxWidth:       Math.max(0, rowRoot.bubbleMaxW - 28)
                                     text: {
                                         var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
                                               ? ListItemData.content
@@ -1580,6 +1617,8 @@ Page {
                                     // Only shown when the photo content JSON contains a "caption" key.
                                     Label {
                                         id: photoCaptionLbl
+                                        preferredWidth: Math.max(0, rowRoot.bubbleMaxW - 28)
+                                        maxWidth:       Math.max(0, rowRoot.bubbleMaxW - 28)
                                         visible: {
                                             var c = ListItemData.content || "";
                                             if (c.length === 0 || c.charCodeAt(0) !== 123) return false;

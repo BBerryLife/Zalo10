@@ -1,5 +1,5 @@
 1
-792
+798
 AboutSheet.qml
 ActiveFrameCover.qml
 ChangelogPage.qml
@@ -7,8 +7,11 @@ ChatsTab.qml
 ChatView.qml
 ConfirmDialog.qml
 ContactsTab.qml
+CreateNoteSheet.qml
+CreatePollSheet.qml
 EmojiButton.qml
 EmojiPanel.qml
+ForwardPickerSheet.qml
 GroupBoardSheet.qml
 GroupsTab.qml
 images/AboutSheet/barcode.png
@@ -787,6 +790,9 @@ InfoDialog.qml
 InvitesTab.qml
 LoginView.qml
 main.qml
+NoteViewerSheet.qml
+PinboardBar.qml
+PollVotersSheet.qml
 ProfileView.qml
 QuickMessageEditSheet.qml
 QuickMessagesSheet.qml

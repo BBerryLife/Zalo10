@@ -870,6 +870,23 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     downloadImageMessage(msgId, nUrl, threadId);
                 }
             }
+            // FIX: out["msgType"] was seeded above (m["msgType"].toInt()) before
+            // 'mt' had been resolved, and Zalo sometimes sends msgType as a
+            // string ("chat.photo") rather than a number — QVariant::toInt() on
+            // a non-numeric string silently returns 0. 'mt' gets corrected to 2
+            // via the string-name fallback further up, but out["msgType"] was
+            // only ever re-synced to that inside a conditional branch that
+            // doesn't run once content was already fully parsed by the
+            // nested-object serialization step above (normalized == rawContent
+            // in that case, so the branch is skipped). Net effect: out["msgType"]
+            // stayed 0 for most real photo messages even though 'mt' was
+            // correctly 2 — and since QML's onNewMessage only carries the
+            // cached local image file over from the "local_img_..." placeholder
+            // to the confirmed row when msg.msgType === 2, that never happened,
+            // so the photo bubble never got an image. Always sync out["msgType"]
+            // to the locally-resolved mt here, unconditionally, so QML sees the
+            // same type this function actually detected.
+            out["msgType"] = mt;
             out["content"] = rawContent;
 
             qDebug() << "[Zalo WS] new msg from" << uidFrom
@@ -1176,6 +1193,10 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     }
                 }
             }
+            // FIX: same root cause as the real-time WS path above — keep
+            // out["msgType"] in sync with the locally-resolved mtH regardless
+            // of which branch above did (or didn't) touch it.
+            out["msgType"] = mtH;
             out["content"] = rawContentH;
             msgs.append(out);
 
