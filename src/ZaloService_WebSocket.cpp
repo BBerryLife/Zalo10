@@ -122,17 +122,75 @@ void ZaloService::connectWebSocket()
     int  port   = url.port(useSsl ? 443 : 80);
 
     if (useSsl) {
-        // Same root cause/fix as buildRequest()'s update-check request
-        // (see ZaloService_Network.cpp): BB10's bundled OpenSSL/Qt4 stack
-        // defaults to an old protocol pin. Some Zalo WS hosts (e.g.
-        // ws12-msg) reject that with "tlsv1 alert protocol version" —
-        // confirmed via the onWsSocketError logging added earlier
-        // (error:1407742E ... reason(1070) = TLS protocol_version alert).
-        // Force AnyProtocol so OpenSSL negotiates the highest version both
-        // sides support, instead of leaving this QSslSocket on its default.
+        // DIAGNOSTIC — added to find out for certain what's different
+        // between the 9/7 build (Jim confirms WS worked there) and now.
+        // The protocol setting itself (AnyProtocol) is unchanged since
+        // 9/7; setPeerVerifyMode(VerifyNone) just below is a genuinely
+        // new addition (neither build had it before), added defensively
+        // to match the working HTTPS path, not because it's known to be
+        // the cause.
+        //
+        // sslLibraryVersionString() / sslLibraryBuildVersionString()
+        // don't exist in this BB10 NDK's Qt4 fork (build error: "not a
+        // member of QSslSocket") — apparently stripped from this
+        // particular header, even though they're documented Qt 4.8
+        // static members upstream. Not risking another guess at which
+        // other static methods survived in this stripped fork — keeping
+        // only supportsSsl(), confirmed to compile from the actual
+        // build log, plus reading back protocol() from the
+        // QSslConfiguration itself right after setting it (this only
+        // needs the QSsl::SslProtocol enum type to exist, not any
+        // possibly-stripped static function, so it's safe against the
+        // same class of compile failure). Safe to delete once we know
+        // what we need to know.
+        qDebug() << "[Zalo WS DIAG] QSslSocket::supportsSsl() =" << QSslSocket::supportsSsl();
+
+        // Previous attempt forced QSsl::AnyProtocol here, on the theory
+        // that BB10's OpenSSL/Qt4 stack defaults to an old protocol pin
+        // and needed to be told to negotiate the highest version both
+        // sides support. That did NOT fix it — every pool host still
+        // fails at the exact same point (error:1407742E ... reason(1070)
+        // = TLS protocol_version alert), confirmed across a fresh full
+        // reconnect cycle through all 7 hosts post-fix.
+        //
+        // Real cause: AnyProtocol on this Qt4/OpenSSL build can still
+        // include legacy SSLv2/SSLv3 in the ClientHello's offered
+        // version range. The Zalo WS hosts appear to hard-reject a
+        // ClientHello that advertises those legacy protocols at all —
+        // a protocol_version alert, not a negotiation failure — even
+        // though they're happy to do TLS 1.x with a clean, TLS-only
+        // offer. This lines up with buildRequest()'s plain QNetworkRequest
+        // path (ZaloService_Network.cpp) succeeding: it never overrides
+        // setProtocol() at all, so it's never offering the legacy
+        // protocols that trip this alert.
+        //
+        // UPDATE: SecureProtocols was tried next and failed identically —
+        // same error, same point, every host. Jim confirms the 9/7 build
+        // (943e974) had working WS with this exact same AnyProtocol
+        // setting unchanged since then, so the client-side protocol
+        // enum was never the actual variable. Reverting to AnyProtocol
+        // (matching the known-working 9/7 state exactly) while the
+        // diagnostic logging above tells us what's really going on —
+        // most likely the server side tightened its accepted TLS range
+        // sometime after 9/7, which no client QSsl::SslProtocol setting
+        // can work around if this OpenSSL build's ceiling really is
+        // below what's now required.
         QSslConfiguration wsSslConf = m_webSocket->sslConfiguration();
         wsSslConf.setProtocol(QSsl::AnyProtocol);
+        // Matching buildRequest()'s HTTPS path (ZaloService_Network.cpp),
+        // which sets this and works. Wasn't present here before (in the
+        // 9/7 build either) — not expected to be the root cause of the
+        // current failure by itself, but closes a real gap vs. the known-
+        // working pattern and costs nothing to include.
+        wsSslConf.setPeerVerifyMode(QSslSocket::VerifyNone);
         m_webSocket->setSslConfiguration(wsSslConf);
+        // Read back what actually got stored, as an int — only depends on
+        // the QSsl::SslProtocol enum type existing (safe), not on any
+        // static QSslSocket introspection function (one of which just
+        // turned out to be stripped from this fork). Cross-reference the
+        // printed int against the QSsl::SslProtocol enum values in
+        // qssl.h to confirm AnyProtocol is really what's active.
+        qDebug() << "[Zalo WS DIAG] wsSslConf.protocol() (int) =" << (int)m_webSocket->sslConfiguration().protocol();
         m_webSocket->connectToHostEncrypted(url.host(), port);
     } else {
         m_webSocket->connectToHost(url.host(), port);

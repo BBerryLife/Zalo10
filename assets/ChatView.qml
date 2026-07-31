@@ -940,21 +940,21 @@ Page {
                         id: rowRoot
                         highlightAppearance: HighlightAppearance.None
                         dividerVisible: false
-                        // CustomListItem (the stock Cascades control, not something this
-                        // project defines) carries its own built-in default padding
-                        // around its content — separate from, and layered on top of,
-                        // the inner Container's own `topPadding: grouped ? 0 : 10`
-                        // logic a bit further down. That inherited padding is constant
-                        // no matter what grouped/bubblePos end up being, which is
-                        // exactly why four different attempts at fixing how rows get
-                        // written into msgModel (remove+insert, snapshot comparison,
-                        // clear+append, forcing a fresh dataModel) never changed
-                        // anything on screen — the diagnostics proved the data and the
-                        // bindings were correct the whole time, but this separate,
-                        // always-on padding was never touched by any of them. Zeroing
-                        // it here lets the inner Container's grouped-based padding be
-                        // the only source of vertical spacing between rows.
-                        topPadding: 0; bottomPadding: 0; leftPadding: 0; rightPadding: 0
+                        // REMOVED: topPadding/bottomPadding/leftPadding/rightPadding
+                        // assignment that used to be here. Device log confirms
+                        // "WARNING: Padding is not supported for this control" fires
+                        // at this exact line on every single layout pass — CustomListItem
+                        // genuinely does not support these properties (same lesson as
+                        // the `background` and ActionItem `visible` mistakes documented
+                        // a few lines below: CustomListItem only exposes
+                        // highlightAppearance, dividerVisible, and its content child).
+                        // The assignment was silently rejected the whole time, so
+                        // whatever gap CustomListItem's own built-in default padding
+                        // was creating was NEVER actually being zeroed by this line —
+                        // it just looked like it should have been. Left removed rather
+                        // than kept as dead/misleading code; any remaining compensation
+                        // needed belongs on rowContentRoot's own real, working
+                        // bottomMargin below (a genuine Container property).
                         // The yellow-background diagnostic (see git history) proved
                         // this: even with dividerVisible:false and topPadding:0 here,
                         // and even with every inner Container's height/y confirmed
@@ -990,7 +990,20 @@ Page {
                         // fixed negative bottomMargin on rowContentRoot below — a
                         // constant offset, not a live binding back into this row's
                         // own measured height, so it can't create the same loop.
-                        preferredHeight: -1
+                        //
+                        // CORRECTION: setting preferredHeight to -1 is NOT the same
+                        // as leaving it unset. Per Cascades docs (Control::
+                        // preferredHeight / isPreferredHeightSet()), a control only
+                        // gets its true auto-size default when preferredHeight has
+                        // never been set at all — once set, even to -1, the parent
+                        // container has an explicit value to honor (and clamps it to
+                        // its allowed minimum rather than treating -1 as "no
+                        // preference"). That's almost certainly why every message
+                        // row's height (112.4 / 106 / 61.4 in the diagnostics) never
+                        // changed across every width-only fix attempted so far — the
+                        // row was never actually auto-sizing to its wrapped text at
+                        // all. Removed the property entirely so rowRoot gets its real
+                        // auto-size default.
                         // (Reverted a diagnostic "background: Color.create(...)" that
                         // was here — CustomListItem has no `background` property, same
                         // class of error documented for ActionItem/visible right below:
@@ -1308,7 +1321,34 @@ Page {
                             // by clamping this row's height). This is a constant, not
                             // a binding back into this row's own measured size, so it
                             // stays correct no matter how tall the content grows.
-                            bottomMargin: rowRoot.kind === "message" ? -4 : 0
+                            //
+                            // ADJUST THIS NUMBER to tune the gap between grouped
+                            // bubbles: more negative = rows pull closer together.
+                            // Try -8, -12, -16, etc. and rebuild to compare on-device.
+                            property int gapCompensation: -12
+                            bottomMargin: rowRoot.kind === "message" ? gapCompensation : 0
+                            attachedObjects: [
+                                LayoutUpdateHandler {
+                                    id: rowContentRootLUH
+                                    // TEMP DIAGNOSTIC — comparing this Container's own
+                                    // real final height (rowContentRoot itself, -4
+                                    // bottomMargin already applied) against rowLUH's
+                                    // inner measurement (the "message" row Container
+                                    // one level down, spacer+bubbleWrap+spacer) tells
+                                    // us the actual gap CustomListItem still reserves
+                                    // beyond what -4 compensates for — visible on
+                                    // device as a highlight band taller than the
+                                    // bubble itself when long-pressed. Safe to delete
+                                    // once that number is known.
+                                    onLayoutFrameChanged: {
+                                        console.log("[Zalo QML] rowContentRoot layoutFrame CHANGED: msgId="
+                                            + String(ListItemData.msgId).slice(-6)
+                                            + " height=" + layoutFrame.height
+                                            + " grouped=" + rowRoot.grouped
+                                            + " bubblePos=" + rowRoot.bubblePos);
+                                    }
+                                }
+                            ]
 
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
@@ -1338,7 +1378,9 @@ Page {
                                         console.log("[Zalo QML] row layoutFrame CHANGED: msgId=" + String(ListItemData.msgId).slice(-6)
                                             + " grouped=" + rowRoot.grouped + " bubblePos=" + rowRoot.bubblePos
                                             + " y=" + layoutFrame.y
+                                            + " width=" + layoutFrame.width
                                             + " height=" + layoutFrame.height
+                                            + " bubbleMaxW=" + rowRoot.bubbleMaxW
                                             + " index=" + ListItem.indexPath[0]);
                                     }
                                 }
@@ -1352,7 +1394,16 @@ Page {
 
                         Container {
                             id: bubbleWrap
-                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                            // Per explicit request: all bubbles in a conversation
+                            // should always render at the same fixed width
+                            // (bubbleMaxW), regardless of how short the text is —
+                            // only height should vary per message. preferredWidth
+                            // forces bubbleWrap to actually BE bubbleMaxW wide every
+                            // time (not just capped at it), so "Hi" renders exactly
+                            // as wide as the longest-message bubble in the same
+                            // conversation. maxWidth kept alongside as a safety
+                            // ceiling (belt-and-suspenders — preferredWidth alone
+                            // should already be sufficient here).
                             preferredWidth: rowRoot.bubbleMaxW
                             maxWidth:       rowRoot.bubbleMaxW
                             // Reverted the nine-patch bubble-PNG rendering
@@ -1564,16 +1615,48 @@ Page {
                                                       || ListItemData.content.indexOf("thumbUrl") >= 0
                                                       || ListItemData.content.indexOf("thumb") >= 0
                                                       || ListItemData.content.indexOf("href") >= 0))
-                                    // Explicit width instead of inheriting one from the
-                                    // spaceQuota-flexed ancestor chain (bubbleWrap etc).
-                                    // Without this, Cascades' first layout pass can measure
-                                    // this Label's wrapped height against a wider width than
-                                    // it's finally rendered at, lock in a too-short height for
-                                    // that pass, and silently clip any wrapped line beyond it —
-                                    // this is the root cause of the "3rd line never shows up"
-                                    // bug. 28 = bubbleWrap's own leftPadding(14)+rightPadding(14).
-                                    preferredWidth: Math.max(0, rowRoot.bubbleMaxW - 28)
-                                    maxWidth:       Math.max(0, rowRoot.bubbleMaxW - 28)
+                                    // Corrected width behavior for this Label across a
+                                    // few rounds of iteration — recording the final
+                                    // reasoning here since it's non-obvious:
+                                    //
+                                    // 1) Originally pinned preferredWidth/maxWidth to
+                                    //    rowRoot.bubbleMaxW - 28 directly. Assumed this
+                                    //    caused clipping because bubbleMaxW read stale/
+                                    //    zero on first layout. Diagnostic logging (added
+                                    //    to onLayoutFrameChanged, see rowLUH above) later
+                                    //    proved this assumption WRONG: bubbleMaxW was
+                                    //    always a real, correctly-computed value (e.g.
+                                    //    320-626 depending on screen width), never 0 or
+                                    //    stale.
+                                    // 2) Removed the pin and added spaceQuota:1 + Fill
+                                    //    instead, assuming that would let the Label size
+                                    //    itself fresh each layout pass. This actually made
+                                    //    things worse: spaceQuota/Fill tells the Label
+                                    //    (and bubbleWrap around it, which was ALSO Fill-
+                                    //    chained) to stretch to fill all available width
+                                    //    up to bubbleMaxW — so short messages like "Hi"
+                                    //    started rendering as wide as bubbleMaxW too,
+                                    //    which is visibly wrong (confirmed via screenshot).
+                                    //
+                                    // Real fix, corrected once more: this Label should
+                                    // NOT be spaceQuota/Fill (that's what over-stretched
+                                    // "Hi" to bubbleMaxW width). But it also can't have
+                                    // NO width constraint at all — with neither Fill nor
+                                    // an explicit width, Cascades had nothing to wrap the
+                                    // long text against, so it rendered as one unwrapped
+                                    // line and got clipped by bubbleWrap's own maxWidth
+                                    // instead of wrapping to multiple lines within it.
+                                    //
+                                    // The correct pattern: maxWidth directly on THIS
+                                    // Label (not preferredWidth, not Fill/spaceQuota).
+                                    // maxWidth caps how wide Cascades will let the Label
+                                    // grow/wrap against, without forcing it to actually
+                                    // BE that wide when the content is shorter — so "Hi"
+                                    // still shrink-wraps to its own natural width, while
+                                    // the long test string now has an actual ceiling to
+                                    // wrap multiple lines within instead of rendering
+                                    // unbounded on one line.
+                                    maxWidth: Math.max(0, rowRoot.bubbleMaxW - 28)
                                     text: {
                                         var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
                                               ? ListItemData.content
@@ -1617,8 +1700,12 @@ Page {
                                     // Only shown when the photo content JSON contains a "caption" key.
                                     Label {
                                         id: photoCaptionLbl
-                                        preferredWidth: Math.max(0, rowRoot.bubbleMaxW - 28)
-                                        maxWidth:       Math.max(0, rowRoot.bubbleMaxW - 28)
+                                        // Same stale-bubbleMaxW trap as the main message
+                                        // Label above — removed the preferredWidth/maxWidth
+                                        // pin. photoBubble (parent) is already
+                                        // HorizontalAlignment.Fill, so this inherits a
+                                        // freshly-measured width on every real layout pass.
+                                        horizontalAlignment: HorizontalAlignment.Fill
                                         visible: {
                                             var c = ListItemData.content || "";
                                             if (c.length === 0 || c.charCodeAt(0) !== 123) return false;
@@ -2765,6 +2852,23 @@ Page {
                 anyLayoutChanged = true;
                 break;
             }
+        }
+        // TEMP DIAGNOSTIC — definitive proof of which branch actually runs
+        // and why, for the specific "gap after grouping change" bug report.
+        // Logs anyLayoutChanged's real value plus every row's prev vs new
+        // grouped/bubblePos side by side, so a fresh capture shows for
+        // certain whether the clear()+append() (heavy) path is actually
+        // being taken when "Hello" transitions bottom->middle, or whether
+        // it's silently falling through to the cheap replace() path
+        // despite a real grouping change. Safe to delete once answered.
+        {
+            var diagLine = "[Zalo QML] anyLayoutChanged=" + anyLayoutChanged;
+            for (var di3 = 0; di3 < size; di3++) {
+                diagLine += " | [" + di3 + "] id=" + String(items[di3].msgId).slice(-6)
+                    + " prevGrp=" + prevGrouped[di3] + " newGrp=" + items[di3].grouped
+                    + " prevPos=" + prevBubblePos[di3] + " newPos=" + items[di3].bubblePos;
+            }
+            console.log(diagLine);
         }
         if (anyLayoutChanged) {
             // clear()+append() alone updates the ArrayDataModel's data, but the
