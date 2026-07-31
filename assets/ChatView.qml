@@ -940,6 +940,23 @@ Page {
                         id: rowRoot
                         highlightAppearance: HighlightAppearance.None
                         dividerVisible: false
+                        // Do NOT set preferredHeight on rowRoot. Any binding here —
+                        // even to a "direct child" LayoutUpdateHandler like
+                        // rowContentRootLUH.layoutFrame.height — is still a
+                        // self-referential clamp: rowContentRoot is INSIDE rowRoot,
+                        // so once Cascades measures some height H for one line of
+                        // text, preferredHeight locks to H, and any later content
+                        // that would need to wrap onto more lines has nowhere to
+                        // grow (still measured against the just-locked H) and gets
+                        // truncated instead of wrapping. This reproduced on-device
+                        // as long messages getting cut off after the first line —
+                        // confirmed and reverted. rowRoot must stay fully auto-sized
+                        // (no preferredHeight set at all, not even -1, see the
+                        // CORRECTION note further down about -1 still counting as
+                        // "set"). The CustomListItem divider/highlight gap this was
+                        // trying to eliminate is instead handled entirely on
+                        // rowContentRoot's own bottomMargin below (a genuine,
+                        // non-self-referential Container property).
                         // REMOVED: topPadding/bottomPadding/leftPadding/rightPadding
                         // assignment that used to be here. Device log confirms
                         // "WARNING: Padding is not supported for this control" fires
@@ -1315,31 +1332,35 @@ Page {
                             id: rowContentRoot
                             horizontalAlignment: HorizontalAlignment.Fill
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            // Fixed offset cancelling CustomListItem's always-on,
-                            // invisible divider gap (see preferredHeight comment on
-                            // rowRoot above for why that gap can no longer be closed
-                            // by clamping this row's height). This is a constant, not
-                            // a binding back into this row's own measured size, so it
-                            // stays correct no matter how tall the content grows.
+                            // Fixed, constant offsets cancelling CustomListItem's
+                            // always-on, invisible divider/highlight gap (see
+                            // rowRoot's comments above for why these must be plain
+                            // constants and NOT a live binding into any measured
+                            // height inside this row — that was tried and caused
+                            // long messages to get clipped instead of wrapping).
                             //
-                            // ADJUST THIS NUMBER to tune the gap between grouped
-                            // bubbles: more negative = rows pull closer together.
-                            // Try -8, -12, -16, etc. and rebuild to compare on-device.
-                            property int gapCompensation: -12
+                            // One constant is NOT enough: device logs show rows at
+                            // bubblePos "bottom" measure a different content height
+                            // (61.4) than "middle" rows (55) even before this margin
+                            // is applied, so a single flat number can only ever be
+                            // exactly right for one bubblePos and drifts for the
+                            // others — this is why the gap only became visible
+                            // starting at the 3rd message: that's exactly where the
+                            // first "middle" row appears. Tuned per bubblePos
+                            // instead. ADJUST THESE NUMBERS if the gap reappears or
+                            // over-corrects for a given position; each is
+                            // independent so fixing one won't disturb the others.
+                            property int gapCompensation:
+                                rowRoot.bubblePos === "middle" ? -6 : -12
                             bottomMargin: rowRoot.kind === "message" ? gapCompensation : 0
                             attachedObjects: [
                                 LayoutUpdateHandler {
                                     id: rowContentRootLUH
-                                    // TEMP DIAGNOSTIC — comparing this Container's own
-                                    // real final height (rowContentRoot itself, -4
-                                    // bottomMargin already applied) against rowLUH's
-                                    // inner measurement (the "message" row Container
-                                    // one level down, spacer+bubbleWrap+spacer) tells
-                                    // us the actual gap CustomListItem still reserves
-                                    // beyond what -4 compensates for — visible on
-                                    // device as a highlight band taller than the
-                                    // bubble itself when long-pressed. Safe to delete
-                                    // once that number is known.
+                                    // Diagnostic only — NOT wired to anything.
+                                    // rowRoot must stay auto-sized (see comments
+                                    // above); this log just helps confirm on-device
+                                    // that rowContentRoot itself is measuring/wrapping
+                                    // text correctly as message length grows.
                                     onLayoutFrameChanged: {
                                         console.log("[Zalo QML] rowContentRoot layoutFrame CHANGED: msgId="
                                             + String(ListItemData.msgId).slice(-6)
@@ -2760,8 +2781,12 @@ Page {
             var prevIsPhoto = prev ? (prev.msgType === 2 || prev.msgType === "2") : false;
             var nextIsPhoto = next ? (next.msgType === 2 || next.msgType === "2") : false;
 
-            // 5-minute grouping window: messages more than 5 min apart from the
-            // same sender start a fresh bubble even with no reply in between.
+            // 5-minute grouping window — REMOVED for text messages per request:
+            // every text message now always stands alone as its own bubble
+            // (bubblePos always "full"), regardless of sender or timing.
+            // Photo grouping is untouched: photos already never merge with
+            // anything via the curIsPhoto/prevIsPhoto/nextIsPhoto checks below,
+            // so this change has no effect on photo bubbles.
             var curId  = cur.msgId  || "";
             var prevId = prev ? (prev.msgId || "") : "";
             var nextId = next ? (next.msgId || "") : "";
@@ -2772,8 +2797,9 @@ Page {
             var curTs  = toMs(cur.ts,               curLocal);
             var prevTs = toMs(prev ? prev.ts : null, prevLocal);
             var nextTs = toMs(next ? next.ts : null, nextLocal);
-            var withinPrev = prev !== null && (Math.abs(curTs - prevTs) < 300000);
-            var withinNext = next !== null && (Math.abs(nextTs - curTs) < 300000);
+            // Always false now — text messages never merge based on timing.
+            var withinPrev = false;
+            var withinNext = false;
 
             var samePrev = !curIsPhoto && !prevIsPhoto && (prev !== null)
                            && (prevMine === curMine) && withinPrev

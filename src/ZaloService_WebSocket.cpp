@@ -25,6 +25,7 @@
 #include <QSslConfiguration>
 #include <QSslSocket>
 #include <QSslError>
+#include <QSslCipher>
 #include <sqlite3.h>
 
 #include <openssl/aes.h>
@@ -183,6 +184,62 @@ void ZaloService::connectWebSocket()
         // current failure by itself, but closes a real gap vs. the known-
         // working pattern and costs nothing to include.
         wsSslConf.setPeerVerifyMode(QSslSocket::VerifyNone);
+
+        // NEXT ATTEMPT (untried until now): both QSsl::AnyProtocol and
+        // QSsl::SecureProtocols already failed identically on every pool
+        // host (error:1407742E ... reason(1070), TLS protocol_version
+        // alert) — see the long comment above. Neither touches the CIPHER
+        // list actually offered in the ClientHello, only the protocol
+        // version range. This build's default cipher list has never been
+        // touched either. Logging it here first, once, before doing
+        // anything else — if it comes back empty or tiny, that's a very
+        // different (and more useful) signal than another silent failure.
+        QList<QSslCipher> availCiphers = QSslSocket::supportedCiphers();
+        QStringList cipherNames;
+        for (int ci = 0; ci < availCiphers.size(); ++ci)
+            cipherNames << availCiphers[ci].name();
+        qDebug() << "[Zalo WS DIAG] QSslSocket::supportedCiphers() count =" << cipherNames.size();
+        qDebug() << "[Zalo WS DIAG] supportedCiphers =" << cipherNames.join(",");
+
+        // Explicitly widen the offered list to include modern AEAD/ECDHE
+        // suites by name, in case this build's DEFAULT cipher list (used by
+        // every attempt so far, including the working HTTPS buildRequest()
+        // path, which never sets setCiphers() either) quietly excludes
+        // suites the Zalo WS hosts require, even though the protocol
+        // version itself is negotiable. If a name isn't recognized by this
+        // OpenSSL build, QSslSocket just ignores it rather than erroring,
+        // so it's safe to list suites we're not 100% sure are compiled in.
+        QList<QSslCipher> wanted;
+        QStringList wantedNames;
+        wantedNames << "ECDHE-RSA-AES128-GCM-SHA256"
+                    << "ECDHE-RSA-AES256-GCM-SHA384"
+                    << "ECDHE-RSA-AES128-SHA256"
+                    << "ECDHE-RSA-AES256-SHA384"
+                    << "ECDHE-RSA-AES128-SHA"
+                    << "ECDHE-RSA-AES256-SHA"
+                    << "AES128-GCM-SHA256"
+                    << "AES256-GCM-SHA384"
+                    << "AES128-SHA256"
+                    << "AES256-SHA256"
+                    << "AES128-SHA"
+                    << "AES256-SHA"
+                    << "DES-CBC3-SHA";
+        for (int wi = 0; wi < wantedNames.size(); ++wi) {
+            for (int ci = 0; ci < availCiphers.size(); ++ci) {
+                if (availCiphers[ci].name() == wantedNames[wi]) {
+                    wanted << availCiphers[ci];
+                    break;
+                }
+            }
+        }
+        qDebug() << "[Zalo WS DIAG] matched" << wanted.size() << "of" << wantedNames.size() << "wanted cipher names against this build's supportedCiphers()";
+        if (!wanted.isEmpty()) {
+            wsSslConf.setCiphers(wanted);
+        }
+        // If wanted ended up empty, wsSslConf keeps whatever default cipher
+        // list it already had — never leave the socket with zero usable
+        // ciphers.
+
         m_webSocket->setSslConfiguration(wsSslConf);
         // Read back what actually got stored, as an int — only depends on
         // the QSsl::SslProtocol enum type existing (safe), not on any
@@ -191,6 +248,7 @@ void ZaloService::connectWebSocket()
         // printed int against the QSsl::SslProtocol enum values in
         // qssl.h to confirm AnyProtocol is really what's active.
         qDebug() << "[Zalo WS DIAG] wsSslConf.protocol() (int) =" << (int)m_webSocket->sslConfiguration().protocol();
+        qDebug() << "[Zalo WS DIAG] wsSslConf.ciphers() count after setCiphers =" << wsSslConf.ciphers().size();
         m_webSocket->connectToHostEncrypted(url.host(), port);
     } else {
         m_webSocket->connectToHost(url.host(), port);
