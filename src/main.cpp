@@ -15,6 +15,9 @@
 #include <unistd.h>
 #include <QSocketNotifier>
 
+#include <openssl/opensslv.h>
+#include <openssl/crypto.h>
+
 using namespace bb::cascades;
 
 // ─── SIGTERM handler (self-pipe trick) ─────────────────────────────────────
@@ -97,6 +100,25 @@ Q_DECL_EXPORT int main(int argc, char **argv)
 {
     qInstallMsgHandler(zalo10MessageHandler);
     installZalo10TermHandler();
+
+    // CHẨN ĐOÁN: log phiên bản OpenSSL THỰC SỰ đang chạy (đọc từ chính thư
+    // viện đã được loader nạp vào process, không phải macro lúc compile).
+    // Dùng để xác nhận: sau khi bundle OpenSSL riêng + chỉnh rpath, log này
+    // phải đổi từ bản OpenSSL cũ mặc định của BB10 NDK sang bản mới mình tự
+    // build. Nếu vẫn thấy bản cũ sau khi bundle -> rpath/đường dẫn thư viện
+    // chưa đúng, loader vẫn đang lấy từ $QNX_TARGET hệ thống chứ không phải
+    // bản bundle trong app. SSLeay_version(SSLEAY_VERSION) trả về chuỗi kiểu
+    // "OpenSSL 1.0.2u  20 Dec 2019" lấy từ chính .so đã nạp.
+    //
+    // Đọc kết quả: TLS 1.2 chỉ được thêm vào OpenSSL từ bản 1.0.1 trở lên.
+    // Nếu dòng log dưới đây in ra OpenSSL 0.9.8x hoặc 1.0.0x — chắc chắn app
+    // KHÔNG THỂ làm TLS 1.2 dù set QSslConfiguration kiểu gì, vì tính năng
+    // đó không tồn tại trong chính binary OpenSSL đang chạy. Nếu là 1.0.1+
+    // thì TLS 1.2 có tồn tại trong lib — lúc đó lỗi handshake phải do
+    // nguyên nhân khác (cipher suite bị OpenSSL bản đó thiếu, v.v.), không
+    // phải "không có TLS 1.2" nữa, cần điều tra tiếp theo hướng khác.
+    qDebug() << "[Zalo] Runtime OpenSSL:" << SSLeay_version(SSLEAY_VERSION)
+             << "| SDK header version:" << OPENSSL_VERSION_TEXT;
 
     Application app(argc, argv);
 

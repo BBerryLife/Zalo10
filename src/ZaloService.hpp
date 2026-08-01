@@ -16,6 +16,9 @@
 #include <QSettings>
 #include <QFile>
 #include <QSslSocket>
+#include <QTcpSocket>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <QStringList>
 #include <QSize>
 #include <sqlite3.h>
@@ -421,7 +424,7 @@ private slots:
     void onKeepAliveTimer();
     void onKeepAliveDone();
 
-    // WebSocket (RFC 6455 over QSslSocket) — real-time messages
+    // WebSocket (RFC 6455, TLS tự dựng bằng OpenSSL) — real-time messages
     void onWsConnected();
     void onWsEncrypted();
     void onWsReadyRead();
@@ -497,21 +500,60 @@ private:
     QTimer *m_wsReconnectTimer;
     QTimer *m_keepAliveTimer; // gọi /keepalive định kỳ để gia hạn session (issue zca-js #keepalive)
 
-    // WebSocket over QSslSocket (RFC 6455) — real-time messages
-    QSslSocket *m_webSocket;
+    // WebSocket (RFC 6455) — real-time messages. Trước đây dùng QSslSocket
+    // trực tiếp, nhưng QSslSocket trên BB10 NDK (bản Qt4 đã được BlackBerry
+    // tự biên dịch sẵn, không phải mã nguồn công khai) hoá ra vẫn luôn fail
+    // TLS handshake với error:1407742E dù set QSsl::AnyProtocol/SecureProtocols
+    // — trong khi chính OpenSSL 1.0.2g link cùng app (xác nhận qua log
+    // "Runtime OpenSSL" ở main.cpp) THỰC SỰ hỗ trợ TLS 1.2. Vậy giới hạn nằm
+    // ở tầng QSslSocket của BlackBerry (rất có thể hardcode SSL_CTX ở mức
+    // TLS 1.0 nội bộ, không lộ ra qua API public), không phải OpenSSL hay
+    // thiết bị. Enum QSsl::SslProtocol của Qt4.8 (đã đối chiếu trực tiếp với
+    // qssl.h thật lấy từ BB10 NDK 10.3.1.995) còn không có TlsV1_1/TlsV1_2 —
+    // không có cách nào yêu cầu tường minh qua QSslSocket public API.
+    //
+    // Fix: dùng QTcpSocket THUẦN (chỉ TCP, không SSL) cho m_webSocket, rồi tự
+    // tay dựng TLS bằng OpenSSL C API thẳng trên file descriptor của nó, ép
+    // TLSv1_2_client_method() — bỏ qua hoàn toàn lớp QSslSocket của
+    // BlackBerry. Xem wsTlsHandshakeStep()/wsWriteRaw()/wsReadAvailable()
+    // trong ZaloService_WebSocket.cpp.
+    QTcpSocket *m_webSocket;
+    SSL_CTX    *m_wsSslCtx;      // 0 khi không dùng SSL (ws:// thường) hoặc chưa init
+    SSL        *m_wsSsl;         // 0 cho tới khi bắt đầu handshake TLS
+    bool        m_wsUseSsl;      // true nếu URL hiện tại là wss://
+    bool        m_wsTlsEstablished; // true sau khi SSL_connect() thành công lần đầu
     QStringList m_wsUrls;       // zpw_ws[] từ login response (dùng m_wsUrls thay m_zpwWsUrls nội bộ)
     int         m_wsUrlIndex;
     // Set khi mất kết nối do lỗi tầng thấp trước khi handshake WS thành công
     // (đặc biệt SSL handshake fail — xem onWsSocketError/onWsSslErrors) —
     // báo cho onWsReconnectTimer biết lần reconnect tới nên thử HOST KHÁC
-    // trong m_wsUrls thay vì cứ quay lại đúng host cũ. Một số host trong
-    // pool zpw_ws (vd ws8-msg, ws12-msg) đã tắt TLS 1.0 phía server, mà
-    // BB10's Qt4/OpenSSL không có TLS 1.1/1.2 (giới hạn platform, không
-    // sửa được bằng QSsl::AnyProtocol — AnyProtocol trên stack này vẫn chỉ
-    // negotiate tối đa TLS 1.0) nên các host đó sẽ luôn handshake fail với
-    // BB10, retry cùng host mãi mãi không bao giờ connect được. Các host
-    // khác trong cùng pool (ws3, ws4...) vẫn chấp nhận TLS 1.0 bình thường.
+    // trong m_wsUrls thay vì cứ quay lại đúng host cũ, đề phòng lỗi thật sự
+    // là do một host cụ thể (mạng chập chờn, host tạm downtime...).
+    //
+    // CORRECTION (1/8): comment cũ ở đây từng khẳng định BB10's Qt4/OpenSSL
+    // không hỗ trợ TLS 1.1/1.2 và một số host trong pool zpw_ws đã tắt TLS
+    // 1.0 nên luôn fail — giả thuyết đó SAI, chưa từng được kiểm chứng thật.
+    // Bằng chứng: tag 1.2.0.0 (25/6), vốn không hề tự set QSslConfiguration
+    // cho WS socket (chỉ gọi connectToHostEncrypted() với cấu hình mặc định
+    // của Qt), vẫn kết nối và nhận tin nhắn bình thường ngay hôm nay, với
+    // đúng server pool này. Nguyên nhân thật sự nằm ở khối code tự dựng lại
+    // QSslConfiguration (setProtocol/setCiphers/setPeerVerifyMode) được
+    // thêm vào sau 1.2.0.0 trong connectWebSocket() — khối đó đã bị xoá,
+    // quay về dùng cấu hình SSL mặc định như 1.2.0.0. Cờ
+    // m_wsAdvanceUrlOnReconnect vẫn giữ lại vì vô hại và hữu ích cho các
+    // lỗi mạng/host thật sự, không liên quan gì đến nguyên nhân gốc ở trên.
     bool        m_wsAdvanceUrlOnReconnect;
+    // Đếm số lần reconnect WS thất bại LIÊN TIẾP (reset về 0 ngay khi upgrade
+    // WS thành công — xem onWsReadyRead). Dùng để tính backoff tăng dần thay
+    // vì retry cố định mỗi 5s vô thời hạn — trước đây cứ 5s lại thử lại,
+    // xoay vòng cả 7 host trong pool zpw_ws liên tục không giới hạn, tạo ra
+    // hàng trăm lần TLS handshake thất bại dồn dập trong thời gian ngắn.
+    // Nếu phía server có cơ chế chống abuse/rate-limit cho riêng cụm host
+    // *-msg (điều này khớp với việc *-wpa (API HTTPS) vẫn hoạt động bình
+    // thường trong khi *-msg luôn từ chối ClientHello), retry storm kiểu đó
+    // chỉ khiến tình trạng bị chặn kéo dài thêm. Backoff tăng dần cho server
+    // "thở" — xem tính toán cụ thể trong onWsDisconnected/onWsReadyRead.
+    int         m_wsConsecutiveFailCount;
     QByteArray  m_wsCipherKey;  // raw AES key bytes (từ WS cmd=1 handshake)
     bool        m_wsConnected;
     bool        m_wsHandshakeSent;
@@ -534,6 +576,11 @@ private:
     // which caller's log output is which (e.g. "cmd501", "cmd601").
     QVariantMap decodeWsEnvelope(const QVariantMap &outer, const QString &debugTag);
     QByteArray maskWsFrame(int opcode, const QByteArray &data); // client→server cần mask
+    int  wsNextReconnectDelayMs(); // tăng m_wsConsecutiveFailCount và trả về backoff (ms), cap 60s
+    bool wsTlsHandshakeStep();     // dựng/tiếp tục TLS handshake bằng OpenSSL thô (thay QSslSocket)
+    void wsPumpTlsOutput();        // rút ciphertext từ wbio, đẩy ra QTcpSocket thật
+    qint64 wsWriteRaw(const QByteArray &data); // SSL_write() hoặc QTcpSocket::write() tuỳ m_wsUseSsl
+    QByteArray wsReadDecrypted();  // rút hết plaintext đã giải mã sẵn có (SSL_read loop)
     void sendWsPing();                                            // cmd=2 subCmd=1 keepalive
     void sendWsRequest(int cmd, int subCmd, const QString &jsonData); // generic WS send
 

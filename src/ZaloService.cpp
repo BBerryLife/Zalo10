@@ -73,6 +73,8 @@ ZaloService::ZaloService(QObject *parent)
       m_qrExpireTimer(new QTimer(this)), m_listenTimer(new QTimer(this)),
       m_wsReconnectTimer(new QTimer(this)), m_keepAliveTimer(new QTimer(this)),
       m_webSocket(0), m_wsUrlIndex(0), m_wsAdvanceUrlOnReconnect(false),
+      m_wsConsecutiveFailCount(0),
+      m_wsSslCtx(0), m_wsSsl(0), m_wsUseSsl(false), m_wsTlsEstablished(false),
       m_wsConnected(false), m_wsHandshakeSent(false),
       m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false),
       m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),

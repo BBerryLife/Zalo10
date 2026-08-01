@@ -22,10 +22,8 @@
 #include <QBuffer>
 #include <QFile>
 #include <QImage>
-#include <QSslConfiguration>
 #include <QSslSocket>
 #include <QSslError>
-#include <QSslCipher>
 #include <sqlite3.h>
 
 #include <openssl/aes.h>
@@ -53,7 +51,7 @@ void ZaloService::sendWsRequest(int cmd, int subCmd, const QString &jsonData)
     payload.append((char)((cmd >> 8) & 0xFF)); // cmd hi
     payload.append((char)(subCmd & 0xFF));     // subCmd
     payload.append(json.toUtf8());
-    m_webSocket->write(maskWsFrame(0x2, payload));
+    wsWriteRaw(maskWsFrame(0x2, payload));
 }
 
 void ZaloService::sendWsPing()
@@ -67,7 +65,7 @@ void ZaloService::sendWsPing()
     payload.append((char)0);    // cmd=2 hi
     payload.append((char)1);    // subCmd=1
     payload.append(json.toUtf8());
-    m_webSocket->write(maskWsFrame(0x2, payload));
+    wsWriteRaw(maskWsFrame(0x2, payload));
 }
 
 void ZaloService::connectWebSocket()
@@ -104,157 +102,254 @@ void ZaloService::connectWebSocket()
 
     qDebug() << "[Zalo WS] Connecting to:" << url.toString().left(80);
 
-    m_webSocket = new QSslSocket(this);
+    m_webSocket = new QTcpSocket(this);
     m_wsBuffer.clear();
-    m_wsHandshakeSent = false;
-    m_wsConnected     = false;
+    m_wsHandshakeSent   = false;
+    m_wsConnected       = false;
     m_wsCipherKey.clear();
+    m_wsSslCtx          = 0;
+    m_wsSsl             = 0;
+    m_wsTlsEstablished  = false;
 
     connect(m_webSocket, SIGNAL(connected()),          this, SLOT(onWsConnected()));
-    connect(m_webSocket, SIGNAL(encrypted()),          this, SLOT(onWsEncrypted()));
     connect(m_webSocket, SIGNAL(readyRead()),          this, SLOT(onWsReadyRead()));
     connect(m_webSocket, SIGNAL(disconnected()),       this, SLOT(onWsDisconnected()));
-    connect(m_webSocket, SIGNAL(sslErrors(QList<QSslError>)),
-            this, SLOT(onWsSslErrors(QList<QSslError>)));
     connect(m_webSocket, SIGNAL(error(QAbstractSocket::SocketError)),
             this, SLOT(onWsSocketError(QAbstractSocket::SocketError)));
 
     bool useSsl = (url.scheme() == "wss" || url.scheme() == "https");
     int  port   = url.port(useSsl ? 443 : 80);
+    m_wsUseSsl  = useSsl;
 
-    if (useSsl) {
-        // DIAGNOSTIC — added to find out for certain what's different
-        // between the 9/7 build (Jim confirms WS worked there) and now.
-        // The protocol setting itself (AnyProtocol) is unchanged since
-        // 9/7; setPeerVerifyMode(VerifyNone) just below is a genuinely
-        // new addition (neither build had it before), added defensively
-        // to match the working HTTPS path, not because it's known to be
-        // the cause.
-        //
-        // sslLibraryVersionString() / sslLibraryBuildVersionString()
-        // don't exist in this BB10 NDK's Qt4 fork (build error: "not a
-        // member of QSslSocket") — apparently stripped from this
-        // particular header, even though they're documented Qt 4.8
-        // static members upstream. Not risking another guess at which
-        // other static methods survived in this stripped fork — keeping
-        // only supportsSsl(), confirmed to compile from the actual
-        // build log, plus reading back protocol() from the
-        // QSslConfiguration itself right after setting it (this only
-        // needs the QSsl::SslProtocol enum type to exist, not any
-        // possibly-stripped static function, so it's safe against the
-        // same class of compile failure). Safe to delete once we know
-        // what we need to know.
-        qDebug() << "[Zalo WS DIAG] QSslSocket::supportsSsl() =" << QSslSocket::supportsSsl();
-
-        // Previous attempt forced QSsl::AnyProtocol here, on the theory
-        // that BB10's OpenSSL/Qt4 stack defaults to an old protocol pin
-        // and needed to be told to negotiate the highest version both
-        // sides support. That did NOT fix it — every pool host still
-        // fails at the exact same point (error:1407742E ... reason(1070)
-        // = TLS protocol_version alert), confirmed across a fresh full
-        // reconnect cycle through all 7 hosts post-fix.
-        //
-        // Real cause: AnyProtocol on this Qt4/OpenSSL build can still
-        // include legacy SSLv2/SSLv3 in the ClientHello's offered
-        // version range. The Zalo WS hosts appear to hard-reject a
-        // ClientHello that advertises those legacy protocols at all —
-        // a protocol_version alert, not a negotiation failure — even
-        // though they're happy to do TLS 1.x with a clean, TLS-only
-        // offer. This lines up with buildRequest()'s plain QNetworkRequest
-        // path (ZaloService_Network.cpp) succeeding: it never overrides
-        // setProtocol() at all, so it's never offering the legacy
-        // protocols that trip this alert.
-        //
-        // UPDATE: SecureProtocols was tried next and failed identically —
-        // same error, same point, every host. Jim confirms the 9/7 build
-        // (943e974) had working WS with this exact same AnyProtocol
-        // setting unchanged since then, so the client-side protocol
-        // enum was never the actual variable. Reverting to AnyProtocol
-        // (matching the known-working 9/7 state exactly) while the
-        // diagnostic logging above tells us what's really going on —
-        // most likely the server side tightened its accepted TLS range
-        // sometime after 9/7, which no client QSsl::SslProtocol setting
-        // can work around if this OpenSSL build's ceiling really is
-        // below what's now required.
-        QSslConfiguration wsSslConf = m_webSocket->sslConfiguration();
-        wsSslConf.setProtocol(QSsl::AnyProtocol);
-        // Matching buildRequest()'s HTTPS path (ZaloService_Network.cpp),
-        // which sets this and works. Wasn't present here before (in the
-        // 9/7 build either) — not expected to be the root cause of the
-        // current failure by itself, but closes a real gap vs. the known-
-        // working pattern and costs nothing to include.
-        wsSslConf.setPeerVerifyMode(QSslSocket::VerifyNone);
-
-        // NEXT ATTEMPT (untried until now): both QSsl::AnyProtocol and
-        // QSsl::SecureProtocols already failed identically on every pool
-        // host (error:1407742E ... reason(1070), TLS protocol_version
-        // alert) — see the long comment above. Neither touches the CIPHER
-        // list actually offered in the ClientHello, only the protocol
-        // version range. This build's default cipher list has never been
-        // touched either. Logging it here first, once, before doing
-        // anything else — if it comes back empty or tiny, that's a very
-        // different (and more useful) signal than another silent failure.
-        QList<QSslCipher> availCiphers = QSslSocket::supportedCiphers();
-        QStringList cipherNames;
-        for (int ci = 0; ci < availCiphers.size(); ++ci)
-            cipherNames << availCiphers[ci].name();
-        qDebug() << "[Zalo WS DIAG] QSslSocket::supportedCiphers() count =" << cipherNames.size();
-        qDebug() << "[Zalo WS DIAG] supportedCiphers =" << cipherNames.join(",");
-
-        // Explicitly widen the offered list to include modern AEAD/ECDHE
-        // suites by name, in case this build's DEFAULT cipher list (used by
-        // every attempt so far, including the working HTTPS buildRequest()
-        // path, which never sets setCiphers() either) quietly excludes
-        // suites the Zalo WS hosts require, even though the protocol
-        // version itself is negotiable. If a name isn't recognized by this
-        // OpenSSL build, QSslSocket just ignores it rather than erroring,
-        // so it's safe to list suites we're not 100% sure are compiled in.
-        QList<QSslCipher> wanted;
-        QStringList wantedNames;
-        wantedNames << "ECDHE-RSA-AES128-GCM-SHA256"
-                    << "ECDHE-RSA-AES256-GCM-SHA384"
-                    << "ECDHE-RSA-AES128-SHA256"
-                    << "ECDHE-RSA-AES256-SHA384"
-                    << "ECDHE-RSA-AES128-SHA"
-                    << "ECDHE-RSA-AES256-SHA"
-                    << "AES128-GCM-SHA256"
-                    << "AES256-GCM-SHA384"
-                    << "AES128-SHA256"
-                    << "AES256-SHA256"
-                    << "AES128-SHA"
-                    << "AES256-SHA"
-                    << "DES-CBC3-SHA";
-        for (int wi = 0; wi < wantedNames.size(); ++wi) {
-            for (int ci = 0; ci < availCiphers.size(); ++ci) {
-                if (availCiphers[ci].name() == wantedNames[wi]) {
-                    wanted << availCiphers[ci];
-                    break;
-                }
-            }
-        }
-        qDebug() << "[Zalo WS DIAG] matched" << wanted.size() << "of" << wantedNames.size() << "wanted cipher names against this build's supportedCiphers()";
-        if (!wanted.isEmpty()) {
-            wsSslConf.setCiphers(wanted);
-        }
-        // If wanted ended up empty, wsSslConf keeps whatever default cipher
-        // list it already had — never leave the socket with zero usable
-        // ciphers.
-
-        m_webSocket->setSslConfiguration(wsSslConf);
-        // Read back what actually got stored, as an int — only depends on
-        // the QSsl::SslProtocol enum type existing (safe), not on any
-        // static QSslSocket introspection function (one of which just
-        // turned out to be stripped from this fork). Cross-reference the
-        // printed int against the QSsl::SslProtocol enum values in
-        // qssl.h to confirm AnyProtocol is really what's active.
-        qDebug() << "[Zalo WS DIAG] wsSslConf.protocol() (int) =" << (int)m_webSocket->sslConfiguration().protocol();
-        qDebug() << "[Zalo WS DIAG] wsSslConf.ciphers() count after setCiphers =" << wsSslConf.ciphers().size();
-        m_webSocket->connectToHostEncrypted(url.host(), port);
-    } else {
-        m_webSocket->connectToHost(url.host(), port);
-    }
+    // QSslSocket của BlackBerry (bản biên dịch sẵn trong BB10 NDK, không phải
+    // mã nguồn Qt4.8 công khai) luôn fail handshake với error:1407742E dù đã
+    // thử QSsl::AnyProtocol/SecureProtocols lẫn cấu hình mặc định — trong khi
+    // OpenSSL 1.0.2g link cùng app THỰC SỰ hỗ trợ TLS 1.2 (xác nhận qua log
+    // "Runtime OpenSSL" ở main.cpp). Giới hạn nằm ở tầng QSslSocket riêng của
+    // BlackBerry, không lộ ra qua QSsl::SslProtocol public API (enum đó còn
+    // không có TlsV1_1/TlsV1_2 — đối chiếu trực tiếp với qssl.h thật lấy từ
+    // NDK 10.3.1.995).
+    //
+    // Fix: kết nối TCP thuần bằng QTcpSocket, rồi tự dựng TLS bằng OpenSSL C
+    // API thẳng trên file descriptor của nó (wsTlsHandshakeStep(), gọi từ
+    // onWsConnected() sau khi TCP xong, và lặp lại từ onWsReadyRead() nếu
+    // handshake chưa xong ở lần gọi đầu do non-blocking WANT_READ/WANT_WRITE).
+    // Bỏ qua hoàn toàn QSslSocket cho riêng kết nối WS này.
+    m_webSocket->connectToHost(url.host(), port);
 
     m_webSocket->setProperty("wsUrl", url.toString());
+}
+
+// ─── Raw OpenSSL TLS layer (thay QSslSocket) ───────────────────────────────
+// Chỉ dùng cho kết nối WS khi m_wsUseSsl == true. Ép thẳng TLS 1.2, bỏ qua
+// hoàn toàn lớp QSslSocket của BlackBerry — xem lý do đầy đủ ở connectWebSocket().
+
+static void zalo10LogOpenSslErrors(const char *context)
+{
+    unsigned long e;
+    char buf[256];
+    bool any = false;
+    while ((e = ERR_get_error()) != 0) {
+        ERR_error_string_n(e, buf, sizeof(buf));
+        qDebug() << "[Zalo WS TLS]" << context << "OpenSSL error:" << buf;
+        any = true;
+    }
+    if (!any)
+        qDebug() << "[Zalo WS TLS]" << context << "(no OpenSSL error queued)";
+}
+
+// Gọi từ onWsConnected() ngay sau khi TCP bắt tay xong, và lặp lại từ
+// onWsReadyRead() nếu SSL_connect() lần trước trả về WANT_READ (chờ thêm dữ
+// liệu từ server rồi thử tiếp). Trả về true nếu handshake ĐÃ XONG (thành công
+// hoặc lỗi hẳn — lỗi hẳn sẽ tự gọi onWsSocketError-kiểu xử lý qua
+// disconnectWebSocket bên trong), false nếu vẫn đang chờ (WANT_READ/WRITE,
+// bình thường, không phải lỗi).
+bool ZaloService::wsTlsHandshakeStep()
+{
+    if (!m_webSocket) return true;
+
+    if (!m_wsSslCtx) {
+        // Khởi tạo SSL_CTX lần đầu — ép thẳng TLS 1.2, không cho OpenSSL tự
+        // "đàm phán xuống" các bản cũ hơn dù server có chấp nhận.
+        const SSL_METHOD *method = TLSv1_2_client_method();
+        if (!method) {
+            qDebug() << "[Zalo WS TLS] TLSv1_2_client_method() null — bản OpenSSL link cùng app quá cũ, không có API này";
+            disconnectWebSocket();
+            m_wsAdvanceUrlOnReconnect = true;
+            if (!m_wsReconnectTimer->isActive())
+                m_wsReconnectTimer->start(wsNextReconnectDelayMs());
+            return true;
+        }
+        m_wsSslCtx = SSL_CTX_new(method);
+        if (!m_wsSslCtx) {
+            zalo10LogOpenSslErrors("SSL_CTX_new failed");
+            disconnectWebSocket();
+            m_wsAdvanceUrlOnReconnect = true;
+            if (!m_wsReconnectTimer->isActive())
+                m_wsReconnectTimer->start(wsNextReconnectDelayMs());
+            return true;
+        }
+        // Không verify chain ở đây (giữ đúng hành vi cũ — QSslSocket trước đây
+        // cũng ignoreSslErrors() vô điều kiện). Có thể siết lại sau khi WS
+        // connect ổn định, nhưng không phải trọng tâm của lần sửa này.
+        SSL_CTX_set_verify(m_wsSslCtx, SSL_VERIFY_NONE, 0);
+
+        m_wsSsl = SSL_new(m_wsSslCtx);
+        if (!m_wsSsl) {
+            zalo10LogOpenSslErrors("SSL_new failed");
+            disconnectWebSocket();
+            m_wsAdvanceUrlOnReconnect = true;
+            if (!m_wsReconnectTimer->isActive())
+                m_wsReconnectTimer->start(wsNextReconnectDelayMs());
+            return true;
+        }
+
+        // SNI — nhiều server (kể cả cụm *-msg.chat.zalo.me, dùng chung hạ
+        // tầng/CDN với *-wpa vốn chạy tốt) từ chối/trả sai chứng chỉ nếu
+        // thiếu SNI. QSslSocket tự làm việc này ngầm; tự set tay ở đây.
+        QString hostStr = QUrl(m_webSocket->property("wsUrl").toString()).host();
+        QByteArray hostBytes = hostStr.toUtf8();
+        SSL_set_tlsext_host_name(m_wsSsl, hostBytes.constData());
+
+        // QUAN TRỌNG: dùng memory-BIO pair, KHÔNG dùng SSL_set_fd() gắn
+        // thẳng vào file descriptor của QTcpSocket. Lý do: QTcpSocket luôn
+        // tự động đọc dữ liệu đến từ fd vào buffer nội bộ của Qt ngay khi có
+        // (đây là cơ chế bắt buộc, không tắt được, độc lập với việc app đã
+        // gọi readAll() hay chưa). Nếu OpenSSL cũng đọc trực tiếp trên cùng
+        // fd đó qua SSL_set_fd(), hai bên tranh nhau đọc cùng 1 nguồn — Qt
+        // luôn hút trước, khiến SSL_read()/SSL_connect() không bao giờ thấy
+        // dữ liệu nữa, kẹt ở WANT_READ vĩnh viễn, im lặng không lỗi (đúng
+        // triệu chứng đã thấy: "Connecting to:" rồi im bặt, tự reconnect sau
+        // ~16-18s do backoff/listenTimer chứ không phải do lỗi socket thật).
+        //
+        // Fix: rbio/wbio là buffer RAM thuần. onWsReadyRead() sẽ tự
+        // readAll() từ QTcpSocket (như ws:// thường) rồi BIO_write() ciphertext
+        // đó vào rbio cho OpenSSL đọc. Sau mỗi lần gọi SSL_connect()/SSL_read()/
+        // SSL_write(), wsPumpTlsOutput() rút hết ciphertext OpenSSL đã ghi vào
+        // wbio rồi đẩy ra ngoài qua QTcpSocket::write() thật. Chỉ QTcpSocket
+        // đụng vào fd thật — không còn xung đột.
+        BIO *rbio = BIO_new(BIO_s_mem());
+        BIO *wbio = BIO_new(BIO_s_mem());
+        if (!rbio || !wbio) {
+            if (rbio) BIO_free(rbio);
+            if (wbio) BIO_free(wbio);
+            zalo10LogOpenSslErrors("BIO_new failed");
+            disconnectWebSocket();
+            m_wsAdvanceUrlOnReconnect = true;
+            if (!m_wsReconnectTimer->isActive())
+                m_wsReconnectTimer->start(wsNextReconnectDelayMs());
+            return true;
+        }
+        // Mặc định, đọc hết 1 memory BIO rỗng sẽ báo "EOF" (0) — OpenSSL sẽ
+        // hiểu nhầm thành server đóng kết nối sạch thay vì "chưa có gì, thử
+        // lại sau". set_mem_eof_return(-1) khiến đọc rỗng trả về "would
+        // block" (khớp semantics WANT_READ), đúng ý muốn cho non-blocking.
+        BIO_set_mem_eof_return(rbio, -1);
+        BIO_set_mem_eof_return(wbio, -1);
+        SSL_set_bio(m_wsSsl, rbio, wbio); // từ đây SSL_free(m_wsSsl) sẽ tự free luôn rbio+wbio
+        SSL_set_connect_state(m_wsSsl);
+    }
+
+    int ret = SSL_connect(m_wsSsl);
+    // Bất kể ret là gì, SSL_connect() có thể đã ghi ciphertext (ClientHello,
+    // hoặc phần tiếp theo của handshake) vào wbio — luôn rút ra và đẩy thật
+    // ra mạng qua QTcpSocket trước khi xử lý tiếp.
+    wsPumpTlsOutput();
+
+    if (ret == 1) {
+        qDebug() << "[Zalo WS TLS] TLS handshake OK, phiên bản:" << SSL_get_version(m_wsSsl)
+                  << "cipher:" << SSL_get_cipher(m_wsSsl);
+        m_wsTlsEstablished = true;
+        onWsEncrypted(); // gửi HTTP Upgrade — giữ nguyên logic cũ
+        return true;
+    }
+
+    int sslErr = SSL_get_error(m_wsSsl, ret);
+    if (sslErr == SSL_ERROR_WANT_READ || sslErr == SSL_ERROR_WANT_WRITE) {
+        // Với memory BIO, WANT_WRITE gần như không thể xảy ra (wbio là RAM,
+        // không "đầy" theo nghĩa kernel send buffer) — trên thực tế hầu như
+        // luôn là WANT_READ: OpenSSL đã ghi xong ClientHello vào wbio (đã
+        // pump ở trên), giờ đang chờ ServerHello/cert từ server. Chờ
+        // onWsReadyRead() lần sau (đọc được thêm ciphertext, BIO_write vào
+        // rbio) rồi gọi lại wsTlsHandshakeStep() tiếp tục đúng chỗ dở dang.
+        return false;
+    }
+
+    // Lỗi thật — hết đường, coi như host này fail ở tầng TLS (giống hệt cách
+    // xử lý QSslSocket lỗi trước đây).
+    qDebug() << "[Zalo WS TLS] SSL_connect failed, SSL_get_error=" << sslErr;
+    zalo10LogOpenSslErrors("SSL_connect");
+    m_wsAdvanceUrlOnReconnect = true;
+    disconnectWebSocket();
+    if (!m_wsReconnectTimer->isActive())
+        m_wsReconnectTimer->start(wsNextReconnectDelayMs());
+    return true;
+}
+
+// Rút hết ciphertext OpenSSL đã ghi vào wbio (do SSL_connect/SSL_write/
+// SSL_read sinh ra — record TLS, ClientHello, Finished, v.v.) rồi đẩy ra
+// mạng thật qua QTcpSocket::write(). Gọi sau MỌI lần gọi hàm SSL_* có khả
+// năng sinh ra dữ liệu cần gửi đi.
+void ZaloService::wsPumpTlsOutput()
+{
+    if (!m_wsSsl || !m_webSocket) return;
+    BIO *wbio = SSL_get_wbio(m_wsSsl);
+    if (!wbio) return;
+    char buf[4096];
+    int n;
+    while ((n = BIO_read(wbio, buf, sizeof(buf))) > 0) {
+        m_webSocket->write(buf, n);
+    }
+}
+
+// Dùng thay cho mọi m_webSocket->write(...) trước đây — tự chọn SSL_write()
+// (qua memory BIO, xem wsTlsHandshakeStep()) hay QTcpSocket::write() thuần
+// tuỳ m_wsUseSsl. Với memory BIO, SSL_write() gần như không bao giờ trả
+// WANT_READ/WANT_WRITE (không bị giới hạn bởi kernel send buffer như fd
+// thật), nên không cần vòng lặp chờ phức tạp như bản dùng SSL_set_fd() cũ.
+qint64 ZaloService::wsWriteRaw(const QByteArray &data)
+{
+    if (!m_webSocket) return -1;
+    if (!m_wsUseSsl || !m_wsSsl || !m_wsTlsEstablished)
+        return m_webSocket->write(data);
+
+    int n = SSL_write(m_wsSsl, data.constData(), data.size());
+    wsPumpTlsOutput(); // đẩy ciphertext vừa sinh ra ra mạng thật
+    if (n <= 0) {
+        int sslErr = SSL_get_error(m_wsSsl, n);
+        qDebug() << "[Zalo WS TLS] SSL_write failed, SSL_get_error=" << sslErr;
+        zalo10LogOpenSslErrors("SSL_write");
+        return -1;
+    }
+    return n;
+}
+
+// Rút hết dữ liệu plaintext đang có sẵn từ SSL_read() (đã giải mã, đọc từ
+// rbio — xem onWsReadyRead() chỗ BIO_write() bơm ciphertext vào rbio trước
+// khi gọi hàm này) — gọi từ onWsReadyRead() khi TLS đã established, thay vì
+// m_webSocket->readAll().
+QByteArray ZaloService::wsReadDecrypted()
+{
+    QByteArray out;
+    if (!m_wsSsl) return out;
+    char buf[4096];
+    while (true) {
+        int n = SSL_read(m_wsSsl, buf, sizeof(buf));
+        if (n > 0) {
+            out.append(buf, n);
+            continue;
+        }
+        int sslErr = SSL_get_error(m_wsSsl, n);
+        if (sslErr == SSL_ERROR_WANT_READ || sslErr == SSL_ERROR_WANT_WRITE)
+            break; // hết dữ liệu sẵn có lúc này, bình thường
+        if (sslErr == SSL_ERROR_ZERO_RETURN)
+            break; // server đóng TLS session sạch — onWsDisconnected() lo phần còn lại
+        // Lỗi khác — log rồi thoát vòng lặp, để dữ liệu đã đọc được (nếu có)
+        // vẫn được xử lý bình thường.
+        zalo10LogOpenSslErrors("SSL_read");
+        break;
+    }
+    return out;
 }
 
 // Đóng WS "sạch" (gửi đúng Close frame chuẩn, opcode 0x8) trước khi process bị
@@ -281,13 +376,25 @@ void ZaloService::closeWebSocketGracefully()
     }
 
     qDebug() << "[Zalo WS] Sending graceful Close frame before exit";
-    m_webSocket->write(maskWsFrame(0x8, QByteArray()));
+    wsWriteRaw(maskWsFrame(0x8, QByteArray()));
     m_webSocket->flush();
     m_webSocket->waitForBytesWritten(300); // blocking — không còn event loop để chờ async
 }
 
 void ZaloService::disconnectWebSocket()
 {
+    // Dọn SSL trước khi đụng vào socket bên dưới — SSL_free không tự đóng fd
+    // (fd do QTcpSocket sở hữu), chỉ giải phóng state TLS nội bộ của OpenSSL.
+    if (m_wsSsl) {
+        SSL_free(m_wsSsl); // chỉ free SSL*, KHÔNG free SSL_CTX (free riêng dưới đây)
+        m_wsSsl = 0;
+    }
+    if (m_wsSslCtx) {
+        SSL_CTX_free(m_wsSslCtx);
+        m_wsSslCtx = 0;
+    }
+    m_wsTlsEstablished = false;
+
     if (m_webSocket) {
         m_webSocket->disconnect();
         m_webSocket->abort();
@@ -302,15 +409,28 @@ void ZaloService::disconnectWebSocket()
 
 void ZaloService::onWsConnected()
 {
-    // Plain TCP connected (non-SSL) — gửi HTTP Upgrade ngay
+    // TCP bắt tay xong. Với ws:// thường, gửi HTTP Upgrade luôn. Với wss://,
+    // KHÔNG còn dựa vào QSslSocket::encrypted() signal nữa (đã bỏ QSslSocket
+    // hoàn toàn cho kết nối WS — xem lý do đầy đủ ở connectWebSocket()) — tự
+    // bắt đầu handshake TLS bằng tay qua wsTlsHandshakeStep(). Nếu handshake
+    // chưa xong ngay lần gọi đầu (WANT_READ, rất thường gặp — cần đợi
+    // ServerHello từ server), wsTlsHandshakeStep() sẽ được gọi lại tiếp từ
+    // onWsReadyRead() mỗi khi có thêm dữ liệu, cho tới khi xong hẳn.
     if (!m_webSocket) return;
+    if (m_wsUseSsl) {
+        wsTlsHandshakeStep();
+        return;
+    }
     QString urlStr = m_webSocket->property("wsUrl").toString();
     sendWsHandshake(QUrl(urlStr));
 }
 
 void ZaloService::onWsEncrypted()
 {
-    // TLS handshake xong — gửi HTTP Upgrade
+    // Không còn là Qt slot (QTcpSocket không có signal encrypted()) — gọi
+    // trực tiếp từ wsTlsHandshakeStep() ngay khi SSL_connect() trả về 1
+    // (handshake TLS xong). Giữ nguyên tên + logic cũ để đỡ phải sửa chỗ
+    // khác: gửi HTTP Upgrade ngay khi kênh đã mã hoá.
     if (!m_webSocket) return;
     QString urlStr = m_webSocket->property("wsUrl").toString();
     sendWsHandshake(QUrl(urlStr));
@@ -348,17 +468,17 @@ void ZaloService::sendWsHandshake(const QUrl &url)
         "Accept-Language: en-US,en;q=0.9\r\n"
         "\r\n";
 
-    m_webSocket->write(handshake.toUtf8());
+    wsWriteRaw(handshake.toUtf8());
     qDebug() << "[Zalo WS] HTTP Upgrade sent to" << url.host() << path.left(60);
 }
 
+// Không còn được gọi (QTcpSocket không có signal sslErrors — TLS giờ tự
+// dựng bằng OpenSSL thô, lỗi TLS được xử lý ngay trong wsTlsHandshakeStep()
+// qua zalo10LogOpenSslErrors()). Giữ lại hàm rỗng thay vì xoá khỏi header để
+// không phải sửa thêm chỗ khác lỡ có nơi nào còn tham chiếu.
 void ZaloService::onWsSslErrors(const QList<QSslError> &errors)
 {
-    for (int i = 0; i < errors.size(); ++i)
-        qDebug() << "[Zalo WS] SSL error:" << errors[i].errorString();
-    // Vẫn ignore để không chặn kết nối (self-signed / chain issues thường gặp
-    // trên BB10), nhưng giờ có log để biết CHÍNH XÁC lỗi gì trước khi ignore.
-    m_webSocket->ignoreSslErrors();
+    Q_UNUSED(errors);
 }
 
 void ZaloService::onWsSocketError(QAbstractSocket::SocketError err)
@@ -380,7 +500,31 @@ void ZaloService::onWsSocketError(QAbstractSocket::SocketError err)
 void ZaloService::onWsReadyRead()
 {
     if (!m_webSocket) return;
-    m_wsBuffer += m_webSocket->readAll();
+
+    // QUAN TRỌNG: luôn readAll() từ QTcpSocket THẬT trước (đây là nơi DUY
+    // NHẤT đọc dữ liệu từ mạng — xem lý do ở wsTlsHandshakeStep(), phần nói
+    // về xung đột với SSL_set_fd() cũ). Với wss://, đây vẫn là ciphertext
+    // thô — bơm vào rbio cho OpenSSL tự giải mã, KHÔNG đưa thẳng vào
+    // m_wsBuffer (m_wsBuffer chỉ chứa dữ liệu WS/HTTP đã giải mã xong).
+    QByteArray raw = m_webSocket->readAll();
+    if (m_wsUseSsl && m_wsSsl && !raw.isEmpty()) {
+        BIO *rbio = SSL_get_rbio(m_wsSsl);
+        if (rbio) BIO_write(rbio, raw.constData(), raw.size());
+    }
+
+    if (m_wsUseSsl && !m_wsTlsEstablished) {
+        // Còn đang dở handshake TLS (lần gọi trước WANT_READ) — ciphertext
+        // vừa bơm vào rbio ở trên chính là phần tiếp theo của
+        // ServerHello/cert/... OpenSSL cần. Tiếp tục handshake ngay tại
+        // đây; KHÔNG đụng vào m_wsBuffer — chưa có gì để parse ở tầng
+        // WS/HTTP cả lúc này. wsTlsHandshakeStep() tự lo việc gọi
+        // onWsEncrypted() khi xong.
+        wsTlsHandshakeStep();
+        return;
+    }
+
+    m_wsBuffer += m_wsUseSsl ? wsReadDecrypted() : raw;
+    if (m_wsUseSsl) wsPumpTlsOutput();
 
     if (!m_wsConnected) {
         // Đang chờ HTTP 101 Switching Protocols
@@ -388,6 +532,7 @@ void ZaloService::onWsReadyRead()
         if (parseWsHandshakeResponse(m_wsBuffer, headerEnd)) {
             qDebug() << "[Zalo WS] Upgraded OK, WebSocket connected";
             m_wsConnected = true;
+            m_wsConsecutiveFailCount = 0; // reset backoff — kết nối thật sự đã thành công
             m_wsBuffer    = m_wsBuffer.mid(headerEnd);
             // Server sẽ tự gửi cmd=1 handshake ngay sau khi connect
         } else if (m_wsBuffer.contains("\r\n\r\n")) {
@@ -395,7 +540,7 @@ void ZaloService::onWsReadyRead()
             qDebug() << "[Zalo WS] Upgrade failed:" << m_wsBuffer.left(200);
             disconnectWebSocket();
             if (!m_wsReconnectTimer->isActive())
-                m_wsReconnectTimer->start(5000);
+                m_wsReconnectTimer->start(wsNextReconnectDelayMs());
             return;
         } else {
             return; // Chưa nhận đủ header
@@ -457,7 +602,7 @@ void ZaloService::handleWsFrame(int opcode, const QByteArray &payload)
     }
     if (opcode == 0x9) { // Ping → Pong
         QByteArray pong = maskWsFrame(0xA, payload);
-        m_webSocket->write(pong);
+        wsWriteRaw(pong);
         return;
     }
     if (opcode != 0x2 && opcode != 0x1) return; // Chỉ xử lý binary/text
@@ -1541,12 +1686,26 @@ void ZaloService::onWsDisconnected()
     m_wsCipherKey.clear();
     if (!m_loggedIn) return;
     if (!m_wsReconnectTimer->isActive())
-        m_wsReconnectTimer->start(5000);
+        m_wsReconnectTimer->start(wsNextReconnectDelayMs());
 }
 
 void ZaloService::onWsReconnectTimer()
 {
     qDebug() << "[Zalo WS] Reconnecting...";
     connectWebSocket();
+}
+
+// Backoff tăng dần: 5s, 10s, 20s, 40s, cap ở 60s. Mỗi lần gọi tăng
+// m_wsConsecutiveFailCount thêm 1 — bộ đếm này được reset về 0 ngay khi WS
+// upgrade thành công thật sự (xem onWsReadyRead), nên nó phản ánh đúng số
+// lần thất bại LIÊN TIẾP kể từ lần connect thành công gần nhất, không phải
+// tổng số lần thử từ đầu phiên.
+int ZaloService::wsNextReconnectDelayMs()
+{
+    int n = m_wsConsecutiveFailCount;
+    if (n > 3) n = 3; // cap luỹ thừa ở 2^3 = 8x base
+    int delay = 5000 << n; // 5000,10000,20000,40000
+    m_wsConsecutiveFailCount++;
+    return delay;
 }
 

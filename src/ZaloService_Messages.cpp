@@ -1777,8 +1777,12 @@ void ZaloService::onListenTimer()
                      << "lastId=" << m_lastPollMsgId;
         }
     } else {
+        // Dùng chung backoff tăng dần với onWsDisconnected/upgrade-failed
+        // (trước đây hard-code 2000ms ở đây, ngắn hơn cả backoff 5s ở nơi
+        // khác — vô tình phá backoff, khiến WS vẫn bị nện lại mỗi ~2-8s dù
+        // các nơi khác đã cố giãn ra dần).
         if (!m_wsReconnectTimer->isActive())
-            m_wsReconnectTimer->start(2000);
+            m_wsReconnectTimer->start(wsNextReconnectDelayMs());
     }
     if (!m_activeThreadIsGroup || m_activeThreadId.isEmpty()) return;
     QVariantMap params;
