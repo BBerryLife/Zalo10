@@ -148,9 +148,19 @@ public:
     // work with elsewhere (href/thumb/params etc.) — forwarding a photo
     // needs no re-upload, same as Zalo's own client, since the server
     // resolves the already-uploaded CDN URLs embedded in that JSON.
-    // threadIds must all be the same isGroup type. Result via
+    // threadIds must all be the same isGroup type.
+    //
+    // origMsgId/origTs are the SOURCE message's own msgId/ts (NOT this
+    // client's freshly-generated clientId) — required to build
+    // ForwardMessagePayload.reference per zca-js's forwardMessage.ts.
+    // Without it, the server has no way to distinguish "forwarded" from
+    // "freshly typed/pasted with the same text" — the message posts fine
+    // either way, but arrives on the receiving end as an ordinary message
+    // instead of one carrying Zalo's own "Forwarded message" provenance
+    // marker (mirrored locally too — see appendForwardedRow()). Result via
     // forwardMessageDone.
-    Q_INVOKABLE void forwardMessage(const QString &content, const QStringList &threadIds, bool isGroup);
+    Q_INVOKABLE void forwardMessage(const QString &content, const QStringList &threadIds, bool isGroup,
+                                     const QString &origMsgId, const QString &origTs);
     // Delete a message. Ported from zca-js's deleteMessage.ts:
     //   - onlyMe=true:  "delete for me" — always allowed, any thread.
     //   - onlyMe=false: "delete for everyone" — only allowed in groups; for a

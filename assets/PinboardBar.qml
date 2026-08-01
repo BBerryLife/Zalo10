@@ -6,8 +6,8 @@ import QtQuick 1.0
 // reference screenshots from the real Zalo app pixel-for-pixel in spirit:
 //
 //   collapsed (default): one row — the single most-recently-pinned item's
-//   type icon + label + preview text, plus a "+N pin" button and a "..."
-//   overflow button on the right. Tapping either expands the bar.
+//   type icon + label + preview text, plus a "+N" button that expands the
+//   bar (tapping the row itself also expands it / jumps to that item).
 //
 //   expanded: a "Pinboard (N)" header with a "Collapse" link, followed by
 //   up to 3 full rows (Zalo itself never shows more than 3 pinned items at
@@ -28,8 +28,9 @@ import QtQuick 1.0
 // data actually available.
 //
 // Read-only by design for the same reason: no "unpin" call exists to wire
-// the "..." button's obvious action to, so it currently only offers
-// navigation (jump to message / view poll / view note), not mutation.
+// a mutation action to, so it currently only offers navigation (jump to
+// message / view poll / view note), not mutation. The full Group Board
+// sheet (opened separately) remains where pin/unpin actually happens.
 Container {
     id: pinboardBar
 
@@ -84,22 +85,32 @@ Container {
         visible: !pinboardBar.expanded
         horizontalAlignment: HorizontalAlignment.Fill
         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-        topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
-        leftPadding: ui.du(1.5); rightPadding: ui.du(1.0)
+        topPadding: ui.du(0.15); bottomPadding: ui.du(0.15)
+        leftPadding: ui.du(0.9); rightPadding: ui.du(0.5)
 
         gestureHandlers: [
             TapHandler {
                 onTapped: {
                     var it = pinboardBar.itemAt(0);
-                    if (it) pinboardBar.itemTapped(it.boardType || "", it.id || "", it.title || "", it.creatorId || "");
+                    if (it) {
+                    // Pins pass their underlying chat message's msgId
+                    // (needed for ChatView.jumpToMessage() to find the
+                    // right row in msgModel) — notes/polls pass their own
+                    // board-item id instead, which is what GroupBoardSheet
+                    // filters/opens by. Falls back to it.id if msgId
+                    // wasn't populated (older cached items, etc.) rather
+                    // than emitting an empty id that could never match.
+                    var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
+                    pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
+                }
                 }
             }
         ]
 
         ImageView {
-            verticalAlignment: VerticalAlignment.Top
-            topMargin: ui.du(0.3); rightMargin: ui.du(1.0)
-            preferredWidth: ui.du(3); preferredHeight: ui.du(3)
+            verticalAlignment: VerticalAlignment.Center
+            rightMargin: ui.du(0.6)
+            preferredWidth: ui.du(1.9); preferredHeight: ui.du(1.9)
             imageSource: pinboardBar.topItems.length > 0 ? pinboardBar.typeIcon(pinboardBar.itemAt(0).boardType) : ""
         }
 
@@ -107,10 +118,11 @@ Container {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
             verticalAlignment: VerticalAlignment.Center
+            rightMargin: ui.du(0.8)
 
             Label {
                 text: pinboardBar.topItems.length > 0 ? pinboardBar.typeLabel(pinboardBar.itemAt(0).boardType) : ""
-                textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Small; color: pinboardBar.isDark ? Color.White : Color.Black }
+                textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.XSmall; color: pinboardBar.isDark ? Color.White : Color.Black }
             }
             Label {
                 text: pinboardBar.topItems.length > 0 ? pinboardBar.previewText(pinboardBar.itemAt(0)) : ""
@@ -122,15 +134,10 @@ Container {
         Button {
             visible: pinboardBar.topItems.length > 1
             verticalAlignment: VerticalAlignment.Center
-            text: "+" + (pinboardBar.topItems.length - 1) + " pin"
-            rightMargin: ui.du(0.5)
+            text: "+" + (pinboardBar.topItems.length - 1)
+            preferredWidth: ui.du(5.0); preferredHeight: ui.du(2.6)
+            rightMargin: ui.du(1.0)
             onClicked: { pinboardBar.expanded = true; }
-        }
-        ImageButton {
-            verticalAlignment: VerticalAlignment.Center
-            preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-            defaultImageSource: "asset:///images/ChatView/ic_select_more.png"
-            onClicked: { pinboardBar.moreRequested(); }
         }
     }
 
@@ -145,19 +152,19 @@ Container {
             horizontalAlignment: HorizontalAlignment.Fill
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
             background: pinboardBar.isDark ? Color.create("#2a2a2a") : Color.create("#f2f2f2")
-            topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
-            leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
+            topPadding: ui.du(0.2); bottomPadding: ui.du(0.2)
+            leftPadding: ui.du(0.9); rightPadding: ui.du(0.9)
 
             Label {
                 text: "Pinboard (" + pinboardBar.topItems.length + ")"
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
-                textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Small; color: pinboardBar.isDark ? Color.White : Color.Black }
+                textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.XSmall; color: pinboardBar.isDark ? Color.White : Color.Black }
             }
             Label {
                 text: "Collapse"
                 verticalAlignment: VerticalAlignment.Center
-                textStyle { color: Color.create("#2575fc"); fontSize: FontSize.Small }
+                textStyle { color: Color.create("#2575fc"); fontSize: FontSize.XSmall }
                 gestureHandlers: [ TapHandler { onTapped: { pinboardBar.expanded = false; } } ]
             }
         }
@@ -170,35 +177,41 @@ Container {
             visible: pinboardBar.topItems.length > 0
             horizontalAlignment: HorizontalAlignment.Fill
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-            topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
-            leftPadding: ui.du(1.5); rightPadding: ui.du(1.0)
+            topPadding: ui.du(0.12); bottomPadding: ui.du(0.12)
+            leftPadding: ui.du(0.9); rightPadding: ui.du(0.6)
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(0);
-                if (it) pinboardBar.itemTapped(it.boardType || "", it.id || "", it.title || "", it.creatorId || "");
+                if (it) {
+                    // Pins pass their underlying chat message's msgId
+                    // (needed for ChatView.jumpToMessage() to find the
+                    // right row in msgModel) — notes/polls pass their own
+                    // board-item id instead, which is what GroupBoardSheet
+                    // filters/opens by. Falls back to it.id if msgId
+                    // wasn't populated (older cached items, etc.) rather
+                    // than emitting an empty id that could never match.
+                    var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
+                    pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
+                }
             } } ]
             ImageView {
-                verticalAlignment: VerticalAlignment.Top
-                topMargin: ui.du(0.2); rightMargin: ui.du(1.0)
-                preferredWidth: ui.du(3); preferredHeight: ui.du(3)
+                verticalAlignment: VerticalAlignment.Center
+                rightMargin: ui.du(0.5)
+                preferredWidth: ui.du(1.6); preferredHeight: ui.du(1.6)
                 imageSource: pinboardBar.topItems.length > 0 ? pinboardBar.typeIcon(pinboardBar.itemAt(0).boardType) : ""
             }
             Container {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+                verticalAlignment: VerticalAlignment.Center
                 Label {
                     text: pinboardBar.topItems.length > 0 ? pinboardBar.typeLabel(pinboardBar.itemAt(0).boardType) : ""
-                    textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Small; color: pinboardBar.isDark ? Color.White : Color.Black }
+                    textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.XSmall; color: pinboardBar.isDark ? Color.White : Color.Black }
                 }
                 Label {
                     text: pinboardBar.topItems.length > 0 ? pinboardBar.previewText(pinboardBar.itemAt(0)) : ""
                     textStyle { fontSize: FontSize.XSmall; color: Color.Gray }
                     multiline: false
                 }
-            }
-            Label {
-                text: "\u22EF"
-                verticalAlignment: VerticalAlignment.Center
-                textStyle { color: Color.Gray; fontSize: FontSize.Large }
             }
         }
         Divider { visible: pinboardBar.topItems.length > 1 }
@@ -207,35 +220,41 @@ Container {
             visible: pinboardBar.topItems.length > 1
             horizontalAlignment: HorizontalAlignment.Fill
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-            topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
-            leftPadding: ui.du(1.5); rightPadding: ui.du(1.0)
+            topPadding: ui.du(0.12); bottomPadding: ui.du(0.12)
+            leftPadding: ui.du(0.9); rightPadding: ui.du(0.6)
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(1);
-                if (it) pinboardBar.itemTapped(it.boardType || "", it.id || "", it.title || "", it.creatorId || "");
+                if (it) {
+                    // Pins pass their underlying chat message's msgId
+                    // (needed for ChatView.jumpToMessage() to find the
+                    // right row in msgModel) — notes/polls pass their own
+                    // board-item id instead, which is what GroupBoardSheet
+                    // filters/opens by. Falls back to it.id if msgId
+                    // wasn't populated (older cached items, etc.) rather
+                    // than emitting an empty id that could never match.
+                    var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
+                    pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
+                }
             } } ]
             ImageView {
-                verticalAlignment: VerticalAlignment.Top
-                topMargin: ui.du(0.2); rightMargin: ui.du(1.0)
-                preferredWidth: ui.du(3); preferredHeight: ui.du(3)
+                verticalAlignment: VerticalAlignment.Center
+                rightMargin: ui.du(0.5)
+                preferredWidth: ui.du(1.6); preferredHeight: ui.du(1.6)
                 imageSource: pinboardBar.topItems.length > 1 ? pinboardBar.typeIcon(pinboardBar.itemAt(1).boardType) : ""
             }
             Container {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+                verticalAlignment: VerticalAlignment.Center
                 Label {
                     text: pinboardBar.topItems.length > 1 ? pinboardBar.typeLabel(pinboardBar.itemAt(1).boardType) : ""
-                    textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Small; color: pinboardBar.isDark ? Color.White : Color.Black }
+                    textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.XSmall; color: pinboardBar.isDark ? Color.White : Color.Black }
                 }
                 Label {
                     text: pinboardBar.topItems.length > 1 ? pinboardBar.previewText(pinboardBar.itemAt(1)) : ""
                     textStyle { fontSize: FontSize.XSmall; color: Color.Gray }
                     multiline: false
                 }
-            }
-            Label {
-                text: "\u22EF"
-                verticalAlignment: VerticalAlignment.Center
-                textStyle { color: Color.Gray; fontSize: FontSize.Large }
             }
         }
         Divider { visible: pinboardBar.topItems.length > 2 }
@@ -244,35 +263,41 @@ Container {
             visible: pinboardBar.topItems.length > 2
             horizontalAlignment: HorizontalAlignment.Fill
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-            topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
-            leftPadding: ui.du(1.5); rightPadding: ui.du(1.0)
+            topPadding: ui.du(0.12); bottomPadding: ui.du(0.12)
+            leftPadding: ui.du(0.9); rightPadding: ui.du(0.6)
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(2);
-                if (it) pinboardBar.itemTapped(it.boardType || "", it.id || "", it.title || "", it.creatorId || "");
+                if (it) {
+                    // Pins pass their underlying chat message's msgId
+                    // (needed for ChatView.jumpToMessage() to find the
+                    // right row in msgModel) — notes/polls pass their own
+                    // board-item id instead, which is what GroupBoardSheet
+                    // filters/opens by. Falls back to it.id if msgId
+                    // wasn't populated (older cached items, etc.) rather
+                    // than emitting an empty id that could never match.
+                    var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
+                    pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
+                }
             } } ]
             ImageView {
-                verticalAlignment: VerticalAlignment.Top
-                topMargin: ui.du(0.2); rightMargin: ui.du(1.0)
-                preferredWidth: ui.du(3); preferredHeight: ui.du(3)
+                verticalAlignment: VerticalAlignment.Center
+                rightMargin: ui.du(0.5)
+                preferredWidth: ui.du(1.6); preferredHeight: ui.du(1.6)
                 imageSource: pinboardBar.topItems.length > 2 ? pinboardBar.typeIcon(pinboardBar.itemAt(2).boardType) : ""
             }
             Container {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+                verticalAlignment: VerticalAlignment.Center
                 Label {
                     text: pinboardBar.topItems.length > 2 ? pinboardBar.typeLabel(pinboardBar.itemAt(2).boardType) : ""
-                    textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Small; color: pinboardBar.isDark ? Color.White : Color.Black }
+                    textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.XSmall; color: pinboardBar.isDark ? Color.White : Color.Black }
                 }
                 Label {
                     text: pinboardBar.topItems.length > 2 ? pinboardBar.previewText(pinboardBar.itemAt(2)) : ""
                     textStyle { fontSize: FontSize.XSmall; color: Color.Gray }
                     multiline: false
                 }
-            }
-            Label {
-                text: "\u22EF"
-                verticalAlignment: VerticalAlignment.Center
-                textStyle { color: Color.Gray; fontSize: FontSize.Large }
             }
         }
     }

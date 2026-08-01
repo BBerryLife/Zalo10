@@ -855,9 +855,11 @@ void ZaloService::onFetchGroupBoardDone()
     }
 
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-    qDebug() << "[Zalo] fetchGroupBoard decrypted (first400):" << dec.left(400);
+    qDebug() << "[Zalo] fetchGroupBoard decrypted (first1500):" << dec.left(1500);
     QVariantMap outer = jsonToMap(dec.toUtf8());
-    QVariantList rawItems = outer["items"].toList();
+    QVariantMap boardData = (outer.contains("data") && outer["data"].type() == QVariant::Map)
+                             ? outer["data"].toMap() : outer;
+    QVariantList rawItems = boardData["items"].toList();
     qDebug() << "[Zalo] fetchGroupBoard items count:" << rawItems.size();
 
     QVariantList items;
@@ -900,6 +902,13 @@ void ZaloService::onFetchGroupBoardDone()
             }
             item["title"] = params_["title"].toString();
             item["extra"] = params_["extra"].toString();
+            // The underlying chat message's own id (msgModel's msgId) —
+            // NOT the same as item["id"] above, which is this board/pin
+            // topic's own id. Needed so tapping a pin in PinboardBar can
+            // actually scroll to + highlight the right message row; see
+            // pinGroupMessage()'s "global_msg_id" param for where this
+            // value originates when a pin is created.
+            if (boardType == 2) item["msgId"] = params_["global_msg_id"].toString();
         } else {
             // Poll
             item["id"]              = QString::number(data["poll_id"].toLongLong());

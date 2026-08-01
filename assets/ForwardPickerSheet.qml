@@ -30,13 +30,17 @@ Sheet {
 
     property string  pendingContent: ""
     property int     pendingMsgType: 0
+    property string  pendingOrigMsgId: ""
+    property string  pendingOrigTs: ""
     property bool    isDark: false
     property bool    pickingGroups: false
     property variant selectedIds: []
 
-    function openFor(content, msgType) {
+    function openFor(content, msgType, origMsgId, origTs) {
         forwardSheet.pendingContent = content || "";
         forwardSheet.pendingMsgType = msgType || 0;
+        forwardSheet.pendingOrigMsgId = origMsgId || "";
+        forwardSheet.pendingOrigTs = origTs || "";
         typeChooser.show();
     }
 
@@ -49,20 +53,27 @@ Sheet {
     }
 
     function toggleSelected(id) {
-        if (!id || id.length === 0) return;
+        console.log("[Zalo QML] ForwardPickerSheet.toggleSelected called with id=\"" + id + "\"");
+        if (!id || id.length === 0) {
+            console.log("[Zalo QML] ForwardPickerSheet.toggleSelected: EMPTY id, returning early (Send will NOT be enabled)");
+            return;
+        }
         var arr = forwardSheet.selectedIds.slice();
         var idx = arr.indexOf(id);
         if (idx >= 0) arr.splice(idx, 1);
         else arr.push(id);
         forwardSheet.selectedIds = arr;
         sendAction.enabled = arr.length > 0;
+        console.log("[Zalo QML] ForwardPickerSheet.toggleSelected: selectedIds.length=" + arr.length + " sendAction.enabled=" + sendAction.enabled);
     }
 
     function doSend() {
         if (forwardSheet.selectedIds.length === 0 || forwardSheet.pendingContent.length === 0) return;
-        zService.forwardMessage(forwardSheet.pendingContent, forwardSheet.selectedIds, forwardSheet.pickingGroups);
+        zService.forwardMessage(forwardSheet.pendingContent, forwardSheet.selectedIds, forwardSheet.pickingGroups,
+                                 forwardSheet.pendingOrigMsgId, forwardSheet.pendingOrigTs);
         forwardSheet.close();
     }
+
 
     attachedObjects: [
         SystemDialog {
@@ -148,34 +159,33 @@ Sheet {
                 listItemComponents: [
                     ListItemComponent {
                         CustomListItem {
+                            id: rowRoot
                             dividerVisible: true
                             Container {
-                                id: rowRoot
-                                background: (ListItemData.checked === true)
-                                    ? Color.create("#cfe3fa")
-                                    : (ListItem.view.isDarkProxy ? Color.create("#1a1a1a") : Color.White)
+                                background: rowRoot.ListItem.view.isDarkProxy ? Color.create("#1a1a1a") : Color.White
                                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 verticalAlignment: VerticalAlignment.Center
                                 topPadding: ui.du(1); bottomPadding: ui.du(1)
                                 leftPadding: ui.du(1.2); rightPadding: ui.du(1.2)
 
-                                ImageView {
-                                    imageSource: (ListItemData.localAvatar && ListItemData.localAvatar.length > 0)
-                                                 ? ListItemData.localAvatar : "asset:///images/ChatsTab/blank.png"
-                                    preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                                    scalingMethod: ScalingMethod.AspectFill
-                                    rightMargin: ui.du(1.2)
-                                }
                                 Label {
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                     text: ListItemData.name || "Unknown"
-                                    textStyle { color: ListItem.view.isDarkProxy ? Color.White : Color.Black }
+                                    textStyle { color: rowRoot.ListItem.view.isDarkProxy ? Color.White : Color.Black; fontSize: FontSize.Medium }
                                 }
-                                Label {
-                                    visible: ListItemData.checked === true
-                                    text: "\u2713"
-                                    textStyle { color: Color.create("#2575fc"); fontWeight: FontWeight.Bold; fontSize: FontSize.Large }
+                                CheckBox {
+                                    checked: ListItemData.checked === true
+                                    // enabled MUST stay true — Cascades renders
+                                    // enabled:false CheckBoxes with a greyed-out
+                                    // "disabled" overlay, which was an earlier
+                                    // reported symptom. No gestureHandlers here —
+                                    // a plain CheckBox doesn't intercept the tap,
+                                    // so it still bubbles up to the ListView's
+                                    // own onTriggered below (single source of
+                                    // truth for toggling), which is what
+                                    // actually drives toggleSelected()/
+                                    // sendAction.enabled.
                                 }
                             }
                         }
@@ -189,10 +199,12 @@ Sheet {
                 // pattern ChatView.qml's msgModel.replace(j, d) already
                 // uses elsewhere in this app.
                 onTriggered: {
-                    var item = dataModel.data(indexPath);
-                    if (!item) return;
+                    var idx = indexPath[0];
+                    var item = dataModel.value(idx);
+                    if (!item) { console.log("[Zalo QML] ForwardPickerSheet onTriggered: no item at idx=" + idx); return; }
                     item.checked = !item.checked;
-                    pickModel.replace(indexPath[0], item);
+                    pickModel.replace(idx, item);
+                    console.log("[Zalo QML] ForwardPickerSheet onTriggered: idx=" + idx + " name=\"" + item.name + "\" threadId=\"" + item.threadId + "\" checked=" + item.checked);
                     forwardSheet.toggleSelected(item.threadId || "");
                 }
             }

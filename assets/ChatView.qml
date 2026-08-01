@@ -575,26 +575,7 @@ Page {
         msgModel.append(row);
     }
 
-    // ---- Inline board-event pills (kind: "boardEvent" rows) ----------------
-    // Always appended at the bottom — these represent something that just
-    // happened, so "now" is always their correct position; unlike polls,
-    // they never move again once added.
-    function appendBoardEventRow(act, actorName, topicType, topicId, title) {
-        var evtKind = "note";
-        if (act === "unpin_topic") evtKind = "unpin";
-        else if (act === "new_pin_topic" || act === "update_pin_topic") evtKind = "pin";
-        else if (act === "remove_board" || act === "remove_topic") evtKind = "remove";
-        else if (topicType === 3) evtKind = "poll";
-        else if (topicType === 0) evtKind = "note";
-        msgModel.append({
-            kind: "boardEvent",
-            msgId: "ev_" + Date.now() + "_" + Math.floor(Math.random() * 100000),
-            ts: Date.now(),
-            boardEvtKind: evtKind,
-            boardEvtText: title || "",
-            boardEvtPollId: (topicType === 3) ? (topicId || "") : ""
-        });
-    }
+
 
     // Escapes HTML-sensitive characters, then wraps every case-insensitive
     // occurrence of `query` in a yellow <span>, preserving the original
@@ -719,14 +700,13 @@ Page {
                 if (boardType === "pin") {
                     chatViewPage.jumpToMessage(itemId);
                 } else {
-                    // Notes/polls don't have an inline viewer wired into
-                    // ChatView itself yet — fall back to the full Group
-                    // Board sheet, same screen "Group board" in the
-                    // overflow menu already opens.
-                    chatViewPage.groupBoardRequested = true;
+                    // Notes/polls fall back to the same "Group board" entry
+                    // point as the overflow menu — currently under
+                    // development (see groupBoardUnderDevDialog).
+                    groupBoardUnderDevDialog.show();
                 }
             }
-            onMoreRequested: { chatViewPage.groupBoardRequested = true; }
+            onMoreRequested: { groupBoardUnderDevDialog.show(); }
         }
 
         ListView {
@@ -760,7 +740,7 @@ Page {
             function memberDisplayNameProxy(uid) { return zService.memberDisplayName(uid); }
             function votePollOptionProxy(pollId, optionId, allowMulti, options) { chatViewPage.doVotePollOption(pollId, optionId, allowMulti, options); }
             function viewPollVotersProxy(pollId) { chatViewPage.openPollVoters(pollId); }
-            function openGroupBoardProxy() { chatViewPage.groupBoardRequested = true; }
+            function openGroupBoardProxy() { groupBoardUnderDevDialog.show(); }
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -876,7 +856,7 @@ Page {
                 }
                 zService.recallMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId);
             }
-            function doForward(msgId, content, msgType) { forwardPickerSheet.openFor(content || "", msgType || 0); }
+            function doForward(msgId, content, msgType, ts) { forwardPickerSheet.openFor(content || "", msgType || 0, msgId || "", ts || ""); }
             // Pin message: ported from zlapi's pinGroupMsg (a separate,
             // independently reverse-engineered Zalo API for Python —
             // zca-js has no equivalent call at all, which is why this used
@@ -1074,7 +1054,7 @@ Page {
                                 ActionItem {
                                     title: "Forward"
                                     imageSource: "asset:///images/ChatView/ic_forward_message.png"
-                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId, ListItemData.content, ListItemData.msgType); }
+                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId, ListItemData.content, ListItemData.msgType, ListItemData.ts); }
                                 }
                                 ActionItem {
                                     title: "Pin message"
@@ -1136,7 +1116,7 @@ Page {
                                 ActionItem {
                                     title: "Forward"
                                     imageSource: "asset:///images/ChatView/ic_forward_message.png"
-                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId, ListItemData.content, ListItemData.msgType); }
+                                    onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId, ListItemData.content, ListItemData.msgType, ListItemData.ts); }
                                 }
                                 ActionItem {
                                     title: "Pin message"
@@ -1213,7 +1193,7 @@ Page {
                         onGroupedChanged: {
                             console.log("[Zalo QML] delegate grouped-binding: msgId=" + String(ListItemData.msgId).slice(-6)
                                 + " grouped=" + grouped + " bubblePos=" + (ListItemData.bubblePos || "full")
-                                + " index=" + ListItem.indexPath[0]);
+                                + " index=" + rowRoot.ListItem.indexPath[0]);
                         }
                         property bool recalled: (ListItemData.msgType === 99 || ListItemData.msgType === "99")
                         // "Show Recalled Messages" setting: when on, and the recalled message's
@@ -1248,7 +1228,7 @@ Page {
                         // TEMP DIAGNOSTIC — see onGroupedChanged above for why.
                         onBubblePosChanged: {
                             console.log("[Zalo QML] delegate bubblePos-binding: msgId=" + String(ListItemData.msgId).slice(-6)
-                                + " bubblePos=" + bubblePos + " index=" + ListItem.indexPath[0]);
+                                + " bubblePos=" + bubblePos + " index=" + rowRoot.ListItem.indexPath[0]);
                         }
                         property string bubbleImage: rowRoot.mine
                             ? ("asset:///images/Bubble/outgoing/" + rowRoot.bubblePos + ".png")
@@ -1402,7 +1382,7 @@ Page {
                                             + " width=" + layoutFrame.width
                                             + " height=" + layoutFrame.height
                                             + " bubbleMaxW=" + rowRoot.bubbleMaxW
-                                            + " index=" + ListItem.indexPath[0]);
+                                            + " index=" + rowRoot.ListItem.indexPath[0]);
                                     }
                                 }
                             ]
@@ -2047,50 +2027,6 @@ Page {
                             }
                         }
 
-                        // ---- Inline board-event pill (kind === "boardEvent") -----
-                        // Small centered system-notice row for pin/unpin/poll-
-                        // created/note-created board activity — no icon (matches
-                        // the request: color alone distinguishes the type), a
-                        // light tint of the type's accent color as background,
-                        // the accent color for the leading word. "View" only
-                        // shown for kinds that have somewhere useful to jump to.
-                        Container {
-                            id: boardEventRoot
-                            visible: rowRoot.kind === "boardEvent"
-                            horizontalAlignment: HorizontalAlignment.Center
-                            topPadding: 6; bottomPadding: 6
-
-                            property string evtColor: ListItemData.boardEvtKind === "pin" ? "#ff9800" :
-                                                       (ListItemData.boardEvtKind === "unpin" || ListItemData.boardEvtKind === "remove") ? "#e53935" :
-                                                       ListItemData.boardEvtKind === "poll" ? "#43a047" :
-                                                       "#1e88e5" // note / fallback
-                            property color evtBg: rowRoot.isDark ? Color.create("#2a2a2a") : Color.create("#f2f2f2")
-
-                            Container {
-                                background: boardEventRoot.evtBg
-                                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                                topPadding: ui.du(0.6); bottomPadding: ui.du(0.6)
-                                leftPadding: ui.du(1.4); rightPadding: ui.du(1.4)
-
-                                Label {
-                                    text: ListItemData.boardEvtText || ""
-                                    textStyle { fontSize: FontSize.Small; color: Color.create(boardEventRoot.evtColor) }
-                                }
-                                Label {
-                                    visible: !!(ListItemData.boardEvtKind === "poll" || ListItemData.boardEvtKind === "pin" || ListItemData.boardEvtKind === "unpin")
-                                    text: "  View"
-                                    textStyle { fontSize: FontSize.Small; fontWeight: FontWeight.Bold; color: Color.create(boardEventRoot.evtColor) }
-                                    gestureHandlers: [ TapHandler { onTapped: {
-                                        if (ListItemData.boardEvtKind === "poll" && ListItemData.boardEvtPollId) {
-                                            rowRoot.ListItem.view.viewPollVotersProxy(ListItemData.boardEvtPollId);
-                                        } else {
-                                            rowRoot.ListItem.view.openGroupBoardProxy();
-                                        }
-                                    } } ]
-                                }
-                            }
-                        }
-
                         } // rowContentRoot
 
                     }
@@ -2487,7 +2423,7 @@ Page {
             imageSource: "asset:///images/ChatView/ic_sb_notes.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: chatViewPage.isGroup
-            onTriggered: { chatViewPage.groupBoardRequested = true; }
+            onTriggered: { groupBoardUnderDevDialog.show(); }
         },
         ActionItem {
             title: "Leave group"
@@ -3072,50 +3008,23 @@ Page {
         },
 
         // Feedback for doPin()'s zService.pinGroupMessage() call — body is
-        // set right before show(), same pattern as errorToast.
+        // set right before show(), same pattern as errorToast/copyToast/
+        // downloadToast above (all shown synchronously, no deferral).
         SystemToast {
             id: pinToast
             position: SystemUiPosition.MiddleCenter
         },
 
-        // pinMessageDone fires while the "Pin message" ActionSet/context-menu
-        // is still animating closed (the user just tapped an item in that
-        // overlay). Calling SystemToast.show() immediately races that
-        // dismiss animation on Cascades — the toast can end up stuck
-        // showing (or appearing to loop) until something else forces the
-        // overlay stack to resolve, e.g. tapping elsewhere to move the
-        // ListItem's highlighted/active state off that row (exactly the
-        // symptom reported: toast won't go away until focus moves off the
-        // pinned message). Deferring show() by one tick via a Timer lets
-        // the context-menu's own dismissal finish first, same category of
-        // fix as jumpHighlightTimer above being used to keep a
-        // row-triggered visual effect from fighting other row state.
-        Timer {
-            id: pinResultTimer
-            interval: 150
-            repeat: false
-            property bool pendingSuccess: false
-            property string pendingError: ""
-            onTriggered: {
-                if (pendingSuccess) {
-                    pinToast.body = "Message pinned";
-                    pinToast.show();
-                } else {
-                    errorToast.body = (pendingError && pendingError.length > 0) ? ("Pin failed: " + pendingError) : "Pin failed";
-                    errorToast.show();
-                }
-            }
-        },
-
         Connections {
             target: zService
             onPinMessageDone: {
-                pinResultTimer.pendingSuccess = success;
-                pinResultTimer.pendingError = error || "";
-                pinResultTimer.restart();
                 if (success) {
+                    pinToast.body = "Message pinned";
+                    pinToast.show();
                     chatViewPage.loadBoardItems();
-                    chatViewPage.appendBoardEventRow("new_pin_topic", "You", 2, "", "You pinned a message");
+                } else {
+                    errorToast.body = (error && error.length > 0) ? ("Pin failed: " + error) : "Pin failed";
+                    errorToast.show();
                 }
             }
         },
@@ -3144,7 +3053,6 @@ Page {
             onCreatePollDone: {
                 if (success) {
                     chatViewPage.loadBoardItems();
-                    chatViewPage.appendBoardEventRow("update_board", "You", 3, "", "You created a poll");
                 }
             }
         },
@@ -3153,7 +3061,6 @@ Page {
             onCreateNoteDone: {
                 if (success) {
                     chatViewPage.loadBoardItems();
-                    chatViewPage.appendBoardEventRow("update_board", "You", 0, "", "You created a note");
                 }
             }
         },
@@ -3163,7 +3070,6 @@ Page {
                 if (success) {
                     chatViewPage.loadBoardItems();
                     chatViewPage.bumpPollToBottom(pollId, updatedOptions, null);
-                    chatViewPage.appendBoardEventRow("update_board", "You", 3, pollId, "You voted in a poll");
                 }
             }
         },
@@ -3180,7 +3086,7 @@ Page {
             target: zService
             onBoardEventOccurred: {
                 if (groupId !== chatViewPage.threadId || isSelf) return;
-                chatViewPage.appendBoardEventRow(act, actorName, topicType, topicId, title);
+                chatViewPage.loadBoardItems();
                 // update_board fires for both "poll created" and "someone
                 // voted" alike (can't tell them apart from the WS event —
                 // see the C++ handler's comment) — fetching full detail
@@ -3262,6 +3168,12 @@ Page {
         InfoDialog {
             id: createEventUnderDevDialog
             title: "Create Event"
+            body: "This feature is still under development."
+        },
+
+        InfoDialog {
+            id: groupBoardUnderDevDialog
+            title: "Group Board"
             body: "This feature is still under development."
         },
 

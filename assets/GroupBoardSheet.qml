@@ -62,7 +62,7 @@ Page {
             return tb - ta;
         });
         boardModel.clear();
-        boardModel.insertList(filtered);
+        for (var bi = 0; bi < filtered.length; bi++) boardModel.append(filtered[bi]);
         boardEmpty.visible = (filtered.length === 0 && !groupBoardPage.loading);
         boardEmpty.text = (src.length === 0 && !groupBoardPage.loading)
             ? "Nothing pinned, noted, or polled yet.\nUse the buttons below to create one."
@@ -220,7 +220,7 @@ Page {
 
                         Container {
                             horizontalAlignment: HorizontalAlignment.Fill
-                            leftPadding: ui.du(2); rightPadding: ui.du(2)
+                            leftPadding: ui.du(1.0); rightPadding: ui.du(1.0)
                             topPadding: ui.du(1.2); bottomPadding: ui.du(1.2)
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
 
@@ -265,6 +265,7 @@ Page {
                             Container {
                                 visible: ListItemData.boardType === "poll"
                                 horizontalAlignment: HorizontalAlignment.Fill
+                                leftPadding: ui.du(0.8); rightPadding: ui.du(0.8)
                                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
 
                                 Label {

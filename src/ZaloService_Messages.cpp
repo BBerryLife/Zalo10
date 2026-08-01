@@ -499,7 +499,8 @@ void ZaloService::sendMessageQuote(const QString &threadId, const QString &conte
 // See the Q_INVOKABLE declaration's doc comment in ZaloService.hpp for the
 // full rationale (file-service host, verbatim content reuse, single-type
 // batch). Ported field-for-field from zca-js's forwardMessage.ts.
-void ZaloService::forwardMessage(const QString &content, const QStringList &threadIds, bool isGroup)
+void ZaloService::forwardMessage(const QString &content, const QStringList &threadIds, bool isGroup,
+                                  const QString &origMsgId, const QString &origTs)
 {
     if (!m_loggedIn || content.isEmpty() || threadIds.isEmpty()) {
         emit forwardMessageDone(false, 0, 0, "Nothing to forward");
@@ -507,13 +508,32 @@ void ZaloService::forwardMessage(const QString &content, const QStringList &thre
     }
 
     QString clientId = QString::number(QDateTime::currentMSecsSinceEpoch());
+    bool hasReference = !origMsgId.isEmpty() && !origTs.isEmpty();
 
     QVariantMap msgInfo;
     msgInfo["message"] = content;
-    // No "reference" (quote-of-the-original) support in this first pass —
-    // zca-js's payload.reference is optional and this always omits it, so
-    // a forwarded message always arrives as a plain (unquoted) message on
-    // the receiving end, same as manually retyping/pasting it would.
+    // reference marks this as an actual forward (not a fresh message that
+    // happens to share the same text) — see forwardMessage.ts's
+    // ForwardMessagePayload.reference and this function's own doc comment
+    // in ZaloService.hpp for why this was previously always omitted.
+    QVariantMap decorLog;
+    if (hasReference) {
+        QVariantMap reference;
+        reference["id"]         = origMsgId;
+        reference["ts"]         = origTs.toLongLong();
+        reference["logSrcType"] = 1;
+        reference["fwLvl"]      = 1;
+        msgInfo["reference"] = QString::fromUtf8(variantToJsonCompact(reference));
+
+        QVariantMap pmsg;
+        pmsg["st"] = 1; pmsg["ts"] = origTs.toLongLong(); pmsg["id"] = origMsgId;
+        QVariantMap rmsg = pmsg;
+        QVariantMap fw;
+        fw["pmsg"] = pmsg;
+        fw["rmsg"] = rmsg;
+        fw["fwLvl"] = 1;
+        decorLog["fw"] = fw;
+    }
 
     QVariantMap params;
     if (isGroup) {
@@ -542,10 +562,10 @@ void ZaloService::forwardMessage(const QString &content, const QStringList &thre
     params["msgType"]  = "1";
     params["totalIds"] = threadIds.size();
     params["msgInfo"]  = QString::fromUtf8(variantToJsonCompact(msgInfo));
-    // decorLog stays entirely omitted (zca-js sends JSON.stringify(null) =
-    // the string "null" when there's no reference) — matched here by simply
-    // not setting the key at all, since the server only consults it when a
-    // "reference" was actually provided, which this pass never does.
+    // zca-js sends JSON.stringify(null) = the string "null" when there's no
+    // reference — matched here the same way for the no-reference fallback.
+    params["decorLog"] = hasReference ? QString::fromUtf8(variantToJsonCompact(decorLog))
+                                       : QString("null");
 
     // variantToJsonCompact() (not mapToJson()) because params.grids/toIds
     // is an array of OBJECTS — see that function's own comment on why
