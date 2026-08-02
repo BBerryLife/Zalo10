@@ -2,6 +2,7 @@
 #include "ZaloServiceUtils.hpp"
 #include <bb/platform/Notification>
 #include <bb/platform/NotificationDefaultApplicationSettings>
+#include <bb/platform/NotificationDialog>
 #include <bb/system/InvokeRequest>
 #include <bb/system/InvokeManager>
 
@@ -899,52 +900,84 @@ void ZaloService::onRecallMsgDone()
 // icon ("like"/"heart"/"haha"/"wow"/"cry"/"angry") -> the actual emoji
 // character sent as rIcon, and rType (0..5, same order) the numeric
 // reaction-type index — see reactionIconToEmoji()/extractReactionInfo() in
-// ZaloServiceUtils.hpp for the shared mapping and the important caveat about
-// this endpoint/param naming being a best-effort reconstruction (Zalo's own
-// web client's message-action code calls something shaped like
-// sendReaction({rType, rIcon}) when you tap a reaction — as much of the wire
-// format as could be confirmed from public write-ups), not a tested-working
-// reverse-engineered payload the way pinGroupMessage's zlapi-derived body was.
-
-// Adds/changes/removes OUR OWN reaction on a message. QML has already applied
-// the optimistic local state change itself (see msgList.doSendReaction() in
-// ChatView.qml) before calling this — this only relays it to the server and,
-// on success, persists it so it survives an app restart; on failure it still
-// leaves the optimistic UI in place (same tradeoff recallMessage/etc already
-// make elsewhere in this file — a rare failed call self-corrects next time
-// this thread's reactions are reloaded from the server, rather than QML
-// needing a rollback path for every action everywhere).
+// ZaloServiceUtils.hpp for the shared mapping.
+//
+// Wire format below is ported from zca-js's addReactionFactory()
+// (RFS-ADRENO/zca-js, src/apis/addReaction.ts) rather than guessed — the
+// PREVIOUS version of this function posted msgId/cliMsgId/rType/rIcon as
+// flat top-level params, which the server silently accepted (200 OK, no
+// error_code) but never actually broadcast to the other participant, which
+// is exactly the "I react, they never see it" symptom this replaces. The
+// server instead expects a "react_list" array whose one entry is itself a
+// JSON-STRING (not a nested object) under "message", shaped:
+//   { rMsg: [{ gMsgID, cMsgID, msgType }], rIcon, rType, source }
+// with gMsgID/cMsgID as actual NUMBERS (not numeric strings) and a
+// "source" field (6 == reaction tapped from a message bubble, matching
+// every reaction case in zca-js's own mapping) that the old payload was
+// missing entirely.
 void ZaloService::reactMessage(const QString &threadId, bool isGroup, const QString &msgId,
                                 const QString &cliMsgId, int msgType, int rType, const QString &icon)
 {
     if (!m_loggedIn) return;
 
+    // rType is now derived HERE from icon via reactionIconToRType(), not
+    // taken from the caller's rType parameter — that parameter is what
+    // QML's msgList.reactionRTypes sends (a purely local 0..5 slot-order
+    // convention: like=0 heart=1 haha=2 wow=3 cry=4 angry=5), which never
+    // matched Zalo's actual numeric reaction-type values. A live device log
+    // capturing a real incoming heart reaction showed rType:5, matching
+    // zca-js's real Reactions.HEART -> rType=5 — nothing like the old
+    // QML-side "1". removing (rType param < 0, i.e. "-1" from
+    // msgList.doSendReaction()'s own remove path) is still read from the
+    // caller since that's a simple sentinel, not a per-icon numeric value.
     bool removing = (rType < 0);
+    int  wireRType = removing ? -1 : reactionIconToRType(icon);
+    qint64 clientId = QDateTime::currentMSecsSinceEpoch();
 
-    QVariantMap params;
-    params["msgId"]    = msgId;
-    params["cliMsgId"] = cliMsgId;
-    params["msgType"]  = msgType;
-    params["clientId"] = QString::number(QDateTime::currentMSecsSinceEpoch());
-    if (removing) {
-        params["rType"] = -1;
-        params["rIcon"] = "";
-    } else {
-        params["rType"] = rType;
-        params["rIcon"] = reactionIconToEmoji(icon);
-    }
+    // gMsgID/cMsgID hand-built as raw numeric text (not routed through
+    // QVariant::LongLong -> mapToJson(), which casts to double and would
+    // silently corrupt Zalo's big 64-bit message IDs the same way
+    // quoteBigJsonInts() already had to work around on the RECEIVE side —
+    // see that function's own comment in ZaloServiceUtils.hpp). msgId /
+    // cliMsgId arrive here as decimal-digit QStrings, so they can be
+    // embedded directly as unquoted JSON number literals.
+    QString rIconOut = removing ? QString() : reactionIconToEmoji(icon);
+    QString innerMessage = QString(
+        "{\"rMsg\":[{\"gMsgID\":%1,\"cMsgID\":%2,\"msgType\":1}],"
+        "\"rIcon\":%3,\"rType\":%4,\"source\":6}")
+        .arg(msgId)
+        .arg(cliMsgId)
+        .arg(jsonQuote(rIconOut))
+        .arg(wireRType);
+
+    // Whole outer params object hand-built too, not via mapToJson() — its
+    // QVariant::List branch only understands scalar elements (Int/String/
+    // Bool/Double) and has no QVariant::Map case, so a list containing our
+    // reactListEntry map would silently fall through to elem.toString() on
+    // a map (garbage), not real JSON. react_list's single entry needs
+    // "message" as a JSON-STRING (already quoted via jsonQuote, since it
+    // contains innerMessage's own embedded quotes) and "clientId" as a bare
+    // number.
+    QString params = QString("{\"react_list\":[{\"message\":%1,\"clientId\":%2}]")
+        .arg(jsonQuote(innerMessage))
+        .arg(clientId);
     if (isGroup) {
-        params["grid"] = threadId;
-        params["imei"] = m_imei;
+        params += QString(",\"grid\":%1,\"imei\":%2")
+            .arg(jsonQuote(threadId))
+            .arg(jsonQuote(m_imei));
     } else {
-        params["toid"] = threadId;
+        params += QString(",\"toid\":%1").arg(jsonQuote(threadId));
     }
+    params += "}";
 
-    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QString encParams = aesEncryptBase64(m_secretKey, params);
     QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
 
-    QString base = isGroup ? m_groupServiceUrl + "/api/group/reaction"
-                           : m_chatServiceUrl  + "/api/message/reaction";
+    QString reactionHost = !m_reactionServiceUrl.isEmpty()
+        ? m_reactionServiceUrl
+        : (isGroup ? m_groupServiceUrl : m_chatServiceUrl); // fallback only if service map lacked "reaction"
+    QString base = isGroup ? reactionHost + "/api/group/reaction"
+                           : reactionHost + "/api/message/reaction";
     QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
                           + "&zpw_type=" + QString::number(API_TYPE);
 
@@ -1975,6 +2008,51 @@ void ZaloService::sendHubNotification(const QString &title, const QString &body,
 
     notif->notify();
     qDebug() << "[Zalo] Hub notification sent:" << title << body.left(40) << "data=" << data;
+}
+
+// Top-of-screen banner via bb::platform::NotificationDialog — confirmed API
+// (title/body/show()) read directly from the real BB10 NotificationDialog
+// header, not guessed.
+//
+// This exists as a SEPARATE call from sendHubNotification() rather than a
+// flag on it because they solve different problems: bb::platform::
+// Notification's own banner/peek only surfaces when Zalo10 is NOT the
+// active foreground window (confirmed — Notification/NotificationDialog
+// headers expose no property to force that while foregrounded), so relying
+// on it alone means a message arriving while the person is already looking
+// at the app produces no visible banner at all. NotificationDialog has no
+// such restriction: calling show() displays it immediately regardless of
+// which app/thread is currently open, closer to the "banner while using
+// the app" behavior asked for — though note it's a real dialog the person
+// must dismiss, NOT a self-dismissing/sliding peek; BB10's platform
+// notification APIs have no self-timing "toast" primitive, this is the
+// closest confirmed-real equivalent.
+//
+// No button/InvokeRequest attached on purpose: tapping this banner should
+// just bring the already-running Zalo10 process back to the foreground,
+// not jump to a specific thread the way the Hub notification's tap does —
+// so there's nothing here for a button to invoke. threadId/isGroup
+// parameters are accepted for call-site symmetry with sendHubNotification()
+// (same call sites can fire both with the same arguments) but aren't used
+// by this simpler dialog.
+void ZaloService::sendBannerNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup)
+{
+    Q_UNUSED(threadId);
+    Q_UNUSED(isGroup);
+
+    bb::platform::NotificationDialog *dlg = new bb::platform::NotificationDialog(this);
+    dlg->setTitle(title);
+    dlg->setBody(body);
+
+    // Not leaked: parented to `this`/ZaloService above, and deleteLater()
+    // on finished() cleans it up once the person dismisses it — same
+    // lifetime pattern this codebase already uses for one-shot
+    // QNetworkReply handlers elsewhere (connect ... deleteLater in the slot).
+    connect(dlg, SIGNAL(finished(bb::platform::NotificationResult::Type)),
+            dlg, SLOT(deleteLater()));
+
+    dlg->show();
+    qDebug() << "[Zalo] Banner notification shown:" << title << body.left(40);
 }
 
 void ZaloService::clearActiveThread()

@@ -301,6 +301,7 @@ void ZaloService::onRefreshSessionKeyDone()
                     QScriptValue gb= svcMap.property("group_board");
                     QScriptValue f = svcMap.property("friend");
                     QScriptValue qm= svcMap.property("quick_message");
+                    QScriptValue rc= svcMap.property("reaction");
                     if (c.isArray())  m_chatServiceUrl      = c.property(0).toString();
                     if (g.isArray())  m_groupServiceUrl     = g.property(0).toString();
                     if (p.isArray())  m_profileServiceUrl   = p.property(0).toString();
@@ -308,6 +309,7 @@ void ZaloService::onRefreshSessionKeyDone()
                     if (gb.isArray()) m_groupBoardServiceUrl = gb.property(0).toString();
                     if (f.isArray())  m_friendServiceUrl    = f.property(0).toString();
                     if (qm.isArray()) m_quickMessageServiceUrl = qm.property(0).toString();
+                    if (rc.isArray()) m_reactionServiceUrl  = rc.property(0).toString();
                 }
 
                 // Update WS URLs

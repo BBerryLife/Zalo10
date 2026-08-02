@@ -16,6 +16,10 @@
 #include <bb/system/InvokeTarget>
 #include <bb/system/Clipboard>
 #include <bb/ApplicationInfo>
+#include <bb/pim/calendar/CalendarService>
+#include <bb/pim/calendar/CalendarEvent>
+#include <bb/pim/calendar/CalendarFolder>
+#include <bb/pim/calendar/Result>
 
 #include <QTranslator>
 #include <QLocale>
@@ -155,6 +159,57 @@ void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
     req.setMimeType("message/rfc822");
     req.setUri(QString("mailto:%1?subject=%2").arg(to).arg(subject));
     m_pInvokeManager->invoke(req);
+}
+
+// Creates a real event in the device's default calendar via
+// bb::pim::calendar::CalendarService — confirmed API (not an Invocation-
+// Framework guess at the Calendar app's own invoke-target/action, which
+// this codebase deliberately avoided since that string couldn't be
+// verified). Steps, each pulled directly from the real
+// bb::pim::calendar headers:
+//   - CalendarService::defaultCalendarFolder -> QPair<AccountId,FolderId>,
+//     the user's default calendar, so this never has to guess/hardcode
+//     an account or folder id.
+//   - Build a CalendarEvent via its setSubject/setBody/setStartTime/
+//     setEndTime/setAccountId/setFolderId setters.
+//   - CalendarService::createEvent(event) -> Result::Type, Success == 0.
+//
+// ALWAYS today — startTime/endTime are computed here from
+// QDateTime::currentDateTime, never accepted as a parameter, so no call
+// path (wrong QML wiring, a stale cached date, etc) could ever create this
+// on a day other than today. durationMinutes only affects how long the
+// block runs past that same today-start; if 0 or negative, defaults to 30.
+void ApplicationUI::createTodayEvent(const QString &subject, const QString &body, int durationMinutes)
+{
+    using namespace bb::pim::calendar;
+
+    CalendarService calSvc;
+    Result::Type folderResult = Result::Success;
+    QPair<AccountId, FolderId> defFolder = calSvc.defaultCalendarFolder(&folderResult);
+    if (folderResult != Result::Success) {
+        qDebug() << "[App] createTodayEvent: defaultCalendarFolder() failed, result=" << folderResult;
+        emit eventCreated(false, "Khong lay duoc lich mac dinh cua thiet bi");
+        return;
+    }
+
+    QDateTime start = QDateTime::currentDateTime();
+    int minutes = (durationMinutes > 0) ? durationMinutes : 30;
+    QDateTime end = start.addSecs(minutes * 60);
+
+    CalendarEvent ev;
+    ev.setSubject(subject);
+    ev.setBody(body);
+    ev.setStartTime(start);
+    ev.setEndTime(end);
+    ev.setAccountId(defFolder.first);
+    ev.setFolderId(defFolder.second);
+
+    Result::Type createResult = calSvc.createEvent(ev);
+    bool ok = (createResult == Result::Success);
+    qDebug() << "[App] createTodayEvent: subject=" << subject << "start=" << start
+              << "accountId=" << defFolder.first << "folderId=" << defFolder.second
+              << "result=" << createResult << "ok=" << ok;
+    emit eventCreated(ok, ok ? QString() : QString("Loi tao su kien, ma loi: %1").arg((int)createResult));
 }
 
 void ApplicationUI::copyToClipboard(const QString &text)

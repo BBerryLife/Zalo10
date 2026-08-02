@@ -1,177 +1,143 @@
 import bb.cascades 1.4
+import bb.system 1.2
 import QtQuick 1.0
 
-// ReactionPickerSheet — tap-to-react strip (Like / Love / Haha / Wow / Sad /
-// Angry, same order as the reference screenshot). A plain Sheet with one row
-// of 6 image buttons, not a floating popover anchored to the tapped bubble's
-// screen position — Cascades (bb.cascades 1.4 / QtQuick 1.0, same version
-// this whole app is built against) has no supported "popover anchored to an
-// arbitrary Control's global coordinates" API this codebase could confidently
-// rely on (same class of gamble ForwardPickerSheet.qml's header comment
-// already declined for SystemListDialog's multi-select), so this reuses the
-// same full-sheet pattern already proven reliable elsewhere in this app
-// (ForwardPickerSheet/PollVotersSheet). Tapping an icon reacts AND closes
-// immediately — a single tap is the whole action, no separate confirm step.
+// ReactionPickerSheet — backed by the REAL bb::system::SystemListDialog
+// (confirmed against the actual BB10 NDK header for this class, not
+// guessed/reverse-engineered from web docs).
 //
-// 6 FIXED icon slots, not a loop/Repeater — this codebase has already
-// established (see ChatView.qml/GroupBoardSheet.qml/PollVotersSheet.qml's own
-// comments on their fixed 0..5 poll-option slots) that this QtQuick version
-// has no Repeater item, so a small constant list is always spelled out by
-// hand instead.
-Sheet {
-    id: reactionSheet
+// STRUCTURE NOTE — why the root here is QtObject, not SystemListDialog
+// directly: on-device testing showed "Cannot assign to non-existent
+// property attachedObjects" when a Timer was declared inside
+// attachedObjects: [...] on a SystemListDialog root, back when this file
+// used a Timer-polling workaround (see history below for why that
+// workaround was replaced). Confirmed from the real header:
+// "class BB_SYSTEM_EXPORT SystemListDialog : public QObject" — it's a
+// plain QObject, not a bb::cascades::Control, so it never had an
+// attachedObjects property (that's Control's own property; nothing here
+// was misconfigured, it simply doesn't exist on this class). The header
+// also confirms SystemListDialog's one Q_CLASSINFO("DefaultProperty",
+// "buttons") — meaning an unnamed child inside SystemListDialog {...} is
+// interpreted as a SystemUiButton, not a generic container for other
+// QObjects either. QtObject (a plain, non-visual QML type with no such
+// restriction) as the file's root instead lets SystemListDialog be
+// declared as an ordinary named-property child of it — openFor()/reacted
+// are then forwarded at this QtObject level so ChatView.qml's existing
+// reactionPickerSheet.openFor(...) / onReacted wiring keeps working
+// completely unchanged. Kept even though the Timer that originally forced
+// this structure is gone (see below), since restructuring back to a bare
+// SystemListDialog root now isn't worth the churn.
+//
+// IMPORTANT LIMITATION, confirmed from the real header: SystemListDialog's
+// appendItem() takes only (text[, enabled[, selected]]) — there is no
+// icon/imageSource parameter anywhere on this class. The reference
+// screenshot's per-row emoji CANNOT be reproduced with this control; this
+// dialog shows text-only rows ("Like", "Heart", "Haha", ...).
+//
+// HISTORY on dismissOnSelection / why bb.system is now 1.3, not 1.0 or 1.1:
+// dismissOnSelection carries REVISION 1 in the real header, so it was
+// unavailable under "import bb.system 1.0" (confirmed from an on-device
+// QML load error the first time this file used it directly). The workaround
+// tried next was a Timer polling selectedIndices while the dialog stayed
+// open, calling cancel() the moment a selection appeared. CONFIRMED BROKEN
+// on-device: the person still had to tap Cancel before a reaction applied.
+// The real header's own doc comment on selectedIndices explains why no
+// polling-based workaround can ever work: dismissOnSelection's doc
+// explicitly states it enables the dialog to be "automatically dismissed
+// when a list item is selected" as a dedicated, opt-in behavior — implying
+// selection alone does otherwise NOT dismiss the dialog, and combined with
+// selectedIndices being NOTIFY-tied to finished (Q_PROPERTY(QVariantList
+// selectedIndices READ selectedIndicesQML NOTIFY finished FINAL)), the
+// practical effect on-device is that selectedIndices isn't observably
+// populated until finished() has already fired — i.e. until the dialog has
+// already closed. A Timer polling it while still open can structurally
+// never see a selection in time to trigger an early cancel(); there is no
+// timing window for that workaround to exploit. dismissOnSelection is the
+// dedicated property for exactly this, not an optional nicety layered on
+// top of some other observable signal.
+//
+// Next tried "import bb.system 1.1" — CONFIRMED STILL UNAVAILABLE on this
+// same device/build (on-device error: "SystemListDialog.dismissOnSelection
+// is not available in bb.system 1.1"). So REVISION 1 in the real header
+// evidently doesn't mean "exposed starting at bb.system 1.1" on this
+// target's actual QML type registration — it needs something higher still.
+// Currently trying "import bb.system 1.3" next (skipping 1.2, per explicit
+// direction) to find where on this target's SDK dismissOnSelection actually
+// becomes available, if anywhere.
+//
+// If 1.3 also fails, the answer is: this BB10 target's bb.system tops out
+// below wherever dismissOnSelection is actually exposed, and the only
+// remaining options are the icon-only tradeoff of manually working within
+// bb.system 1.0/1.1's real behavior (person must tap Cancel after picking)
+// or going back to the earlier Sheet+RadioGroup custom-built dialog, which
+// doesn't have this limitation because it hand-implements the "tap to
+// select and close" behavior instead of relying on a system dialog's own.
+QtObject {
+    id: root
 
-    property bool   isDark: false
     property string pendingMsgId: ""
     property string pendingCliMsgId: ""
     property int    pendingMsgType: 0
-    // This user's existing reaction on the message being opened ("like",
-    // "heart", ... or "" if none) — highlights that icon so re-opening the
-    // picker shows what's already selected, same as Zalo/Messenger's own bar.
-    property string currentIcon: ""
 
-    // (msgId, cliMsgId, msgType, icon) — icon is one of the 6 ids below.
+    // Row order fixed to match appendItem() calls in openFor() below — index
+    // N in this array is exactly what selectedIndices[0] will report for
+    // the Nth appended row, since no header/separator is appended before it.
+    property variant reactionIcons: ["like", "heart", "haha", "wow", "cry", "angry"]
+
+    // (msgId, cliMsgId, msgType, icon) — icon is one of reactionIcons above.
     // ChatView.qml wires this straight to msgList.doSendReaction(), which
     // itself treats tapping the SAME icon again as "remove my reaction"
     // (toggle), so this signal only ever needs to report which icon was
     // tapped, never whether it's an add or a remove.
     signal reacted(string msgId, string cliMsgId, int msgType, string icon)
 
+    // currentIcon (existing reaction, if any) is accepted for API
+    // compatibility with earlier versions' openFor() signature, but
+    // SystemListDialog's appendItem(text, enabled, selected) 3rd argument
+    // only pre-highlights a row — it does not change what a subsequent tap
+    // reports, so pre-selecting the existing reaction here is a pure
+    // visual nicety, not required for correctness.
     function openFor(msgId, cliMsgId, msgType, existingIcon) {
-        reactionSheet.pendingMsgId    = msgId || "";
-        reactionSheet.pendingCliMsgId = cliMsgId || "";
-        reactionSheet.pendingMsgType  = msgType || 0;
-        reactionSheet.currentIcon     = existingIcon || "";
-        reactionSheet.open();
+        root.pendingMsgId    = msgId || "";
+        root.pendingCliMsgId = cliMsgId || "";
+        root.pendingMsgType  = msgType || 0;
+
+        dlg.clearList();
+        var cur = existingIcon || "";
+        dlg.appendItem(qsTr("Like"),      true, cur === "like");
+        dlg.appendItem(qsTr("Heart"),     true, cur === "heart");
+        dlg.appendItem(qsTr("Haha"),      true, cur === "haha");
+        dlg.appendItem(qsTr("Surprised"), true, cur === "wow");
+        dlg.appendItem(qsTr("Sad"),       true, cur === "cry");
+        dlg.appendItem(qsTr("Angry"),     true, cur === "angry");
+
+        dlg.show();
     }
 
-    function pick(iconId) {
-        reactionSheet.reacted(reactionSheet.pendingMsgId, reactionSheet.pendingCliMsgId,
-                               reactionSheet.pendingMsgType, iconId);
-        reactionSheet.close();
-    }
+    property SystemListDialog dlgObj: SystemListDialog {
+        id: dlg
 
-    // Matches the native Cascades ActionSet card chrome this app's own
-    // "Message" long-press menu already renders (see bubbleActionsMember/
-    // bubbleActionsAdmin in ChatView.qml, title: "Message") — a centered
-    // white card, a divider line, and a bold gray "Cancel" footer bar — just
-    // with the row content replaced by the 6 tappable icons instead of a
-    // vertical list of text rows.
-    content: Page {
-        Container {
-            id: backdrop
-            horizontalAlignment: HorizontalAlignment.Fill
-            verticalAlignment: VerticalAlignment.Fill
-            background: Color.Transparent
-            layout: DockLayout {}
-            gestureHandlers: [ TapHandler { onTapped: { reactionSheet.close(); } } ]
+        title: qsTr("Reactions")
+        selectionMode: ListSelectionMode.Single
+        dismissOnSelection: true
+        confirmButton.label: ""
 
-            Container {
-                id: card
-                horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(58)
-                background: reactionSheet.isDark ? Color.create("#2a2a2a") : Color.White
-                // Swallow taps on the card itself so they don't fall through
-                // to the backdrop's own TapHandler and close the sheet.
-                gestureHandlers: [ TapHandler { onTapped: {} } ]
-
-                // Icon row — same slot content as before, just now inside the
-                // card-with-footer chrome instead of floating on its own.
-                Container {
-                    horizontalAlignment: HorizontalAlignment.Center
-                    topPadding: ui.du(2.5); bottomPadding: ui.du(2.5)
-                    leftPadding: ui.du(2); rightPadding: ui.du(2)
-                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-
-                    // Slot 1/6 — Like (👍)
-                    Container {
-                        rightMargin: ui.du(1.2)
-                        background: (reactionSheet.currentIcon === "like") ? Color.create("#cfe3fa") : Color.Transparent
-                        ImageView {
-                            imageSource: "asset:///images/emoji/people/emoji_1f44d_64.png"
-                            preferredWidth: ui.du(6.5); preferredHeight: ui.du(6.5)
-                            scalingMethod: ScalingMethod.AspectFit
-                            gestureHandlers: [ TapHandler { onTapped: { reactionSheet.pick("like"); } } ]
-                        }
-                    }
-                    // Slot 2/6 — Heart / Love (❤️)
-                    Container {
-                        rightMargin: ui.du(1.2)
-                        background: (reactionSheet.currentIcon === "heart") ? Color.create("#cfe3fa") : Color.Transparent
-                        ImageView {
-                            imageSource: "asset:///images/emoji/people/emoji_2764_64.png"
-                            preferredWidth: ui.du(6.5); preferredHeight: ui.du(6.5)
-                            scalingMethod: ScalingMethod.AspectFit
-                            gestureHandlers: [ TapHandler { onTapped: { reactionSheet.pick("heart"); } } ]
-                        }
-                    }
-                    // Slot 3/6 — Haha (😄)
-                    Container {
-                        rightMargin: ui.du(1.2)
-                        background: (reactionSheet.currentIcon === "haha") ? Color.create("#cfe3fa") : Color.Transparent
-                        ImageView {
-                            imageSource: "asset:///images/emoji/people/emoji_1f604_64.png"
-                            preferredWidth: ui.du(6.5); preferredHeight: ui.du(6.5)
-                            scalingMethod: ScalingMethod.AspectFit
-                            gestureHandlers: [ TapHandler { onTapped: { reactionSheet.pick("haha"); } } ]
-                        }
-                    }
-                    // Slot 4/6 — Wow / surprised (😱)
-                    Container {
-                        rightMargin: ui.du(1.2)
-                        background: (reactionSheet.currentIcon === "wow") ? Color.create("#cfe3fa") : Color.Transparent
-                        ImageView {
-                            imageSource: "asset:///images/emoji/people/emoji_1f631_64.png"
-                            preferredWidth: ui.du(6.5); preferredHeight: ui.du(6.5)
-                            scalingMethod: ScalingMethod.AspectFit
-                            gestureHandlers: [ TapHandler { onTapped: { reactionSheet.pick("wow"); } } ]
-                        }
-                    }
-                    // Slot 5/6 — Sad / cry (😭)
-                    Container {
-                        rightMargin: ui.du(1.2)
-                        background: (reactionSheet.currentIcon === "cry") ? Color.create("#cfe3fa") : Color.Transparent
-                        ImageView {
-                            imageSource: "asset:///images/emoji/people/emoji_1f62d_64.png"
-                            preferredWidth: ui.du(6.5); preferredHeight: ui.du(6.5)
-                            scalingMethod: ScalingMethod.AspectFit
-                            gestureHandlers: [ TapHandler { onTapped: { reactionSheet.pick("cry"); } } ]
-                        }
-                    }
-                    // Slot 6/6 — Angry (😡)
-                    Container {
-                        background: (reactionSheet.currentIcon === "angry") ? Color.create("#cfe3fa") : Color.Transparent
-                        ImageView {
-                            imageSource: "asset:///images/emoji/people/emoji_1f621_64.png"
-                            preferredWidth: ui.du(6.5); preferredHeight: ui.du(6.5)
-                            scalingMethod: ScalingMethod.AspectFit
-                            gestureHandlers: [ TapHandler { onTapped: { reactionSheet.pick("angry"); } } ]
-                        }
-                    }
-                }
-
-                // Divider line, same purpose as the hairline between "Select"
-                // and "Cancel" in the reference screenshot.
-                Container {
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    preferredHeight: 1; minHeight: 1; maxHeight: 1
-                    background: reactionSheet.isDark ? Color.create("#3a3a3a") : Color.create("#e0e0e0")
-                }
-
-                // Bold gray "Cancel" footer bar — same role/placement as the
-                // reference screenshot's own Cancel bar.
-                Container {
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    verticalAlignment: VerticalAlignment.Center
-                    topPadding: ui.du(1.8); bottomPadding: ui.du(1.8)
-                    background: reactionSheet.isDark ? Color.create("#1f1f1f") : Color.create("#f0f0f0")
-                    gestureHandlers: [ TapHandler { onTapped: { reactionSheet.close(); } } ]
-                    Label {
-                        text: "Cancel"
-                        horizontalAlignment: HorizontalAlignment.Center
-                        textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Medium; color: reactionSheet.isDark ? Color.White : Color.create("#222222") }
-                    }
+        // finished(SystemUiResult::Type) fires once the dialog closes.
+        // With dismissOnSelection true, that now happens automatically the
+        // instant a row is tapped — buttonSelection() would report 0 in
+        // that case (per the header's own doc), which is why this reads
+        // selectedIndices instead to learn which row was picked.
+        // selectedIndices is only non-empty in that tap case; a manual
+        // Cancel tap (still available via the dialog's own default Cancel
+        // button) leaves it empty, so the length check below is what tells
+        // the two apart.
+        onFinished: {
+            if (dlg.selectedIndices && dlg.selectedIndices.length > 0) {
+                var idx = dlg.selectedIndices[0];
+                if (idx >= 0 && idx < root.reactionIcons.length) {
+                    var iconId = root.reactionIcons[idx];
+                    root.reacted(root.pendingMsgId, root.pendingCliMsgId,
+                                 root.pendingMsgType, iconId);
                 }
             }
         }

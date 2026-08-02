@@ -358,20 +358,59 @@ inline bool extractDeleteInfo(const QVariantMap &m, QString &outMsgId, QString &
     return true;
 }
 
-// Shared icon-id <-> emoji mapping for reactions — "like"/"heart"/"haha"/
-// "wow"/"cry"/"angry" (same 6, same order, as ReactionPickerSheet.qml's fixed
-// slots) on one side, the actual emoji character Zalo's wire format uses as
-// rIcon on the other. One source of truth for both directions: reactMessage()
-// in ZaloService_Messages.cpp (outgoing, icon -> emoji) and
-// extractReactionInfo() just below (incoming, emoji -> icon).
+// Minimal JSON string-literal quoting (escape backslash/quote/control chars,
+// wrap in "..."). Used where a JSON fragment is hand-built as a QString
+// instead of going through mapToJson() — e.g. reactMessage()'s inner
+// "message" payload, which needs gMsgID/cMsgID embedded as raw numeric
+// literals (see that call site's own comment) rather than routed through
+// mapToJson()'s QVariant::LongLong -> double cast.
+inline QString jsonQuote(const QString &s)
+{
+    QString out;
+    out.reserve(s.size() + 2);
+    out.append('"');
+    for (int i = 0; i < s.size(); ++i) {
+        QChar c = s.at(i);
+        switch (c.unicode()) {
+        case '"':  out.append("\\\""); break;
+        case '\\': out.append("\\\\"); break;
+        case '\n': out.append("\\n");  break;
+        case '\r': out.append("\\r");  break;
+        case '\t': out.append("\\t");  break;
+        default:
+            if (c.unicode() < 0x20) {
+                out.append(QString("\\u%1").arg(c.unicode(), 4, 16, QChar('0')));
+            } else {
+                out.append(c);
+            }
+        }
+    }
+    out.append('"');
+    return out;
+}
+
+// Shared icon-id <-> wire-symbol mapping for reactions — "like"/"heart"/
+// "haha"/"wow"/"cry"/"angry" (same 6, same order, as ReactionPickerSheet.qml's
+// fixed rows) on one side, the actual short TEXT SYMBOL Zalo's wire format
+// uses as rIcon on the other (e.g. "/-heart", ":>" — NOT a Unicode emoji
+// character). Confirmed from a live device log capturing a real incoming
+// cmd=612 reaction: {"rType":5,"rIcon":"\/-heart",...} for a heart reaction,
+// and cross-checked against zca-js's Reactions enum (RFS-ADRENO/zca-js,
+// src/models/Reaction.ts) which uses these exact symbols. The previous
+// version of this mapping used invented Unicode emoji characters on both
+// sides, which is why neither outgoing reactMessage() nor incoming cmd=612
+// reactions ever matched anything real — every reaction round-tripped as
+// empty/unrecognized. One source of truth for both directions: reactMessage()
+// in ZaloService_Messages.cpp (outgoing, icon -> rIcon) and the cmd=612
+// handler in ZaloService_WebSocket.cpp (incoming, rIcon -> icon).
 inline QString reactionIconToEmoji(const QString &icon)
 {
-    if (icon == "like")  return QString::fromUtf8("\xF0\x9F\x91\x8D"); // 👍 U+1F44D
-    if (icon == "heart") return QString::fromUtf8("\xE2\x9D\xA4");     // ❤ U+2764
-    if (icon == "haha")  return QString::fromUtf8("\xF0\x9F\x98\x84"); // 😄 U+1F604
-    if (icon == "wow")   return QString::fromUtf8("\xF0\x9F\x98\xB1"); // 😱 U+1F631
-    if (icon == "cry")   return QString::fromUtf8("\xF0\x9F\x98\xAD"); // 😭 U+1F62D
-    if (icon == "angry") return QString::fromUtf8("\xF0\x9F\x98\xA1"); // 😡 U+1F621
+    if (icon == "like")  return QString::fromUtf8("/-strong"); // Reactions.LIKE
+    if (icon == "heart") return QString::fromUtf8("/-heart");  // Reactions.HEART
+    if (icon == "haha")  return QString::fromUtf8(":>");       // Reactions.HAHA
+    if (icon == "wow")   return QString::fromUtf8(":o");       // Reactions.WOW
+    if (icon == "cry")   return QString::fromUtf8(":-((");     // Reactions.CRY
+    if (icon == "angry") return QString::fromUtf8(":-h");      // Reactions.ANGRY
     return QString();
 }
 inline QString emojiToReactionIcon(const QString &emoji)
@@ -383,6 +422,27 @@ inline QString emojiToReactionIcon(const QString &emoji)
     if (emoji == reactionIconToEmoji("cry"))   return "cry";
     if (emoji == reactionIconToEmoji("angry")) return "angry";
     return QString();
+}
+
+// rType companion to the icon<->rIcon mapping above — Zalo's numeric
+// reaction-type index does NOT follow this app's own 0..5 slot order.
+// Confirmed against zca-js's addReactionFactory() switch statement (the
+// same source the rIcon symbols above were cross-checked against) and the
+// live device log's rType:5 for a heart reaction, which matches zca-js's
+// Reactions.HEART -> rType=5 exactly. The previous local convention
+// (msgList.reactionRTypes in ChatView.qml: like=0 heart=1 haha=2 wow=3
+// cry=4 angry=5, i.e. just the 6 slots in display order) was never Zalo's
+// real numbering — reactMessage() now sources rType from here instead of
+// from that QML map, which still only needs to hand over the icon id.
+inline int reactionIconToRType(const QString &icon)
+{
+    if (icon == "haha")  return 0;
+    if (icon == "cry")   return 2;
+    if (icon == "like")  return 3;
+    if (icon == "heart") return 5;
+    if (icon == "angry") return 20;
+    if (icon == "wow")   return 32;
+    return -1;
 }
 
 // Best-effort mirror of extractDeleteInfo/extractRecalledMsgId above, for

@@ -226,6 +226,15 @@ public:
     Q_INVOKABLE void clearHistory(const QString &threadId, bool isGroup);
     Q_INVOKABLE void leaveGroup(const QString &groupId);
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
+    // Top-of-screen banner dialog (bb::platform::NotificationDialog) shown
+    // immediately, even while Zalo10 itself is the foreground app — see this
+    // method's own comment in ZaloService_Messages.cpp for exactly why this
+    // is a SEPARATE call from sendHubNotification() rather than a flag on
+    // it: Notification (Hub)'s own banner/peek only ever appears when this
+    // app is NOT the active window, confirmed from the real
+    // bb::platform::Notification/NotificationDialog headers, which is the
+    // opposite of what's wanted here.
+    Q_INVOKABLE void sendBannerNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
     // Returns, for every thread that has at least one locally-stored message,
@@ -675,6 +684,19 @@ private:
     QString m_friendServiceUrl;    // zpwServiceMap.friend[0]
     QString m_fileServiceUrl;      // zpwServiceMap.file[0]
     QString m_quickMessageServiceUrl; // zpwServiceMap.quick_message[0]
+    QString m_reactionServiceUrl;  // zpwServiceMap.reaction[0] — a DISTINCT
+                                    // host from m_chatServiceUrl/m_groupServiceUrl.
+                                    // reactMessage() previously posted to
+                                    // m_chatServiceUrl + "/api/message/reaction",
+                                    // which 404'd (confirmed from a live device
+                                    // log: nginx 404 on tt-chat1-wpa.chat.zalo.me)
+                                    // because that host doesn't serve the
+                                    // reaction endpoint at all — zca-js's own
+                                    // addReactionFactory() builds its URL from
+                                    // api.zpwServiceMap.reaction[0] specifically,
+                                    // a separate array in the service map, same
+                                    // as m_groupBoardServiceUrl being separate
+                                    // from m_groupServiceUrl above.
 
     QSet<QString> m_mutedThreads;  // threadIds currently muted
     QSet<QString> m_blockedUsers;  // userIds currently blocked

@@ -80,6 +80,19 @@ public slots:
     Q_INVOKABLE void queryShareTargetsForImage(const QString &localPath);
     Q_INVOKABLE void invokeShareTargetForImage(const QString &target, const QString &action, const QString &localPath);
 
+    // ---- Calendar event creation -----------------------------------------
+    // Creates a real event in the device's default calendar via
+    // bb::pim::calendar::CalendarService (confirmed API — see
+    // createTodayEvent()'s own comment in applicationui.cpp for exactly
+    // which header methods this is built from). Always scheduled for TODAY
+    // — startTime/endTime are computed from QDateTime::currentDateTime()
+    // inside the implementation, not passed in, so there's no way to
+    // accidentally create it on the wrong day. subject/body come from QML;
+    // durationMinutes controls how long the event block is (default handled
+    // QML-side). Result comes back async via eventCreated() since the
+    // underlying CalendarService call can hit the calendar backend.
+    Q_INVOKABLE void createTodayEvent(const QString &subject, const QString &body, int durationMinutes);
+
 signals:
     void openThreadRequested(const QString &threadId, bool isGroup);
     // Emitted from setShowRecalledMessages() so any already-open ChatView can
@@ -93,6 +106,8 @@ signals:
     void changelogReady(const QString &html, const QString &error);
     // Result of queryShareTargets() — list of {label, target, action, icon, isNative}
     void shareTargetsReady(const QVariantList &targets);
+    // Result of createTodayEvent(): success true/false, error message (empty on success)
+    void eventCreated(bool success, const QString &error);
 
 private slots:
     void onSystemLanguageChanged();

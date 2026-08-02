@@ -164,6 +164,26 @@ TabbedPane {
                     chatsTabContent.openThread(threadId, isGroup);
                 }
             }
+            // Result of app.createTodayEvent() (ChatView.qml's "Create
+            // today's event" overflow action) — handled here at the root
+            // rather than inside ChatView itself because app/ApplicationUI
+            // is a single global instance shared by every Tab, so wiring
+            // this per-ChatView-instance would either miss the signal (if
+            // that ChatView isn't the active tab when it fires) or risk
+            // showing the same result dialog multiple times if more than
+            // one ChatView happened to be alive. One handler here covers
+            // every caller.
+            onEventCreated: {
+                eventResultDialog.body = success
+                    ? "Da them su kien vao lich hom nay."
+                    : ("Khong the tao su kien: " + error);
+                eventResultDialog.show();
+            }
+        },
+
+        InfoDialog {
+            id: eventResultDialog
+            title: "Zalo10"
         }
     ]
 }

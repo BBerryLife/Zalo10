@@ -196,10 +196,12 @@ void ZaloService::onCookieStep1Done()
     QVariantList groupA = svcMap["group"].toList();
     QVariantList qmA    = svcMap["quick_message"].toList();
     QVariantList boardA = svcMap["group_board"].toList();
+    QVariantList reactA = svcMap["reaction"].toList();
     if (!chatA.isEmpty())  m_chatServiceUrl  = chatA[0].toString();
     if (!groupA.isEmpty()) m_groupServiceUrl = groupA[0].toString();
     if (!qmA.isEmpty())    m_quickMessageServiceUrl = qmA[0].toString();
     if (!boardA.isEmpty()) m_groupBoardServiceUrl = boardA[0].toString();
+    if (!reactA.isEmpty()) m_reactionServiceUrl = reactA[0].toString();
 
     if (m_uid.isEmpty()) {
         emit loginFailed("Cookie het han hoac sai - Lay lai ZPSID/ZPW_SEK moi");
@@ -680,6 +682,7 @@ void ZaloService::onStep8Done()
     m_friendServiceUrl.clear();
     m_fileServiceUrl.clear();
     m_quickMessageServiceUrl.clear();
+    m_reactionServiceUrl.clear();
 
     QScriptValue svcMap = info.property("zpw_service_map_v3");
     if (svcMap.isObject()) {
@@ -691,6 +694,7 @@ void ZaloService::onStep8Done()
         QScriptValue friendArr = svcMap.property("friend");
         QScriptValue fileArr   = svcMap.property("file");
         QScriptValue qmArr     = svcMap.property("quick_message");
+        QScriptValue reactArr  = svcMap.property("reaction");
 
         if (chatArr.isArray())   m_chatServiceUrl      = chatArr.property(0).toString();
         if (groupArr.isArray())  m_groupServiceUrl     = groupArr.property(0).toString();
@@ -700,6 +704,7 @@ void ZaloService::onStep8Done()
         if (friendArr.isArray()) m_friendServiceUrl    = friendArr.property(0).toString();
         if (fileArr.isArray())   m_fileServiceUrl      = fileArr.property(0).toString();
         if (qmArr.isArray())     m_quickMessageServiceUrl = qmArr.property(0).toString();
+        if (reactArr.isArray())  m_reactionServiceUrl  = reactArr.property(0).toString();
     }
 
     // Extract WebSocket URLs

@@ -10,7 +10,7 @@ PKGNAME = com.berrylife.zalo10
 QT += network script gui
 
 # BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
-LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform -lbbdevice
+LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform -lbbdevice -lbbpim
 LIBS += -lQtNetwork -lQtScript -lQtGui
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3

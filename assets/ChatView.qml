@@ -1218,11 +1218,6 @@ Page {
                                     onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content, (ListItemData.msgType === 2 || ListItemData.msgType === "2"), ListItemData.localImage); }
                                 }
                                 ActionItem {
-                                    title: "Create event"
-                                    imageSource: "asset:///images/ChatView/ic_create_event.png"
-                                    onTriggered: { rowRoot.ListItem.view.doCreateEvent(ListItemData.msgId); }
-                                }
-                                ActionItem {
                                     title: "Delete for me only"
                                     imageSource: "asset:///images/ChatView/action_delete.png"
                                     onTriggered: { rowRoot.ListItem.view.doDeleteForMe(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.senderId); }
@@ -1278,11 +1273,6 @@ Page {
                                     title: "Share"
                                     imageSource: "asset:///images/ChatView/ic_share.png"
                                     onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content, (ListItemData.msgType === 2 || ListItemData.msgType === "2"), ListItemData.localImage); }
-                                }
-                                ActionItem {
-                                    title: "Create event"
-                                    imageSource: "asset:///images/ChatView/ic_create_event.png"
-                                    onTriggered: { rowRoot.ListItem.view.doCreateEvent(ListItemData.msgId); }
                                 }
                                 ActionItem {
                                     title: "Delete for me only"
@@ -2017,14 +2007,14 @@ Page {
                                     rightMargin: 4
                                     background: (ListItemData.reactions && ListItemData.reactions[0] && ListItemData.reactions[0].mine)
                                         ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
-                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    topPadding: 4; bottomPadding: 4; leftPadding: 9; rightPadding: 9
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
                                         if (ListItemData.reactions && ListItemData.reactions[0])
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[0].icon);
                                     } } ]
-                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[0]) ? ListItemData.reactions[0].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[0]) ? ("+" + ListItemData.reactions[0].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[0]) ? ListItemData.reactions[0].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[0]) ? ("+" + ListItemData.reactions[0].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 2/6
                                 Container {
@@ -2032,14 +2022,14 @@ Page {
                                     rightMargin: 4
                                     background: (ListItemData.reactions && ListItemData.reactions[1] && ListItemData.reactions[1].mine)
                                         ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
-                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    topPadding: 4; bottomPadding: 4; leftPadding: 9; rightPadding: 9
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
                                         if (ListItemData.reactions && ListItemData.reactions[1])
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[1].icon);
                                     } } ]
-                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[1]) ? ListItemData.reactions[1].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[1]) ? ("+" + ListItemData.reactions[1].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[1]) ? ListItemData.reactions[1].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[1]) ? ("+" + ListItemData.reactions[1].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 3/6
                                 Container {
@@ -2047,14 +2037,14 @@ Page {
                                     rightMargin: 4
                                     background: (ListItemData.reactions && ListItemData.reactions[2] && ListItemData.reactions[2].mine)
                                         ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
-                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    topPadding: 4; bottomPadding: 4; leftPadding: 9; rightPadding: 9
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
                                         if (ListItemData.reactions && ListItemData.reactions[2])
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[2].icon);
                                     } } ]
-                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[2]) ? ListItemData.reactions[2].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[2]) ? ("+" + ListItemData.reactions[2].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[2]) ? ListItemData.reactions[2].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[2]) ? ("+" + ListItemData.reactions[2].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 4/6
                                 Container {
@@ -2062,14 +2052,14 @@ Page {
                                     rightMargin: 4
                                     background: (ListItemData.reactions && ListItemData.reactions[3] && ListItemData.reactions[3].mine)
                                         ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
-                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    topPadding: 4; bottomPadding: 4; leftPadding: 9; rightPadding: 9
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
                                         if (ListItemData.reactions && ListItemData.reactions[3])
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[3].icon);
                                     } } ]
-                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[3]) ? ListItemData.reactions[3].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[3]) ? ("+" + ListItemData.reactions[3].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[3]) ? ListItemData.reactions[3].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[3]) ? ("+" + ListItemData.reactions[3].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 5/6
                                 Container {
@@ -2077,28 +2067,28 @@ Page {
                                     rightMargin: 4
                                     background: (ListItemData.reactions && ListItemData.reactions[4] && ListItemData.reactions[4].mine)
                                         ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
-                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    topPadding: 4; bottomPadding: 4; leftPadding: 9; rightPadding: 9
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
                                         if (ListItemData.reactions && ListItemData.reactions[4])
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[4].icon);
                                     } } ]
-                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[4]) ? ListItemData.reactions[4].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[4]) ? ("+" + ListItemData.reactions[4].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[4]) ? ListItemData.reactions[4].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[4]) ? ("+" + ListItemData.reactions[4].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 6/6
                                 Container {
                                     visible: !!(ListItemData.reactions && ListItemData.reactions.length > 5)
                                     background: (ListItemData.reactions && ListItemData.reactions[5] && ListItemData.reactions[5].mine)
                                         ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
-                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    topPadding: 4; bottomPadding: 4; leftPadding: 9; rightPadding: 9
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
                                         if (ListItemData.reactions && ListItemData.reactions[5])
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[5].icon);
                                     } } ]
-                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[5]) ? ListItemData.reactions[5].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[5]) ? ("+" + ListItemData.reactions[5].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[5]) ? ListItemData.reactions[5].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[5]) ? ("+" + ListItemData.reactions[5].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
                                 }
                             }
 
@@ -2697,6 +2687,26 @@ Page {
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: chatViewPage.isGroup
             onTriggered: { leaveGroupDialog.show() }
+        },
+        // Create today's event: writes a real event into the device's
+        // default calendar via app.createTodayEvent() (ApplicationUI, which
+        // wraps bb::pim::calendar::CalendarService — see that C++ method's
+        // own comment in applicationui.cpp). Always today's date; this QML
+        // layer never passes a date, so there's no wiring here that could
+        // accidentally schedule the wrong day. Subject defaults to
+        // "Meeting with <thread name>" as a reasonable starting point, not
+        // left blank — shown back for review in createEventDialog's body
+        // before the event is actually created (not editable there: this
+        // codebase's ConfirmDialog is a SystemDialog wrapper with no text
+        // input, just confirm/cancel).
+        ActionItem {
+            title: "Create today's event"
+            imageSource: "asset:///images/ChatView/ic_create_event.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            onTriggered: {
+                createEventDialog.eventSubject = "Meeting with " + chatViewPage.threadName;
+                createEventDialog.show();
+            }
         }
     ]
 
@@ -3392,7 +3402,6 @@ Page {
         ForwardPickerSheet { id: forwardPickerSheet; isDark: chatViewPage.isDark },
         ReactionPickerSheet {
             id: reactionPickerSheet
-            isDark: chatViewPage.isDark
             onReacted: { msgList.doSendReaction(msgId, cliMsgId, msgType, icon); }
         },
 
@@ -3449,12 +3458,6 @@ Page {
         InfoDialog {
             id: videoCallUnderDevDialog
             title: "Video Call"
-            body: "This feature is still under development."
-        },
-
-        InfoDialog {
-            id: createEventUnderDevDialog
-            title: "Create Event"
             body: "This feature is still under development."
         },
 
@@ -3893,6 +3896,26 @@ Page {
             body: "Leave " + chatViewPage.threadName + "? You won't be able to receive messages from this group."
             confirmLabel: "Leave"
             onConfirmed: zService.leaveGroup(chatViewPage.threadId)
+        },
+
+        // Confirms the event subject (pre-filled by the "Create today's
+        // event" overflow ActionItem above) before actually writing it to
+        // the calendar. eventSubject is a plain property here rather than
+        // a text-entry field because ConfirmDialog (this codebase's shared
+        // SystemDialog wrapper — see ConfirmDialog.qml) only exposes
+        // title/body/confirmLabel, no input control; the subject is
+        // computed once at trigger time from the thread name, shown back
+        // in the body for confirmation, and used as-is on confirm.
+        ConfirmDialog {
+            id: createEventDialog
+            property string eventSubject: ""
+            title: "Create today's event"
+            body: "Create \"" + eventSubject + "\" in your calendar for today?"
+            confirmLabel: "Create"
+            onConfirmed: {
+                app.createTodayEvent(createEventDialog.eventSubject,
+                "Create on Zalo10 - " + chatViewPage.threadName, 30);
+            }
         }
     ]
 }

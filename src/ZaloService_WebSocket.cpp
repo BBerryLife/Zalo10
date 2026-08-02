@@ -845,14 +845,17 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 continue;
             }
 
-            // chat.reaction = someone (possibly us, via the WS echo of our own
-            // reactMessage() HTTP call) reacted or un-reacted to a message —
-            // not a message of its own either. Persist + notify QML in place,
-            // same "patch existing state, don't append a stray bubble" shape
-            // as the recall/delete branches just above. See
-            // extractReactionInfo()'s own comment in ZaloServiceUtils.hpp for
-            // the caveat that "chat.reaction" as a msgType string is this
-            // codebase's best-effort naming guess, not a confirmed value.
+            // chat.reaction fallback — kept as a harmless secondary check,
+            // but cmd=612 (see the dedicated handler further down in this
+            // function) is now the CONFIRMED real reaction channel, verified
+            // against a live device log showing actual incoming reactions
+            // arriving there, not here. This "chat.reaction" msgType inside
+            // the regular cmd=501/521 message stream was this codebase's
+            // original best-effort guess before that capture existed (see
+            // extractReactionInfo()'s own comment in ZaloServiceUtils.hpp)
+            // and in practice never seems to match anything — left in place
+            // in case some other, currently unobserved server path does use
+            // it, but cmd=612 is what actually fires reactionUpdated() today.
             QString reactMsgId, reactUid, reactIcon;
             if (extractReactionInfo(m, reactMsgId, reactUid, reactIcon)) {
                 if (reactIcon.isEmpty()) dbRemoveReaction(reactMsgId, reactUid);
@@ -1191,6 +1194,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 bool isGrp = out["isGroup"].toBool();
                 QString notifTitle = isGrp ? m_groupNames.value(threadId, "Zalo10") : "Zalo10";
                 sendHubNotification(notifTitle, senderName + ": " + msgPreview, threadId, isGrp);
+                sendBannerNotification(notifTitle, senderName + ": " + msgPreview, threadId, isGrp);
             }
             if (threadId == m_activeThreadId && !msgId.isEmpty()) {
                 qint64 newNum = msgId.toLongLong();
@@ -1676,7 +1680,87 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (!isSelf && groupId != m_activeThreadId && !m_mutedThreads.contains(groupId)) {
                     QString grpName = m_groupNames.value(groupId, "Zalo10");
                     sendHubNotification(grpName, title, groupId, true);
+                    sendBannerNotification(grpName, title, groupId, true);
                 }
+            }
+        }
+    }
+
+    // cmd=612: real-time reaction push — the DEDICATED reaction channel, not
+    // a "chat.reaction" msgType folded into the regular cmd=501/521 message
+    // stream. Confirmed from zca-js's listen.ts (RFS-ADRENO/zca-js), which
+    // decodes this exact cmd into two parallel lists in the envelope body:
+    // "reacts" (1-1 reactions) and "reactGroups" (group reactions) — this is
+    // why BOTH earlier attempts failed silently in both directions: outgoing
+    // reactMessage() posted a payload shape the server didn't recognize as a
+    // valid reaction (see reactMessage()'s own updated comment in
+    // ZaloService_Messages.cpp), and incoming reactions were never picked up
+    // because nothing here was listening on cmd=612 at all — a reaction
+    // arriving as "chat.reaction" inside cmd=501/521 was this codebase's own
+    // unverified guess (extractReactionInfo()'s header comment already
+    // flagged it as such) and simply never matches real traffic, so the
+    // other person's tap was silently dropped client-side even though the
+    // server likely broadcast it correctly.
+    //
+    // Same envelope shape as cmd=501/521 (decodeWsEnvelope() handles both).
+    // Each entry's "content" field arrives as a JSON STRING (matching
+    // zca-js's own `react.content = JSON.parse(react.content)` step before
+    // constructing its Reaction model) and unpacks to:
+    //   { rMsg: [{ gMsgID, cMsgID, msgType }], rIcon, rType, source }
+    // alongside the entry's own top-level uidFrom/idTo/msgId/cliMsgId.
+    // uidFrom == "0" means "this reaction is OUR OWN, echoed back from a
+    // different logged-in device" — same "0" = self convention already
+    // handled for cmd=501/521 messages above (see rawUidFrom/isSelf there),
+    // ported here via zca-js's own Reaction constructor
+    // (`isSelf = data.uidFrom == "0"`).
+    if (cmd == 612) {
+        QVariantMap outer = jsonToMap(data);
+        QVariantMap d = decodeWsEnvelope(outer, "cmd612");
+        qDebug() << "[Zalo WS] cmd612 envelope keys:" << d.keys();
+
+        QVariantList reacts      = d["reacts"].toList();
+        QVariantList reactGroups = d["reactGroups"].toList();
+
+        for (int pass = 0; pass < 2; ++pass) {
+            const QVariantList &list = (pass == 0) ? reacts : reactGroups;
+            bool isGroupPass = (pass == 1);
+
+            for (int i = 0; i < list.size(); ++i) {
+                QVariantMap entry = list[i].toMap();
+
+                QVariant contentV = entry.value("content");
+                QVariantMap content = (contentV.type() == QVariant::String)
+                    ? jsonToMap(contentV.toString().toUtf8())
+                    : contentV.toMap();
+                if (content.isEmpty()) continue;
+
+                QString rawUidFrom = entry.value("uidFrom").toString();
+                QString rawIdTo    = entry.value("idTo").toString();
+                bool isSelf = (rawUidFrom == "0"); // our own reaction, echoed from another device
+
+                // threadId: for group reactions, always idTo (the group id);
+                // for 1-1, isSelf also means idTo IS the peer (mirrors
+                // zca-js Reaction: `isGroup || data.uidFrom == "0" ? data.idTo : data.uidFrom`)
+                QString resolvedUidFrom = isSelf ? m_uid : rawUidFrom;
+                QString resolvedIdTo    = (rawIdTo == "0") ? m_uid : rawIdTo;
+                QString threadId = (isGroupPass || isSelf) ? resolvedIdTo : resolvedUidFrom;
+
+                QVariantList rMsg = content.value("rMsg").toList();
+                if (rMsg.isEmpty()) continue;
+                QString reactMsgId = rMsg.first().toMap().value("gMsgID").toString();
+                if (reactMsgId.isEmpty()) continue;
+
+                int rType = content.value("rType").toInt();
+                QString rIcon = content.value("rIcon").toString();
+                QString icon = (rType < 0 || rIcon.isEmpty()) ? QString() : emojiToReactionIcon(rIcon);
+
+                qDebug() << "[Zalo WS] cmd612" << (isGroupPass ? "reactGroups" : "reacts")
+                         << "threadId=" << threadId << "msgId=" << reactMsgId
+                         << "uidFrom=" << resolvedUidFrom << "icon=" << icon << "isSelf=" << isSelf;
+
+                if (icon.isEmpty()) dbRemoveReaction(reactMsgId, resolvedUidFrom);
+                else                dbSaveReaction(threadId, reactMsgId, resolvedUidFrom, icon);
+                emit reactionUpdated(threadId, reactMsgId, resolvedUidFrom, icon);
             }
         }
     }
