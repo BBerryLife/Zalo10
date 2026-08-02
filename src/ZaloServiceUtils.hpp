@@ -358,7 +358,74 @@ inline bool extractDeleteInfo(const QVariantMap &m, QString &outMsgId, QString &
     return true;
 }
 
-// Zalo sends a separate "chat.undo" event when a message is recalled/unsent.
+// Shared icon-id <-> emoji mapping for reactions — "like"/"heart"/"haha"/
+// "wow"/"cry"/"angry" (same 6, same order, as ReactionPickerSheet.qml's fixed
+// slots) on one side, the actual emoji character Zalo's wire format uses as
+// rIcon on the other. One source of truth for both directions: reactMessage()
+// in ZaloService_Messages.cpp (outgoing, icon -> emoji) and
+// extractReactionInfo() just below (incoming, emoji -> icon).
+inline QString reactionIconToEmoji(const QString &icon)
+{
+    if (icon == "like")  return QString::fromUtf8("\xF0\x9F\x91\x8D"); // 👍 U+1F44D
+    if (icon == "heart") return QString::fromUtf8("\xE2\x9D\xA4");     // ❤ U+2764
+    if (icon == "haha")  return QString::fromUtf8("\xF0\x9F\x98\x84"); // 😄 U+1F604
+    if (icon == "wow")   return QString::fromUtf8("\xF0\x9F\x98\xB1"); // 😱 U+1F631
+    if (icon == "cry")   return QString::fromUtf8("\xF0\x9F\x98\xAD"); // 😭 U+1F62D
+    if (icon == "angry") return QString::fromUtf8("\xF0\x9F\x98\xA1"); // 😡 U+1F621
+    return QString();
+}
+inline QString emojiToReactionIcon(const QString &emoji)
+{
+    if (emoji == reactionIconToEmoji("like"))  return "like";
+    if (emoji == reactionIconToEmoji("heart")) return "heart";
+    if (emoji == reactionIconToEmoji("haha"))  return "haha";
+    if (emoji == reactionIconToEmoji("wow"))   return "wow";
+    if (emoji == reactionIconToEmoji("cry"))   return "cry";
+    if (emoji == reactionIconToEmoji("angry")) return "angry";
+    return QString();
+}
+
+// Best-effort mirror of extractDeleteInfo/extractRecalledMsgId above, for
+// reaction push events. "chat.reaction" is NOT a confirmed value the way
+// "chat.undo"/"chat.delete" are (those two were verified against real
+// traffic while building recall/delete) — it's this codebase's own naming
+// guess, following the same "chat.<action>" convention Zalo already uses for
+// every other in-band notification, until a real capture confirms/corrects
+// it. Expected content shape (also a guess, mirroring the {rType,rIcon}
+// fields reactMessage() sends): {globalMsgId or msgId, uidFrom, rIcon,
+// rType}. rType < 0 or an empty rIcon means "this uid removed their
+// reaction" — outIcon is left empty in that case so callers can tell "remove"
+// apart from "add/change" the same way reactMessage()'s own removing flag does.
+// Returns true and fills the outputs if m looks like a reaction event; false
+// (untouched outputs) otherwise.
+inline bool extractReactionInfo(const QVariantMap &m, QString &outMsgId, QString &outUid, QString &outIcon)
+{
+    QString msgTypeStr = m.value("msgType").toString();
+    if (msgTypeStr.compare("chat.reaction", Qt::CaseInsensitive) != 0)
+        return false;
+
+    QVariantMap content = m.value("content").toMap();
+    if (content.isEmpty()) {
+        QString cs = m.value("content").toString();
+        if (!cs.isEmpty() && cs.trimmed().startsWith("{"))
+            content = jsonToMap(cs.toUtf8());
+    }
+    if (content.isEmpty()) return false;
+
+    QString msgId = content.value("globalMsgId").toString();
+    if (msgId.isEmpty()) msgId = content.value("msgId").toString();
+    if (msgId.isEmpty()) return false;
+
+    outMsgId = msgId;
+    outUid   = content.value("uidFrom").toString();
+
+    int rType = content.value("rType").toInt();
+    QString rIcon = content.value("rIcon").toString();
+    outIcon = (rType < 0 || rIcon.isEmpty()) ? QString() : emojiToReactionIcon(rIcon);
+    return true;
+}
+
+
 // Its content is {"globalMsgId":..., "cliMsgId":..., "deleteMsg":..., "srcId":..., "destId":...}
 // referencing the ORIGINAL message's msgId — it is not a message of its own.
 // Returns the original msgId being recalled, or an empty string if m isn't a recall event.

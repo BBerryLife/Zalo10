@@ -895,6 +895,104 @@ void ZaloService::onRecallMsgDone()
     emit messageRecalledDone(tid, msgId, !hasError, errMsg);
 }
 
+// ─── Reactions ───────────────────────────────────────────────────────────────
+// icon ("like"/"heart"/"haha"/"wow"/"cry"/"angry") -> the actual emoji
+// character sent as rIcon, and rType (0..5, same order) the numeric
+// reaction-type index — see reactionIconToEmoji()/extractReactionInfo() in
+// ZaloServiceUtils.hpp for the shared mapping and the important caveat about
+// this endpoint/param naming being a best-effort reconstruction (Zalo's own
+// web client's message-action code calls something shaped like
+// sendReaction({rType, rIcon}) when you tap a reaction — as much of the wire
+// format as could be confirmed from public write-ups), not a tested-working
+// reverse-engineered payload the way pinGroupMessage's zlapi-derived body was.
+
+// Adds/changes/removes OUR OWN reaction on a message. QML has already applied
+// the optimistic local state change itself (see msgList.doSendReaction() in
+// ChatView.qml) before calling this — this only relays it to the server and,
+// on success, persists it so it survives an app restart; on failure it still
+// leaves the optimistic UI in place (same tradeoff recallMessage/etc already
+// make elsewhere in this file — a rare failed call self-corrects next time
+// this thread's reactions are reloaded from the server, rather than QML
+// needing a rollback path for every action everywhere).
+void ZaloService::reactMessage(const QString &threadId, bool isGroup, const QString &msgId,
+                                const QString &cliMsgId, int msgType, int rType, const QString &icon)
+{
+    if (!m_loggedIn) return;
+
+    bool removing = (rType < 0);
+
+    QVariantMap params;
+    params["msgId"]    = msgId;
+    params["cliMsgId"] = cliMsgId;
+    params["msgType"]  = msgType;
+    params["clientId"] = QString::number(QDateTime::currentMSecsSinceEpoch());
+    if (removing) {
+        params["rType"] = -1;
+        params["rIcon"] = "";
+    } else {
+        params["rType"] = rType;
+        params["rIcon"] = reactionIconToEmoji(icon);
+    }
+    if (isGroup) {
+        params["grid"] = threadId;
+        params["imei"] = m_imei;
+    } else {
+        params["toid"] = threadId;
+    }
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString base = isGroup ? m_groupServiceUrl + "/api/group/reaction"
+                           : m_chatServiceUrl  + "/api/message/reaction";
+    QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
+                          + "&zpw_type=" + QString::number(API_TYPE);
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+    qDebug() << "[Zalo] reactMessage POST" << urlStr << "msgId=" << msgId << "icon=" << icon << "removing=" << removing;
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("threadId", threadId);
+    reply->setProperty("msgId",    msgId);
+    reply->setProperty("icon",     removing ? QString() : icon);
+    connect(reply, SIGNAL(finished()), this, SLOT(onReactMsgDone()));
+}
+
+void ZaloService::onReactMsgDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    bool hasError  = (reply->error() != QNetworkReply::NoError);
+    QString tid    = reply->property("threadId").toString();
+    QString msgId  = reply->property("msgId").toString();
+    QString icon   = reply->property("icon").toString(); // "" means this call removed the reaction
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+    qDebug() << "[Zalo] reactMessage response:" << raw.left(200);
+
+    QString errMsg;
+    if (!hasError) {
+        QVariantMap outer = jsonToMap(raw);
+        if (outer["error_code"].toInt() == 0) {
+            if (icon.isEmpty()) dbRemoveReaction(msgId, m_uid);
+            else                dbSaveReaction(tid, msgId, m_uid, icon);
+            // Same "harmless no-op re-apply if the WS echo also arrives"
+            // reasoning as messageRecalledDone/markMessageRecalled above —
+            // QML already applied this optimistically, so this is just
+            // making sure the persisted DB copy agrees with what's on screen.
+            emit reactionUpdated(tid, msgId, m_uid, icon);
+        } else {
+            hasError = true;
+            errMsg = outer["error_message"].toString();
+            qDebug() << "[Zalo] reactMessage error_code:" << outer["error_code"].toInt() << errMsg;
+        }
+    } else {
+        errMsg = reply->errorString();
+    }
+    emit reactMessageDone(tid, msgId, !hasError, errMsg);
+}
+
 // ─── Send Photo ──────────────────────────────────────────────────────────────
 // Two-step: 1) upload to file[0]/api/{message|group}/photo_original/upload
 //           2) send message via {chat|group}/api/{message|group}/photo

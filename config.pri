@@ -59,6 +59,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/QuickMessageEditSheet.qml) \
         $$quote($$BASEDIR/assets/QuickMessagesSheet.qml) \
+        $$quote($$BASEDIR/assets/ReactionPickerSheet.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
         $$quote($$BASEDIR/assets/SharePickerSheet.qml) \
         $$quote($$BASEDIR/assets/images/AboutSheet/barcode.png) \

@@ -179,13 +179,24 @@ Sheet {
                                     // enabled MUST stay true — Cascades renders
                                     // enabled:false CheckBoxes with a greyed-out
                                     // "disabled" overlay, which was an earlier
-                                    // reported symptom. No gestureHandlers here —
-                                    // a plain CheckBox doesn't intercept the tap,
-                                    // so it still bubbles up to the ListView's
-                                    // own onTriggered below (single source of
-                                    // truth for toggling), which is what
-                                    // actually drives toggleSelected()/
-                                    // sendAction.enabled.
+                                    // reported symptom.
+                                    //
+                                    // BUG FIX: a CheckBox is itself a touch-
+                                    // handling control, so a tap landing
+                                    // directly on it was being consumed here
+                                    // and never reaching the ListItem — the
+                                    // checkbox visually flipped (its own
+                                    // internal state) but the ListView's
+                                    // onTriggered below (the single source of
+                                    // truth that calls toggleSelected() /
+                                    // sets sendAction.enabled) never fired, so
+                                    // Send stayed disabled forever. Setting
+                                    // PassThrough makes this CheckBox forward
+                                    // the touch to its parent ListItem instead
+                                    // of swallowing it, so onTriggered fires
+                                    // on every tap — whether it lands on the
+                                    // label or directly on the checkbox.
+                                    touchPropagationMode: TouchPropagationMode.PassThrough
                                 }
                             }
                         }

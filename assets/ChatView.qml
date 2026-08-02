@@ -643,6 +643,13 @@ Page {
         msgModel.clear();
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
 
+        // Bulk-load every reaction for this thread in ONE call (msgId -> {uid:
+        // {icon, ts}}) rather than one query per message — same reasoning as
+        // dbLoadMessages() itself being a single bulk call below. Freshly
+        // replaces msgList.reactionsByMsg since this is a brand-new thread
+        // open (nothing from a previously-open thread should linger).
+        msgList.reactionsByMsg = zService.dbLoadThreadReactions(chatViewPage.threadId) || {};
+
         var cached = zService.dbLoadMessages(chatViewPage.threadId);
         if (cached && cached.length > 0) {
             var newCache = {};
@@ -651,6 +658,10 @@ Page {
                 c.selfName = chatViewPage.selfName || "Me";
                 c.isMine = (c.isMine === "true" || c.isMine === 1 || c.isMine === true);
                 if (c.msgId) newCache[c.msgId] = c.isMine;
+                // Pills computed up front (row not in msgModel yet, so
+                // refreshReactionsRow's msgModel.replace() has nothing to
+                // find) — avoids a flash of "no reactions" before a second pass.
+                c.reactions = c.msgId ? msgList.summarizePills(c.msgId) : [];
                 msgModel.append(c);
 
                 var isPhoto = (c.msgType === 2 || c.msgType === "2");
@@ -847,7 +858,138 @@ Page {
                 sendAction.enabled = (inputField.text.trim().length > 0 || chatViewPage.pendingReplyMsgId.length > 0);
                 inputField.requestFocus();
             }
-            function doReaction(msgId)     { console.log("[bubble] Reaction " + msgId); }
+            // ---- Reactions ------------------------------------------------
+            // 6 fixed icons, same order as ReactionPickerSheet.qml's fixed
+            // slots. Kept as plain id strings ("like"/"heart"/...) for all
+            // LOCAL bookkeeping (reactionsByMsg, the "mine" comparison,
+            // msgModel's reactions rows) — only reactRType() below ever
+            // converts an id to zService.reactMessage()'s numeric rType, right
+            // at the one call site that actually needs the wire format.
+            property variant reactionAssets: ({
+                "like":  "asset:///images/emoji/people/emoji_1f44d_64.png",
+                "heart": "asset:///images/emoji/people/emoji_2764_64.png",
+                "haha":  "asset:///images/emoji/people/emoji_1f604_64.png",
+                "wow":   "asset:///images/emoji/people/emoji_1f631_64.png",
+                "cry":   "asset:///images/emoji/people/emoji_1f62d_64.png",
+                "angry": "asset:///images/emoji/people/emoji_1f621_64.png"
+            })
+            property variant reactionRTypes: ({ "like": 0, "heart": 1, "haha": 2, "wow": 3, "cry": 4, "angry": 5 })
+            function reactionAssetFor(iconId) { return msgList.reactionAssets[iconId] || ""; }
+            function reactionRType(iconId)    { return (iconId in msgList.reactionRTypes) ? msgList.reactionRTypes[iconId] : 0; }
+
+            // msgId -> { uid: { icon, ts } }. Rebuilt/merged from
+            // zService.dbLoadThreadReactions() when a thread opens (see
+            // openThread's cached-load block below), then kept live by our
+            // own taps (doSendReaction) and other members' taps arriving over
+            // WS (onReactionUpdated, wired near forwardPickerSheet below).
+            property variant reactionsByMsg: ({})
+
+            function findMsgRowIndexById(msgId) {
+                for (var i = 0; i < msgModel.size(); i++) {
+                    var r = msgModel.value(i);
+                    if (r && r.msgId === msgId) return i;
+                }
+                return -1;
+            }
+
+            // Pure computation: reactionsByMsg[msgId] -> [{icon, asset, count, mine}],
+            // ordered by whoever reacted with that icon FIRST (so a second
+            // person reacting with a different icon always adds a new pill to
+            // the right, never reorders the existing ones — the exact "thêm
+            // overlay xám tiếp theo... bên cạnh" behavior asked for). Doesn't
+            // touch msgModel — used both by refreshReactionsRow (row already
+            // in msgModel) and by the initial thread-load path (row not
+            // appended yet, so there's nothing to msgModel.replace() into).
+            function summarizePills(msgId) {
+                var byUid = msgList.reactionsByMsg[msgId] || {};
+                var uids = Object.keys(byUid);
+                uids.sort(function(a, b) { return (byUid[a].ts || 0) - (byUid[b].ts || 0); });
+
+                var order = [];
+                var counts = {};
+                var mineIcon = "";
+                for (var i = 0; i < uids.length; i++) {
+                    var uid = uids[i];
+                    var icon = byUid[uid].icon;
+                    if (!(icon in counts)) { counts[icon] = 0; order.push(icon); }
+                    counts[icon]++;
+                    if (uid === zService.selfUid) mineIcon = icon;
+                }
+
+                var pills = [];
+                for (var j = 0; j < order.length; j++) {
+                    var ic = order[j];
+                    pills.push({ icon: ic, asset: msgList.reactionAssetFor(ic), count: counts[ic], mine: (ic === mineIcon) });
+                }
+                return pills;
+            }
+
+            // Recomputes the grouped pill list for one message already
+            // present in msgModel and writes it back into that row's
+            // `reactions` field.
+            function refreshReactionsRow(msgId) {
+                var idx = msgList.findMsgRowIndexById(msgId);
+                if (idx < 0) return;
+                var row = msgModel.value(idx);
+                row = JSON.parse(JSON.stringify(row)); // distinct object so ArrayDataModel notices the change
+                row.reactions = msgList.summarizePills(msgId);
+                msgModel.replace(idx, row);
+            }
+
+            // Merges one (uid, icon) reaction record into reactionsByMsg —
+            // icon === "" removes that uid's reaction entirely — then
+            // refreshes the on-screen pills for that message. Used both for
+            // our own optimistic tap and for incoming WS updates about
+            // other members' taps.
+            function applyReactionRecord(msgId, uid, icon) {
+                // IMPORTANT: `property variant` here hands back a FRESH COPY
+                // on every read in this QtScript/Qt4 engine — it is NOT a
+                // live reference the way a plain JS object variable is. So
+                // `msgList.reactionsByMsg[msgId][uid] = x` silently mutates a
+                // throwaway copy and is lost, and the very next statement
+                // re-reading `msgList.reactionsByMsg[msgId]` sees it's still
+                // missing and throws ("... is undefined, not an object") the
+                // moment anything tries to index one level deeper into it.
+                // Fix: read the whole map into a local var ONCE, mutate that
+                // plain JS object as much as we like (no more property
+                // re-reads involved), then write it back with exactly ONE
+                // property assignment at the end.
+                var all = msgList.reactionsByMsg;
+                if (!all[msgId]) all[msgId] = {};
+                if (!icon || icon.length === 0) {
+                    delete all[msgId][uid];
+                } else {
+                    all[msgId][uid] = { icon: icon, ts: Date.now() };
+                }
+                msgList.reactionsByMsg = all;
+                msgList.refreshReactionsRow(msgId);
+            }
+
+            // Entry point for BOTH the picker sheet's onReacted AND a direct
+            // tap on one of the pills themselves (see the pill row further
+            // down) — tapping the icon the user already reacted with removes
+            // it (toggle), tapping any other icon switches to it, matching
+            // Zalo/Messenger's own one-reaction-per-person behavior.
+            function doSendReaction(msgId, cliMsgId, msgType, iconId) {
+                if (!msgId || msgId.length === 0) return;
+                var mine = (msgList.reactionsByMsg[msgId] && msgList.reactionsByMsg[msgId][zService.selfUid])
+                           ? msgList.reactionsByMsg[msgId][zService.selfUid].icon : "";
+                var removing = (mine === iconId);
+                var newIcon  = removing ? "" : iconId;
+                msgList.applyReactionRecord(msgId, zService.selfUid, newIcon); // optimistic
+                zService.reactMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId || "",
+                                       msgType || 0, removing ? -1 : msgList.reactionRType(iconId), newIcon);
+            }
+
+            function doReaction(msgId) {
+                var idx = msgList.findMsgRowIndexById(msgId);
+                var row = idx >= 0 ? msgModel.value(idx) : null;
+                var cliMsgId = row ? (row.cliMsgId || "") : "";
+                var msgType  = row ? (row.msgType || 0)  : 0;
+                var mine = (msgList.reactionsByMsg[msgId] && msgList.reactionsByMsg[msgId][zService.selfUid])
+                           ? msgList.reactionsByMsg[msgId][zService.selfUid].icon : "";
+                reactionPickerSheet.openFor(msgId, cliMsgId, msgType, mine);
+            }
             function doRecallMsg(msgId, cliMsgId, isMine) {
                 if (!isMine) {
                     errorToast.body = "You can only recall your own messages";
@@ -1838,6 +1980,130 @@ Page {
                             maxWidth:       rowRoot.mine ? 60 : 18
                         }
                         } // inner row Container
+
+                        // ---- Reaction pills (kind === "message" only) -----------
+                        // One gray, square-cornered chip per DISTINCT icon anyone
+                        // reacted to this message with — "+N" where N is how many
+                        // people picked that icon (see msgList.summarizePills()).
+                        // Plain Color-filled Containers are naturally square-
+                        // cornered already (no cornerRadius applied anywhere here),
+                        // which is exactly the "overlay pill không bo góc" look
+                        // asked for. Sits flush under the bubble's own edge —
+                        // mirrors the SAME left/right spacer widths bubbleWrap
+                        // above uses (mine: 18 left / 60 right, incoming: 60 left
+                        // / 18 right) so the pill row lines up with the bubble
+                        // instead of the row's own full width.
+                        // 6 FIXED slots, not a loop/Repeater — same constraint
+                        // already established for the poll card right below (this
+                        // QtQuick version has no Repeater item) and for
+                        // ReactionPickerSheet.qml's own icon strip.
+                        Container {
+                            id: reactionRow
+                            horizontalAlignment: HorizontalAlignment.Fill
+                            visible: rowRoot.kind === "message" && !!(ListItemData.reactions && ListItemData.reactions.length > 0)
+                            topPadding: 2; bottomPadding: 4
+                            layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
+                            Container { preferredWidth: rowRoot.mine ? 18 : 60; minWidth: rowRoot.mine ? 18 : 60; maxWidth: rowRoot.mine ? 18 : 60 }
+
+                            Container {
+                                horizontalAlignment: rowRoot.mine ? HorizontalAlignment.Right : HorizontalAlignment.Left
+                                maxWidth: rowRoot.bubbleMaxW
+                                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
+                                // Slot 1/6
+                                Container {
+                                    visible: !!(ListItemData.reactions && ListItemData.reactions.length > 0)
+                                    rightMargin: 4
+                                    background: (ListItemData.reactions && ListItemData.reactions[0] && ListItemData.reactions[0].mine)
+                                        ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
+                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        if (ListItemData.reactions && ListItemData.reactions[0])
+                                            rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[0].icon);
+                                    } } ]
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[0]) ? ListItemData.reactions[0].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[0]) ? ("+" + ListItemData.reactions[0].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                }
+                                // Slot 2/6
+                                Container {
+                                    visible: !!(ListItemData.reactions && ListItemData.reactions.length > 1)
+                                    rightMargin: 4
+                                    background: (ListItemData.reactions && ListItemData.reactions[1] && ListItemData.reactions[1].mine)
+                                        ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
+                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        if (ListItemData.reactions && ListItemData.reactions[1])
+                                            rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[1].icon);
+                                    } } ]
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[1]) ? ListItemData.reactions[1].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[1]) ? ("+" + ListItemData.reactions[1].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                }
+                                // Slot 3/6
+                                Container {
+                                    visible: !!(ListItemData.reactions && ListItemData.reactions.length > 2)
+                                    rightMargin: 4
+                                    background: (ListItemData.reactions && ListItemData.reactions[2] && ListItemData.reactions[2].mine)
+                                        ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
+                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        if (ListItemData.reactions && ListItemData.reactions[2])
+                                            rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[2].icon);
+                                    } } ]
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[2]) ? ListItemData.reactions[2].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[2]) ? ("+" + ListItemData.reactions[2].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                }
+                                // Slot 4/6
+                                Container {
+                                    visible: !!(ListItemData.reactions && ListItemData.reactions.length > 3)
+                                    rightMargin: 4
+                                    background: (ListItemData.reactions && ListItemData.reactions[3] && ListItemData.reactions[3].mine)
+                                        ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
+                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        if (ListItemData.reactions && ListItemData.reactions[3])
+                                            rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[3].icon);
+                                    } } ]
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[3]) ? ListItemData.reactions[3].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[3]) ? ("+" + ListItemData.reactions[3].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                }
+                                // Slot 5/6
+                                Container {
+                                    visible: !!(ListItemData.reactions && ListItemData.reactions.length > 4)
+                                    rightMargin: 4
+                                    background: (ListItemData.reactions && ListItemData.reactions[4] && ListItemData.reactions[4].mine)
+                                        ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
+                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        if (ListItemData.reactions && ListItemData.reactions[4])
+                                            rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[4].icon);
+                                    } } ]
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[4]) ? ListItemData.reactions[4].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[4]) ? ("+" + ListItemData.reactions[4].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                }
+                                // Slot 6/6
+                                Container {
+                                    visible: !!(ListItemData.reactions && ListItemData.reactions.length > 5)
+                                    background: (ListItemData.reactions && ListItemData.reactions[5] && ListItemData.reactions[5].mine)
+                                        ? Color.create("#b8c4cc") : (rowRoot.isDark ? Color.create("#3a3a3a") : Color.create("#e2e2e2"))
+                                    topPadding: 2; bottomPadding: 2; leftPadding: 6; rightPadding: 6
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    gestureHandlers: [ TapHandler { onTapped: {
+                                        if (ListItemData.reactions && ListItemData.reactions[5])
+                                            rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[5].icon);
+                                    } } ]
+                                    ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[5]) ? ListItemData.reactions[5].asset : ""; preferredWidth: 16; preferredHeight: 16; scalingMethod: ScalingMethod.AspectFit }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[5]) ? ("+" + ListItemData.reactions[5].count) : ""; textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                }
+                            }
+
+                            Container { preferredWidth: rowRoot.mine ? 60 : 18; minWidth: rowRoot.mine ? 60 : 18; maxWidth: rowRoot.mine ? 60 : 18 }
+                        } // reactionRow
 
                         // ---- Inline poll card (kind === "poll") -----------------
                         // Mirrors GroupBoardSheet.qml's own poll-option rendering
@@ -3043,9 +3309,11 @@ Page {
             onGroupBoardReady: {
                 if (groupId !== chatViewPage.threadId) return;
                 chatViewPage.boardItems = items;
-                for (var i = 0; i < items.length; i++) {
-                    if (items[i].boardType === "poll") chatViewPage.upsertPollRow(items[i]);
-                }
+                // POLL DISABLED (temporary — keep project lean): re-enable
+                // inline poll cards in ChatView by uncommenting below.
+                // for (var i = 0; i < items.length; i++) {
+                //     if (items[i].boardType === "poll") chatViewPage.upsertPollRow(items[i]);
+                // }
             }
         },
         Connections {
@@ -3069,7 +3337,7 @@ Page {
             onVotePollDone: {
                 if (success) {
                     chatViewPage.loadBoardItems();
-                    chatViewPage.bumpPollToBottom(pollId, updatedOptions, null);
+                    // POLL DISABLED (temporary): chatViewPage.bumpPollToBottom(pollId, updatedOptions, null);
                 }
             }
         },
@@ -3102,12 +3370,31 @@ Page {
             target: zService
             onPollDetailReady: {
                 if (error && error.length > 0) return;
-                chatViewPage.bumpPollToBottom(pollId, detail.options || [], detail);
+                // POLL DISABLED (temporary): chatViewPage.bumpPollToBottom(pollId, detail.options || [], detail);
+            }
+        },
+        // Real-time reaction pushed from the server — either someone else's
+        // tap on a message in this thread, or the WS echo of our own
+        // reactMessage() call (harmless no-op re-apply, same
+        // already-applied-optimistically pattern the rest of this file uses
+        // for its own actions). icon === "" means that uid removed their
+        // reaction. Filtered by threadId so a push for a thread we've since
+        // navigated away from can't touch this screen's msgModel.
+        Connections {
+            target: zService
+            onReactionUpdated: {
+                if (threadId !== chatViewPage.threadId) return;
+                msgList.applyReactionRecord(msgId, uid, icon);
             }
         },
 
         PollVotersSheet { id: pollVotersSheet },
         ForwardPickerSheet { id: forwardPickerSheet; isDark: chatViewPage.isDark },
+        ReactionPickerSheet {
+            id: reactionPickerSheet
+            isDark: chatViewPage.isDark
+            onReacted: { msgList.doSendReaction(msgId, cliMsgId, msgType, icon); }
+        },
 
         SharePickerSheet { id: sharePicker },
 

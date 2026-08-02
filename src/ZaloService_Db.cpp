@@ -284,6 +284,69 @@ QVariantList ZaloService::dbLoadMessages(const QString &threadId)
     return result;
 }
 
+// Every reaction on every message in a thread, in ONE query — {msgId: {uid:
+// {icon, ts}}} — rather than one round-trip per message. See
+// message_reactions' CREATE TABLE comment in ZaloService.cpp for the schema
+// and its one-active-reaction-per-person-per-message guarantee.
+QVariantMap ZaloService::dbLoadThreadReactions(const QString &threadId)
+{
+    QVariantMap byMsg;
+    if (!m_db || threadId.isEmpty()) return byMsg;
+
+    const char *sql = "SELECT msgId,uid,icon,ts FROM message_reactions WHERE threadId=?;";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return byMsg;
+    sqlite3_bind_text(stmt, 1, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        QString msgId = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
+        QString uid   = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
+        QString icon  = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 2));
+        qint64  ts    = sqlite3_column_int64(stmt, 3);
+
+        QVariantMap forMsg = byMsg.value(msgId).toMap();
+        QVariantMap rec;
+        rec["icon"] = icon;
+        rec["ts"]   = (double)ts; // QML Date.now()-style millis, kept as a plain number
+        forMsg[uid] = rec;
+        byMsg[msgId] = forMsg;
+    }
+    sqlite3_finalize(stmt);
+    return byMsg;
+}
+
+// Adds/replaces (uid,msgId)'s reaction. Called both for our own optimistic
+// action (from reactMessage()) and for reactions arriving over WS from other
+// members (from the cmd 501/521 handler in ZaloService_WebSocket.cpp), so a
+// restart of the app still shows everyone's reactions exactly as they were.
+void ZaloService::dbSaveReaction(const QString &threadId, const QString &msgId, const QString &uid, const QString &icon)
+{
+    if (!m_db || msgId.isEmpty() || uid.isEmpty() || icon.isEmpty()) return;
+    const char *sql =
+        "INSERT OR REPLACE INTO message_reactions (msgId,threadId,uid,icon,ts) VALUES (?,?,?,?,?);";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
+    sqlite3_bind_text(stmt, 1, msgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, uid.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, icon.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 5, QDateTime::currentMSecsSinceEpoch());
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+// Removes (uid,msgId)'s reaction entirely (un-react).
+void ZaloService::dbRemoveReaction(const QString &msgId, const QString &uid)
+{
+    if (!m_db || msgId.isEmpty() || uid.isEmpty()) return;
+    const char *sql = "DELETE FROM message_reactions WHERE msgId=? AND uid=?;";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return;
+    sqlite3_bind_text(stmt, 1, msgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, uid.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
 // Every message row across every thread, oldest first — used by exportData().
 // Unlike dbLoadMessages() (per-thread, 200-row cap for chat display), this has
 // no LIMIT: an export is meant to be a full backup, not a UI page.

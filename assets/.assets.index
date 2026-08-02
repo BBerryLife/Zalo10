@@ -1,5 +1,5 @@
 1
-798
+799
 AboutSheet.qml
 ActiveFrameCover.qml
 ChangelogPage.qml
@@ -796,5 +796,6 @@ PollVotersSheet.qml
 ProfileView.qml
 QuickMessageEditSheet.qml
 QuickMessagesSheet.qml
+ReactionPickerSheet.qml
 SettingsSheet.qml
 SharePickerSheet.qml

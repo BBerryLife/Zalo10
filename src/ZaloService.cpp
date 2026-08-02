@@ -140,6 +140,25 @@ ZaloService::ZaloService(QObject *parent)
         // dName/fromD quirks.
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteOwnerId   TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
+        // One row per (message, person) reaction — PRIMARY KEY(msgId,uid) means
+        // a fresh INSERT OR REPLACE naturally implements "changing your
+        // reaction icon overwrites your old one" (one active reaction per
+        // person per message, exactly like Zalo/Messenger's own behavior),
+        // and a DELETE removes it entirely when someone un-reacts. icon is
+        // one of "like"/"heart"/"haha"/"wow"/"cry"/"angry" (see
+        // ReactionPickerSheet.qml). threadId is stored purely so
+        // dbLoadThreadReactions() can bulk-fetch every reaction for a whole
+        // open chat in one query instead of one per message.
+        sqlite3_exec(m_db,
+            "CREATE TABLE IF NOT EXISTS message_reactions ("
+            "  msgId    TEXT NOT NULL,"
+            "  threadId TEXT NOT NULL,"
+            "  uid      TEXT NOT NULL,"
+            "  icon     TEXT NOT NULL,"
+            "  ts       INTEGER DEFAULT 0,"
+            "  PRIMARY KEY (msgId, uid)"
+            ");", 0, 0, 0);
+        sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_reactions_thread ON message_reactions(threadId);", 0, 0, 0);
         // Track per-thread clear timestamps so re-fetched server msgs are filtered
         sqlite3_exec(m_db,
             "CREATE TABLE IF NOT EXISTS cleared_threads ("

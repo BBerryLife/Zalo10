@@ -175,6 +175,23 @@ public:
     // in both 1-1 chats and groups. Ported from zca-js's undo.ts.
     Q_INVOKABLE void recallMessage(const QString &threadId, bool isGroup, const QString &msgId,
                                     const QString &cliMsgId);
+    // Add/change/remove OUR OWN reaction on a message. icon is one of
+    // "like"/"heart"/"haha"/"wow"/"cry"/"angry" (or "" when rType==-1, i.e.
+    // this call is a REMOVAL — the QML side already applies the optimistic
+    // local state change itself; this just relays it to the server and, on
+    // success, persists it so it survives an app restart). rType is the
+    // numeric reaction-type index (0..5, same order as icon), following the
+    // {rType, rIcon} shape Zalo's own web client sends — see
+    // reactMessage()'s own comment in ZaloService_Messages.cpp for the
+    // important caveat about this endpoint/param naming being a best-effort
+    // reconstruction, not a confirmed-working reverse-engineered call.
+    Q_INVOKABLE void reactMessage(const QString &threadId, bool isGroup, const QString &msgId,
+                                   const QString &cliMsgId, int msgType, int rType, const QString &icon);
+    // Bulk-loads every locally-known reaction for every message in a thread,
+    // in ONE query — {msgId: {uid: {icon, ts}}} — so opening a thread doesn't
+    // need a separate DB round-trip per message. See message_reactions'
+    // CREATE TABLE comment in ZaloService.cpp for the schema.
+    Q_INVOKABLE QVariantMap dbLoadThreadReactions(const QString &threadId);
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption = QString());
     // Copies a picker-provided (potentially transient) image path into the persistent
     // "/tmp/zalo_img_local_<ts>.<ext>" cache immediately, before upload starts, so the
@@ -350,6 +367,18 @@ signals:
     // Only ever fires for deletions WE performed; another participant's
     // "delete for me" must never reach this signal or affect our screen.
     void messageDeletedLocally(const QString &threadId, const QString &msgId);
+    // Fired whenever a reaction on a message changes — either someone else's
+    // tap arriving over WS, or the WS echo of our own reactMessage() call
+    // (QML already applied its own tap optimistically; re-applying the same
+    // {uid,icon} here is a harmless no-op, same pattern messageRecalled etc.
+    // already rely on). icon == "" means that uid removed their reaction.
+    void reactionUpdated(const QString &threadId, const QString &msgId, const QString &uid, const QString &icon);
+    // Result of OUR OWN reactMessage() HTTP call specifically (separate from
+    // reactionUpdated, which can also fire from someone else's action) — lets
+    // QML show an error toast and roll back its optimistic update if the
+    // server call itself failed outright (network error, non-zero
+    // error_code, etc).
+    void reactMessageDone(const QString &threadId, const QString &msgId, bool success, const QString &error);
     // Result of OUR OWN deleteMessage()/recallMessage() calls (as opposed to
     // messageRecalled above, which is the incoming notification when someone
     // else's recall reaches us over WS). QML uses these to update the bubble
@@ -415,6 +444,7 @@ private slots:
     void onSendMsgQuoteDone();
     void onDeleteMsgDone();
     void onRecallMsgDone();
+    void onReactMsgDone();
     void onSendPhotoDone();
     void onSendPhotoMsgDone();
     void onSendFileDone();
@@ -468,6 +498,12 @@ private:
     void fetchPhotoViaWs510(const QString &msgId, const QString &threadId);
     void fetchPhotoViaHttp(const QString &msgId, const QString &threadId);
     void fetchPhotoViaHttpAtIndex(const QString &msgId, const QString &threadId, int idx);
+    // Internal reaction-persistence helpers — shared by reactMessage() (our
+    // own tap) and the cmd 501/521 WS handler (other members' taps). Not
+    // Q_INVOKABLE: QML only ever needs the bulk dbLoadThreadReactions() read,
+    // never a direct single-row write.
+    void dbSaveReaction(const QString &threadId, const QString &msgId, const QString &uid, const QString &icon);
+    void dbRemoveReaction(const QString &msgId, const QString &uid);
     QSize imageDimensions(const QString &localFileUrlOrPath) const; // strips "file://", reads pixel size
     void markMessageRecalled(const QString &threadId, const QString &msgId); // chat.undo handling
     void markMessageDeletedForMe(const QString &threadId, const QString &msgId); // chat.delete handling — local-only, hard delete

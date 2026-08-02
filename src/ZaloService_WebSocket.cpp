@@ -845,6 +845,22 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 continue;
             }
 
+            // chat.reaction = someone (possibly us, via the WS echo of our own
+            // reactMessage() HTTP call) reacted or un-reacted to a message —
+            // not a message of its own either. Persist + notify QML in place,
+            // same "patch existing state, don't append a stray bubble" shape
+            // as the recall/delete branches just above. See
+            // extractReactionInfo()'s own comment in ZaloServiceUtils.hpp for
+            // the caveat that "chat.reaction" as a msgType string is this
+            // codebase's best-effort naming guess, not a confirmed value.
+            QString reactMsgId, reactUid, reactIcon;
+            if (extractReactionInfo(m, reactMsgId, reactUid, reactIcon)) {
+                if (reactIcon.isEmpty()) dbRemoveReaction(reactMsgId, reactUid);
+                else                     dbSaveReaction(threadId, reactMsgId, reactUid, reactIcon);
+                emit reactionUpdated(threadId, reactMsgId, reactUid, reactIcon);
+                continue;
+            }
+
             QVariantMap out;
             out["msgId"]    = msgId;
             out["cliMsgId"] = cliMsgId;
@@ -1378,6 +1394,23 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                             msgs.removeAt(pj);
                             break;
                         }
+                    }
+                }
+                continue;
+            }
+
+            // chat.reaction — same handling as the real-time path above, plus
+            // dropping the raw event from this history batch so it's never
+            // resurrected as its own stray bubble on next thread open.
+            QString reactMsgIdH, reactUidH, reactIconH;
+            if (extractReactionInfo(m, reactMsgIdH, reactUidH, reactIconH)) {
+                if (reactIconH.isEmpty()) dbRemoveReaction(reactMsgIdH, reactUidH);
+                else                      dbSaveReaction(emitThread, reactMsgIdH, reactUidH, reactIconH);
+                emit reactionUpdated(emitThread, reactMsgIdH, reactUidH, reactIconH);
+                for (int pj = 0; pj < msgs.size(); ++pj) {
+                    if (msgs[pj].toMap()["msgId"].toString() == reactMsgIdH) {
+                        msgs.removeAt(pj);
+                        break;
                     }
                 }
                 continue;
