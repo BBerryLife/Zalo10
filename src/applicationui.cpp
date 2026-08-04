@@ -44,16 +44,9 @@
 using namespace bb::cascades;
 using namespace bb::system;
 
-// Single small JSON file on BBerryLife.github.io that both checkForUpdate() and
-// fetchChangelog() read. Releasing a new version = editing this one file on the
-// website (latestVersion / downloadUrl / changelog array) — the app never needs
-// a hardcoded download link or a rebuild just to know about a newer release.
-// Expected shape:
-// {
-//   "latestVersion": "1.2.0",
-//   "downloadUrl": "https://.../Downloads/Zalo10-1_2_0_0.bar",
-//   "changelog": [ { "version": "1.2.0", "items": ["NEW: ...", "IMPROVE: ..."] }, ... ]
-// }
+// JSON manifest dùng chung cho checkForUpdate() và fetchChangelog(). Release
+// bản mới chỉ cần sửa file này trên web, không cần rebuild app. Format:
+// { "latestVersion": "1.2.0", "downloadUrl": "...", "changelog": [...] }
 static const char *VERSION_MANIFEST_URL =
     "https://raw.githubusercontent.com/BBerryLife/BBerryLife.github.io/main/Data/Zalo10-version.json";
 
@@ -124,10 +117,8 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
 
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
                      this, SLOT(onManualExit()));
-    // Lưới an toàn thứ 2: manualExit() (Cascades) có vẻ KHÔNG bắn khi user vuốt
-    // card đóng app trong màn đa nhiệm (đã xác nhận qua log thực tế — không có
-    // dòng "manualExit: saving session" nào xuất hiện trước khi process chết).
-    // aboutToQuit() là signal Qt core chuẩn, nhiều khả năng phổ quát hơn.
+    // Lưới an toàn thứ 2: manualExit() của Cascades không bắn khi vuốt đóng
+    // app, nên bắt thêm aboutToQuit() (signal Qt core chuẩn) cho chắc.
     QObject::connect(QCoreApplication::instance(), SIGNAL(aboutToQuit()),
                      this, SLOT(onManualExit()));
 
@@ -161,24 +152,11 @@ void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
     m_pInvokeManager->invoke(req);
 }
 
-// Creates a real event in the device's default calendar via
-// bb::pim::calendar::CalendarService — confirmed API (not an Invocation-
-// Framework guess at the Calendar app's own invoke-target/action, which
-// this codebase deliberately avoided since that string couldn't be
-// verified). Steps, each pulled directly from the real
-// bb::pim::calendar headers:
-//   - CalendarService::defaultCalendarFolder -> QPair<AccountId,FolderId>,
-//     the user's default calendar, so this never has to guess/hardcode
-//     an account or folder id.
-//   - Build a CalendarEvent via its setSubject/setBody/setStartTime/
-//     setEndTime/setAccountId/setFolderId setters.
-//   - CalendarService::createEvent(event) -> Result::Type, Success == 0.
-//
-// ALWAYS today — startTime/endTime are computed here from
-// QDateTime::currentDateTime, never accepted as a parameter, so no call
-// path (wrong QML wiring, a stale cached date, etc) could ever create this
-// on a day other than today. durationMinutes only affects how long the
-// block runs past that same today-start; if 0 or negative, defaults to 30.
+// Tạo event thật trong calendar mặc định của máy qua CalendarService:
+// lấy defaultCalendarFolder() để không phải hardcode account/folder id,
+// build CalendarEvent rồi gọi createEvent(). Luôn là HÔM NAY — start/end
+// tự tính từ giờ hiện tại, không nhận qua tham số. durationMinutes mặc
+// định 30 phút nếu không truyền hoặc <= 0.
 void ApplicationUI::createTodayEvent(const QString &subject, const QString &body, int durationMinutes)
 {
     using namespace bb::pim::calendar;
@@ -219,15 +197,9 @@ void ApplicationUI::copyToClipboard(const QString &text)
     clipboard.insert("text/plain", text.toUtf8());
 }
 
-// Root cause of the "copy image only copies the link" bug: doCopy() in
-// ChatView.qml was calling copyToClipboard(content), and content for a photo
-// message is the JSON blob {"normalUrl":...,"thumbUrl":...,"hdUrl":...} — a
-// text string, not the picture. Whatever the user pasted it into only ever
-// saw that text/plain MIME entry, so it rendered as the JSON text instead of
-// an image. Fix: read the actual image bytes from the already-downloaded
-// local cache file (localImage in the message model) and put THOSE on the
-// clipboard under an image/* MIME type. No re-download from the CDN needed —
-// the file is already on disk from the normal receive/cache flow.
+// Fix cho bug "copy ảnh chỉ copy được link": đọc thẳng bytes ảnh từ file
+// cache local đã tải sẵn, rồi bỏ vào clipboard dưới MIME type image/*
+// thay vì copy JSON text như trước.
 bool ApplicationUI::copyImageToClipboard(const QString &localPath)
 {
     QString path = toLocalFilePath(localPath);
@@ -251,10 +223,9 @@ bool ApplicationUI::copyImageToClipboard(const QString &localPath)
     return true;
 }
 
-// Ported from SmartList10's ApplicationUI::queryShareTargets/onQueryTargetsFinished —
-// same bb.action.SHARE query + same category ordering (BBM contact -> BBM group ->
-// BBM channel -> Text -> Email -> Meeting -> Bluetooth/NFC -> Remember -> other
-// native -> third-party), which is the order Jim wants for the share picker.
+// Query app đăng ký bb.action.SHARE, sắp theo thứ tự ưu tiên: BBM contact
+// -> BBM group -> BBM channel -> Text -> Email -> Meeting -> Bluetooth/NFC
+// -> Remember -> app native khác -> app bên thứ ba.
 void ApplicationUI::queryShareTargets(const QString &text)
 {
     Q_UNUSED(text);
@@ -266,11 +237,8 @@ void ApplicationUI::queryShareTargets(const QString &text)
     connect(reply, SIGNAL(finished()), this, SLOT(onQueryTargetsFinished()));
 }
 
-// Image counterpart of queryShareTargets(): same picker/ordering logic in
-// onQueryTargetsFinished(), just queried against image/* instead of
-// text/plain so apps that only register for image sharing (Photos-type
-// targets) show up too. localPath's extension picks the concrete MIME type
-// (jpeg/png/gif/webp) used both here and in invokeShareTargetForImage().
+// Giống queryShareTargets() nhưng query theo image/* thay vì text/plain,
+// để các app chỉ đăng ký nhận ảnh cũng hiện ra trong picker.
 void ApplicationUI::queryShareTargetsForImage(const QString &localPath)
 {
     m_pendingShareMimeType = mimeTypeForImagePath(toLocalFilePath(localPath));
@@ -365,12 +333,8 @@ void ApplicationUI::invokeShareTarget(const QString &target, const QString &acti
     m_pInvokeManager->invoke(req);
 }
 
-// Image counterpart of invokeShareTarget(): reads the same local cache file
-// used by copyImageToClipboard() and hands its raw bytes to the target app
-// under the correct image/* MIME type, instead of the JSON URL text that
-// used to be sent through invokeShareTarget(). This is the "apply the same
-// fix to Share" half of the request — a receiving app now gets an actual
-// picture to display/save, not a string it renders as plain text.
+// Giống invokeShareTarget() nhưng gửi bytes ảnh thật (đọc từ cache local)
+// dưới MIME type image/*, thay vì text JSON như trước.
 void ApplicationUI::invokeShareTargetForImage(const QString &target, const QString &action, const QString &localPath)
 {
     QString path = toLocalFilePath(localPath);
@@ -475,18 +439,16 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
 
 QString ApplicationUI::appVersion()
 {
-    // Reads version directly from bar-descriptor.xml at runtime (same pattern as bbtube).
-    // To update the version, only bar-descriptor.xml needs to be changed.
+    // Đọc version trực tiếp từ bar-descriptor.xml lúc runtime, nên update
+    // version chỉ cần sửa file đó, không cần đổi code.
     return bb::ApplicationInfo().version();
 }
 
 QString ApplicationUI::exportLog()
 {
     QString srcPath  = QDir::homePath() + "/zalo10_runtime.log";
-    // Logs go in zalo10/log/ — a sibling of, but separate from, the data
-    // exports written to zalo10/ by ZaloService::exportData(). Keeping them
-    // apart means attaching a debug log to a support email never accidentally
-    // bundles message history, and vice versa.
+    // Tách riêng zalo10/log/ với thư mục export data để tránh gộp nhầm
+    // log debug và lịch sử tin nhắn khi gửi hỗ trợ.
     QString destDir  = "/accounts/1000/shared/documents/zalo10/log";
     QString stamp    = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
     QString destPath = destDir + "/zalo10_log_" + stamp + ".txt";
@@ -507,14 +469,9 @@ QString ApplicationUI::exportLog()
     return ok ? destPath : QString();
 }
 
-// BB10's bundled OpenSSL is old enough that Qt's default protocol pin
-// (effectively SSLv3/TLS1.0-only on this NDK) can't complete a handshake with
-// GitHub's CDN (raw.githubusercontent.com / Fastly), which requires TLS1.2+ —
-// that's QNetworkReply::SslHandshakeFailedError (error code 6), and it happens
-// *before* certificate checking, so setPeerVerifyMode(VerifyNone) alone isn't
-// enough; the protocol negotiation itself has to be loosened too.
-// AnyProtocol tells the underlying OpenSSL to negotiate the highest version
-// both sides support instead of being locked to Qt's older default.
+// OpenSSL bundle của BB10 quá cũ để handshake TLS1.2+ với GitHub CDN, nên
+// phải nới protocol về AnyProtocol để OpenSSL tự thương lượng bản cao nhất
+// cả 2 bên hỗ trợ, thay vì bị khóa cứng ở default cũ của Qt.
 static QNetworkRequest buildManifestRequest()
 {
     QNetworkRequest req((QUrl(QString::fromLatin1(VERSION_MANIFEST_URL))));
@@ -535,11 +492,9 @@ void ApplicationUI::checkForUpdate()
     connect(reply, SIGNAL(finished()), this, SLOT(onUpdateCheckFetchDone()));
 }
 
-// sslErrors() only fires for problems found *after* the handshake completes
-// (bad/unknown cert chain etc). A bare SslHandshakeFailedError (error code 6)
-// usually means the handshake itself never got that far — so this mostly won't
-// fire for that case, but it's cheap insurance and gives us the real OpenSSL
-// reason on the rare case it does.
+// sslErrors() chỉ bắn khi lỗi xảy ra sau khi handshake xong (vd cert chain
+// lỗi), nên phần lớn không bắt được SslHandshakeFailedError, nhưng cứ giữ
+// lại phòng hờ.
 void ApplicationUI::onManifestSslErrors(const QList<QSslError> &errors)
 {
     for (int i = 0; i < errors.size(); ++i)
@@ -609,12 +564,9 @@ void ApplicationUI::onChangelogFetchDone()
     emit changelogReady(buildChangelogHtml(versions), "");
 }
 
-// Renders the manifest's "changelog" array into the same look as the
-// Reference/Change List screen used elsewhere (bold "Version X.x" header
-// per entry + bullet list). Each item is HTML-escaped first, then:
-//   - a leading "NEW:"/"IMPROVE:"/"FIX:"/"REMOVED:" tag is bolded automatically
-//   - any **word** markdown pair is turned into <b>word</b>
-// so Jim can write plain changelog text on the website without touching HTML.
+// Render mảng "changelog" trong manifest thành HTML: header "Version X.x"
+// + bullet list mỗi entry. Tự bold tag đầu dòng (NEW:/IMPROVE:/FIX:/REMOVED:)
+// và hỗ trợ **word** kiểu markdown, để viết changelog trên web không cần HTML.
 QString ApplicationUI::buildChangelogHtml(const QVariantList &versions) const
 {
     static const char *tags[] = { "NEW:", "IMPROVE:", "FIX:", "REMOVED:", 0 };

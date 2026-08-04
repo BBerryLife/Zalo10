@@ -27,11 +27,8 @@ class ZaloService : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY loggedInChanged)
-    // Exposes our own uid to QML so a reply's quoteOwnerId can be compared
-    // against it (needed to tell "I'm replying to my own earlier message"
-    // apart from "I'm replying to the other person" — see quoteSenderResolved
-    // in ChatView.qml's delegate). No NOTIFY: set once during login and never
-    // changes for the lifetime of a session, same as how m_uid itself behaves.
+    // Expose uid của mình cho QML, để so sánh quoteOwnerId khi biết đang
+    // reply tin nhắn của chính mình hay của người khác.
     Q_PROPERTY(QString selfUid READ selfUid CONSTANT)
 
 public:
@@ -40,12 +37,8 @@ public:
 
     bool loggedIn() const { return m_loggedIn; }
     QString selfUid() const { return m_uid; }
-    // Reliable uid -> display name lookup for group members, built from
-    // getmg-v2's currentMems (see m_memberNames above). Returns "" if the
-    // uid isn't known yet (e.g. group details haven't been fetched this
-    // session) — callers should fall back to something honest rather than
-    // the wire's per-message dName in that case, same as
-    // GroupBoardSheet.qml's creatorLabel() already does.
+    // Tra tên hiển thị thành viên nhóm từ uid, build từ getmg-v2's currentMems.
+    // Trả về "" nếu chưa biết uid này (chưa fetch group details).
     Q_INVOKABLE QString memberDisplayName(const QString &uid) const { return m_memberNames.value(uid, QString()); }
 
     Q_INVOKABLE void startQRLogin();
@@ -63,41 +56,23 @@ public:
     Q_INVOKABLE void acceptFriendRequest(const QString &friendId);
     Q_INVOKABLE void rejectFriendRequest(const QString &friendId);
     Q_INVOKABLE void fetchGroupDetails(const QStringList &groupIds);
-    // Group board: fetches all pinned messages/notes/polls for a group.
-    // Ported from zca-js's getListBoard.ts (.../api/board/list, board_type=0
-    // = "all types"). page/count mirror that API's pagination knobs; the QML
-    // side currently always asks for page 1 with a generous count since the
-    // board sheet shows everything in one scrollable list rather than paging.
+    // Group board: fetch toàn bộ pinned message/note/poll của 1 nhóm.
+    // page/count là tham số phân trang, hiện QML luôn xin page 1 với count lớn
+    // vì board sheet hiển thị hết trong 1 list cuộn được, không phân trang.
     Q_INVOKABLE void fetchGroupBoard(const QString &groupId, int page, int count);
-    // Pin a message to the group board. zca-js (the JS reference library this
-    // app otherwise ports its API calls from) doesn't expose a "pin message"
-    // endpoint at all, which is why this used to be a silent no-op stub —
-    // but zlapi (a separate, independently-reverse-engineered Zalo API for
-    // Python: github.com/Its-VrxxDev/zlapi) does, as pinGroupMsg(). Ported
-    // from ITS actual request shape instead: POSTs to the SAME
-    // .../api/board/topic/createv2 endpoint fetchGroupBoard's sibling
-    // createNote already uses, just with type:2 (PinnedMessage) instead of
-    // type:0 (Note) and a params.params payload describing the pinned
-    // message rather than a note title. msgType here is Zalo's *client*
-    // message type code (1=text/webchat, 32=photo — see
-    // sendMessageQuote()'s qmsgType doc above), NOT our local 1/2 msgType;
-    // QML converts before calling this, same as it already does for quotes.
-    // Group-only: Zalo has no equivalent 1-1 "pin" endpoint (zlapi doesn't
-    // define one either), matching the "Group board" action's isGroup-only
-    // gating in ChatView.qml.
+    // Ghim 1 tin nhắn vào group board. POST tới cùng endpoint createNote dùng,
+    // chỉ khác type:2 (PinnedMessage) thay vì type:0 (Note). msgType ở đây là
+    // mã message type của Zalo (1=text, 32=photo...), không phải mã 1/2 nội bộ.
+    // Chỉ dùng cho group — Zalo không có API pin cho chat 1-1.
     Q_INVOKABLE void pinGroupMessage(const QString &groupId, const QString &msgId,
                                       const QString &cliMsgId, const QString &senderId,
                                       const QString &senderName, const QString &content,
                                       int msgType);
-    // Create a note in the group board. Ported from zca-js's createNote.ts:
-    // same .../api/board/topic/createv2 endpoint pinGroupMessage() uses,
-    // type:0 (BoardType.Note) instead of type:2 (PinnedMessage), and
-    // params.params only carries {title} — no client_msg_id/global_msg_id/
-    // senderUid, since a note isn't tied to an existing chat message.
+    // Tạo note trong group board, dùng cùng endpoint pinGroupMessage() nhưng
+    // type:0 (Note), params chỉ có {title} vì note không gắn với tin nhắn nào.
     Q_INVOKABLE void createGroupNote(const QString &groupId, const QString &title, bool pinAct);
-    // Create a poll in the group. Ported from zca-js's createPoll.ts —
-    // NOTE this hits the plain "group" service (m_groupServiceUrl), NOT
-    // group_board and NOT group_poll; see fetchGroupBoard()'s doc comment
+    // Tạo poll trong nhóm — LƯU Ý dùng service "group" thường, không phải
+    // group_board hay group_poll (xem comment fetchGroupBoard() bên trên).
     // for why those two are easy to confuse with each other here.
     // optionsList is a plain list of option strings (2+ required by Zalo).
     Q_INVOKABLE void createGroupPoll(const QString &groupId, const QString &question,
@@ -117,10 +92,9 @@ public:
     // service, same host as create/vote above) — unlike the vote-result
     // payload, PollDetail's per-option shape includes a `voters` array of
     // uids (zca-js's models/Board.ts: PollOptions.voters: string[]), which
-    // is what the inline poll card's "View voters" link needs and nothing
-    // else here currently fetches. Result arrives via pollDetailReady;
-    // resolving voter uids to display names is left to QML
-    // (zService.memberDisplayName), same as everywhere else names are shown.
+    // Lấy chi tiết poll (danh sách người vote từng option) cho link "View
+    // voters" trên poll card. Kết quả trả về qua pollDetailReady; resolve
+    // uid sang tên hiển thị do QML tự làm (zService.memberDisplayName).
     Q_INVOKABLE void getPollDetail(const QString &pollId);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
@@ -134,85 +108,61 @@ public:
                                        const QString &quoteOwnerId, const QString &quoteContent,
                                        int quoteMsgType, const QString &quoteTs,
                                        const QString &quoteSenderName);
-    // Forward an already-sent message's content to one or more OTHER
-    // threads of the same type (all groups, or all 1-1 chats — never
-    // mixed in one call, matching the two-step "pick Groups OR Chats, then
-    // pick from that list" dialog flow in ChatView.qml). Ported from
-    // zca-js's forwardMessage.ts: both the group and 1-1 variants post to
-    // the FILE service host (m_fileServiceUrl, zpwServiceMap.file[0]) —
-    // NOT m_groupServiceUrl/m_chatServiceUrl like plain sendMessage() uses
-    // — at .../api/group/mforward or .../api/message/mforward respectively.
-    // `content` is the raw message content to replicate verbatim: for a
-    // text message that's its plain text; for a photo message it's the
-    // same content JSON blob normalizePhotoContent()'s callers already
-    // work with elsewhere (href/thumb/params etc.) — forwarding a photo
-    // needs no re-upload, same as Zalo's own client, since the server
-    // resolves the already-uploaded CDN URLs embedded in that JSON.
-    // threadIds must all be the same isGroup type.
-    //
-    // origMsgId/origTs are the SOURCE message's own msgId/ts (NOT this
-    // client's freshly-generated clientId) — required to build
-    // ForwardMessagePayload.reference per zca-js's forwardMessage.ts.
-    // Without it, the server has no way to distinguish "forwarded" from
-    // "freshly typed/pasted with the same text" — the message posts fine
-    // either way, but arrives on the receiving end as an ordinary message
-    // instead of one carrying Zalo's own "Forwarded message" provenance
-    // marker (mirrored locally too — see appendForwardedRow()). Result via
-    // forwardMessageDone.
+    // Gửi tin nhắn text kèm reply/quote 1 tin trước đó. quoteMsgType là mã
+    // message type của Zalo (1=text, 32=photo), không phải msgType nội bộ.
+    Q_INVOKABLE void sendMessageQuote(const QString &threadId, const QString &content, bool isGroup,
+                                       const QString &quoteMsgId, const QString &quoteCliMsgId,
+                                       const QString &quoteOwnerId, const QString &quoteContent,
+                                       int quoteMsgType, const QString &quoteTs,
+                                       const QString &quoteSenderName);
+    // Forward nội dung 1 tin nhắn đã gửi sang 1 hay nhiều thread KHÁC, cùng
+    // loại (toàn group hoặc toàn 1-1, không trộn). Post lên file service
+    // (không phải group/chat service như sendMessage()). content là nội
+    // dung gốc để replicate y hệt (text thường, hoặc JSON blob cho photo —
+    // không cần re-upload vì server tự resolve URL CDN đã có sẵn).
+    // origMsgId/origTs là msgId/ts của tin nhắn GỐC (không phải clientId
+    // mới sinh) — cần để server đánh dấu đây là tin "forwarded" thay vì
+    // tin thường gõ trùng nội dung. Kết quả trả về qua forwardMessageDone.
     Q_INVOKABLE void forwardMessage(const QString &content, const QStringList &threadIds, bool isGroup,
                                      const QString &origMsgId, const QString &origTs);
-    // Delete a message. Ported from zca-js's deleteMessage.ts:
-    //   - onlyMe=true:  "delete for me" — always allowed, any thread.
-    //   - onlyMe=false: "delete for everyone" — only allowed in groups; for a
-    //     1-1 chat, recallMessage() (undo) is the only way to remove a message
-    //     for both sides. Zalo enforces the same split server-side.
-    // msgId/cliMsgId/senderId identify the target message (from the DB row);
-    // senderId lets us mirror zca-js's isSelf-vs-onlyMe guard client-side too,
-    // so a bad tap surfaces a clear error instead of a silent server rejection.
+    // Xóa 1 tin nhắn.
+    //   - onlyMe=true:  "xóa cho tôi" — luôn cho phép, mọi loại thread.
+    //   - onlyMe=false: "xóa cho mọi người" — chỉ nhóm; với chat 1-1 phải
+    //     dùng recallMessage() (thu hồi).
+    // senderId dùng để check quyền client-side trước khi gửi lên server.
     Q_INVOKABLE void deleteMessage(const QString &threadId, bool isGroup, const QString &msgId,
                                     const QString &cliMsgId, const QString &senderId, bool onlyMe);
-    // Recall ("undo" in zca-js) a message you sent — removes it for everyone,
-    // in both 1-1 chats and groups. Ported from zca-js's undo.ts.
+    // Thu hồi tin nhắn mình đã gửi — xóa khỏi cả 2 phía, dùng được cho
+    // cả chat 1-1 và nhóm.
     Q_INVOKABLE void recallMessage(const QString &threadId, bool isGroup, const QString &msgId,
                                     const QString &cliMsgId);
-    // Add/change/remove OUR OWN reaction on a message. icon is one of
-    // "like"/"heart"/"haha"/"wow"/"cry"/"angry" (or "" when rType==-1, i.e.
-    // this call is a REMOVAL — the QML side already applies the optimistic
-    // local state change itself; this just relays it to the server and, on
-    // success, persists it so it survives an app restart). rType is the
-    // numeric reaction-type index (0..5, same order as icon), following the
-    // {rType, rIcon} shape Zalo's own web client sends — see
-    // reactMessage()'s own comment in ZaloService_Messages.cpp for the
-    // important caveat about this endpoint/param naming being a best-effort
-    // reconstruction, not a confirmed-working reverse-engineered call.
+    // Thêm/đổi/xóa reaction của MÌNH trên 1 tin nhắn. icon là 1 trong
+    // "like"/"heart"/"haha"/"wow"/"cry"/"angry" (rỗng khi rType==-1 = xóa
+    // reaction — QML đã apply optimistic local state, hàm này chỉ relay
+    // lên server và lưu lại nếu thành công). rType là chỉ số reaction 0..5.
     Q_INVOKABLE void reactMessage(const QString &threadId, bool isGroup, const QString &msgId,
                                    const QString &cliMsgId, int msgType, int rType, const QString &icon);
-    // Bulk-loads every locally-known reaction for every message in a thread,
-    // in ONE query — {msgId: {uid: {icon, ts}}} — so opening a thread doesn't
-    // need a separate DB round-trip per message. See message_reactions'
-    // CREATE TABLE comment in ZaloService.cpp for the schema.
+    // Load hết reaction đã biết cho toàn bộ tin nhắn trong 1 thread, trong
+    // 1 query duy nhất — {msgId: {uid: {icon, ts}}} — để mở thread không
+    // cần query DB từng tin nhắn một.
     Q_INVOKABLE QVariantMap dbLoadThreadReactions(const QString &threadId);
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption = QString());
-    // Copies a picker-provided (potentially transient) image path into the persistent
-    // "/tmp/zalo_img_local_<ts>.<ext>" cache immediately, before upload starts, so the
-    // original picked photo is never lost even if the WS echo / CDN round-trip fails.
-    // Returns the new path (no "file://" prefix), or the original path if the copy fails.
+    // Copy ảnh từ picker vào cache persistent "/tmp/zalo_img_local_<ts>.<ext>"
+    // ngay trước khi upload, để ảnh gốc không mất kể cả khi round-trip
+    // WS echo/CDN thất bại. Trả về path mới, hoặc path gốc nếu copy lỗi.
     Q_INVOKABLE QString cacheLocalImage(const QString &sourcePath);
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId = QString());
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
-    // Update downloader — called from AboutSheet when user confirms update.
-    // Saves to /accounts/1000/shared/downloads/<filename>.
+    // Update downloader — gọi từ AboutSheet khi user xác nhận update.
+    // Lưu vào /accounts/1000/shared/downloads/<filename>.
     Q_INVOKABLE void downloadUpdate(const QString &url, const QString &filename);
-    // Long-press "Download" on a photo bubble: copies the already-cached local
-    // file (localImage — same source as the bubble's own rendering and the
-    // copy/share fixes above) into the user-visible shared downloads folder,
-    // so it shows up in the device's Pictures/gallery app. No re-download from
-    // the CDN — the bytes are already on disk. Returns the saved path on
-    // success, or an empty string on failure (caller shows an error toast).
+    // Long-press "Download" trên bubble ảnh: copy file cache local sẵn có
+    // sang thư mục downloads chung để hiện trong gallery máy. Không tải lại
+    // từ CDN. Trả về path đã lưu nếu ok, rỗng nếu lỗi.
     Q_INVOKABLE QString downloadPhotoToGallery(const QString &localImagePath, const QString &msgId);
-    // Aborts an in-flight downloadUpdate() (e.g. user tapped Cancel on the
-    // SystemProgressDialog). Safe to call when nothing is downloading.
+    // Hủy 1 downloadUpdate() đang chạy dở (vd user bấm Cancel). An toàn để
+    // gọi kể cả khi không có gì đang tải.
     Q_INVOKABLE void cancelUpdateDownload();
 
 
@@ -226,14 +176,9 @@ public:
     Q_INVOKABLE void clearHistory(const QString &threadId, bool isGroup);
     Q_INVOKABLE void leaveGroup(const QString &groupId);
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
-    // Top-of-screen banner dialog (bb::platform::NotificationDialog) shown
-    // immediately, even while Zalo10 itself is the foreground app — see this
-    // method's own comment in ZaloService_Messages.cpp for exactly why this
-    // is a SEPARATE call from sendHubNotification() rather than a flag on
-    // it: Notification (Hub)'s own banner/peek only ever appears when this
-    // app is NOT the active window, confirmed from the real
-    // bb::platform::Notification/NotificationDialog headers, which is the
-    // opposite of what's wanted here.
+    // Banner dialog hiện ngay ở đầu màn hình, kể cả khi Zalo10 đang là app
+    // foreground — khác sendHubNotification() vì banner của Hub chỉ hiện
+    // khi app KHÔNG active, ngược với cái cần ở đây.
     Q_INVOKABLE void sendBannerNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
@@ -249,50 +194,39 @@ public:
     // Quick Messages ("/command" canned replies) — stored locally in SQLite,
     // shared across every conversation. Replaces the old "Timed Messages"
     // placeholder feature.
-    Q_INVOKABLE QVariantList getQuickMessages() const;                                        // [{id,name,content}], sorted A-Z by name
-    Q_INVOKABLE int          addQuickMessage(const QString &name, const QString &content);     // returns new id, or -1 on failure/duplicate name
-    Q_INVOKABLE bool         updateQuickMessage(int id, const QString &name, const QString &content); // false on failure/duplicate name
+    Q_INVOKABLE QVariantList getQuickMessages() const;                                        // [{id,name,content}], sắp xếp A-Z theo tên
+    Q_INVOKABLE int          addQuickMessage(const QString &name, const QString &content);     // trả id mới, -1 nếu lỗi/trùng tên
+    Q_INVOKABLE bool         updateQuickMessage(int id, const QString &name, const QString &content); // false nếu lỗi/trùng tên
     Q_INVOKABLE bool         deleteQuickMessage(int id);
-    // Pulls the user's own "Tin nhắn nhanh" (quick message) list straight from their
-    // real Zalo account via api/quickmessage/list, then merges it into the local
-    // quick_messages table — same "match by name, existing wins" rule as importData(),
-    // so it's safe to call repeatedly without creating duplicates.
+    // Lấy list "Tin nhắn nhanh" từ tài khoản Zalo thật của user, merge vào
+    // bảng quick_messages local — khớp theo tên, cái nào có sẵn thì giữ.
     Q_INVOKABLE void         fetchServerQuickMessages();
-    // Returns {"width": w, "height": h} for a local image file (accepts "file://" prefix).
-    // Used by ChatView.qml right after the user picks a photo to send, so the outgoing
-    // bubble can be sized to the real aspect ratio immediately (before upload finishes).
+    // Trả {"width": w, "height": h} của 1 ảnh local, để size bubble đúng
+    // tỉ lệ ngay khi chọn ảnh, trước khi upload xong.
     Q_INVOKABLE QVariantMap getImageDimensions(const QString &localFilePath) const;
     Q_INVOKABLE qint64 getFileSize(const QString &localFilePath) const;
 
     // ---- Data export / import / cache management (Settings) -----------------
-    // Runs on the UI thread but is kept fast: SQLite reads/writes and one small
-    // file write, so a single SystemProgressToast with indefinite progress (no
-    // QThread) is enough to keep the UI from looking frozen.
+    // Chạy trên UI thread nhưng đủ nhanh (SQLite + ghi 1 file nhỏ) nên chỉ
+    // cần SystemProgressToast, không cần QThread riêng.
     //
-    // exportData: dumps every locally-known message + quick message into a single
-    // JSON file under <destDir>/zalo10/zalo10_data_<timestamp>.json. Text only —
-    // image files are never copied (they live in a tmp cache that doesn't survive
-    // an app update/reinstall anyway). A message that had a photo keeps its text
-    // content (if any) with a "[Photo]" marker appended so the conversation still
-    // reads naturally; no image data or dimensions are included.
-    // Returns a map: {"success": bool, "path": exported json path,
-    // "messageCount": n, "error": msg}
+    // exportData: xuất toàn bộ tin nhắn + quick message ra 1 file JSON.
+    // Chỉ text, không copy ảnh (ảnh nằm ở cache tmp, không sống sót qua
+    // update/reinstall). Tin nhắn có ảnh vẫn giữ text kèm tag "[Photo]".
+    // Trả về {"success": bool, "path": ..., "messageCount": n, "error": msg}
     Q_INVOKABLE QVariantMap exportData(const QString &destDir);
 
-    // importData: reads back a JSON file produced by exportData(). Messages whose
-    // msgId already exists locally are skipped (existing data always wins) so importing
-    // is always safe to re-run. Quick messages are matched by name (case-insensitive)
-    // and skipped the same way.
-    // Returns: {"success": bool, "importedMessages": n, "skippedMessages": n,
+    // importData: đọc lại file JSON từ exportData(). Tin nhắn đã có msgId
+    // local thì bỏ qua (data cũ luôn thắng), nên chạy lại bao nhiêu lần
+    // cũng an toàn. Quick message khớp theo tên (không phân biệt hoa/thường).
+    // Trả về: {"success": bool, "importedMessages": n, "skippedMessages": n,
     //           "importedQuickMessages": n, "skippedQuickMessages": n, "error": msg}
     Q_INVOKABLE QVariantMap importData(const QString &jsonFilePath);
 
-    // clearCache: deletes every cached image file Zalo10 writes to the temp folder
-    // (avatars, message photo thumbnails/full images, QR codes) AND wipes the local
-    // message history table (cleared_threads + quick_messages are left intact —
-    // those aren't "cache", they're user data/settings). Conversations themselves
-    // are unaffected server-side and will simply be re-fetched next time they're
-    // opened. Returns the number of files deleted.
+    // clearCache: xóa hết file ảnh cache (avatar, thumbnail, QR code) và
+    // xóa sạch bảng lịch sử tin nhắn local (giữ nguyên cleared_threads và
+    // quick_messages vì đó là data/settings của user, không phải cache).
+    // Conversation phía server không bị ảnh hưởng. Trả về số file đã xóa.
     Q_INVOKABLE int clearCache();
 
 signals:
@@ -307,92 +241,57 @@ signals:
     void conversationsReady(const QVariantList &threads); // groups
     void friendsReady(const QVariantList &friends);       // 1-1 friends
     void invitesReady(const QVariantList &invites);       // friend requests
-    // Emitted after fetchGroupBoard() resolves — items is a flat list of
-    // QVariantMaps, each tagged with a "boardType" string ("note"/"pin"/"poll")
-    // so GroupBoardSheet.qml can filter into its 4 tabs without needing 3
-    // separate signals. error is "" on success.
+    // Bắn khi fetchGroupBoard() xong — items là list phẳng, mỗi item tag
+    // sẵn "boardType" ("note"/"pin"/"poll") để QML tự lọc vào 4 tab.
     void groupBoardReady(const QString &groupId, const QVariantList &items, const QString &error);
-    // Result of pinGroupMessage(). error is "" on success.
+    // Kết quả pinGroupMessage(). error rỗng nếu thành công.
     void pinMessageDone(bool success, const QString &error);
-    // Result of createGroupNote(). error is "" on success. QML re-calls
-    // fetchGroupBoard() on success to pick up the new item, same pattern
-    // as other create/send actions in this app that don't locally splice
-    // their own result into an existing list.
+    // Kết quả createGroupNote(). error rỗng nếu ok. QML gọi lại
+    // fetchGroupBoard() để lấy item mới.
     void createNoteDone(bool success, const QString &error);
-    // Result of createGroupPoll(). error is "" on success.
+    // Kết quả createGroupPoll(). error rỗng nếu ok.
     void createPollDone(bool success, const QString &error);
-    // Result of voteGroupPoll(). Carries the updated option list straight
-    // from Zalo's response (zca-js's VotePollResponse) so QML can update
-    // the poll card in place without needing a full fetchGroupBoard()
-    // round-trip. pollId lets QML find the right card if more than one
-    // poll is visible. error is "" on success (updatedOptions then valid).
+    // Kết quả voteGroupPoll(). Trả kèm option list đã cập nhật từ response
+    // của Zalo, để QML update poll card tại chỗ không cần fetch lại toàn bộ.
     void votePollDone(bool success, const QString &pollId, const QVariantList &updatedOptions, const QString &error);
-    // Result of getPollDetail(). detail's "options" entries carry a
-    // "voters" QStringList of uids alongside the usual content/votes/
-    // optionId fields (see getPollDetail()'s doc comment above). error is
-    // "" on success.
+    // Kết quả getPollDetail(). Mỗi option trong detail có thêm "voters"
+    // (list uid) bên cạnh content/votes/optionId. error rỗng nếu ok.
     void pollDetailReady(const QString &pollId, const QVariantMap &detail, const QString &error);
-    // Fired for EVERY relevant cmd601 group-board WS event (pin/unpin/
-    // update_board/update_topic/remove_*), regardless of whether a Hub OS
-    // notification was also sent for it — unlike sendHubNotification(),
-    // which is deliberately suppressed for self-actions and for the
-    // currently-open thread (see the cmd601 handler's own comment), this
-    // signal is NOT suppressed in either case, so ChatView can react
-    // in-app (inline system-notice row, poll-card refresh/reposition) even
-    // while the user is actively looking at the thread — which is exactly
-    // the situation the Hub suppression exists to avoid double-notifying
-    // for. QML is expected to filter by groupId itself, same as
-    // groupBoardReady. topicType follows GroupTopicType (Note=0,
-    // Message=2, Poll=3) where known, else -1. topicId is the pin/poll/
-    // note id when the event carried one, else "".
+    // Bắn cho MỌI event cmd601 group-board (pin/unpin/update_board/
+    // update_topic/remove_*), kể cả khi Hub notification bị suppress cho
+    // self-action/thread đang mở — signal này KHÔNG bị suppress, để
+    // ChatView vẫn phản ứng in-app (system-notice row, refresh poll card)
+    // dù user đang xem thread đó. QML tự lọc theo groupId.
     void boardEventOccurred(const QString &groupId, const QString &act, const QString &actorName,
                              bool isSelf, int topicType, const QString &topicId, const QString &title);
-    // successCount/failCount straight from forwardMessage.ts's response
-    // shape ({success:[...], fail:[...]}) — per-target error detail isn't
-    // surfaced individually here (nothing else in this codebase's UI does
-    // per-target results either, e.g. sendMessage's own onSendMsgDone),
-    // just an aggregate the forward dialog can show as a toast/summary.
+    // successCount/failCount lấy thẳng từ response server ({success:[...], fail:[...]}),
+    // không surface chi tiết lỗi từng target, chỉ tổng hợp để hiện toast.
     void forwardMessageDone(bool success, int successCount, int failCount, const QString &error);
     void friendRequestResponded(const QString &friendId, bool accepted, bool success);
     void messagesReady(const QString &threadId, const QVariantList &messages);
     void messageSent(bool success, const QString &threadId);
     void newMessage(const QString &threadId, const QVariantMap &message);
-    // Fired when a message already saved to the DB (almost always via the
-    // HTTP send-confirm path, which has no server timestamp yet and falls
-    // back to the device clock) gets its ts corrected once the WS echo
-    // brings the real server timestamp — see the m_seenMsgIds branch in
-    // ZaloService_WebSocket.cpp for the full explanation. If this message is
-    // currently loaded in ChatView's model, QML should patch its ts in place
-    // and re-run grouping; otherwise this is a no-op until the thread is
-    // next opened, since dbLoadMessages() will pick up the corrected value.
+    // Bắn khi 1 tin nhắn đã lưu DB (qua HTTP send-confirm, chưa có ts thật
+    // của server) được sửa ts đúng sau khi WS echo mang ts server về.
+    // Nếu tin đang hiện trong ChatView, QML nên patch ts tại chỗ và group lại.
     void messageTsCorrected(const QString &threadId, const QString &msgId, const QString &newTs);
-    // Fired when a previously-displayed message gets recalled/unsent by its sender
-    // (Zalo "chat.undo" event). QML should update the existing bubble in place.
+    // Bắn khi 1 tin nhắn đang hiển thị bị người gửi thu hồi (chat.undo).
+    // QML nên update bubble tại chỗ.
     void messageRecalled(const QString &threadId, const QString &msgId);
-    // Fired when OUR OWN "delete for me" is confirmed via the chat.delete WS
-    // notification (see extractDeleteInfo() in ZaloServiceUtils.hpp) and the
-    // local DB row has been hard-deleted. Unlike messageRecalled, this means
-    // "remove this bubble from the model entirely" — no placeholder text.
-    // Only ever fires for deletions WE performed; another participant's
-    // "delete for me" must never reach this signal or affect our screen.
+    // Bắn khi "xóa cho tôi" của CHÍNH MÌNH được xác nhận qua WS và DB row
+    // đã bị xóa cứng. Khác messageRecalled ở chỗ: xóa hẳn bubble khỏi model,
+    // không giữ placeholder. Chỉ bắn cho hành động xóa của MÌNH.
     void messageDeletedLocally(const QString &threadId, const QString &msgId);
-    // Fired whenever a reaction on a message changes — either someone else's
-    // tap arriving over WS, or the WS echo of our own reactMessage() call
-    // (QML already applied its own tap optimistically; re-applying the same
-    // {uid,icon} here is a harmless no-op, same pattern messageRecalled etc.
-    // already rely on). icon == "" means that uid removed their reaction.
+    // Bắn khi reaction trên 1 tin nhắn thay đổi — của người khác qua WS,
+    // hoặc echo của chính reactMessage() mình gọi (QML đã optimistic-update
+    // rồi nên apply lại là no-op). icon == "" nghĩa là uid đó gỡ reaction.
     void reactionUpdated(const QString &threadId, const QString &msgId, const QString &uid, const QString &icon);
-    // Result of OUR OWN reactMessage() HTTP call specifically (separate from
-    // reactionUpdated, which can also fire from someone else's action) — lets
-    // QML show an error toast and roll back its optimistic update if the
-    // server call itself failed outright (network error, non-zero
-    // error_code, etc).
+    // Kết quả của reactMessage() do CHÍNH MÌNH gọi (khác reactionUpdated,
+    // cái đó bắn cả cho action của người khác) — để QML hiện toast lỗi và
+    // rollback optimistic update nếu server call thất bại.
     void reactMessageDone(const QString &threadId, const QString &msgId, bool success, const QString &error);
-    // Result of OUR OWN deleteMessage()/recallMessage() calls (as opposed to
-    // messageRecalled above, which is the incoming notification when someone
-    // else's recall reaches us over WS). QML uses these to update the bubble
-    // immediately without waiting for a WS echo, and to show an error toast
-    // on failure (e.g. tried to delete-for-everyone in a 1-1 chat).
+    // Kết quả deleteMessage()/recallMessage() do CHÍNH MÌNH gọi (khác
+    // messageRecalled — đó là notification đến từ người khác qua WS).
     void messageDeleted(const QString &threadId, const QString &msgId, bool success, const QString &error);
     void messageRecalledDone(const QString &threadId, const QString &msgId, bool success, const QString &error);
     void threadLastMessageChanged(const QString &threadId, const QString &lastMsg, const QString &lastTime);
@@ -507,26 +406,23 @@ private:
     void fetchPhotoViaWs510(const QString &msgId, const QString &threadId);
     void fetchPhotoViaHttp(const QString &msgId, const QString &threadId);
     void fetchPhotoViaHttpAtIndex(const QString &msgId, const QString &threadId, int idx);
-    // Internal reaction-persistence helpers — shared by reactMessage() (our
-    // own tap) and the cmd 501/521 WS handler (other members' taps). Not
-    // Q_INVOKABLE: QML only ever needs the bulk dbLoadThreadReactions() read,
-    // never a direct single-row write.
+    // Helper lưu reaction xuống DB — dùng chung cho reactMessage() (tap
+    // của mình) và WS handler cmd 501/521 (tap của người khác).
     void dbSaveReaction(const QString &threadId, const QString &msgId, const QString &uid, const QString &icon);
     void dbRemoveReaction(const QString &msgId, const QString &uid);
-    QSize imageDimensions(const QString &localFileUrlOrPath) const; // strips "file://", reads pixel size
-    void markMessageRecalled(const QString &threadId, const QString &msgId); // chat.undo handling
-    void markMessageDeletedForMe(const QString &threadId, const QString &msgId); // chat.delete handling — local-only, hard delete
-    bool isMessageDeletedForMe(const QString &msgId) const; // tombstone lookup — must be checked before handing any resynced msg to the UI, not just before writing to DB
+    QSize imageDimensions(const QString &localFileUrlOrPath) const; // bỏ "file://", đọc kích thước pixel
+    void markMessageRecalled(const QString &threadId, const QString &msgId); // xử lý chat.undo
+    void markMessageDeletedForMe(const QString &threadId, const QString &msgId); // xử lý chat.delete — local-only, xóa cứng
+    bool isMessageDeletedForMe(const QString &msgId) const; // tra tombstone trước khi đưa msg resync lên UI
 
-    // Data export/import/cache helpers
-    QVariantList dbLoadAllMessages() const;     // every row, every thread — used by exportData
-    QStringList  cacheFilePatterns() const;     // filename prefixes this app writes under tempPath()
+    // Helper export/import/cache
+    QVariantList dbLoadAllMessages() const;     // toàn bộ row mọi thread — dùng cho exportData
+    QStringList  cacheFilePatterns() const;     // các prefix filename app ghi vào tempPath()
 
-    // Persistent avatar cache (avatar_meta table) — see ZaloService_Db.cpp.
-    // Lets downloadAvatar() recognise "we already have this exact avatar on
-    // disk" across app restarts and logout/login, and only re-fetch when the
-    // person's avatar URL actually changed (or the cached file is gone).
-    void    loadAvatarCacheFromDb();                              // startup diagnostic: logs avatar_meta vs files on disk
+    // Cache avatar persistent (bảng avatar_meta) — giúp downloadAvatar()
+    // nhận ra avatar đã có sẵn trên máy qua các lần mở app, chỉ tải lại
+    // khi URL avatar thực sự đổi hoặc file cache bị mất.
+    void    loadAvatarCacheFromDb();                              // log avatar_meta vs file thực tế lúc khởi động
     bool    avatarMetaLookup(const QString &threadId, QString &urlHashOut, QString &localPathOut) const;
     void    avatarMetaUpsert(const QString &threadId, const QString &urlHash, const QString &localPath);
 
@@ -556,22 +452,15 @@ private:
     QTimer *m_keepAliveTimer; // gọi /keepalive định kỳ để gia hạn session (issue zca-js #keepalive)
 
     // WebSocket (RFC 6455) — real-time messages. Trước đây dùng QSslSocket
-    // trực tiếp, nhưng QSslSocket trên BB10 NDK (bản Qt4 đã được BlackBerry
-    // tự biên dịch sẵn, không phải mã nguồn công khai) hoá ra vẫn luôn fail
-    // TLS handshake với error:1407742E dù set QSsl::AnyProtocol/SecureProtocols
-    // — trong khi chính OpenSSL 1.0.2g link cùng app (xác nhận qua log
-    // "Runtime OpenSSL" ở main.cpp) THỰC SỰ hỗ trợ TLS 1.2. Vậy giới hạn nằm
-    // ở tầng QSslSocket của BlackBerry (rất có thể hardcode SSL_CTX ở mức
-    // TLS 1.0 nội bộ, không lộ ra qua API public), không phải OpenSSL hay
-    // thiết bị. Enum QSsl::SslProtocol của Qt4.8 (đã đối chiếu trực tiếp với
-    // qssl.h thật lấy từ BB10 NDK 10.3.1.995) còn không có TlsV1_1/TlsV1_2 —
-    // không có cách nào yêu cầu tường minh qua QSslSocket public API.
+    // trực tiếp, nhưng QSslSocket trên BB10 NDK luôn fail TLS handshake
+    // (error:1407742E) dù OpenSSL link cùng app thực sự hỗ trợ TLS 1.2 —
+    // giới hạn nằm ở tầng QSslSocket của BlackBerry, không phải OpenSSL.
+    // Enum QSsl::SslProtocol của Qt4.8 trên BB10 còn không có TlsV1_1/1_2.
     //
-    // Fix: dùng QTcpSocket THUẦN (chỉ TCP, không SSL) cho m_webSocket, rồi tự
-    // tay dựng TLS bằng OpenSSL C API thẳng trên file descriptor của nó, ép
-    // TLSv1_2_client_method() — bỏ qua hoàn toàn lớp QSslSocket của
-    // BlackBerry. Xem wsTlsHandshakeStep()/wsWriteRaw()/wsReadAvailable()
-    // trong ZaloService_WebSocket.cpp.
+    // Fix: dùng QTcpSocket thuần (chỉ TCP) cho m_webSocket, tự dựng TLS
+    // bằng OpenSSL C API thẳng trên fd của nó, ép TLSv1_2_client_method(),
+    // bỏ qua hoàn toàn QSslSocket. Xem wsTlsHandshakeStep()/wsWriteRaw()/
+    // wsReadAvailable() trong ZaloService_WebSocket.cpp.
     QTcpSocket *m_webSocket;
     SSL_CTX    *m_wsSslCtx;      // 0 khi không dùng SSL (ws:// thường) hoặc chưa init
     SSL        *m_wsSsl;         // 0 cho tới khi bắt đầu handshake TLS
@@ -579,35 +468,17 @@ private:
     bool        m_wsTlsEstablished; // true sau khi SSL_connect() thành công lần đầu
     QStringList m_wsUrls;       // zpw_ws[] từ login response (dùng m_wsUrls thay m_zpwWsUrls nội bộ)
     int         m_wsUrlIndex;
-    // Set khi mất kết nối do lỗi tầng thấp trước khi handshake WS thành công
-    // (đặc biệt SSL handshake fail — xem onWsSocketError/onWsSslErrors) —
-    // báo cho onWsReconnectTimer biết lần reconnect tới nên thử HOST KHÁC
-    // trong m_wsUrls thay vì cứ quay lại đúng host cũ, đề phòng lỗi thật sự
-    // là do một host cụ thể (mạng chập chờn, host tạm downtime...).
-    //
-    // CORRECTION (1/8): comment cũ ở đây từng khẳng định BB10's Qt4/OpenSSL
-    // không hỗ trợ TLS 1.1/1.2 và một số host trong pool zpw_ws đã tắt TLS
-    // 1.0 nên luôn fail — giả thuyết đó SAI, chưa từng được kiểm chứng thật.
-    // Bằng chứng: tag 1.2.0.0 (25/6), vốn không hề tự set QSslConfiguration
-    // cho WS socket (chỉ gọi connectToHostEncrypted() với cấu hình mặc định
-    // của Qt), vẫn kết nối và nhận tin nhắn bình thường ngay hôm nay, với
-    // đúng server pool này. Nguyên nhân thật sự nằm ở khối code tự dựng lại
-    // QSslConfiguration (setProtocol/setCiphers/setPeerVerifyMode) được
-    // thêm vào sau 1.2.0.0 trong connectWebSocket() — khối đó đã bị xoá,
-    // quay về dùng cấu hình SSL mặc định như 1.2.0.0. Cờ
-    // m_wsAdvanceUrlOnReconnect vẫn giữ lại vì vô hại và hữu ích cho các
-    // lỗi mạng/host thật sự, không liên quan gì đến nguyên nhân gốc ở trên.
+    // Set khi mất kết nối do lỗi tầng thấp trước khi handshake WS thành
+    // công (đặc biệt SSL handshake fail) — báo cho onWsReconnectTimer biết
+    // lần reconnect tới nên thử host khác trong m_wsUrls thay vì quay lại
+    // đúng host cũ, đề phòng lỗi do một host cụ thể (mạng chập chờn, host
+    // tạm downtime...).
     bool        m_wsAdvanceUrlOnReconnect;
-    // Đếm số lần reconnect WS thất bại LIÊN TIẾP (reset về 0 ngay khi upgrade
-    // WS thành công — xem onWsReadyRead). Dùng để tính backoff tăng dần thay
-    // vì retry cố định mỗi 5s vô thời hạn — trước đây cứ 5s lại thử lại,
-    // xoay vòng cả 7 host trong pool zpw_ws liên tục không giới hạn, tạo ra
-    // hàng trăm lần TLS handshake thất bại dồn dập trong thời gian ngắn.
-    // Nếu phía server có cơ chế chống abuse/rate-limit cho riêng cụm host
-    // *-msg (điều này khớp với việc *-wpa (API HTTPS) vẫn hoạt động bình
-    // thường trong khi *-msg luôn từ chối ClientHello), retry storm kiểu đó
-    // chỉ khiến tình trạng bị chặn kéo dài thêm. Backoff tăng dần cho server
-    // "thở" — xem tính toán cụ thể trong onWsDisconnected/onWsReadyRead.
+    // Đếm số lần reconnect WS thất bại LIÊN TIẾP (reset về 0 khi upgrade WS
+    // thành công). Dùng để tính backoff tăng dần thay vì retry cố định mỗi
+    // 5s vô thời hạn — tránh xoay vòng tất cả host trong pool zpw_ws liên
+    // tục gây ra hàng loạt TLS handshake thất bại dồn dập. Backoff tăng dần
+    // để server "thở" — xem tính toán trong onWsDisconnected/onWsReadyRead.
     int         m_wsConsecutiveFailCount;
     QByteArray  m_wsCipherKey;  // raw AES key bytes (từ WS cmd=1 handshake)
     bool        m_wsConnected;
@@ -622,13 +493,11 @@ private:
     bool parseWsHandshakeResponse(const QByteArray &data, int &headerEnd);
     void handleWsFrame(int opcode, const QByteArray &payload);
     void handleWsMessage(int opcode, const QByteArray &payload);
-    // Decodes a WS command's raw payload body { data: "<base64>", encrypt:
-    // 0|1|2|3 } into its inner QVariantMap. Extracted from the cmd=501/521
-    // (new message) handling so cmd=601 (group_event — pin/note/poll
-    // activity, see handleWsMessage) can reuse the exact same
-    // GCM-decrypt/gzip-inflate/AES-CBC-fallback pipeline instead of a third
-    // copy-pasted version. debugTag is only used in qDebug() lines to tell
-    // which caller's log output is which (e.g. "cmd501", "cmd601").
+    // Giải mã payload thô của 1 command WS { data: "<base64>", encrypt:
+    // 0|1|2|3 } thành QVariantMap. Dùng chung cho cmd=501/521 (tin nhắn
+    // mới) và cmd=601 (group event) qua cùng 1 pipeline GCM-decrypt/
+    // gzip-inflate/AES-CBC-fallback. debugTag chỉ để phân biệt log của
+    // từng caller (vd "cmd501", "cmd601").
     QVariantMap decodeWsEnvelope(const QVariantMap &outer, const QString &debugTag);
     QByteArray maskWsFrame(int opcode, const QByteArray &data); // client→server cần mask
     int  wsNextReconnectDelayMs(); // tăng m_wsConsecutiveFailCount và trả về backoff (ms), cap 60s
@@ -663,24 +532,18 @@ private:
     QString m_chatServiceUrl;
     QString m_groupServiceUrl;
     QString m_profileServiceUrl;   // zpwServiceMap.profile[0]
-    QString m_groupPollServiceUrl; // zpwServiceMap.group_poll[0] — NOT used by
-                                    // board/pin/note or even poll vote/create/lock
-                                    // actions (those use group_board / group — see
-                                    // m_groupBoardServiceUrl below); kept parsed
-                                    // since it's a distinct real service key, in
-                                    // case something future needs it specifically.
-    QString m_groupBoardServiceUrl; // zpwServiceMap.group_board[0] — the actual
-                                     // host for /api/board/list and
-                                     // /api/board/topic/createv2|updatev2 (board
-                                     // listing, pin, note create/edit). Confirmed
-                                     // against zca-js's getListBoard.ts/
-                                     // createNote.ts/editNote.ts, which all build
-                                     // their serviceURL from zpwServiceMap.group_board,
-                                     // a DIFFERENT array from zpwServiceMap.group_poll.
-                                     // Poll actions themselves (detail/create/vote/
-                                     // end/option/add/share) use plain
-                                     // zpwServiceMap.group == m_groupServiceUrl,
-                                     // already parsed above — not this one either.
+    QString m_groupPollServiceUrl; // zpwServiceMap.group_poll[0] — KHÔNG dùng cho
+                                    // board/pin/note hay poll vote/create/lock
+                                    // (những cái đó dùng group_board / group —
+                                    // xem m_groupBoardServiceUrl); vẫn giữ parse
+                                    // phòng khi cần dùng riêng sau này.
+    QString m_groupBoardServiceUrl; // zpwServiceMap.group_board[0] — host thật
+                                     // cho /api/board/list và
+                                     // /api/board/topic/createv2|updatev2.
+                                     // Các action poll (detail/create/vote/end/
+                                     // option/add/share) dùng zpwServiceMap.group
+                                     // (m_groupServiceUrl) như thường, không
+                                     // phải service này.
     QString m_friendServiceUrl;    // zpwServiceMap.friend[0]
     QString m_fileServiceUrl;      // zpwServiceMap.file[0]
     QString m_quickMessageServiceUrl; // zpwServiceMap.quick_message[0]
@@ -708,26 +571,19 @@ private:
     QString m_lastPollMsgId; // msgId cuối cùng đã biết, tránh emit trùng
     QMap<QString, QString> m_threadLastMsgId; // per-thread last msgId để fetch chính xác
     QMap<QString, QString> m_groupNames;        // groupId -> group name for notifications
-    // uid -> display name, built from every group's "currentMems" list as
-    // groups are fetched (see fetchGroupDetails()). This is the reliable
-    // source for "who sent this group message" — the per-message wire
-    // "dName" field is NOT reliable for incoming messages (confirmed
-    // on-device: an incoming message from another member can carry OUR OWN
-    // display name instead of theirs — same bug class the Reply feature's
-    // otherDisplayName/quoteSenderResolved fix in ChatView.qml works around
-    // for 1-1 threads via threadName; groups need this uid-keyed map instead
-    // since there's no single "the other person").
+    // uid -> tên hiển thị, build từ "currentMems" của mỗi group khi fetch.
+    // Đây là nguồn đáng tin cậy để biết ai gửi tin nhắn nhóm — field "dName"
+    // trên wire không đáng tin cho tin nhắn đến (đã xác nhận: có lúc tin của
+    // người khác lại mang tên hiển thị của chính mình).
     QMap<QString, QString> m_memberNames;
     QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
     QString m_pending510Toid; // Thread đang chờ WS cmd=510 response (chỉ 1 tại 1 thời điểm)
     QMap<QString, QString> m_pendingPhotoMsgIds; // msgId -> threadId, waiting for photo URL via WS cmd=510
-    // clientId (cliMsgId) -> {"localPath","fileSize","fileName"} for a photo we just sent.
-    // Populated in sendPhoto() before the upload even starts, so that when the WS cmd=501
-    // echo lands (often BEFORE the HTTP send-msg response, per device logs) we can attach
-    // the already-cached local file directly instead of racing a CDN re-download that can
-    // return empty/fail moments after upload (this is what caused "my sent photo" to turn
-    // into a gray box after logout/login). Entry is removed once consumed by either the
-    // WS echo path or the HTTP send-msg confirm path, whichever resolves the real msgId first.
+    // clientId (cliMsgId) -> {"localPath","fileSize","fileName"} cho ảnh vừa gửi.
+    // Set trong sendPhoto() trước khi upload, để khi WS echo cmd=501 về (thường
+    // đến TRƯỚC response HTTP send-msg) có thể dùng luôn file cache local thay
+    // vì tải lại từ CDN (nguyên nhân cũ khiến ảnh vừa gửi hiện ô xám sau
+    // logout/login). Entry bị xóa khi đã dùng xong, dù từ WS echo hay HTTP confirm.
     QMap<QString, QVariantMap> m_pendingSentPhotoInfo;
 
     // Cache avatar: url -> localPath (file:///tmp/avatar_<md5>.jpg)

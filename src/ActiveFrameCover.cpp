@@ -40,7 +40,6 @@ ActiveFrameCover::ActiveFrameCover()
         .vertical(VerticalAlignment::Fill)
         .scalingMethod(ScalingMethod::AspectFill);
 
-    // Use setImageSource(QString) — same pattern as bbtube's showDefaultImage()
     img->setImageSource(imgPath);
 
     root->add(img);

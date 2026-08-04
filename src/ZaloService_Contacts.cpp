@@ -229,11 +229,9 @@ void ZaloService::onGroupDetailsDone()
             threads.append(t);
             m_groupNames[gid] = gname; // cache for notifications
 
-            // currentMems: per-member {id, dName, zaloName, ...} — see
-            // GroupCurrentMem in zca-js's Group.ts. This is the reliable
-            // source for uid->name (m_memberNames), unlike the per-message
-            // wire dName field which is not trustworthy for incoming
-            // messages (see m_memberNames' declaration comment in the header).
+            // currentMems: mỗi member {id, dName, zaloName, ...} — nguồn
+            // đáng tin cậy cho uid->name (m_memberNames), khác field dName
+            // trên wire mỗi tin nhắn (không đáng tin với tin nhắn đến).
             QVariantList mems = g["currentMems"].toList();
             for (int j = 0; j < mems.size(); ++j) {
                 QVariantMap mem = mems[j].toMap();
@@ -292,12 +290,12 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
         return;
     }
 
-    // Persistent dedup check: compare the new URL's hash against what we
-    // already have on disk for this exact threadId (a stable per-person key —
-    // background avatars are passed in as "bg_"+threadId, so they never collide
-    // with the main avatar). This is what makes the cache survive app restarts,
-    // logout/login, and toggling "Show Recalled Messages" (which never touches
-    // images): if the person hasn't actually changed their picture, we reuse
+    // Check dedup persistent: so hash của URL mới với cái đã lưu trên đĩa
+    // cho đúng threadId này (khóa ổn định theo từng người — background
+    // avatar truyền vào là "bg_"+threadId nên không đụng avatar chính).
+    // Đây là lý do cache sống được qua app restart, logout/login, và toggle
+    // "Show Recalled Messages" (không đụng gì tới ảnh): nếu ảnh đại diện
+    // chưa đổi thật thì dùng lại
     // the file already sitting in tmp instead of re-downloading it.
     QString newHash = md5Hex(baseUrl);
     QString storedHash, storedPath;
@@ -305,15 +303,14 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
         QString fsPath = storedPath;
         if (fsPath.startsWith("file://")) fsPath = fsPath.mid(7);
         if (storedHash == newHash && !fsPath.isEmpty() && QFile::exists(fsPath)) {
-            // Same avatar URL as last time, and the cached file is still there
-            // (i.e. the user hasn't run "Clear Cache") — reuse it, no network call.
+            // Cùng URL avatar như lần trước, và file cache vẫn còn (chưa
+            // chạy "Clear Cache") — dùng lại, không gọi mạng.
             m_avatarCache[url] = storedPath;
             m_avatarCache[baseUrl] = storedPath;
             emit avatarReady(threadId, storedPath);
             return;
         }
-        // Either the URL hash changed (genuinely a new profile picture) or the
-        // file went missing — fall through and re-download below.
+        // Hash URL đổi (đổi avatar thật) hoặc file bị mất — tải lại bên dưới.
     }
 
     // Check cả full URL và base URL
@@ -365,10 +362,9 @@ void ZaloService::onAvatarDownloaded()
         return;
     }
 
-    // Fixed filename per-person (md5 of threadId, NOT of the URL): this means
-    // a changed profile picture overwrites the same file in place instead of
-    // leaving the old image as an orphaned file in tmp every time the CDN
-    // hands back a different URL for an unchanged picture.
+    // Filename cố định theo từng người (md5 threadId, KHÔNG phải md5 URL):
+    // đổi avatar sẽ ghi đè đúng file cũ thay vì để lại ảnh cũ mồ côi trong
+    // tmp mỗi lần CDN trả URL khác cho cùng 1 avatar chưa đổi.
     QString fname = "/tmp/avatar_" + md5Hex(threadId) + ".jpg";
     QFile f(fname);
     if (f.open(QIODevice::WriteOnly)) {
@@ -380,9 +376,8 @@ void ZaloService::onAvatarDownloaded()
     int qmark = url.indexOf('?');
     if (qmark > 0) m_avatarCache[url.left(qmark)] = localPath;
 
-    // Persist the threadId -> urlHash -> localPath mapping so next launch (or
-    // next refresh after logout/login) can recognise this exact avatar again
-    // without re-downloading it.
+    // Lưu lại mapping threadId -> urlHash -> localPath để lần mở app sau
+    // (hoặc sau logout/login) nhận ra đúng avatar này mà không cần tải lại.
     avatarMetaUpsert(threadId, md5Hex(baseUrl), localPath);
 
     qDebug() << "[Zalo] avatar saved:" << threadId << "->" << fname;
@@ -529,21 +524,15 @@ void ZaloService::onFetchFriendsDone()
     m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch();
 
     if (!threads.isEmpty()) {
-        // IMPORTANT: compute needDownload and set m_pendingFriends/
-        // m_pendingFriendAvatarCount BEFORE emit friendsReady() below, not
-        // after. emit is synchronous here — QML's onFriendsReady handler
-        // runs to completion (including up to ~87 back-to-back
-        // zService.downloadAvatar() calls) on top of this very call stack
-        // before control ever returns to this function. Previously the
-        // bookkeeping below ran AFTER the emit, so for the entire duration
-        // of that reentrant QML loop, m_pendingFriends was still the OLD
-        // (possibly stale/empty) value — a real ordering hazard on top of
-        // heavy QSet churn in downloadAvatar()/onAvatarDownloaded(). This
-        // crashed with SIGSEGV inside Qt's own QHash internals
-        // (QHash<QString,QHashDummyValue>::duplicateNode) on a fresh-login
-        // run where the avatar cache was empty and all 87 friends hit that
-        // pending-avatar bookkeeping path back-to-back in one synchronous
-        // burst — the exact conditions this reordering removes.
+        // QUAN TRỌNG: tính needDownload và set m_pendingFriends/
+        // m_pendingFriendAvatarCount TRƯỚC emit friendsReady() bên dưới,
+        // không phải sau. emit ở đây là đồng bộ — handler onFriendsReady
+        // phía QML chạy hết (kể cả gần 87 lệnh zService.downloadAvatar()
+        // gọi liên tiếp) ngay trên cùng call stack này trước khi trả lại
+        // quyền điều khiển cho hàm này. Trước đây bookkeeping chạy SAU
+        // emit, nên suốt vòng lặp QML tái nhập đó, m_pendingFriends vẫn là
+        // giá trị CŨ — gây SIGSEGV trong nội bộ QHash của Qt khi cache
+        // avatar rỗng và cả 87 friend cùng chạm path bookkeeping đồng thời.
         int needDownload = 0;
         for (int i = 0; i < threads.size(); ++i) {
             QVariantMap t = threads[i].toMap();
@@ -561,12 +550,12 @@ void ZaloService::onFetchFriendsDone()
     m_isFetchingFriends = false;
 }
 
-// Pulls the user's own quick-message list from their real Zalo account
-// (api/quickmessage/list — same GET + AES-encrypted-query-param shape as
-// fetchFriends() above) and merges it into the local quick_messages table.
-// "keyword" -> quick message name, "message.title" -> content. Matched by
-// name (case-insensitive) against what's already saved locally, same
-// "existing wins" rule as importData() in ZaloService_Db.cpp.
+// Lấy list quick-message của user từ tài khoản Zalo thật (api/quickmessage/list
+// — cùng dạng GET + query param AES-encrypt như fetchFriends() ở trên) rồi
+// merge vào bảng quick_messages local. "keyword" -> tên quick message,
+// "message.title" -> nội dung. Khớp theo tên (không phân biệt hoa/thường)
+// với cái đã lưu local, cùng quy tắc "data cũ luôn thắng" như importData()
+// trong ZaloService_Db.cpp.
 void ZaloService::fetchServerQuickMessages()
 {
     if (!m_loggedIn) {
@@ -622,10 +611,11 @@ void ZaloService::onFetchServerQuickMessagesDone()
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] fetchServerQuickMessages decrypted (first300):" << dec.left(300);
 
-    // Same double-wrap shape as every other Zalo endpoint here (fetchFriends,
-    // fetchInvites, ...): the decrypted blob is itself {error_code, error_message,
-    // data:{...}}, and for quickmessage/list the real payload — {cursor, version,
-    // items} — lives under that inner "data" key, not at the top level.
+    // Cùng dạng bọc 2 lớp như mọi endpoint khác ở đây (fetchFriends,
+    // fetchInvites, ...): blob giải mã ra chính nó là {error_code,
+    // error_message, data:{...}}, với payload thật của quickmessage/list —
+    // {cursor, version, items} — nằm trong key "data" lồng bên trong, không
+    // phải ở top level.
     QVariantMap outer = jsonToMap(dec.toUtf8());
     QVariantMap payload = outer.value("data").toMap();
     QVariantList items = payload.value("items").toList();
@@ -633,7 +623,7 @@ void ZaloService::onFetchServerQuickMessagesDone()
         items = outer.value("items").toList(); // fallback in case the shape ever changes
     qDebug() << "[Zalo] fetchServerQuickMessages found" << items.size() << "items";
 
-    // Existing local names, same dedup approach as importData().
+    // Tên đã có local, cùng cách dedup như importData().
     QSet<QString> existingNames;
     QVariantList localQm = getQuickMessages();
     for (int i = 0; i < localQm.size(); ++i)
@@ -718,12 +708,11 @@ void ZaloService::onFetchInvitesDone()
         QVariantMap item = recommItems[i].toMap();
         QVariantMap info = item["dataInfo"].toMap();
 
-        // zca-js types this two different ways and it's easy to grab the wrong
-        // one: the outer "recommItemType" sibling of dataInfo is just `number`
-        // (untyped), while the field actually typed as FriendRecommendationsType
-        // (1=RecommendedFriend/PYMK, 2=ReceivedFriendRequest) is dataInfo.recommType.
-        // Filtering on the outer field was the bug — it doesn't reliably distinguish
-        // PYMK from real pending requests; dataInfo.recommType does.
+        // Có 2 field dễ nhầm: "recommItemType" ở ngoài cùng cấp với dataInfo
+        // là số chưa rõ nghĩa, còn field thật sự đánh dấu loại (1=PYMK,
+        // 2=ReceivedFriendRequest) là dataInfo.recommType. Lọc theo field
+        // ngoài là bug — không phân biệt được PYMK với lời mời thật, phải
+        // dùng dataInfo.recommType.
         int itemType = info["recommType"].toInt();
 
         if (i < 5)
@@ -735,7 +724,7 @@ void ZaloService::onFetchInvitesDone()
 
         if (info.isEmpty()) continue;
 
-        // userId is the correct field per zca-js type definition
+        // userId là field đúng
         QString uid = info["userId"].toString();
         if (uid.isEmpty()) uid = info["uid"].toString();
         if (uid.isEmpty()) uid = info["fid"].toString();
@@ -749,7 +738,7 @@ void ZaloService::onFetchInvitesDone()
         // avatar field
         QString avatarUrl = info["avatar"].toString();
 
-        // message from recommInfo.message per type definition
+        // message từ recommInfo.message
         QString msg;
         QVariant recommInfoV = info["recommInfo"];
         if (recommInfoV.type() == QVariant::Map) {
@@ -774,23 +763,20 @@ void ZaloService::onFetchInvitesDone()
 }
 
 // ─── fetchGroupBoard ──────────────────────────────────────────────────────
-// Group board = pinned messages + notes + polls shown together in one place
-// (see GroupBoardSheet.qml). Ported from zca-js's getListBoard.ts:
-// GET {group_board service}/api/board/list?params=AES({group_id, board_type:0,
-// page, count, last_id:0, last_type:0, imei}). board_type=0 asks the server
-// for every type at once rather than filtering server-side — the 4 tabs in
-// the sheet (All/Pinned Message/Note/Poll) are a client-side filter over one
-// fetched list, same design zca-js itself documents (BoardType enum: Note=1,
-// PinnedMessage=2, Poll=3 — used below to tag each item for the QML filter).
+// Group board = pinned message + note + poll gộp chung 1 chỗ (xem
+// GroupBoardSheet.qml). GET {group_board service}/api/board/list?
+// params=AES({group_id, board_type:0, page, count, last_id:0, last_type:0,
+// imei}). board_type=0 xin server trả tất cả loại 1 lần thay vì lọc phía
+// server — 4 tab trong sheet (All/Pinned Message/Note/Poll) chỉ là filter
+// client-side trên 1 list đã fetch (BoardType enum: Note=1,
+// PinnedMessage=2, Poll=3 — dùng bên dưới để tag từng item cho QML lọc).
 //
-// NOTE: zpw_service_map_v3 has BOTH a "group_poll" key and a separate
-// "group_board" key — these are two different hosts, not aliases of each
-// other. zca-js's getListBoard.ts/createNote.ts/editNote.ts all build their
-// serviceURL from zpwServiceMap.group_board specifically; "group_poll" is
-// not used by the board endpoints at all (and isn't used by poll vote/
-// create/lock either — see votePoll below, which uses the plain "group"
-// service same as m_groupServiceUrl). Using m_groupPollServiceUrl here was
-// hitting the wrong host and 404ing every board fetch.
+// LƯU Ý: zpw_service_map_v3 có CẢ key "group_poll" lẫn key "group_board"
+// riêng — đây là 2 host khác nhau, không phải bí danh của nhau. Endpoint
+// board dùng zpwServiceMap.group_board; "group_poll" không dùng cho board
+// (và cũng không dùng cho poll vote/create/lock — xem votePoll bên dưới,
+// service giống m_groupServiceUrl). Dùng m_groupPollServiceUrl ở đây từng
+// bị nhầm host, khiến mọi fetch board đều 404.
 void ZaloService::fetchGroupBoard(const QString &groupId, int page, int count)
 {
     if (!m_loggedIn || groupId.isEmpty()) return;
@@ -830,10 +816,10 @@ void ZaloService::onFetchGroupBoardDone()
 
     qDebug() << "[Zalo] fetchGroupBoard raw (first200):" << raw.left(200);
 
-    // Same false-positive-success risk as onPinGroupMessageDone: an HTML
-    // error page (e.g. a 404 from hitting the wrong service host) parses
-    // as an empty QVariantMap via jsonToMap(), so error_code silently
-    // defaults to 0 unless we check the HTTP status / parse result first.
+    // Cùng rủi ro false-positive-success như onPinGroupMessageDone: trang
+    // lỗi HTML (vd 404 do gọi nhầm host) parse ra QVariantMap rỗng qua
+    // jsonToMap(), nên error_code âm thầm mặc định 0 nếu không check
+    // HTTP status/kết quả parse trước.
     if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
         qDebug() << "[Zalo] fetchGroupBoard HTTP failure, status:" << httpStatus << "netErr:" << netErr;
         emit groupBoardReady(groupId, QVariantList(), QString("HTTP %1").arg(httpStatus));
@@ -880,19 +866,16 @@ void ZaloService::onFetchGroupBoardDone()
             continue; // unknown type — skip rather than showing a broken card
         }
 
-        // Fields common to all 3 detail shapes (Note/PinnedMessage share the
-        // exact same envelope per zca-js's NoteDetail/PinnedMessageDetail;
-        // Poll has its own distinct shape — see below).
+        // Field chung cho cả 3 dạng chi tiết (Note/PinnedMessage cùng chung
+        // envelope; Poll có shape riêng — xem bên dưới).
         if (boardType == 1 || boardType == 2) {
             item["id"]         = data["id"].toString();
             item["creatorId"]  = data["creatorId"].toString();
             item["createTime"] = data["createTime"].toLongLong();
-            // "params" arrives as a JSON-string-within-JSON on the wire (zca-js
-            // itself JSON.parse()s it — see getListBoard.ts's "if boardType !=
-            // Poll, params = JSON.parse(params)" step); our jsonToMap() already
-            // decodes nested objects from the outer decrypt, but params can
-            // still show up as a raw string here if the server sent it
-            // double-encoded, so handle both shapes defensively.
+            // "params" đến trên wire dạng chuỗi JSON lồng trong JSON —
+            // jsonToMap() đã tự decode object lồng từ bản decrypt ngoài,
+            // nhưng params vẫn có thể là chuỗi thô nếu server gửi encode 2
+            // lớp, nên xử lý phòng thủ cả 2 dạng.
             QVariant paramsV = data["params"];
             QVariantMap params_;
             if (paramsV.type() == QVariant::String) {
@@ -902,12 +885,10 @@ void ZaloService::onFetchGroupBoardDone()
             }
             item["title"] = params_["title"].toString();
             item["extra"] = params_["extra"].toString();
-            // The underlying chat message's own id (msgModel's msgId) —
-            // NOT the same as item["id"] above, which is this board/pin
-            // topic's own id. Needed so tapping a pin in PinboardBar can
-            // actually scroll to + highlight the right message row; see
-            // pinGroupMessage()'s "global_msg_id" param for where this
-            // value originates when a pin is created.
+            // id của chính tin nhắn chat gốc (msgId trong msgModel) — KHÔNG
+            // giống item["id"] ở trên (id của topic board/pin này). Cần để
+            // tap vào pin trong PinboardBar có thể scroll tới + highlight
+            // đúng dòng tin nhắn.
             if (boardType == 2) item["msgId"] = params_["global_msg_id"].toString();
         } else {
             // Poll
@@ -937,34 +918,18 @@ void ZaloService::onFetchGroupBoardDone()
 }
 
 // ─── pinGroupMessage ──────────────────────────────────────────────────────
-// Pin a message to the group board. zca-js (the JS reference library this
-// app otherwise ports its API calls from) has NO "pin message" endpoint —
-// confirmed by reading its full apis/ directory; only board LISTING
-// (getListBoard.ts, used by fetchGroupBoard above) and unrelated
-// whole-thread conversation pinning exist there. That's why this used to
-// be a silent console.log()-only stub on the QML side.
-//
-// zlapi (github.com/Its-VrxxDev/zlapi — a SEPARATE, independently
-// reverse-engineered "Zalo API for Python" library, unrelated to zca-js)
-// DOES implement this, as pinGroupMsg(). Verified against zlapi 1.0.3's
-// actual source (downloaded from PyPI, zlapi/_client.py) rather than
-// guessing: it POSTs to the exact same {group_board}/api/board/topic/
-// createv2 endpoint fetchGroupBoard's sibling createNote (zca-js) already
-// hits — just with type:2 (PinnedMessage board item) instead of type:0
-// (Note), and a JSON-string params.params payload describing the pinned
-// message instead of a note title. Ported 1:1 from that:
+// Ghim 1 tin nhắn vào group board. Dùng cùng endpoint
+// {group_board}/api/board/topic/createv2 mà createNote dùng — chỉ khác
+// type:2 (PinnedMessage board item) thay vì type:0 (Note), và params.params
+// là 1 JSON string mô tả tin nhắn được pin thay vì tiêu đề note:
 //   payload.params = { grid, type:2, color:-14540254, emoji:"📌",
 //     startTime:-1, duration:-1, repeat:0, src:-1, imei, pinAct:1,
 //     params: JSON.stringify({ client_msg_id, global_msg_id, senderUid,
 //       senderName, title, msg_type }) }
-// Only the "webchat" (text) and "chat.photo" shapes are ported — those are
-// the only two message types this client actually creates/pins; zlapi
-// supports several more (voice/sticker/link/location/file/gif) this app
-// has nothing to pin from. msgType here is Zalo's client message type
-// code (1=webchat, 32=chat.photo — zlapi's getClientMessageType()), same
-// convention sendMessageQuote()'s qmsgType already uses; QML converts
-// from the local 1/2 msgType before calling this, same as it already does
-// when building a quote.
+// Chỉ hỗ trợ dạng "webchat" (text) và "chat.photo" — 2 loại tin nhắn duy
+// nhất app này thực sự tạo/pin được. msgType ở đây là mã message type của
+// Zalo (1=webchat, 32=chat.photo), cùng quy ước sendMessageQuote() đã dùng
+// cho qmsgType; QML convert từ msgType nội bộ 1/2 trước khi gọi hàm này.
 void ZaloService::pinGroupMessage(const QString &groupId, const QString &msgId,
                                    const QString &cliMsgId, const QString &senderId,
                                    const QString &senderName, const QString &content,
@@ -987,21 +952,19 @@ void ZaloService::pinGroupMessage(const QString &groupId, const QString &msgId,
 
     QVariantMap innerParams;
     innerParams["grid"]      = groupId;
-    innerParams["type"]      = 2; // BoardType.PinnedMessage (zca-js's Board.ts enum)
+    innerParams["type"]      = 2; // BoardType.PinnedMessage
     innerParams["color"]     = -14540254;
-    innerParams["emoji"]     = QString::fromUtf8("\xF0\x9F\x93\x8C"); // 📌, matches zlapi
+    innerParams["emoji"]     = QString::fromUtf8("\xF0\x9F\x93\x8C"); // 📌
     innerParams["startTime"] = -1;
     innerParams["duration"]  = -1;
     innerParams["repeat"]    = 0;
     innerParams["src"]       = -1;
     innerParams["imei"]      = m_imei;
     innerParams["pinAct"]    = 1;
-    // Nested JSON-string field, same "flat mapToJson() twice" trick used
-    // nowhere else yet in this file — mapToJson() is flat-only (see its
-    // comment in ZaloServiceUtils.hpp), so the inner object is serialized
-    // to its own JSON string first, then embedded as an ordinary string
-    // value in the outer map, matching Python's json.dumps()-as-a-dict-
-    // value that zlapi does for this exact same field.
+    // Field JSON-string lồng bên trong: mapToJson() chỉ xử lý flat (xem
+    // comment của nó trong ZaloServiceUtils.hpp), nên serialize object bên
+    // trong thành chuỗi JSON riêng trước, rồi nhúng như 1 giá trị chuỗi
+    // bình thường vào map ngoài.
     innerParams["params"]    = QString::fromUtf8(mapToJson(pinParams));
 
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
@@ -1032,14 +995,13 @@ void ZaloService::onPinGroupMessageDone()
 
     qDebug() << "[Zalo] pinGroupMessage raw (first200):" << raw.left(200);
 
-    // A non-2xx HTTP status (e.g. the 404 nginx error page returned while
-    // this hit the wrong service host) or a network-level error means the
-    // request never reached real API logic at all. jsonToMap() on an HTML
-    // error page silently returns an EMPTY QVariantMap (it's not JSON), so
-    // root["error_code"].toInt() previously defaulted to 0 — which reads
-    // identically to Zalo's own "no error" success code and was reporting
-    // pin as successful even on a full 404. Guard against that explicitly
-    // rather than trusting error_code on an empty/unparsed body.
+    // Status HTTP không phải 2xx (vd trang lỗi 404 nginx do gọi nhầm host)
+    // hoặc lỗi tầng mạng nghĩa là request chưa từng chạm tới logic API
+    // thật. jsonToMap() trên trang lỗi HTML âm thầm trả về QVariantMap
+    // RỖNG (không phải JSON), nên root["error_code"].toInt() trước đây
+    // mặc định về 0 — đọc y hệt mã "không lỗi" của Zalo và báo pin thành
+    // công dù thực ra 404. Guard tường minh thay vì tin error_code trên
+    // body rỗng/không parse được.
     if (netErr != QNetworkReply::NoError || (httpStatus != 0 && (httpStatus < 200 || httpStatus >= 300))) {
         qDebug() << "[Zalo] pinGroupMessage HTTP failure, status:" << httpStatus << "netErr:" << netErr;
         emit pinMessageDone(false, QString("HTTP %1").arg(httpStatus));
@@ -1084,14 +1046,12 @@ void ZaloService::createGroupNote(const QString &groupId, const QString &title, 
     QVariantMap innerParams;
     innerParams["grid"]      = groupId;
     innerParams["type"]      = 0; // BoardType.Note
-    innerParams["color"]     = -16777216; // matches zca-js's createNote.ts default
+    innerParams["color"]     = -16777216;
     innerParams["emoji"]     = QString();
     innerParams["startTime"] = -1;
     innerParams["duration"]  = -1;
     innerParams["repeat"]    = 0;
-    innerParams["src"]       = 1; // zca-js uses src:1 for notes (pinGroupMessage's
-                                  // zlapi-derived pin uses src:-1 — kept distinct
-                                  // to match each reference source exactly)
+    innerParams["src"]       = 1; // src của note là 1 (khác src:-1 của pinGroupMessage)
     innerParams["imei"]      = m_imei;
     innerParams["pinAct"]    = pinAct ? 1 : 0;
     innerParams["params"]    = QString::fromUtf8(mapToJson(noteParams));
@@ -1148,12 +1108,11 @@ void ZaloService::onCreateGroupNoteDone()
 }
 
 // ─── createGroupPoll ──────────────────────────────────────────────────────
-// Ported from zca-js's createPoll.ts. Unlike createGroupNote/pinGroupMessage,
-// this hits the PLAIN "group" service (m_groupServiceUrl) — NOT group_board
-// and NOT group_poll. See fetchGroupBoard()'s doc comment for why those two
-// are easy to mix up here; poll actions (create/vote/lock/detail/option-add/
-// share) are consistently on "group" in zca-js, board listing/pin/note are
-// consistently on "group_board".
+// Khác createGroupNote/pinGroupMessage, hàm này dùng service "group" thường
+// (m_groupServiceUrl) — KHÔNG phải group_board và không phải group_poll
+// (xem doc comment fetchGroupBoard() lý do 2 cái đó dễ nhầm nhau). Action
+// poll (create/vote/lock/detail/option-add/share) đều dùng "group", còn
+// board listing/pin/note dùng "group_board".
 void ZaloService::createGroupPoll(const QString &groupId, const QString &question,
                                    const QStringList &optionsList, bool allowMultiChoices,
                                    bool allowAddNewOption, bool hideVotePreview,
@@ -1170,8 +1129,7 @@ void ZaloService::createGroupPoll(const QString &groupId, const QString &questio
     QVariantList optsVariant;
     foreach (const QString &opt, optionsList) optsVariant.append(opt);
     params["options"]               = optsVariant;
-    params["expired_time"]          = 0; // "Set deadline" UI not wired yet — 0 = no expiration,
-                                          // matches zca-js's createPoll.ts default
+    params["expired_time"]          = 0; // "Set deadline" UI chưa làm — 0 = không hết hạn
     params["pinAct"]                = false;
     params["allow_multi_choices"]   = allowMultiChoices;
     params["allow_add_new_option"]  = allowAddNewOption;
@@ -1233,11 +1191,9 @@ void ZaloService::onCreateGroupPollDone()
 }
 
 // ─── voteGroupPoll ────────────────────────────────────────────────────────
-// Ported from zca-js's votePoll.ts — GET with encrypted params in the query
-// string (same GET-with-encrypted-query-params shape fetchGroupBoard already
-// uses), hits m_groupServiceUrl same as createGroupPoll above (NOT
-// group_board, NOT group_poll — see createGroupPoll's comment).
-// optionIds empty = clear the caller's vote (zca-js: "unvote = empty array").
+// GET với params đã encrypt trong query string (cùng dạng fetchGroupBoard
+// đã dùng), gọi m_groupServiceUrl giống createGroupPoll ở trên (KHÔNG phải
+// group_board, không phải group_poll). optionIds rỗng = xóa vote đã chọn.
 void ZaloService::voteGroupPoll(const QString &groupId, const QString &pollId, const QList<int> &optionIds)
 {
     if (!m_loggedIn || pollId.isEmpty()) {
@@ -1298,11 +1254,10 @@ void ZaloService::onVoteGroupPollDone()
         return;
     }
 
-    // zca-js's VotePollResponse: { options: PollOptions[] } — decrypt+parse
-    // the same way fetchGroupBoard() does, then map option_id/votes/voted
-    // into the same shape QML's poll card already expects from
-    // groupBoardReady()'s "options" field, so QML can reuse one rendering
-    // path for both the initial fetch and a live vote update.
+    // Response { options: [...] } — decrypt+parse cùng cách fetchGroupBoard()
+    // làm, rồi map option_id/votes/voted vào cùng shape mà poll card phía
+    // QML đã dùng từ groupBoardReady()'s "options" field, để QML dùng lại
+    // 1 đường render cho cả fetch ban đầu lẫn cập nhật vote live.
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] voteGroupPoll decrypted (first300):" << dec.left(300);
     QVariantMap outer = jsonToMap(dec.toUtf8());
@@ -1323,13 +1278,12 @@ void ZaloService::onVoteGroupPollDone()
 }
 
 // ─── getPollDetail ────────────────────────────────────────────────────────
-// Ported from zca-js's getPollDetail.ts — POST with encrypted params in the
-// body (same shape createGroupPoll above uses), hits m_groupServiceUrl same
-// as create/vote (NOT group_board, NOT group_poll — see createGroupPoll's
-// comment). Only the per-option "voters" uid list is new information here;
-// everything else duplicates what groupBoardReady/votePollDone already
-// carry, so it's kept in its own map under "options" rather than merged
-// into any existing model.
+// POST với params đã encrypt trong body (cùng dạng createGroupPoll ở trên
+// dùng), gọi m_groupServiceUrl giống create/vote (không phải group_board,
+// không phải group_poll). Chỉ list "voters" uid theo từng option là thông
+// tin mới ở đây; phần còn lại trùng với những gì groupBoardReady/
+// votePollDone đã mang sẵn, nên giữ riêng trong map dưới key "options"
+// thay vì merge vào model có sẵn.
 void ZaloService::getPollDetail(const QString &pollId)
 {
     if (!m_loggedIn || pollId.isEmpty()) {
@@ -1389,10 +1343,10 @@ void ZaloService::onGetPollDetailDone()
         return;
     }
 
-    // zca-js's PollDetail: { creator, question, options: PollOptions[]
-    // (content/votes/voted/voters[]/option_id), joined, closed, poll_id,
-    // allow_multi_choices, ..., num_vote } — same decrypt-then-jsonToMap
-    // step every other poll/board endpoint here already uses.
+    // Response { creator, question, options: [...] (content/votes/voted/
+    // voters[]/option_id), joined, closed, poll_id, allow_multi_choices,
+    // ..., num_vote } — cùng bước decrypt-rồi-jsonToMap như mọi endpoint
+    // poll/board khác ở đây.
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
     qDebug() << "[Zalo] getPollDetail decrypted (first300):" << dec.left(300);
     QVariantMap outer = jsonToMap(dec.toUtf8());

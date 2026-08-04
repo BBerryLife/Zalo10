@@ -355,20 +355,13 @@ void ZaloService::onRefreshSessionKeyDone()
 }
 
 // ─── Keep-Alive (HTTP session ping) ────────────────────────────────────────
-// Mục đích: gọi định kỳ endpoint "/keepalive" của chat-service để gia hạn
-// session phía server (cookie zpsid/zpw_sek), TÁCH BIỆT với WS-level ping
-// (cmd=2/1) ở ZaloService_WebSocket.cpp — cái đó chỉ giữ socket khỏi timeout,
-// không liên quan tới tuổi thọ của session/cookie HTTP.
+// Gọi định kỳ endpoint "/keepalive" của chat-service để gia hạn session
+// phía server (cookie zpsid/zpw_sek), tách biệt với WS-level ping (cmd=2/1)
+// ở ZaloService_WebSocket.cpp — cái đó chỉ giữ socket khỏi timeout.
 //
-// Request/response shape port từ zca-js: src/apis/keepAlive.ts
-//   GET {zpwServiceMap.chat[0]}/keepalive?params=<AES(secretKey, {imei})>&zpw_ver=&zpw_type=
-//   → response là JSON THƯỜNG, KHÔNG mã hóa (zca-js gọi resolve(res, undefined, false))
-//
-// Chạy mỗi KEEPALIVE_INTERVAL_MS (2 phút) trong lúc app còn sống (active frame
-// hoặc foreground) — không đảm bảo cookie sống "vĩnh viễn" khi app bị đóng hẳn
-// (process bị kill thì timer cũng chết theo), nhưng theo gợi ý từ tác giả
-// zca-js (issue "cookie sống được trong bao lâu") thì ping liên tục giúp giữ
-// session lâu hơn so với để mặc cho TTL tự hết hạn.
+// Chạy mỗi KEEPALIVE_INTERVAL_MS (2 phút) khi app còn sống. Không đảm bảo
+// cookie sống vĩnh viễn khi app bị đóng hẳn, nhưng ping liên tục giúp giữ
+// session lâu hơn so với để TTL tự hết hạn.
 void ZaloService::onKeepAliveTimer()
 {
     sendKeepAlive();
@@ -400,15 +393,11 @@ void ZaloService::onKeepAliveDone()
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
 
-    // QUAN TRỌNG: đây chính là chỗ mình bỏ sót ở bản trước. zca-js dùng
-    // CookieJar tự động bắt MỌI Set-Cookie từ MỌI response (kể cả keepalive),
-    // nên việc "gia hạn" thực chất nằm ở chỗ Zalo trả Set-Cookie mới (cookie
-    // hết hạn xa hơn) trong chính response /keepalive — không phải do server
-    // tự nhớ "vừa được ping" theo uid/imei. Nếu không đọc + lưu lại Set-Cookie
-    // này, keepAlive chỉ làm request "thành công" trên lý thuyết (error_code=0)
-    // nhưng cookie cũ trong QSettings vẫn y nguyên — vẫn hết hạn đúng giờ cũ.
-    // => mở lại app sau khi đóng, loadSession() nạp cookie CŨ (đã hết hạn) dù
-    // log lúc đang chạy vẫn thấy "keepAlive OK" đều đặn mỗi 2 phút.
+    // QUAN TRỌNG: gia hạn session thực chất nằm ở chỗ Zalo trả Set-Cookie
+    // mới (hết hạn xa hơn) trong chính response /keepalive, không phải do
+    // server tự nhớ theo uid/imei. Nếu không đọc + lưu lại Set-Cookie này,
+    // request vẫn "thành công" (error_code=0) nhưng cookie cũ trong
+    // QSettings vẫn y nguyên, hết hạn đúng giờ cũ.
     int cookiesBefore = m_cookies.size();
     parseCookiesFromReply(reply);
     int cookiesAfter = m_cookies.size();
@@ -440,17 +429,11 @@ void ZaloService::onKeepAliveDone()
 // current "Show Recalled Messages" setting, so toggling the setting later (or
 // re-fetching the thread) can still recover it instead of it being gone forever.
 //
-// IMPORTANT: this must be idempotent. The server can (and does) redeliver the
-// same "chat.undo" event again later — e.g. when a thread is reopened and the
-// app resyncs from an older lastId checkpoint, both the original message and
-// its recall get replayed. On that replay, `content` in the row may already be
-// '' (already recalled) or may have been momentarily restored by a redelivered
-// dbSaveMessage for the original message — either way, blindly doing
-// "recalledOriginalContent = content" again could clobber the text we already
-// preserved on the first, real recall. The CASE guard below only copies
-// `content` into recalledOriginalContent the first time (while it's still
-// empty), and leaves it untouched on any later, duplicate recall of the same
-// message.
+// QUAN TRỌNG: phải idempotent. Server có thể gửi lại cùng event "chat.undo"
+// (vd mở lại thread, resync từ checkpoint cũ) khiến cả tin gốc và recall
+// đều replay lại. Lúc đó `content` có thể đã rỗng (đã recall) hoặc vừa được
+// khôi phục tạm — nên chỉ copy `content` vào recalledOriginalContent lần
+// đầu (khi nó còn rỗng), không đụng vào nếu đã có giá trị.
 
 // ── In-app update downloader ──────────────────────────────────────────────
 // Called from AboutSheet.qml after the user confirms they want to update.
@@ -472,13 +455,10 @@ void ZaloService::downloadUpdate(const QString &url, const QString &filename)
     QNetworkRequest req = QNetworkRequest(QUrl(url));
     req.setRawHeader("User-Agent", m_userAgent.toUtf8());
 
-    // The update file is hosted on the same GitHub-backed CDN as the version
-    // manifest (raw.githubusercontent.com / jsDelivr / Fastly), which requires
-    // TLS1.2+. BB10's bundled OpenSSL/Qt4 stack defaults to an older protocol
-    // pin that fails that handshake (SslHandshakeFailedError) — same root
-    // cause AboutSheet.qml's manifest fetch originally hit, and the same fix
-    // as ApplicationUI::buildManifestRequest(): force AnyProtocol so OpenSSL
-    // negotiates the highest version both sides support.
+    // File update host trên cùng CDN với version manifest, cần TLS1.2+.
+    // BB10's OpenSSL/Qt4 mặc định fail handshake — cùng nguyên nhân với
+    // manifest fetch của AboutSheet.qml, fix giống buildManifestRequest():
+    // ép AnyProtocol để OpenSSL tự thương lượng bản cao nhất 2 bên hỗ trợ.
     QSslConfiguration sslConf = req.sslConfiguration();
     sslConf.setPeerVerifyMode(QSslSocket::VerifyNone);
     sslConf.setProtocol(QSsl::AnyProtocol);
@@ -497,11 +477,11 @@ void ZaloService::downloadUpdate(const QString &url, const QString &filename)
 void ZaloService::cancelUpdateDownload()
 {
     if (!m_updateReply) return;
-    m_updateReply->abort(); // triggers finished() -> onUpdateDownloadFinished() with an error, which emits updateDownloadFailed()
+    m_updateReply->abort(); // trigger finished() -> onUpdateDownloadFinished() với lỗi, emit updateDownloadFailed()
 }
 
-// Same extension-sniff idea as ApplicationUI's copy/share fix — good enough
-// for the handful of formats Zalo actually sends.
+// Giống cách sniff extension của ApplicationUI's copy/share fix — đủ dùng
+// cho các format Zalo hay gửi.
 static QString photoExtensionFor(const QString &path)
 {
     QString lower = path.toLower();
@@ -528,17 +508,16 @@ QString ZaloService::downloadPhotoToGallery(const QString &localImagePath, const
         return QString();
     }
 
-    // Name it Zalo10_<msgId><ext> so repeat-saving the same photo overwrites
-    // cleanly instead of piling up "(1)"/"(2)" duplicates in the gallery, and
-    // so the file is identifiable back to its source message if needed.
+    // Đặt tên Zalo10_<msgId><ext> để lưu lại cùng ảnh sẽ ghi đè gọn gàng
+    // thay vì chồng "(1)"/"(2)", và để truy ngược về tin nhắn gốc nếu cần.
     QString ext  = photoExtensionFor(src);
     QString name = msgId.isEmpty()
                  ? (QString("Zalo10_%1%2").arg(QDateTime::currentMSecsSinceEpoch()).arg(ext))
                  : (QString("Zalo10_%1%2").arg(msgId).arg(ext));
     QString destPath = destDir + "/" + name;
 
-    // QFile::copy() fails if the destination already exists — remove any
-    // previous save first so re-downloading the same photo just overwrites it.
+    // QFile::copy() fail nếu đích đã tồn tại — xóa file cũ trước để
+    // tải lại cùng ảnh chỉ đơn giản là ghi đè.
     if (QFile::exists(destPath))
         QFile::remove(destPath);
 
@@ -551,10 +530,9 @@ QString ZaloService::downloadPhotoToGallery(const QString &localImagePath, const
     return destPath;
 }
 
-// sslErrors() only fires for problems found *after* the handshake completes
-// (unknown/self-signed cert chain etc). A bare SslHandshakeFailedError usually
-// won't reach here since it happens during the handshake itself, but this is
-// cheap insurance — mirrors ApplicationUI::onManifestSslErrors().
+// sslErrors() chỉ bắn cho lỗi phát hiện SAU khi handshake xong (cert lạ/
+// self-signed). SslHandshakeFailedError thường không tới đây, nhưng giữ
+// lại phòng hờ — giống ApplicationUI::onManifestSslErrors().
 void ZaloService::onUpdateSslErrors(const QList<QSslError> &errors)
 {
     for (int i = 0; i < errors.size(); ++i)

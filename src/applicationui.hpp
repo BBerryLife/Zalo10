@@ -27,93 +27,68 @@ public slots:
     void minimizeApp();
     Q_INVOKABLE void setDarkTheme(bool dark);
     Q_INVOKABLE bool getDarkTheme();
-    // "Show Recalled Messages": when enabled, recalled/unsent messages keep showing
-    // their original content (with a "(This message was recalled)" tag) instead of
-    // being replaced by the generic "This message was recalled" placeholder bubble.
+    // Khi bật: tin nhắn thu hồi vẫn hiển thị nội dung gốc (kèm tag), thay vì
+    // bị thay bằng bubble placeholder "This message was recalled".
     Q_INVOKABLE void setShowRecalledMessages(bool show);
     Q_INVOKABLE bool getShowRecalledMessages();
     Q_INVOKABLE QString appVersion();
-    // Copies the running session's debug log to the shared Documents folder
-    // (/accounts/1000/shared/documents/zalo10/log/zalo10_log_YYYYMMDD_HHmmss.txt)
-    // so each export gets its own timestamped file instead of overwriting the
-    // last one. Returns the exported file path on success, or an empty string
-    // on failure.
+    // Copy log của phiên hiện tại ra thư mục Documents dùng chung, mỗi lần
+    // export ra 1 file riêng có timestamp. Trả về path nếu thành công, rỗng nếu lỗi.
     Q_INVOKABLE QString exportLog();
 
     // ---- Update check / changelog (About screen) -----------------------------
-    // Both read the same small JSON manifest hosted on BBerryLife.github.io
-    // (see VERSION_MANIFEST_URL in applicationui.cpp) — releasing a new version
-    // only means editing that one file on the website, no app rebuild needed.
-    // checkForUpdate(): fetches the manifest and compares "latestVersion" against
-    // appVersion(); result comes back via updateCheckResult().
+    // Cả hai đọc chung 1 file JSON manifest host trên BBerryLife.github.io.
+    // checkForUpdate(): so latestVersion trong manifest với appVersion(),
+    // kết quả trả về qua updateCheckResult().
     Q_INVOKABLE void checkForUpdate();
-    // fetchChangelog(): fetches the manifest's "changelog" array and renders it
-    // into ready-to-display HTML (Version header per entry + bullet list, with
-    // **word** turned into bold); result comes back via changelogReady().
+    // fetchChangelog(): lấy mảng changelog trong manifest, render ra HTML
+    // sẵn để hiển thị, kết quả trả về qua changelogReady().
     Q_INVOKABLE void fetchChangelog();
 
     // ---- Copy & Share (ChatView bubble hold-menu) -----------------------------
-    // Copy: plain OS clipboard write.
+    // Copy: ghi thẳng vào clipboard hệ điều hành.
     Q_INVOKABLE void copyToClipboard(const QString &text);
-    // Copy an actual image (bytes) to the clipboard under an image/* MIME type,
-    // read straight from a local file (e.g. the cached photo under /tmp or the
-    // /accounts/1000/shared/downloads/zalo10/photos copy) instead of the raw
-    // JSON/URL string. This is what makes pasting the image into another app
-    // show the picture itself instead of the {"normalUrl":...} text blob.
-    // localPath may be a bare filesystem path or a "file://" URI; both accepted.
-    // Returns true on success.
+    // Copy ảnh thật (bytes) vào clipboard dưới MIME type image/*, đọc từ file
+    // local, để paste sang app khác ra đúng tấm ảnh thay vì text JSON/URL.
+    // localPath có thể là path thường hoặc URI "file://". Trả về true nếu ok.
     Q_INVOKABLE bool copyImageToClipboard(const QString &localPath);
-    // Share: queries every app on the device registered for bb.action.SHARE +
-    // text/plain, grouped/ordered the same way as SmartList10's share picker
-    // (BBM contact -> BBM group -> BBM channel -> Text -> Email -> Meeting ->
-    // Bluetooth/NFC -> Remember -> other native -> third-party). Result comes
-    // back async via shareTargetsReady(); QML shows a picker sheet and calls
-    // invokeShareTarget() with whichever one the user taps.
+    // Share: query các app đăng ký bb.action.SHARE + text/plain trên máy.
+    // Kết quả trả về async qua shareTargetsReady(); QML hiện picker sheet
+    // rồi gọi invokeShareTarget() với target user chọn.
     Q_INVOKABLE void queryShareTargets(const QString &text);
     Q_INVOKABLE void invokeShareTarget(const QString &target, const QString &action, const QString &text);
-    // Image variants of the two calls above: queries targets registered for
-    // bb.action.SHARE + image/* (instead of text/plain), and invokes with the
-    // image file's bytes/URI as the payload instead of a text string. Used
-    // when the bubble being shared is a photo message — sharing now hands the
-    // receiving app the actual picture (from the local cache) rather than the
-    // JSON URL text, matching the fix applied to Copy.
+    // Bản dành cho ảnh của 2 hàm trên: query target đăng ký image/* thay vì
+    // text/plain, và gửi kèm file ảnh thay vì text. Dùng khi share 1 bubble ảnh.
     Q_INVOKABLE void queryShareTargetsForImage(const QString &localPath);
     Q_INVOKABLE void invokeShareTargetForImage(const QString &target, const QString &action, const QString &localPath);
 
     // ---- Calendar event creation -----------------------------------------
-    // Creates a real event in the device's default calendar via
-    // bb::pim::calendar::CalendarService (confirmed API — see
-    // createTodayEvent()'s own comment in applicationui.cpp for exactly
-    // which header methods this is built from). Always scheduled for TODAY
-    // — startTime/endTime are computed from QDateTime::currentDateTime()
-    // inside the implementation, not passed in, so there's no way to
-    // accidentally create it on the wrong day. subject/body come from QML;
-    // durationMinutes controls how long the event block is (default handled
-    // QML-side). Result comes back async via eventCreated() since the
-    // underlying CalendarService call can hit the calendar backend.
+    // Tạo event thật trong calendar mặc định của máy qua CalendarService.
+    // Luôn tạo cho HÔM NAY — startTime/endTime tự tính từ giờ hiện tại,
+    // không nhận từ tham số, để tránh tạo nhầm ngày. subject/body từ QML,
+    // durationMinutes quyết định độ dài event. Kết quả trả về async qua
+    // eventCreated().
     Q_INVOKABLE void createTodayEvent(const QString &subject, const QString &body, int durationMinutes);
 
 signals:
     void openThreadRequested(const QString &threadId, bool isGroup);
-    // Emitted from setShowRecalledMessages() so any already-open ChatView can
-    // re-evaluate its bubbles immediately, without needing to leave/reopen the thread.
+    // Bắn khi setShowRecalledMessages() thay đổi, để ChatView đang mở
+    // re-render lại bubble ngay mà không cần rời/mở lại thread.
     void showRecalledMessagesChanged(bool show);
-    // isLatest: true if appVersion() is already >= latestVersion.
-    // error non-empty only on network/parse failure (isLatest/latestVersion/downloadUrl
-    // are meaningless in that case).
+    // isLatest: true nếu appVersion() đã >= latestVersion.
+    // error chỉ khác rỗng khi network/parse lỗi.
     void updateCheckResult(bool isLatest, const QString &latestVersion, const QString &downloadUrl, const QString &error);
-    // html: ready to hand to a WebView's loadHtml(). error non-empty on failure.
+    // html: sẵn sàng đưa vào WebView::loadHtml(). error khác rỗng nếu lỗi.
     void changelogReady(const QString &html, const QString &error);
-    // Result of queryShareTargets() — list of {label, target, action, icon, isNative}
+    // Kết quả của queryShareTargets() — list {label, target, action, icon, isNative}
     void shareTargetsReady(const QVariantList &targets);
-    // Result of createTodayEvent(): success true/false, error message (empty on success)
+    // Kết quả của createTodayEvent(): success true/false, error message (rỗng nếu ok)
     void eventCreated(bool success, const QString &error);
 
 private slots:
     void onSystemLanguageChanged();
     void onManualExit();
-    // Đọc/xả pipe từ signal handler SIGTERM (xem main.cpp) rồi gọi onManualExit().
-    // Tách riêng vì SIGTERM đến qua 1 fd (self-pipe trick), không qua Cascades signal.
+    // Đọc pipe từ signal handler SIGTERM (main.cpp) rồi gọi onManualExit().
     void onTermSignal(int fd);
     void onInvoked(const bb::system::InvokeRequest &request);
     void onUpdateCheckFetchDone();

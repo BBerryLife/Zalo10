@@ -115,9 +115,9 @@ void ZaloService::onFetchMsgDone()
     for (int i = 0; i < rawMsgs.size(); ++i) {
         QVariantMap m = rawMsgs[i].toMap();
 
-        // chat.undo = recall/unsend notification, not a real message. Patch the
-        // original message if it's earlier in this same history batch, persist the
-        // recall to SQLite either way, and skip adding this event as its own bubble.
+        // chat.undo = thông báo thu hồi, không phải tin nhắn thật. Patch tin
+        // gốc nếu nó nằm trước đó trong cùng batch history, lưu recall vào
+        // SQLite dù thế nào, bỏ qua không thêm event này thành bubble riêng.
         QString recalledIdG = extractRecalledMsgId(m);
         if (!recalledIdG.isEmpty()) {
             markMessageRecalled(tid, recalledIdG);
@@ -133,11 +133,9 @@ void ZaloService::onFetchMsgDone()
             continue;
         }
 
-        // chat.delete = "delete for me" notification. Same self-only guard as
-        // every other call site — Zalo delivers this to both participants, but
-        // it must only ever remove the message from the screen of whoever
-        // actually pressed delete. See extractDeleteInfo()'s comment in
-        // ZaloServiceUtils.hpp for the full reasoning + the bug this fixes.
+        // chat.delete = thông báo "xóa cho tôi". Cùng guard self-only như
+        // mọi nơi khác — Zalo gửi cho cả 2 phía nhưng chỉ nên xóa màn hình
+        // của người thực sự bấm xóa.
         QString delMsgIdG, deleterUidG;
         if (extractDeleteInfo(m, delMsgIdG, deleterUidG)) {
             if (deleterUidG == m_uid) {
@@ -199,10 +197,10 @@ void ZaloService::onFetchMsgDone()
     emit messagesReady(tid, msgs);
 }
 
-// Fetch full-res photo URL via WS cmd=510 history.
-// Called when a real-time WS photo arrives with only a protobuf previewThumb (no HTTP URL).
-// Sends cmd=510 with lastId=(msgId-1) so the server returns msgId and any newer messages,
-// which allows us to extract the real CDN normalUrl/hdUrl from the content field.
+// Fetch URL ảnh full-res qua WS cmd=510 history. Gọi khi tin nhắn real-time
+// qua WS chỉ mang previewThumb protobuf (không có URL HTTP). Gửi cmd=510
+// với lastId=(msgId-1) để server trả về đúng msgId đó và các tin mới hơn,
+// cho phép trích ra normalUrl/hdUrl CDN thật từ field content.
 void ZaloService::fetchPhotoViaWs510(const QString &msgId, const QString &threadId)
 {
     if (!m_loggedIn || msgId.isEmpty() || threadId.isEmpty()) return;
@@ -214,9 +212,9 @@ void ZaloService::fetchPhotoViaWs510(const QString &msgId, const QString &thread
     // Track msgId -> threadId so cmd=510 handler knows this is a photo fetch
     m_pendingPhotoMsgIds[msgId] = threadId;
 
-    // Request lastId = (msgId - 1) so the server includes msgId itself in the
-    // response — sending lastId=msgId would ask for messages older than it,
-    // which returns nothing when msgId is the newest message in the thread.
+    // Xin lastId = (msgId - 1) để server trả về đúng msgId trong response —
+    // gửi lastId=msgId sẽ xin tin nhắn CŨ HƠN nó, trả về rỗng nếu msgId là
+    // tin mới nhất trong thread.
     qint64 lastIdNum = msgId.toLongLong() - 1;
     QString lastIdStr = lastIdNum > 0 ? QString::number(lastIdNum) : "0";
     QString req = QString("{\"first\":false,\"lastId\":\"%1\",\"toid\":\"%2\",\"preIds\":[]}")
@@ -226,20 +224,20 @@ void ZaloService::fetchPhotoViaWs510(const QString &msgId, const QString &thread
              << "lastId=" << lastIdStr << "toid=" << threadId;
 }
 
-// Fetch photo HTTP URL when WS cmd=510 keeps returning protobuf blob.
+// Fetch URL HTTP của ảnh khi WS cmd=510 vẫn chỉ trả về blob protobuf.
 //
-// Zalo does NOT expose /api/message/getmsg (returns 404).
-// We try a sequence of known endpoints, retrying on 404 / API error:
-//   [0] file service:  file[0]/api/message/getmsg        (file service variant)
-//   [1] chat service:  chat[0]/api/message/list           (DM history, like group/history)
-//   [2] chat service:  chat[0]/api/message/getmsgv2       (v2 variant)
+// Zalo không lộ endpoint /api/message/getmsg (trả 404). Thử lần lượt các
+// endpoint đã biết, retry khi gặp 404/lỗi API:
+//   [0] file service:  file[0]/api/message/getmsg        (biến thể file service)
+//   [1] chat service:  chat[0]/api/message/list           (history DM, giống group/history)
+//   [2] chat service:  chat[0]/api/message/getmsgv2       (biến thể v2)
 //   [3] chat service:  chat[0]/api/message/getconversation
 //
-// Params: {toid, msgId, imei, count} — subset used by each endpoint.
+// Params: {toid, msgId, imei, count} — mỗi endpoint dùng 1 tập con.
 //
 static QStringList photoFetchEndpoints(const QString &chatUrl, const QString &fileUrl)
 {
-    // Build file service base: derive from chatUrl if fileUrl is empty
+    // Dựng base file service: suy ra từ chatUrl nếu fileUrl rỗng
     QString fileBase = fileUrl;
     if (fileBase.isEmpty()) {
         fileBase = chatUrl;
@@ -423,17 +421,15 @@ void ZaloService::sendMessage(const QString &threadId, const QString &content, b
     reply->setProperty("threadId", threadId);
     reply->setProperty("content",  content);
     reply->setProperty("isGroup",  isGroup);
-    // clientId is what we sent as cliMsgId; stash it so onSendMsgDone can save
-    // it into the DB row for this message (needed by deleteMessage/undo later).
+    // clientId chính là cái đã gửi làm cliMsgId; giữ lại để onSendMsgDone
+    // lưu vào row DB (cần cho deleteMessage/undo về sau).
     reply->setProperty("cliMsgId", msgData["clientId"].toString());
     connect(reply, SIGNAL(finished()), this, SLOT(onSendMsgDone()));
 }
 
-// Reply/quote send. Ported from zca-js's sendMessage.ts "quote" branch: same
-// body shape as a plain sendMessage() but with qmsg* fields added and posted
-// to .../quote instead of .../sms|sendmsg. qmsgAttach is only ever sent for
-// group threads (matches zca-js: `isGroupMessage ? JSON.stringify(...) : undefined`);
-// for 1-1 it's simply omitted rather than sent empty.
+// Gửi reply/quote. Cùng shape body như sendMessage() thường nhưng thêm
+// field qmsg* và post tới .../quote thay vì .../sms|sendmsg. qmsgAttach
+// chỉ gửi cho thread nhóm; với 1-1 thì bỏ hẳn thay vì gửi rỗng.
 void ZaloService::sendMessageQuote(const QString &threadId, const QString &content, bool isGroup,
                                     const QString &quoteMsgId, const QString &quoteCliMsgId,
                                     const QString &quoteOwnerId, const QString &quoteContent,
@@ -455,11 +451,11 @@ void ZaloService::sendMessageQuote(const QString &threadId, const QString &conte
     if (isGroup) {
         msgData["visibility"] = 0;
         msgData["grid"]       = threadId;
-        // Group quote attach: for a plain text quote this is just the quoted
-        // text re-wrapped; photo quotes aren't wired up on the UI side yet
-        // (Reply is offered on the hold-menu for any message, but the
-        // preview/attach shape below only covers text — matches the current
-        // QML, which only builds a quote payload from ListItemData.content).
+        // Group quote attach: với quote text thường, chỉ đơn giản wrap lại
+        // text được quote; quote ảnh chưa được nối dây ở UI (Reply được
+        // offer trên hold-menu cho mọi tin nhắn, nhưng preview/attach dưới
+        // đây chỉ cover text — khớp với QML hiện tại, chỉ build quote
+        // payload từ ListItemData.content).
         QVariantMap attach;
         attach["title"] = quoteContent;
         msgData["qmsgAttach"] = QString::fromUtf8(mapToJson(attach));
@@ -472,7 +468,7 @@ void ZaloService::sendMessageQuote(const QString &threadId, const QString &conte
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(msgData)));
     QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
 
-    // Quote endpoint = base + "/quote" instead of "/sms" (1-1) or "/sendmsg" (group)
+    // Endpoint quote = base + "/quote" thay vì "/sms" (1-1) hay "/sendmsg" (nhóm)
     QString base = isGroup ? m_groupServiceUrl + "/api/group/quote"
                            : m_chatServiceUrl  + "/api/message/quote";
 
@@ -497,9 +493,8 @@ void ZaloService::sendMessageQuote(const QString &threadId, const QString &conte
 }
 
 // ─── forwardMessage ─────────────────────────────────────────────────────
-// See the Q_INVOKABLE declaration's doc comment in ZaloService.hpp for the
-// full rationale (file-service host, verbatim content reuse, single-type
-// batch). Ported field-for-field from zca-js's forwardMessage.ts.
+// Xem doc comment ở khai báo Q_INVOKABLE trong ZaloService.hpp để biết đầy
+// đủ lý do (host file-service, tái dùng nguyên văn content, batch cùng 1 loại).
 void ZaloService::forwardMessage(const QString &content, const QStringList &threadIds, bool isGroup,
                                   const QString &origMsgId, const QString &origTs)
 {
@@ -513,10 +508,8 @@ void ZaloService::forwardMessage(const QString &content, const QStringList &thre
 
     QVariantMap msgInfo;
     msgInfo["message"] = content;
-    // reference marks this as an actual forward (not a fresh message that
-    // happens to share the same text) — see forwardMessage.ts's
-    // ForwardMessagePayload.reference and this function's own doc comment
-    // in ZaloService.hpp for why this was previously always omitted.
+    // reference đánh dấu đây là forward thật (không phải tin mới gõ tình
+    // cờ trùng text) — xem doc comment của hàm này trong ZaloService.hpp.
     QVariantMap decorLog;
     if (hasReference) {
         QVariantMap reference;
@@ -557,28 +550,24 @@ void ZaloService::forwardMessage(const QString &content, const QStringList &thre
             toIds.append(t);
         }
         params["toIds"] = toIds;
-        params["imei"]  = m_imei; // zca-js: only the User-thread branch sends imei, same as sendMessage() above
+        params["imei"]  = m_imei; // chỉ nhánh 1-1 (User-thread) gửi imei, giống sendMessage() ở trên
     }
     params["ttl"]      = 0;
     params["msgType"]  = "1";
     params["totalIds"] = threadIds.size();
     params["msgInfo"]  = QString::fromUtf8(variantToJsonCompact(msgInfo));
-    // zca-js sends JSON.stringify(null) = the string "null" when there's no
-    // reference — matched here the same way for the no-reference fallback.
+    // Gửi chuỗi "null" khi không có reference — tương đương JSON.stringify(null).
     params["decorLog"] = hasReference ? QString::fromUtf8(variantToJsonCompact(decorLog))
                                        : QString("null");
 
-    // variantToJsonCompact() (not mapToJson()) because params.grids/toIds
-    // is an array of OBJECTS — see that function's own comment on why
-    // mapToJson()'s QVariant::List branch can't be used for that shape
-    // (deleteMessage()'s "msgs" array is the other existing example).
+    // variantToJsonCompact() (không phải mapToJson()) vì params.grids/toIds
+    // là mảng OBJECT — xem comment của hàm đó về lý do nhánh
+    // QVariant::List của mapToJson() không dùng được cho shape này.
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(variantToJsonCompact(params)));
     QByteArray body    = "params=" + QUrl::toPercentEncoding(encParams);
 
-    // Both variants hit the FILE service host, not m_groupServiceUrl/
-    // m_chatServiceUrl like plain sendMessage() — see forwardMessage.ts's
-    // serviceURL map (api.zpwServiceMap.file[0] for both ThreadType.User
-    // and ThreadType.Group).
+    // Cả 2 nhánh đều gọi host FILE service, không phải m_groupServiceUrl/
+    // m_chatServiceUrl như sendMessage() thường.
     QString base = isGroup ? m_fileServiceUrl + "/api/group/mforward"
                            : m_fileServiceUrl + "/api/message/mforward";
     QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
@@ -747,17 +736,16 @@ void ZaloService::deleteMessage(const QString &threadId, bool isGroup, const QSt
 {
     if (!m_loggedIn) return;
 
-    // Mirrors zca-js's guard: your OWN message can only be removed for
-    // everyone via undo/recall, never via "delete" — the server rejects that
-    // combination anyway, so we short-circuit with a clear error rather than
-    // round-tripping to find out.
+    // Tin nhắn của CHÍNH MÌNH chỉ có thể xóa cho mọi người qua undo/recall,
+    // không qua "delete" — server từ chối tổ hợp đó, nên chặn sớm với lỗi
+    // rõ ràng thay vì round-trip lên server mới biết.
     bool isSelf = (senderId == m_uid);
     if (isSelf && !onlyMe) {
         emit messageDeleted(threadId, msgId, false, "To delete your message for everyone, use Recall instead");
         return;
     }
-    // Mirrors zca-js: "delete for everyone" is a group-only operation; in a
-    // 1-1 chat only the sender can remove a message for both sides (Recall).
+    // "Xóa cho mọi người" chỉ áp dụng nhóm; với chat 1-1 chỉ người gửi mới
+    // xóa được cho cả 2 phía (qua Recall).
     if (!isGroup && !onlyMe) {
         emit messageDeleted(threadId, msgId, false, "Can't delete this message for everyone in a direct chat");
         return;
@@ -811,14 +799,10 @@ void ZaloService::onDeleteMsgDone()
     if (!hasError) {
         QVariantMap outer = jsonToMap(raw);
         if (outer["error_code"].toInt() == 0) {
-            // "Delete for me" must vanish completely from our own view, with no
-            // placeholder — unlike Recall's "(this message was recalled)" tag.
-            // This used to run an UPDATE...SET msgType=99 here (copy-pasted from
-            // the recall path), which left the DB row alive with a "recalled"
-            // tag — so re-opening the thread (or the chat.delete WS echo
-            // re-reading DB state) resurrected the "You recalled a message"
-            // placeholder instead of the message being gone. markMessageDeletedForMe
-            // does a hard DELETE instead, which is what "delete for me" actually means.
+            // "Xóa cho tôi" phải biến mất hoàn toàn khỏi màn hình của mình,
+            // không có placeholder — khác tag "(tin nhắn đã bị thu hồi)" của
+            // Recall. markMessageDeletedForMe làm hard DELETE, đúng nghĩa
+            // "xóa cho tôi" thay vì chỉ UPDATE tag như Recall.
             markMessageDeletedForMe(tid, msgId);
         } else {
             hasError = true;
@@ -880,10 +864,10 @@ void ZaloService::onRecallMsgDone()
     if (!hasError) {
         QVariantMap outer = jsonToMap(raw);
         if (outer["error_code"].toInt() == 0) {
-            // Reuse the same in-place update as the incoming chat.undo path
-            // (markMessageRecalled) so our own recalled bubble looks identical
-            // to one recalled by the WS notification, and the WS echo of our
-            // own action (if/when it arrives) is a harmless no-op re-update.
+            // Dùng lại đúng logic update tại chỗ như path chat.undo đến
+            // (markMessageRecalled), để bubble tự thu hồi trông giống hệt
+            // bubble bị thu hồi qua thông báo WS, và nếu echo WS của chính
+            // hành động này có tới thì chỉ là update lại vô hại.
             markMessageRecalled(tid, msgId);
         } else {
             hasError = true;
@@ -897,50 +881,42 @@ void ZaloService::onRecallMsgDone()
 }
 
 // ─── Reactions ───────────────────────────────────────────────────────────────
-// icon ("like"/"heart"/"haha"/"wow"/"cry"/"angry") -> the actual emoji
-// character sent as rIcon, and rType (0..5, same order) the numeric
-// reaction-type index — see reactionIconToEmoji()/extractReactionInfo() in
-// ZaloServiceUtils.hpp for the shared mapping.
+// icon ("like"/"heart"/"haha"/"wow"/"cry"/"angry") -> ký hiệu wire thật
+// gửi làm rIcon, và rType (0..5, cùng thứ tự) là chỉ số reaction dạng số —
+// xem reactionIconToEmoji()/extractReactionInfo() trong ZaloServiceUtils.hpp.
 //
-// Wire format below is ported from zca-js's addReactionFactory()
-// (RFS-ADRENO/zca-js, src/apis/addReaction.ts) rather than guessed — the
-// PREVIOUS version of this function posted msgId/cliMsgId/rType/rIcon as
-// flat top-level params, which the server silently accepted (200 OK, no
-// error_code) but never actually broadcast to the other participant, which
-// is exactly the "I react, they never see it" symptom this replaces. The
-// server instead expects a "react_list" array whose one entry is itself a
-// JSON-STRING (not a nested object) under "message", shaped:
+// Bản trước của hàm này gửi msgId/cliMsgId/rType/rIcon dạng flat param ở
+// top-level — server chấp nhận (200 OK, không error_code) nhưng không hề
+// broadcast cho người kia thấy, đúng triệu chứng "mình react, người kia
+// không thấy gì" mà bản này sửa. Server thực ra cần 1 mảng "react_list" mà
+// entry của nó là JSON-STRING (không phải object lồng) dưới key "message",
+// dạng:
 //   { rMsg: [{ gMsgID, cMsgID, msgType }], rIcon, rType, source }
-// with gMsgID/cMsgID as actual NUMBERS (not numeric strings) and a
-// "source" field (6 == reaction tapped from a message bubble, matching
-// every reaction case in zca-js's own mapping) that the old payload was
-// missing entirely.
+// với gMsgID/cMsgID là SỐ thật (không phải chuỗi số) và field "source" (6
+// = reaction bấm từ bubble tin nhắn) mà payload cũ hoàn toàn thiếu.
 void ZaloService::reactMessage(const QString &threadId, bool isGroup, const QString &msgId,
                                 const QString &cliMsgId, int msgType, int rType, const QString &icon)
 {
     if (!m_loggedIn) return;
 
-    // rType is now derived HERE from icon via reactionIconToRType(), not
-    // taken from the caller's rType parameter — that parameter is what
-    // QML's msgList.reactionRTypes sends (a purely local 0..5 slot-order
-    // convention: like=0 heart=1 haha=2 wow=3 cry=4 angry=5), which never
-    // matched Zalo's actual numeric reaction-type values. A live device log
-    // capturing a real incoming heart reaction showed rType:5, matching
-    // zca-js's real Reactions.HEART -> rType=5 — nothing like the old
-    // QML-side "1". removing (rType param < 0, i.e. "-1" from
-    // msgList.doSendReaction()'s own remove path) is still read from the
-    // caller since that's a simple sentinel, not a per-icon numeric value.
+    // rType giờ được tính TẠI ĐÂY từ icon qua reactionIconToRType(), không
+    // lấy từ tham số rType của caller nữa — tham số đó là quy ước slot
+    // 0..5 thuần local phía QML (like=0 heart=1 haha=2 wow=3 cry=4 angry=5),
+    // chưa từng khớp giá trị reaction-type số thật của Zalo. Log thiết bị
+    // thật bắt được 1 lần reaction heart đến cho thấy rType:5, khớp giá trị
+    // thật của Zalo — khác hẳn "1" cũ phía QML. Trường hợp gỡ reaction
+    // (rType param < 0, tức "-1" từ path remove của msgList.doSendReaction())
+    // vẫn đọc từ caller vì đó chỉ là sentinel đơn giản, không phải giá trị
+    // số theo từng icon.
     bool removing = (rType < 0);
     int  wireRType = removing ? -1 : reactionIconToRType(icon);
     qint64 clientId = QDateTime::currentMSecsSinceEpoch();
 
-    // gMsgID/cMsgID hand-built as raw numeric text (not routed through
-    // QVariant::LongLong -> mapToJson(), which casts to double and would
-    // silently corrupt Zalo's big 64-bit message IDs the same way
-    // quoteBigJsonInts() already had to work around on the RECEIVE side —
-    // see that function's own comment in ZaloServiceUtils.hpp). msgId /
-    // cliMsgId arrive here as decimal-digit QStrings, so they can be
-    // embedded directly as unquoted JSON number literals.
+    // gMsgID/cMsgID tự tay build thành text số thô (không qua
+    // QVariant::LongLong -> mapToJson(), sẽ cast sang double và âm thầm làm
+    // hỏng msgId 64-bit lớn của Zalo, cùng vấn đề quoteBigJsonInts() đã
+    // phải xử lý ở chiều nhận). msgId/cliMsgId đến đây dạng QString toàn
+    // chữ số, nên nhúng thẳng làm literal số JSON không cần quote được.
     QString rIconOut = removing ? QString() : reactionIconToEmoji(icon);
     QString innerMessage = QString(
         "{\"rMsg\":[{\"gMsgID\":%1,\"cMsgID\":%2,\"msgType\":1}],"
@@ -950,14 +926,13 @@ void ZaloService::reactMessage(const QString &threadId, bool isGroup, const QStr
         .arg(jsonQuote(rIconOut))
         .arg(wireRType);
 
-    // Whole outer params object hand-built too, not via mapToJson() — its
-    // QVariant::List branch only understands scalar elements (Int/String/
-    // Bool/Double) and has no QVariant::Map case, so a list containing our
-    // reactListEntry map would silently fall through to elem.toString() on
-    // a map (garbage), not real JSON. react_list's single entry needs
-    // "message" as a JSON-STRING (already quoted via jsonQuote, since it
-    // contains innerMessage's own embedded quotes) and "clientId" as a bare
-    // number.
+    // Toàn bộ object params ngoài cùng cũng tự tay build, không qua
+    // mapToJson() — nhánh QVariant::List của nó chỉ hiểu phần tử scalar
+    // (Int/String/Bool/Double), không có case QVariant::Map, nên 1 list
+    // chứa map reactListEntry sẽ âm thầm rơi vào elem.toString() trên map
+    // (ra rác), không phải JSON thật. Entry duy nhất của react_list cần
+    // "message" là JSON-STRING (đã quote qua jsonQuote, vì bản thân
+    // innerMessage đã chứa dấu quote lồng) và "clientId" là số trần.
     QString params = QString("{\"react_list\":[{\"message\":%1,\"clientId\":%2}]")
         .arg(jsonQuote(innerMessage))
         .arg(clientId);
@@ -975,7 +950,7 @@ void ZaloService::reactMessage(const QString &threadId, bool isGroup, const QStr
 
     QString reactionHost = !m_reactionServiceUrl.isEmpty()
         ? m_reactionServiceUrl
-        : (isGroup ? m_groupServiceUrl : m_chatServiceUrl); // fallback only if service map lacked "reaction"
+        : (isGroup ? m_groupServiceUrl : m_chatServiceUrl); // fallback nếu service map thiếu "reaction"
     QString base = isGroup ? reactionHost + "/api/group/reaction"
                            : reactionHost + "/api/message/reaction";
     QString urlStr = base + "?zpw_ver=" + QString::number(API_VERSION)
@@ -999,7 +974,7 @@ void ZaloService::onReactMsgDone()
     bool hasError  = (reply->error() != QNetworkReply::NoError);
     QString tid    = reply->property("threadId").toString();
     QString msgId  = reply->property("msgId").toString();
-    QString icon   = reply->property("icon").toString(); // "" means this call removed the reaction
+    QString icon   = reply->property("icon").toString(); // rỗng nghĩa là call này gỡ reaction
     QByteArray raw = reply->readAll();
     reply->deleteLater();
     qDebug() << "[Zalo] reactMessage response:" << raw.left(200);
@@ -1010,10 +985,10 @@ void ZaloService::onReactMsgDone()
         if (outer["error_code"].toInt() == 0) {
             if (icon.isEmpty()) dbRemoveReaction(msgId, m_uid);
             else                dbSaveReaction(tid, msgId, m_uid, icon);
-            // Same "harmless no-op re-apply if the WS echo also arrives"
-            // reasoning as messageRecalledDone/markMessageRecalled above —
-            // QML already applied this optimistically, so this is just
-            // making sure the persisted DB copy agrees with what's on screen.
+            // Cùng lý do "re-apply vô hại nếu echo WS cũng tới" như
+            // messageRecalledDone/markMessageRecalled ở trên — QML đã tự
+            // apply optimistic rồi, đây chỉ đảm bảo bản DB lưu lại khớp
+            // với những gì đang hiện trên màn hình.
             emit reactionUpdated(tid, msgId, m_uid, icon);
         } else {
             hasError = true;
@@ -1027,14 +1002,13 @@ void ZaloService::onReactMsgDone()
 }
 
 // ─── Send Photo ──────────────────────────────────────────────────────────────
-// Two-step: 1) upload to file[0]/api/{message|group}/photo_original/upload
-//           2) send message via {chat|group}/api/{message|group}/photo
-// Copies a picker-provided image (which may live in a transient/sandboxed location,
-// e.g. a Camera share-card path) into the persistent "/tmp/zalo_img_local_<ts>.<ext>"
-// cache. Uses the same "zalo_img_" prefix as downloadImageMessage()'s cache files so
-// clearCache() already picks it up via cacheFilePatterns() — nothing else deletes it,
-// including app close/restart (plain "/tmp/", not QDir::tempPath() — see notes on
-// downloadImageMessage() for why).
+// 2 bước: 1) upload lên file[0]/api/{message|group}/photo_original/upload
+//         2) gửi tin nhắn qua {chat|group}/api/{message|group}/photo
+// Copy ảnh từ picker (có thể nằm ở vị trí tạm/sandbox, vd path share-card
+// của Camera) vào cache persistent "/tmp/zalo_img_local_<ts>.<ext>". Dùng
+// chung prefix "zalo_img_" với file cache của downloadImageMessage() nên
+// clearCache() tự nhận qua cacheFilePatterns() — không gì khác xóa nó,
+// kể cả đóng/mở lại app.
 QString ZaloService::cacheLocalImage(const QString &sourcePath)
 {
     QString path = sourcePath;
@@ -1079,11 +1053,10 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     qint64  ts       = QDateTime::currentMSecsSinceEpoch();
     QString boundary = "----ZaloBoundary" + QString::number(ts);
 
-    // clientId doubles as the "clientId"/"cliMsgId" param sent to Zalo below, which the
-    // server echoes back verbatim on the WS cmd=501 push. Stashing the local file info
-    // here — before the upload network call even starts — means it's available no matter
-    // how fast that WS echo comes back (device logs show it can arrive before the HTTP
-    // send-msg response completes).
+    // clientId cũng chính là param "clientId"/"cliMsgId" gửi cho Zalo bên
+    // dưới, được server echo lại nguyên vẹn qua WS cmd=501. Lưu info file
+    // local ở đây — trước cả khi call mạng upload bắt đầu — để có sẵn dữ
+    // liệu bất kể echo WS đó về nhanh cỡ nào.
     QString clientId = QString::number(ts);
     QVariantMap pendingInfo;
     pendingInfo["localPath"] = "file://" + path;
@@ -1091,8 +1064,8 @@ void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePat
     pendingInfo["fileName"]  = filename;
     m_pendingSentPhotoInfo[clientId] = pendingInfo;
 
-    // Params in query string (AES-encrypted) per zca-js uploadAttachment.ts
-    // Note: imei goes in multipart body, NOT in AES params
+    // Params trong query string (đã AES-encrypt)
+    // Lưu ý: imei nằm trong multipart body, KHÔNG nằm trong AES params
     QVariantMap p;
     if (isGroup) p["grid"] = threadId;
     else         p["toid"] = threadId;
@@ -1201,17 +1174,16 @@ void ZaloService::onSendPhotoDone()
         return;
     }
 
-    // Step 2: send photo message
-    // zca-js: file[0]/api/{message|group}/photo_original/send
+    // Bước 2: gửi tin nhắn ảnh
     // params: photoId, clientId, desc, width, height, toid|grid,
     //         rawUrl=normalUrl, hdUrl, thumbUrl, hdSize=totalSize,
-    //         oriUrl (group only), normalUrl (DM only),
+    //         oriUrl (chỉ nhóm), normalUrl (chỉ DM),
     //         zsource=-1, ttl=0, jcp
     QSize photoDim = imageDimensions(localPath);
     QVariantMap mp;
     mp["photoId"]   = photoId;
-    // Reuse the same clientId generated in sendPhoto() (rather than a fresh timestamp)
-    // so it matches the m_pendingSentPhotoInfo key and the WS cmd=501 echo's cliMsgId.
+    // Dùng lại đúng clientId đã sinh trong sendPhoto() (thay vì timestamp
+    // mới) để khớp key trong m_pendingSentPhotoInfo và cliMsgId của echo WS cmd=501.
     mp["clientId"]  = clientId;
     mp["desc"]      = caption;
     mp["width"]     = photoDim.width();
@@ -1486,8 +1458,8 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
 {
     if (url.isEmpty() || msgId.isEmpty()) return;
 
-    // Handle base64-encoded inline image (previewThumb from Zalo WS real-time photo)
-    // These start with base64 data, not "http"
+    // Xử lý ảnh base64 inline (previewThumb từ tin ảnh real-time qua Zalo
+    // WS). Loại này bắt đầu bằng data base64, không phải "http".
     if (!url.startsWith("http")) {
         if (m_avatarCache.contains(url)) {
             QSize sz = imageDimensions(m_avatarCache[url]);
@@ -1510,9 +1482,9 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                 ext = "webp";
 
             if (ext.isEmpty()) {
-                // Check for Zalo proprietary thumbnail format:
-                // [03][00][W][00][H][FF DA ...JPEG SOS data...]
-                // The SOS data needs a standard JPEG header prepended to be valid.
+                // Kiểm tra định dạng thumbnail riêng của Zalo:
+                // [03][00][W][00][H][FF DA ...data JPEG SOS...]
+                // Data SOS cần header JPEG chuẩn chèn phía trước mới decode được.
                 if (imgData.size() > 6 &&
                     (unsigned char)imgData[0] == 0x03 &&
                     (unsigned char)imgData[1] == 0x00 &&
@@ -1579,10 +1551,11 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                     dqt1 += QByteArray((const char*)chromaQ, 64);
 
                     // SOF0: 8-bit, 3 components, Y=2x2/qtable0, Cb=1x1/qtable1, Cr=1x1/qtable1
-                    // IMPORTANT: build byte-by-byte with explicit (char) casts.
-                    // Do NOT use string literals like "\x01\x22\x00" because QByteArray::operator+=
-                    // with const char* stops at the first \x00 null byte, silently dropping
-                    // the Y-component qtable index byte and corrupting all downstream markers.
+                    // QUAN TRỌNG: build từng byte với cast (char) rõ ràng.
+                    // KHÔNG dùng string literal kiểu "\x01\x22\x00" vì
+                    // QByteArray::operator+= với const char* dừng ở byte
+                    // \x00 đầu tiên, âm thầm làm rớt byte qtable index của
+                    // component Y và làm hỏng mọi marker phía sau.
                     QByteArray sof0Data;
                     sof0Data += (char)8;                    // sample precision (bits)
                     sof0Data += (char)((H >> 8) & 0xFF);   // height high byte
@@ -1592,7 +1565,7 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                     sof0Data += (char)3;                    // num components
                     sof0Data += (char)0x01;                 // Y  component id
                     sof0Data += (char)0x22;                 // Y  sampling: 2x2
-                    sof0Data += (char)0x00;                 // Y  qtable index: 0  <-- THIS BYTE was lost!
+                    sof0Data += (char)0x00;                 // Y  qtable index: 0
                     sof0Data += (char)0x02;                 // Cb component id
                     sof0Data += (char)0x11;                 // Cb sampling: 1x1
                     sof0Data += (char)0x01;                 // Cb qtable index: 1
@@ -1617,10 +1590,11 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                     QByteArray jpeg;
                     jpeg += "\xFF\xD8";                                    // SOI
 
-                    // APP0 JFIF marker — required by Qt4's QImageReader on BB10
-                    // Format: marker(FF E0) + length(00 10) + "JFIF\0" + version(1.1)
-                    //         + density_units(0=no units) + Xdensity(0,1) + Ydensity(0,1)
-                    //         + thumbnail_size(0,0)
+                    // Marker APP0 JFIF — cần thiết để QImageReader của
+                    // Qt4 trên BB10 nhận diện đúng. Format: marker(FF E0)
+                    // + length(00 10) + "JFIF\0" + version(1.1)
+                    //   + density_units(0=không đơn vị) + Xdensity(0,1) + Ydensity(0,1)
+                    //   + thumbnail_size(0,0)
                     static const char app0Data[] = {
                         'J','F','I','F','\x00',  // identifier
                         '\x01','\x01',           // version 1.1
@@ -1640,25 +1614,25 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                     jpeg += sosData;                                        // SOS + scan data
                     jpeg += "\xFF\xD9";                                     // EOI
 
-                    // Use msgId in filename — unique path avoids BB10 image cache stale data.
-                    // Always save as .png — BB10 ImageView is more reliable with PNG than JPEG.
-                    // NOTE: hardcoded "/tmp/" (NOT QDir::tempPath()) — on this BB10 device
-                    // QDir::tempPath() resolves to a per-launch sandboxed scratch dir that gets
-                    // wiped every time the app restarts, while plain "/tmp/" is the same
-                    // device-wide location avatars use and is confirmed to survive app restarts
-                    // (see avatar_meta persistence). See onImageMsgDownloaded() below for the
-                    // same fix applied to full-size photos.
+                    // Dùng msgId làm filename — path riêng cho từng tin
+                    // nhắn tránh cache ảnh cũ của BB10. Luôn lưu dạng .png
+                    // — ImageView của BB10 ổn định hơn với PNG so với JPEG.
+                    // LƯU Ý: hardcode "/tmp/" (không phải QDir::tempPath())
+                    // — trên máy BB10 này QDir::tempPath() bị xóa mỗi lần
+                    // app restart, còn "/tmp/" thường là chỗ persistent
+                    // avatar cũng dùng.
                     QString tmpPath = "/tmp/msgthumb_" +
                                       msgId + ".png";
                     QFile::remove(tmpPath);
 
-                    // Byte-stuff scan data: in JPEG, any 0xFF byte in entropy-coded
-                    // data MUST be followed by 0x00 so decoders don't mistake it for
-                    // a marker. Zalo's raw SOS data has bare 0xFF bytes that cause
-                    // "Bogus marker length" in BB10's libjpeg. Escape them here.
+                    // Byte-stuff scan data: trong JPEG, byte 0xFF nào trong
+                    // entropy-coded data cũng PHẢI có 0x00 theo sau, không
+                    // decoder sẽ nhầm thành marker. Data SOS thô của Zalo
+                    // có byte 0xFF trần gây lỗi "Bogus marker length" trong
+                    // libjpeg của BB10. Escape chúng ở đây.
                     QByteArray stuffedSos;
-                    // SOS header: FF DA + length(2 bytes) + payload[length-2]
-                    // Keep header verbatim, only stuff entropy scan data after it.
+                    // Header SOS: FF DA + length(2 byte) + payload[length-2]
+                    // Giữ header nguyên văn, chỉ stuff phần entropy data sau đó.
                     int sosHeaderLen = 0;
                     if (sosData.size() >= 4) {
                         int segLen = ((unsigned char)sosData[2] << 8) | (unsigned char)sosData[3];
@@ -1669,8 +1643,9 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                         unsigned char b = (unsigned char)sosData[si];
                         stuffedSos += (char)b;
                         if (b == 0xFF) {
-                            // Only insert stuffing 0x00 if next byte is not already
-                            // a valid stuffed zero, restart marker (D0-D7), or EOI (D9).
+                            // Chỉ chèn stuffing 0x00 nếu byte kế tiếp chưa
+                            // phải là zero đã stuff, restart marker (D0-D7),
+                            // hay EOI (D9).
                             unsigned char next = (si + 1 < sosData.size())
                                                  ? (unsigned char)sosData[si + 1] : 0x00;
                             if (next != 0x00 &&
@@ -1702,8 +1677,8 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                     if (!decoded) decoded = qimg.loadFromData(jpeg, "JPEG");
 
                     if (decoded) {
-                        // Scale small thumbnails up so they're visible in the chat bubble.
-                        // Original is 24×24 — far too small for a chat photo placeholder.
+                        // Scale thumbnail nhỏ lên cho dễ thấy trong bubble
+                        // chat. Ảnh gốc 24×24 — quá nhỏ để làm placeholder ảnh chat.
                         if (qimg.width() < 120 || qimg.height() < 120) {
                             qimg = qimg.scaled(240, 240,
                                                Qt::KeepAspectRatio,
@@ -1713,9 +1688,9 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                         qDebug() << "[Zalo] decoded Zalo thumb" << W << "x" << H
                                  << "→ PNG msgId=" << msgId << tmpPath;
                     } else {
-                        // Decode failed completely — write a solid blue 240×240 PNG
-                        // placeholder so the chat bubble shows *something* while the
-                        // full-res fetch (cmd=510) is in flight.
+                        // Decode thất bại hoàn toàn — ghi tạm PNG xanh
+                        // 240×240 để bubble hiện gì đó trong lúc chờ fetch
+                        // full-res (cmd=510).
                         QImage placeholder(240, 240, QImage::Format_RGB32);
                         placeholder.fill(QColor(37, 117, 252)); // Zalo blue #2575fc
                         placeholder.save(tmpPath, "PNG");
@@ -1745,8 +1720,8 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                 return;
             } // end if(ext.isEmpty())
 
-            // Hardcoded "/tmp/" — same reasoning as msgthumb_ above: QDir::tempPath()
-            // does not survive an app restart on this device, plain "/tmp/" does.
+            // Hardcode "/tmp/" — cùng lý do như msgthumb_ ở trên:
+            // QDir::tempPath() không sống qua restart app trên máy này, "/tmp/" thì có.
             QString tmpPath = "/tmp/msgimg_" +
                               QString::number(qHash(url)) + "." + ext;
             QFile f(tmpPath);
@@ -1784,12 +1759,11 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
         return;
     }
 
-    // Persistent check: this msgId may already have a downloaded image from a
-    // previous session (logout/login, app restart, etc.) — dbLoadMessages()
-    // already returns localImage for display, but downloadImageMessage() can
-    // also get called directly (e.g. re-sync, search jump-to-message) without
-    // going through that path first. If the file is still on disk, reuse it
-    // instead of re-fetching over the network.
+    // Check persistent: msgId này có thể đã có ảnh tải sẵn từ phiên trước
+    // (logout/login, app restart...) — dbLoadMessages() đã trả localImage
+    // để hiển thị, nhưng downloadImageMessage() cũng có thể được gọi trực
+    // tiếp (vd re-sync, search jump-to-message) mà không qua path đó
+    // trước. Nếu file vẫn còn trên đĩa thì dùng lại thay vì tải lại qua mạng.
     if (!msgId.isEmpty() && m_db) {
         const char *sqlChk = "SELECT localImage, imgWidth, imgHeight FROM messages WHERE msgId=?";
         sqlite3_stmt *chk = 0;
@@ -1846,8 +1820,8 @@ void ZaloService::onImageMsgDownloaded()
     if (ct.contains("gif"))  ext = "gif";
     if (ct.contains("webp")) ext = "webp";
 
-    // BB10's ImageView does not support WebP. Transcode any WebP (or
-    // unrecognised) image to PNG via QImage so it always displays correctly.
+    // ImageView của BB10 không hỗ trợ WebP. Transcode mọi ảnh WebP (hoặc
+    // không nhận diện được) sang PNG qua QImage để luôn hiển thị đúng.
     QByteArray finalData = data;
     if (ext == "webp" || ext == "jpg") {
         QImage img;
@@ -1863,21 +1837,17 @@ void ZaloService::onImageMsgDownloaded()
         }
     }
 
-    // Fixed filename per-message (by msgId, NOT by md5(url)): the URL Zalo
-    // returns for the same photo can change between fetches (signed CDN URLs,
-    // query params, etc.) even though the underlying image hasn't. Keying the
-    // filename off msgId means re-fetching the same message always overwrites
-    // the same file instead of leaving the old one behind as an orphan, and
-    // lets the QFile::exists() check above in downloadImageMessage() reliably
-    // recognise "we already have this one" on the next call.
+    // Filename cố định theo từng tin nhắn (theo msgId, KHÔNG theo md5(url)):
+    // URL Zalo trả về cho cùng 1 ảnh có thể đổi giữa các lần fetch (URL CDN
+    // có ký, query param...) dù ảnh gốc không đổi. Đặt key theo msgId nghĩa
+    // là fetch lại cùng tin nhắn luôn ghi đè đúng file cũ thay vì để lại
+    // file mồ côi, và giúp check QFile::exists() ở downloadImageMessage()
+    // nhận ra đúng "đã có ảnh này rồi" ở lần gọi sau.
     //
-    // Hardcoded "/tmp/" (NOT QDir::tempPath()): on this BB10 device,
-    // QDir::tempPath() resolves to a per-app-launch scratch directory that the
-    // OS wipes on every app restart, whereas plain "/tmp/" is the same
-    // device-wide, persistent location avatars already use successfully (see
-    // avatar_meta — confirmed to survive restarts in the field). Using the
-    // same persistent root here is what makes downloaded chat photos actually
-    // survive logout/login and app restarts instead of vanishing every time.
+    // Hardcode "/tmp/" (không phải QDir::tempPath()): trên máy BB10 này,
+    // QDir::tempPath() bị xóa mỗi lần app restart, còn "/tmp/" là chỗ
+    // persistent avatar cũng dùng thành công. Dùng chung root persistent
+    // này là lý do ảnh chat tải về thực sự sống qua được logout/login và restart.
     QString stableKey = msgId.isEmpty() ? md5Hex(url) : msgId;
     QString tmpPath = "/tmp/zalo_img_" + stableKey + "." + ext;
     QFile f(tmpPath);
@@ -1929,9 +1899,8 @@ void ZaloService::onListenTimer()
         }
     } else {
         // Dùng chung backoff tăng dần với onWsDisconnected/upgrade-failed
-        // (trước đây hard-code 2000ms ở đây, ngắn hơn cả backoff 5s ở nơi
-        // khác — vô tình phá backoff, khiến WS vẫn bị nện lại mỗi ~2-8s dù
-        // các nơi khác đã cố giãn ra dần).
+        // — trước đây hardcode 2000ms ở đây, ngắn hơn backoff nơi khác nên
+        // vô tình phá backoff, khiến WS vẫn bị retry dồn dập mỗi ~2-8s.
         if (!m_wsReconnectTimer->isActive())
             m_wsReconnectTimer->start(wsNextReconnectDelayMs());
     }
@@ -2010,31 +1979,23 @@ void ZaloService::sendHubNotification(const QString &title, const QString &body,
     qDebug() << "[Zalo] Hub notification sent:" << title << body.left(40) << "data=" << data;
 }
 
-// Top-of-screen banner via bb::platform::NotificationDialog — confirmed API
-// (title/body/show()) read directly from the real BB10 NotificationDialog
-// header, not guessed.
+// Banner đầu màn hình qua bb::platform::NotificationDialog.
 //
-// This exists as a SEPARATE call from sendHubNotification() rather than a
-// flag on it because they solve different problems: bb::platform::
-// Notification's own banner/peek only surfaces when Zalo10 is NOT the
-// active foreground window (confirmed — Notification/NotificationDialog
-// headers expose no property to force that while foregrounded), so relying
-// on it alone means a message arriving while the person is already looking
-// at the app produces no visible banner at all. NotificationDialog has no
-// such restriction: calling show() displays it immediately regardless of
-// which app/thread is currently open, closer to the "banner while using
-// the app" behavior asked for — though note it's a real dialog the person
-// must dismiss, NOT a self-dismissing/sliding peek; BB10's platform
-// notification APIs have no self-timing "toast" primitive, this is the
-// closest confirmed-real equivalent.
+// Tách riêng khỏi sendHubNotification() vì 2 hàm giải quyết vấn đề khác
+// nhau: banner/peek của bb::platform::Notification chỉ hiện khi Zalo10
+// KHÔNG phải cửa sổ foreground đang active, nên chỉ dùng nó thôi thì tin
+// nhắn đến lúc đang mở sẵn app sẽ không có banner nào cả. NotificationDialog
+// không bị giới hạn đó: gọi show() hiện ngay lập tức bất kể app/thread nào
+// đang mở — gần với hành vi "banner khi đang dùng app" mong muốn hơn — dù
+// đây là dialog thật cần người dùng tự đóng, không phải peek tự trượt biến
+// mất; API notification của BB10 không có sẵn kiểu "toast" tự hết giờ,
+// đây là cái gần nhất tồn tại thật.
 //
-// No button/InvokeRequest attached on purpose: tapping this banner should
-// just bring the already-running Zalo10 process back to the foreground,
-// not jump to a specific thread the way the Hub notification's tap does —
-// so there's nothing here for a button to invoke. threadId/isGroup
-// parameters are accepted for call-site symmetry with sendHubNotification()
-// (same call sites can fire both with the same arguments) but aren't used
-// by this simpler dialog.
+// Không gắn nút/InvokeRequest có chủ đích: tap vào banner này chỉ nên đưa
+// process Zalo10 đang chạy lên foreground, không nhảy tới thread cụ thể
+// như tap Hub notification làm — nên không có gì để nút invoke. Tham số
+// threadId/isGroup nhận vào chỉ để đối xứng với sendHubNotification() (cùng
+// call site gọi cả 2 với cùng argument) chứ dialog đơn giản này không dùng tới.
 void ZaloService::sendBannerNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup)
 {
     Q_UNUSED(threadId);
@@ -2044,10 +2005,9 @@ void ZaloService::sendBannerNotification(const QString &title, const QString &bo
     dlg->setTitle(title);
     dlg->setBody(body);
 
-    // Not leaked: parented to `this`/ZaloService above, and deleteLater()
-    // on finished() cleans it up once the person dismisses it — same
-    // lifetime pattern this codebase already uses for one-shot
-    // QNetworkReply handlers elsewhere (connect ... deleteLater in the slot).
+    // Không bị leak: parent là `this`/ZaloService ở trên, và deleteLater()
+    // khi finished() dọn dẹp sau khi người dùng đóng dialog — cùng pattern
+    // lifetime codebase này đã dùng cho các handler QNetworkReply one-shot khác.
     connect(dlg, SIGNAL(finished(bb::platform::NotificationResult::Type)),
             dlg, SLOT(deleteLater()));
 

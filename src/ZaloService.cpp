@@ -32,10 +32,10 @@
 #include <zlib.h>
 #include <string.h>
 
-// Construction/teardown, static identity constants, and small image-info helpers.
-// The bulk of ZaloService's behavior lives in the ZaloService_*.cpp files alongside
-// this one (Auth, WebSocket, Contacts, Messages, Crypto, Network, Db) — see ZaloService.hpp
-// for the full class declaration.
+// Constructor/destructor, hằng số định danh, và helper nhỏ đọc thông tin ảnh.
+// Phần lớn logic của ZaloService nằm ở các file ZaloService_*.cpp bên cạnh
+// (Auth, WebSocket, Contacts, Messages, Crypto, Network, Db) — xem
+// ZaloService.hpp để biết khai báo class đầy đủ.
 
 const char *ZaloService::USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -114,41 +114,28 @@ ZaloService::ZaloService(QObject *parent)
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN localImage TEXT    DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN imgWidth   INTEGER DEFAULT 0;",  0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN imgHeight  INTEGER DEFAULT 0;",  0, 0, 0);
-        // cliMsgId: the client-generated message id echoed back by Zalo's WS/HTTP
-        // responses. Needed as-is (not msgId) by the delete/recall (undo) APIs —
-        // see deleteMessage.ts/undo.ts in zca-js, both key off cliMsgId + msgId.
+        // cliMsgId: id tin nhắn do client tự sinh, được Zalo echo lại qua
+        // WS/HTTP. API xóa/thu hồi cần đúng field này (không phải msgId).
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN cliMsgId   TEXT    DEFAULT '';", 0, 0, 0);
-        // Preserves the original text of a recalled message so it can still be
-        // shown (with a "(This message was recalled)" tag) when the user has
-        // "Show Recalled Messages" enabled in Settings.
+        // Giữ lại nội dung gốc của tin nhắn đã thu hồi, để hiện lại (kèm
+        // tag) khi bật "Show Recalled Messages" trong Settings.
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN recalledOriginalContent TEXT DEFAULT '';", 0, 0, 0);
-        // Reply/quote support: when a message quotes an earlier one, we persist
-        // just enough of the quoted message to render the small preview strip
-        // inside the reply bubble (sender name + a short snippet of its
-        // content/type) without needing a second DB lookup at render time.
-        // quoteMsgId is what a tap on the preview jumps to (see ChatView.qml's
-        // scrollToMsgIndex + doJumpToQuoted()). Kept as flat columns (not a
-        // join) to match every other message field in this table.
+        // Reply/quote: lưu đủ thông tin tin nhắn được quote để render preview
+        // strip trong bubble reply (tên người gửi + snippet nội dung) mà
+        // không cần query DB lần 2 lúc render. quoteMsgId dùng để tap-to-jump.
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteMsgId     TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteContent   TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteSenderName TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteMsgType   INTEGER DEFAULT 0;", 0, 0, 0);
-        // Who sent the quoted message (their raw uid, "" if unknown) — lets
-        // the QML delegate tell "replying to myself" apart from "replying to
-        // the other party" (see quoteSenderResolved in ChatView.qml), which
-        // quoteSenderName alone can't disambiguate reliably given Zalo's wire
-        // dName/fromD quirks.
+        // uid của người gửi tin nhắn được quote ("" nếu không rõ) — để phân
+        // biệt "đang reply chính mình" hay "reply người khác".
         sqlite3_exec(m_db, "ALTER TABLE messages ADD COLUMN quoteOwnerId   TEXT DEFAULT '';", 0, 0, 0);
         sqlite3_exec(m_db, "CREATE INDEX IF NOT EXISTS idx_thread ON messages(threadId,ts);", 0, 0, 0);
-        // One row per (message, person) reaction — PRIMARY KEY(msgId,uid) means
-        // a fresh INSERT OR REPLACE naturally implements "changing your
-        // reaction icon overwrites your old one" (one active reaction per
-        // person per message, exactly like Zalo/Messenger's own behavior),
-        // and a DELETE removes it entirely when someone un-reacts. icon is
-        // one of "like"/"heart"/"haha"/"wow"/"cry"/"angry" (see
-        // ReactionPickerSheet.qml). threadId is stored purely so
-        // dbLoadThreadReactions() can bulk-fetch every reaction for a whole
-        // open chat in one query instead of one per message.
+        // Mỗi row là 1 reaction của 1 người trên 1 tin nhắn — PRIMARY
+        // KEY(msgId,uid) nên INSERT OR REPLACE tự động "đổi reaction ghi
+        // đè reaction cũ" (mỗi người chỉ có 1 reaction active/tin nhắn),
+        // DELETE thì xóa hẳn khi un-react. threadId lưu kèm để
+        // dbLoadThreadReactions() query 1 lần cho cả thread.
         sqlite3_exec(m_db,
             "CREATE TABLE IF NOT EXISTS message_reactions ("
             "  msgId    TEXT NOT NULL,"
@@ -173,19 +160,16 @@ ZaloService::ZaloService(QObject *parent)
             "  content   TEXT NOT NULL,"
             "  createdAt TEXT"
             ");", 0, 0, 0);
-        // Enforces unique commands (case-insensitive) at the DB level — addQuickMessage/
-        // updateQuickMessage rely on the resulting SQLITE_CONSTRAINT to detect duplicates
-        // instead of doing a separate SELECT check first.
+        // Ép tên command duy nhất (không phân biệt hoa/thường) ở tầng DB —
+        // addQuickMessage/updateQuickMessage dựa vào SQLITE_CONSTRAINT để
+        // biết bị trùng, không cần SELECT check riêng.
         sqlite3_exec(m_db, "CREATE UNIQUE INDEX IF NOT EXISTS idx_qm_name ON quick_messages(name COLLATE NOCASE);", 0, 0, 0);
-        // Persistent avatar metadata: survives app restarts AND logout/login —
-        // only clearCache() touches this table. Maps a stable threadId (user or
-        // group id) to the md5 of the avatar URL we last downloaded for it, plus
-        // the local file path. On every downloadAvatar() call we compare the new
-        // URL's hash against urlHash; if it matches and the file is still on disk
-        // we skip the network round-trip entirely. If the hash differs, the user
-        // genuinely changed their profile picture, so we re-download and overwrite
-        // the same file (avatar_<md5(threadId)>.jpg — fixed per-person, not
-        // per-URL, so a changed avatar never leaves an orphaned old file behind).
+        // Metadata avatar persistent: sống qua cả restart app và logout/login,
+        // chỉ clearCache() mới xóa. Map threadId -> md5 của URL avatar đã
+        // tải + path file local. Mỗi lần downloadAvatar() so hash URL mới
+        // với urlHash cũ; trùng thì bỏ qua tải lại, khác thì tải và ghi đè
+        // cùng 1 file (avatar_<md5(threadId)>.jpg — cố định theo người,
+        // không theo URL, nên đổi avatar không để lại file rác).
         sqlite3_exec(m_db,
             "CREATE TABLE IF NOT EXISTS avatar_meta ("
             "  threadId  TEXT PRIMARY KEY,"
@@ -193,16 +177,11 @@ ZaloService::ZaloService(QObject *parent)
             "  localPath TEXT NOT NULL,"
             "  updatedAt TEXT"
             ");", 0, 0, 0);
-        // Tombstone of msgIds the user hard-deleted via "delete for me" (chat.delete,
-        // onlyMe=true). Delete-for-me never removes the message server-side, so any
-        // later cmd=510 history re-sync (e.g. re-entering the thread, or app restart —
-        // m_threadLastMsgId in ZaloService.hpp is in-memory only and always starts
-        // empty, forcing a lastId=0 full re-fetch) will happily hand the "deleted"
-        // message straight back to dbSaveMessage(), which would otherwise re-insert
-        // it and make it reappear in the UI. Every msgId here must be permanently
-        // skipped by dbSaveMessage() regardless of how many times it resurfaces from
-        // the server. Deliberately NOT wiped by clearCache() (same reasoning as
-        // cleared_threads: this is a durable user choice, not disposable cache).
+        // Tombstone các msgId đã bị xóa cứng qua "delete for me". Delete-for-me
+        // không xóa ở server, nên lần history re-sync sau (mở lại thread, hoặc
+        // restart app) có thể trả tin đã xóa về lại — mọi msgId ở đây phải bị
+        // dbSaveMessage() bỏ qua vĩnh viễn dù server có gửi lại bao nhiêu lần.
+        // Không bị clearCache() xóa (đây là lựa chọn của user, không phải cache).
         sqlite3_exec(m_db,
             "CREATE TABLE IF NOT EXISTS deleted_messages ("
             "  msgId     TEXT PRIMARY KEY,"
@@ -215,10 +194,8 @@ ZaloService::ZaloService(QObject *parent)
         m_db = 0;
     }
 
-    // Sanity-check the persistent avatar cache at startup: log how many cached
-    // avatar files from a previous session/login are still on disk. The actual
-    // reuse logic lives in downloadAvatar(), which checks avatar_meta fresh on
-    // every call — this is just a startup diagnostic.
+    // Log số avatar cache còn trên đĩa từ phiên trước — chỉ để chẩn đoán,
+    // logic dùng lại thật sự nằm ở downloadAvatar().
     loadAvatarCacheFromDb();
 }
 
