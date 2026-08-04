@@ -3,9 +3,7 @@ import bb.system 1.0
 import QtQuick 1.0
 
 // Read-only note viewer, opened from GroupBoardSheet.qml's "View note" link
-// on a note board item. There's no edit/delete API ported yet (editNote.ts
-// exists in zca-js but wasn't in scope for this pass) — this is display-only,
-// same "honest about what's built" convention as the rest of this codebase.
+// Edit/delete not implemented yet, so this is display-only for now
 Sheet {
     id: noteViewerRoot
 

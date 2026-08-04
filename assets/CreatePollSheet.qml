@@ -2,19 +2,12 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// Create Poll dialog for the Group Board, opened from GroupBoardSheet.qml's
-// "Create Poll" action-bar item. Layout follows the reference screenshot
-// (Zalo's own web UI "Poll" creation dialog): title + close X, question
-// field, "Choose multiple options" toggle line, a growing list of option
-// fields with "+ Add option" beneath, a settings gear opening extra poll
-// options, Cancel/Confirm at the bottom.
+// "Create Poll" dialog for the Group Board, opened from GroupBoardSheet.qml
 //
-// Up to 10 option fields are declared as FIXED indexed TextFields rather
-// than a repeated/looped component — this codebase's QML runtime (bb.cascades
-// 1.4 / QtQuick 1.0) has no Repeater item (see GroupBoardSheet.qml's poll
-// option rendering for the same constraint/workaround). optionVisibleCount
-// controls how many of the 10 slots are shown; "+ Add option" just reveals
-// one more.
+// Up to 10 option fields are fixed TextFields instead of a Repeater — this
+// QML runtime (bb.cascades 1.4 / QtQuick 1.0) doesn't have one, same
+// workaround as GroupBoardSheet.qml. optionVisibleCount controls how many
+// of the 10 slots are shown; "+ Add option" just reveals one more.
 Sheet {
     id: createPollSheetRoot
 
@@ -159,9 +152,7 @@ Sheet {
                     }
                 }
 
-                // Option fields — fixed 10 slots, only optionVisibleCount shown.
-                // Each row mirrors the reference screenshot's option pill:
-                // a plain text field with hint "Option N".
+                // Fixed 10 option slots, only optionVisibleCount of them shown
                 Container {
                     horizontalAlignment: HorizontalAlignment.Fill
                     leftPadding: 20; rightPadding: 20; topPadding: 8

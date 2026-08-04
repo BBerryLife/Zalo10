@@ -153,8 +153,7 @@ TabbedPane {
         Connections {
             target: app
             onOpenThreadRequested: {
-                // Called from C++ ApplicationUI::onInvoked when Hub notification is tapped.
-                // threadId: conversation id, isGroup: true=group chat, false=DM
+                // Fired from C++ ApplicationUI::onInvoked when a Hub notification is tapped
                 console.log("openThreadRequested: threadId=" + threadId + " isGroup=" + isGroup);
                 if (isGroup) {
                     root.activeTab = groupsTab;
@@ -164,15 +163,8 @@ TabbedPane {
                     chatsTabContent.openThread(threadId, isGroup);
                 }
             }
-            // Result of app.createTodayEvent() (ChatView.qml's "Create
-            // today's event" overflow action) — handled here at the root
-            // rather than inside ChatView itself because app/ApplicationUI
-            // is a single global instance shared by every Tab, so wiring
-            // this per-ChatView-instance would either miss the signal (if
-            // that ChatView isn't the active tab when it fires) or risk
-            // showing the same result dialog multiple times if more than
-            // one ChatView happened to be alive. One handler here covers
-            // every caller.
+            // Handled once at the root instead of per-ChatView, since app/ApplicationUI
+            // is shared across all tabs (avoids missed or duplicate result dialogs)
             onEventCreated: {
                 eventResultDialog.body = success
                     ? "Da them su kien vao lich hom nay."

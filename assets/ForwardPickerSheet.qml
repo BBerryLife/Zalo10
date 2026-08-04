@@ -2,29 +2,13 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// ForwardPickerSheet — "Forward" flow for a chat bubble. Two steps, per the
-// request:
-//   1) A native SystemDialog offering Groups / Chat / Cancel (reusing the
-//      exact SystemDialog pattern this codebase's own ConfirmDialog.qml
-//      already uses — SystemListDialog's QML multi-select API couldn't be
-//      confidently verified against any documented or precedented usage in
-//      this codebase, so this deliberately avoids gambling on it for a
-//      three-way single choice, which SystemDialog's confirm/cancel/extra-
-//      button trio already covers natively).
-//   2) A checklist Sheet of every group (or every 1-1 chat) with a Send /
-//      Cancel bar — built from plain ListView + ArrayDataModel + a
-//      checkmark toggled via the ListView's own onTriggered (kept OUT of
-//      the delegate body, same "ListItemComponent is a separate QML scope"
-//      constraint ChatView.qml's rowRoot already documents at length —
-//      calling back into forwardSheet from inside a CheckBox's own
-//      onCheckedChanged there would hit the exact same problem).
-// Target lists are the SAME zService.fetchConversations()/fetchFriends()
-// calls + onConversationsReady/onFriendsReady signals GroupsTab.qml/
-// ChatsTab.qml already use — no new backend listing API needed. Only the
-// fields already established there are read: threadId/uid, name/
-// displayName, localAvatar/avatar (populated after downloadAvatar() calls
-// elsewhere in the app during normal use; a cold app start might show
-// blanks until those catch up, same as those two tabs).
+// "Forward" flow for a chat bubble, in two steps:
+//   1) A native SystemDialog offering Groups / Chat / Cancel
+//   2) A checklist Sheet of every group (or every 1-1 chat) with a Send/Cancel bar,
+//      built from ListView + ArrayDataModel; selection toggling lives in the
+//      ListView's onTriggered, not the delegate (see rowRoot in ChatView.qml for why)
+// Reuses the same zService.fetchConversations()/fetchFriends() calls GroupsTab.qml
+// and ChatsTab.qml already use for their lists
 Sheet {
     id: forwardSheet
 
@@ -95,10 +79,8 @@ Sheet {
                     forwardSheet.loadTargets();
                     forwardSheet.open();
                 }
-                // ConfirmButtonSelection via the extra button reports as
-                // ButtonSelection per SystemDialog's own result model (see
-                // the dialogs sample: RANDOM/RANDOM2 -> "button") — Cancel/
-                // TimeOut/anything else: do nothing, dialog just closes.
+                // The extra button reports as ButtonSelection; Cancel/TimeOut/anything
+                // else just closes the dialog
             }
         },
         Connections {
@@ -176,26 +158,11 @@ Sheet {
                                 }
                                 CheckBox {
                                     checked: ListItemData.checked === true
-                                    // enabled MUST stay true — Cascades renders
-                                    // enabled:false CheckBoxes with a greyed-out
-                                    // "disabled" overlay, which was an earlier
-                                    // reported symptom.
+                                    // enabled must stay true or Cascades greys the checkbox out
                                     //
-                                    // BUG FIX: a CheckBox is itself a touch-
-                                    // handling control, so a tap landing
-                                    // directly on it was being consumed here
-                                    // and never reaching the ListItem — the
-                                    // checkbox visually flipped (its own
-                                    // internal state) but the ListView's
-                                    // onTriggered below (the single source of
-                                    // truth that calls toggleSelected() /
-                                    // sets sendAction.enabled) never fired, so
-                                    // Send stayed disabled forever. Setting
-                                    // PassThrough makes this CheckBox forward
-                                    // the touch to its parent ListItem instead
-                                    // of swallowing it, so onTriggered fires
-                                    // on every tap — whether it lands on the
-                                    // label or directly on the checkbox.
+                                    // PassThrough so a tap directly on the checkbox still reaches
+                                    // the ListItem's onTriggered below — otherwise the checkbox
+                                    // flips visually but selection never updates and Send stays disabled
                                     touchPropagationMode: TouchPropagationMode.PassThrough
                                 }
                             }
@@ -203,12 +170,8 @@ Sheet {
                     }
                 ]
 
-                // Toggling selection lives HERE (ListView's own scope, not
-                // inside the delegate body) — see this file's header
-                // comment on why. dataModel.replace() takes a plain int
-                // index for a flat ArrayDataModel (indexPath[0]), same
-                // pattern ChatView.qml's msgModel.replace(j, d) already
-                // uses elsewhere in this app.
+                // Toggling selection lives here in the ListView, not the delegate body
+                // dataModel.replace() takes a plain int index for a flat ArrayDataModel
                 onTriggered: {
                     var idx = indexPath[0];
                     var item = dataModel.value(idx);

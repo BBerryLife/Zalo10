@@ -1,18 +1,11 @@
 import bb.cascades 1.4
 import QtQuick 1.0
 
-// Pushed into aboutNav from AboutSheet.qml when the user taps "Change List".
-// Rows are set via setRows() right after creation (AboutSheet.qml's onManifestLoaded
-// -> buildChangelogRows()).
+// Pushed into aboutNav from AboutSheet.qml when the user taps "Change List"
+// Rows are set via setRows() right after creation
 //
-// Earlier versions of this screen rendered the changelog as one HTML string in a
-// WebView, sized either by asking the WebView to measure its own content
-// (document.body.scrollHeight) or by a hand-estimated pixel height. Both under-sized
-// the WebView on device and cut the list off partway through — this WebView engine
-// just isn't a reliable source of its own content height. This screen instead uses the
-// same ListView + ArrayDataModel pattern as ChatsTab/GroupsTab/InvitesTab, whose
-// scrolling is already proven to work correctly everywhere else in this app, so there's
-// no WebView/height guessing involved at all.
+// Uses ListView + ArrayDataModel (same as ChatsTab/GroupsTab/InvitesTab) instead of a
+// WebView, since the WebView couldn't reliably report its own content height on device
 Page {
     id: changelogPage
 

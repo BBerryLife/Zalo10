@@ -1,36 +1,17 @@
 import bb.cascades 1.4
 import QtQuick 1.0
 
-// PinboardBar — the strip of currently-pinned group-board items shown right
-// under the chat header, above the message list. Two states, matching the
-// reference screenshots from the real Zalo app pixel-for-pixel in spirit:
+// Strip of pinned group-board items shown under the chat header, above the message list
+// Two states: collapsed (most recent item + "+N" to expand) and expanded
+// (header + up to 3 rows, same 3-item cap Zalo's own client uses)
 //
-//   collapsed (default): one row — the single most-recently-pinned item's
-//   type icon + label + preview text, plus a "+N" button that expands the
-//   bar (tapping the row itself also expands it / jumps to that item).
+// Fed from chatViewPage.boardItems (same data GroupBoardSheet.qml gets from
+// zService's groupBoardReady signal). Shows the 3 newest items of any type —
+// there's no "explicitly pinned" flag available yet, so this is the closest match
 //
-//   expanded: a "Pinboard (N)" header with a "Collapse" link, followed by
-//   up to 3 full rows (Zalo itself never shows more than 3 pinned items at
-//   once, regardless of how many exist — same cap applied here).
-//
-// Data: fed from chatViewPage.boardItems, the same raw item list
-// GroupBoardSheet.qml already gets from zService's groupBoardReady signal
-// (each item tagged with a "boardType" of "pin"/"note"/"poll" — see that
-// file's header comment and ZaloService_Contacts.cpp's fetchGroupBoard()
-// for the exact field mapping). This bar shows the 3 newest board items of
-// ANY type, which is what the reference screenshots' "Message / Message /
-// Poll" pinboard actually contains — Zalo's own client has a separate
-// "pin a poll/note to the top" action that isn't exposed anywhere in this
-// codebase's C++ yet (no public zca-js endpoint to port it from either, see
-// ChatView.qml's PinboardBar wiring comment), so there's no way for this
-// bar to distinguish "explicitly pinned" board items from ordinary ones.
-// Using "3 newest of any type" is the closest achievable match with the
-// data actually available.
-//
-// Read-only by design for the same reason: no "unpin" call exists to wire
-// a mutation action to, so it currently only offers navigation (jump to
-// message / view poll / view note), not mutation. The full Group Board
-// sheet (opened separately) remains where pin/unpin actually happens.
+// Read-only: no "unpin" API exists yet, so this only supports navigation
+// (jump to message / view poll / view note). Actual pin/unpin happens in
+// the full Group Board sheet.
 Container {
     id: pinboardBar
 
@@ -38,10 +19,9 @@ Container {
     property bool    isDark: false
     property bool    expanded: false
 
-    // Newest-first, capped at 3 — recomputed whenever the source list or
-    // sheet's contents change since QML variant properties aren't deep-
-    // watched, chatViewPage always assigns a fresh array rather than
-    // mutating in place (see onGroupBoardReady's wiring in ChatView.qml).
+    // Newest-first, capped at 3. Recomputed on every change since QML variant
+    // properties aren't deep-watched, so ChatView.qml assigns a fresh array
+    // each time instead of mutating in place
     property variant topItems: []
 
     function recomputeTopItems() {
@@ -53,9 +33,8 @@ Container {
     onItemsChanged: recomputeTopItems()
     Component.onCompleted: recomputeTopItems()
 
-    // boardType, id, title, creatorId of whichever row was tapped — ChatView
-    // decides what "open" means per type (jump to message / open GroupBoard
-    // filtered to the poll / show note content).
+    // ChatView decides what "open" means per boardType (jump to message /
+    // open GroupBoard filtered to poll / show note content)
     signal itemTapped(string boardType, string itemId, string title, string creatorId)
     signal moreRequested()   // "..." tapped — ChatView opens the full Group Board
 
@@ -74,8 +53,7 @@ Container {
         if (boardType === "note") return "asset:///images/ChatView/ic_action_new_note.png";
         return "asset:///images/ChatView/ic_textmessage.png";
     }
-    // fetchGroupBoard() already formats pin/note titles as "Sender: text" /
-    // plain note text, and poll titles as the poll question — reused as-is.
+    // fetchGroupBoard() already formats titles appropriately per type — reused as-is
     function previewText(it) { return (it && it.title) ? it.title : ""; }
     function itemAt(idx) { return (pinboardBar.topItems.length > idx) ? pinboardBar.topItems[idx] : null; }
 
@@ -93,13 +71,9 @@ Container {
                 onTapped: {
                     var it = pinboardBar.itemAt(0);
                     if (it) {
-                    // Pins pass their underlying chat message's msgId
-                    // (needed for ChatView.jumpToMessage() to find the
-                    // right row in msgModel) — notes/polls pass their own
-                    // board-item id instead, which is what GroupBoardSheet
-                    // filters/opens by. Falls back to it.id if msgId
-                    // wasn't populated (older cached items, etc.) rather
-                    // than emitting an empty id that could never match.
+                    // Pins pass the chat message's msgId (for ChatView.jumpToMessage());
+                    // notes/polls pass their own board-item id instead. Falls back to
+                    // it.id if msgId isn't set.
                     var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
                     pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
                 }
@@ -169,10 +143,8 @@ Container {
             }
         }
 
-        // Three fixed row slots (this codebase avoids QML Repeater inside
-        // Cascades Containers — see GroupBoardSheet.qml's poll-option rows
-        // for the same "hardcoded index 0..N-1, toggle visible" pattern —
-        // so the 3-item pin cap is expressed the same way here).
+        // Three fixed row slots — same hardcoded-index pattern as GroupBoardSheet.qml's
+        // poll options, since Cascades Containers can't use a Repeater
         Container {
             visible: pinboardBar.topItems.length > 0
             horizontalAlignment: HorizontalAlignment.Fill
@@ -182,13 +154,9 @@ Container {
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(0);
                 if (it) {
-                    // Pins pass their underlying chat message's msgId
-                    // (needed for ChatView.jumpToMessage() to find the
-                    // right row in msgModel) — notes/polls pass their own
-                    // board-item id instead, which is what GroupBoardSheet
-                    // filters/opens by. Falls back to it.id if msgId
-                    // wasn't populated (older cached items, etc.) rather
-                    // than emitting an empty id that could never match.
+                    // Pins pass the chat message's msgId (for ChatView.jumpToMessage());
+                    // notes/polls pass their own board-item id instead. Falls back to
+                    // it.id if msgId isn't set.
                     var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
                     pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
                 }
@@ -225,13 +193,9 @@ Container {
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(1);
                 if (it) {
-                    // Pins pass their underlying chat message's msgId
-                    // (needed for ChatView.jumpToMessage() to find the
-                    // right row in msgModel) — notes/polls pass their own
-                    // board-item id instead, which is what GroupBoardSheet
-                    // filters/opens by. Falls back to it.id if msgId
-                    // wasn't populated (older cached items, etc.) rather
-                    // than emitting an empty id that could never match.
+                    // Pins pass the chat message's msgId (for ChatView.jumpToMessage());
+                    // notes/polls pass their own board-item id instead. Falls back to
+                    // it.id if msgId isn't set.
                     var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
                     pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
                 }
@@ -268,13 +232,9 @@ Container {
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(2);
                 if (it) {
-                    // Pins pass their underlying chat message's msgId
-                    // (needed for ChatView.jumpToMessage() to find the
-                    // right row in msgModel) — notes/polls pass their own
-                    // board-item id instead, which is what GroupBoardSheet
-                    // filters/opens by. Falls back to it.id if msgId
-                    // wasn't populated (older cached items, etc.) rather
-                    // than emitting an empty id that could never match.
+                    // Pins pass the chat message's msgId (for ChatView.jumpToMessage());
+                    // notes/polls pass their own board-item id instead. Falls back to
+                    // it.id if msgId isn't set.
                     var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
                     pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
                 }

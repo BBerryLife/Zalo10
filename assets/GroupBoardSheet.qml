@@ -2,18 +2,12 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// Group Board — shows all pinned messages, notes, and polls for a group in
-// one place, matching Zalo's own "Group board" screen (see reference
-// screenshot: header "Group Board" with a back chevron, a 4-way segmented
-// tab strip [All / Pinned Message / Note / Poll] right below it, and two
-// "Create note" / "Create poll" buttons pinned at the bottom of the list).
+// Group Board — shows all pinned messages, notes, and polls for a group in one
+// place, with a 4-way segmented tab strip (All / Pinned Message / Note / Poll)
+// and Create note / Create poll buttons at the bottom
 //
-// Pushed as a Page (not a Cascades Sheet) into groupsNav, same convention as
-// QuickMessagesSheet.qml — gives the native back chevron for free and keeps
-// every "extra screen opened from a chat" in this codebase behaving the same
-// way. Only ever opened for group threads (see chatViewPage's "Group board"
-// overflow ActionItem, enabled: chatViewPage.isGroup) — there's no 1-1
-// equivalent server-side.
+// Pushed as a Page (not a Sheet) into groupsNav, same as QuickMessagesSheet.qml,
+// for the native back chevron. Group-only — there's no 1-1 equivalent server-side.
 Page {
     id: groupBoardPage
 
@@ -22,19 +16,12 @@ Page {
     property variant allItems: []   // raw items from zService.groupBoardReady, unfiltered
     property bool    loading: true
     property string  loadError: ""
-    // Reference to the owning NavigationPane (groupsNav from GroupsTab.qml),
-    // assigned right after this page is created — same "can't reach the
-    // parent Nav from a pushed Page's own QML" constraint QuickMessagesSheet
-    // sidesteps by having its OWNER call pop()/push() instead. Here the page
-    // pops itself (for its own back button and the pin-tap jump), so it
-    // needs the pane handed to it explicitly.
+    // Reference to the owning NavigationPane (groupsNav), assigned right after
+    // this page is created since it needs to pop itself (back button, pin-tap jump)
     property variant groupsNavRef: null
 
-    // scrollToMsgId: set by ChatView before pushing this page when it was
-    // opened via "Jump to message" on an already-known pin (kept for parity
-    // with how jumpToMessage() works in ChatView itself); currently unused
-    // by the fetch itself, reserved for a future "open board scrolled to a
-    // specific pin" entry point.
+    // Set by ChatView before pushing this page when opened via "Jump to message"
+    // Currently unused by the fetch itself — reserved for a future scroll-to-pin feature
     property string scrollToMsgId: ""
 
     function reload() {
@@ -55,8 +42,7 @@ Page {
             if (tab === 2 && it.boardType === "note") { filtered.push(it); continue; }
             if (tab === 3 && it.boardType === "poll") { filtered.push(it); continue; }
         }
-        // Newest first, matching the reference screenshot (poll → note → pin,
-        // top to bottom == most-recently-created first).
+        // Newest first (poll -> note -> pin, top to bottom)
         filtered.sort(function(a, b) {
             var ta = a.createTime || 0, tb = b.createTime || 0;
             return tb - ta;
@@ -76,15 +62,9 @@ Page {
         return (memName && memName.length > 0) ? memName : ("User " + creatorId.slice(-4));
     }
 
-    // Tapping a poll option toggles that option's vote and calls
-    // zService.voteGroupPoll() with the FULL resulting set of voted option
-    // ids (Zalo's /api/poll/vote replaces the caller's whole vote set each
-    // call — zca-js's votePoll.ts: "unvote = empty array" — it isn't an
-    // incremental add/remove). allowMulti false: tapping an unvoted option
-    // replaces any existing single vote; tapping the already-voted option
-    // again clears it (matches the reference screenshot's tap-to-toggle
-    // radio behavior). allowMulti true: tapping toggles just that option
-    // in/out of the existing set, same as a checkbox.
+    // Calls zService.voteGroupPoll() with the FULL resulting vote set each time —
+    // Zalo's /api/poll/vote replaces the whole set, it's not incremental.
+    // allowMulti false = single choice (tap again to clear), true = checkbox-style toggle
     function doVoteOption(pollId, optionId, allowMulti, options) {
         if (!pollId || pollId.length === 0 || !options) return;
         var newIds = [];
@@ -116,10 +96,8 @@ Page {
         zService.voteGroupPoll(groupBoardPage.groupId, pollId, newIds);
     }
 
-    // Applies a fresh options[] array (from votePollDone or a later
-    // groupBoardReady refresh) onto the matching poll's row in boardModel
-    // in place, and mirrors that same update into allItems so switching
-    // tabs and back doesn't revert the vote counts to the stale list.
+    // Applies a fresh options[] array onto the matching poll row in boardModel,
+    // and mirrors it into allItems so switching tabs doesn't revert to stale data
     function applyVoteUpdate(pollId, updatedOptions) {
         for (var i = 0; i < groupBoardPage.allItems.length; i++) {
             if (groupBoardPage.allItems[i].boardType === "poll" && groupBoardPage.allItems[i].id === pollId) {
@@ -127,12 +105,8 @@ Page {
                 item.options = updatedOptions;
                 var totalVotes = 0;
                 for (var j = 0; j < updatedOptions.length; j++) totalVotes += (updatedOptions[j].votes || 0);
-                // numVote in this codebase's fetchGroupBoard mapping is
-                // Zalo's num_vote (member count who voted, not total ticks) —
-                // votePollDone doesn't return that count directly, so leave
-                // it as-is rather than substituting total ticks, which would
-                // be wrong for multi-choice polls (one member can hold
-                // several ticks). Good enough until a full re-fetch happens.
+                // numVote is voter count, not total ticks — votePollDone doesn't return
+                // it directly so leave as-is until the next full re-fetch
                 groupBoardPage.allItems[i] = item;
                 break;
             }
@@ -153,12 +127,8 @@ Page {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 leftPadding: ui.du(2)
 
-                // Plain title label, no explicit back-arrow icon/button —
-                // matches QuickMessagesSheet.qml's header style. The native
-                // NavigationPane back chevron (from this page having been
-                // pushed onto groupsNav) still provides the actual back
-                // affordance; it was simply being duplicated by the custom
-                // ImageButton this container used to draw here.
+                // Plain title label, no back button — the NavigationPane's native
+                // back chevron already covers that
                 Label {
                     text: "Group Board"
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -175,13 +145,9 @@ Page {
         verticalAlignment:   VerticalAlignment.Fill
         layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
 
-        // 4-way segmented tab strip: All / Pinned Message / Note / Poll.
-        // Lives in its own plain-background Container below the blue title
-        // bar rather than inside it — SegmentedControl is a system control
-        // with its own chrome (background pill + selection highlight), and
-        // nesting it directly inside the custom #2575fc-painted title
-        // Container made that chrome show through as a stray thin blue/teal
-        // bar under the header instead of a normal tab strip.
+        // 4-way segmented tab strip in its own Container below the title bar —
+        // nesting it inside the blue title Container let its own chrome show
+        // through as a stray bar under the header
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             SegmentedControl {
@@ -224,12 +190,8 @@ Page {
                             topPadding: ui.du(1.2); bottomPadding: ui.du(1.2)
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
 
-                            // Creator row: avatar-less compact header — icon +
-                            // "You created a poll" / "You pinned a message" /
-                            // etc. style line, mirroring the hub-notification
-                            // phrasing already used elsewhere in this codebase
-                            // (see chatViewPage's hub-notification bubbles for
-                            // create/share/pin/vote events).
+                            // Creator row: compact icon + "You created a poll" style line,
+                            // same phrasing as the hub-notification bubbles in ChatView.qml
                             Container {
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
@@ -258,10 +220,8 @@ Page {
                                 }
                             }
 
-                            // Poll body: question + up to 3 option rows with vote
-                            // counts, "N member(s) voted", and a Change vote /
-                            // Vote button — matches the reference screenshot's
-                            // poll card layout.
+                            // Poll body: question + option rows with vote counts,
+                            // "N member(s) voted", and a Vote/Change vote button
                             Container {
                                 visible: ListItemData.boardType === "poll"
                                 horizontalAlignment: HorizontalAlignment.Fill
@@ -283,19 +243,10 @@ Page {
                                     textStyle { color: Color.create("#2575fc"); fontSize: FontSize.XSmall }
                                     bottomMargin: ui.du(0.6)
                                 }
-                                // Up to 6 option rows, rendered as fixed indexed
-                                // slots rather than a repeated/looped component:
-                                // this codebase's QML runtime (bb.cascades 1.4 /
-                                // QtQuick 1.0) has no Repeater item, and nesting a
-                                // second ListView inside this ListView's own
-                                // delegate isn't a supported pattern either — the
-                                // GroupBoardSheet.qml load failure this replaces
-                                // was exactly this kind of "component doesn't
-                                // exist here" mistake (property var, same root
-                                // cause). 6 covers every poll size seen in
-                                // practice (Zalo's own poll UI shows a "show
-                                // more" affordance past a handful); a slot with
-                                // no corresponding option just stays invisible.
+                                // Up to 6 fixed option slots instead of a Repeater (not
+                                // available on this QML runtime, and nesting a ListView
+                                // inside a delegate isn't supported either). 6 covers every
+                                // poll size seen in practice; unused slots stay invisible.
                                 Container {
                                     visible: !!(ListItemData.options && ListItemData.options.length > 0)
                                     horizontalAlignment: HorizontalAlignment.Fill
@@ -460,9 +411,8 @@ Page {
                                 }
                             }
 
-                            // Note / Pinned Message body: title/snippet + a
-                            // "View note" / "Jump to message" link, matching
-                            // the reference screenshot's card layout.
+                            // Note/Pinned Message body: title/snippet + a "View note" /
+                            // "Jump to message" link
                             Container {
                                 visible: ListItemData.boardType === "note" || ListItemData.boardType === "pin"
                                 horizontalAlignment: HorizontalAlignment.Fill
@@ -520,12 +470,9 @@ Page {
         }
     }
 
-    // Create Note / Create Poll: real BB10 action-bar items (matches the
-    // convention every other page in this app uses — see ChatView.qml's
-    // `actions:` array — rather than two custom Buttons stacked in their
-    // own Container sitting just above the system action bar, which is
-    // what drew both an extra unwanted Divider and a visually "floating"
-    // pair of buttons instead of native action-bar chrome.
+    // Create Note / Create Poll as real action-bar items, same convention as
+    // ChatView.qml's `actions:` — custom Buttons here drew an extra Divider
+    // and looked like floating buttons instead of native chrome
     actions: [
         ActionItem {
             title: "Create note"

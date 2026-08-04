@@ -9,10 +9,8 @@ Page {
     property string threadId:    ""
     property string threadName:  ""
     property bool   isGroup:     false
-    // TODO: no group-role data source exists yet anywhere in this project
-    // (no admin/owner list is fetched/stored for group members). Wired as
-    // false for now so "Delete" (delete-for-everyone) stays hidden for
-    // everyone until real role data is available — see chat note to Jim.
+    // TODO: no group-role data source exists yet, so this is hardcoded false —
+    // "Delete for everyone" stays hidden until admin/owner data is available
     property bool   isCurrentUserAdminOrOwner: false
     property string avatarUrl:   ""
     property string selfName:    ""
@@ -22,11 +20,8 @@ Page {
     property variant emojiPanelRef: null
     property string pendingAttachPath: ""
     property string pendingAttachName: ""
-    // Reply staging: set by doReply() when the user taps "Reply" on a bubble,
-    // cleared on send/cancel. Mirrors pendingAttachPath's role for photos —
-    // both are mutually exclusive "something is staged above the input bar"
-    // states, so starting a reply while a photo is staged clears the photo
-    // (and vice versa) rather than trying to send both at once.
+    // Set by doReply() when tapping "Reply" on a bubble, cleared on send/cancel
+    // Mutually exclusive with pendingAttachPath — starting one clears the other
     property string pendingReplyMsgId:      ""
     property string pendingReplyCliMsgId:   ""
     property string pendingReplyOwnerId:    ""
@@ -40,16 +35,11 @@ Page {
     property bool   isBlocked: false
     property bool   popRequested: false
     property bool   qmRequested: false
-    // Same "flip a bool, the owning Nav watches for it and pushes the real
-    // page" pattern qmRequested uses (see ChatsTab.qml/GroupsTab.qml's
-    // onQmRequestedChanged) — ChatView itself can't push into the
-    // NavigationPane that owns it directly.
+    // Same flip-a-bool-and-let-the-owning-Nav-react pattern as qmRequested
+    // (see ChatsTab.qml/GroupsTab.qml) — ChatView can't push into its own NavigationPane
     property bool   groupBoardRequested: false
-    // Raw items backing both the new PinboardBar strip below the header and
-    // (indirectly, since GroupBoardSheet does its own separate fetch) the
-    // full Group Board sheet — refreshed on thread open and after any
-    // pin/note/poll action this client performs. See loadBoardItems() and
-    // the groupBoardReady Connections block near the bottom of this file.
+    // Backs the PinboardBar strip below the header. Refreshed on thread open and
+    // after any pin/note/poll action — see loadBoardItems() and groupBoardReady below
     property variant boardItems: []
     property variant pendingImageUpdates: ([])
     property bool   pageVisible: false
@@ -59,39 +49,21 @@ Page {
     property string searchText: ""
     property variant searchMatches: []   // indices into msgModel that contain the current query
     property int      searchMatchPos: -1 // which entry in searchMatches is currently focused
-    // Set briefly when the user taps a pinned-message entry (or the quote
-    // strip inside a reply bubble) to jump to the original message. The
-    // delegate's rowRoot.isJumpHighlighted compares its own msgId against
-    // this to show the yellow highlight; jumpHighlightTimer clears it back
-    // to "" after a couple seconds so the highlight is transient like the
-    // search-match one, not a permanent state change on the row.
+    // Set briefly to jump to a message (pinned entry tap, reply quote tap) — the
+    // delegate highlights the matching row yellow, jumpHighlightTimer clears it after a few seconds
     property string jumpHighlightMsgId: ""
 
-    // Device clock vs. server clock can differ by hours (confirmed in the
-    // field: ~4h drift). Every OUTGOING message starts life as a "local_"
-    // placeholder timestamped with the DEVICE clock (new Date().getTime()),
-    // then gets swapped for the real row once the server confirms it — that
-    // confirmed row's ts is the SERVER clock instead. rebuildGroups()'s
-    // 5-minute grouping window compares ts across adjacent rows; as long as
-    // one neighbour is still an unconfirmed device-clock placeholder while
-    // the other has already been confirmed to server-clock ts, the raw
-    // difference between them is off by the full device/server drift, not
-    // just the real few-second gap — pushing it past the 300000ms window and
-    // splitting bubbles that were sent seconds apart. clockOffsetMs is
-    // (server ts - device ts) measured from the first confirmed outgoing
-    // message (its cliMsgId is the original device timestamp the placeholder
-    // was created with), then added to every still-local placeholder's ts
-    // before any grouping comparison — see toMs() in rebuildGroups() — so
-    // both clocks are normalized to the same reference before comparing.
+    // Device clock can drift hours from the server clock. Outgoing messages start as
+    // "local_" placeholders timestamped by the device, then get swapped for the server-
+    // timestamped row once confirmed — mixing the two in rebuildGroups()'s 5-minute
+    // grouping window can wrongly split bubbles sent seconds apart. clockOffsetMs
+    // (server ts - device ts) is measured once and applied to placeholders before comparing.
     property real clockOffsetMs: 0
     property bool clockOffsetSet: false
 
     titleBar: TitleBar {
-        // Sticky keeps the title bar (and the chat header inside it) pinned and
-        // visible while the message list scrolls. Trade-off: once the user has
-        // scrolled into history, Sticky can intercept touch input meant for
-        // controls inside the title bar, such as the search field — NonSticky
-        // avoids that at the cost of the bar scrolling away with the list.
+        // Sticky keeps the header pinned while scrolling, at the cost of sometimes
+        // intercepting touches meant for controls in the title bar (e.g. search field)
         scrollBehavior: TitleBarScrollBehavior.Sticky
         kind: TitleBarKind.FreeForm
         kindProperties: FreeFormTitleBarKindProperties {
@@ -101,8 +73,7 @@ Page {
                 verticalAlignment:   VerticalAlignment.Fill
                 layout: DockLayout {}
 
-                // Normal header: avatar, thread name, call buttons. Hidden while
-                // the in-chat message search box (below) is active.
+                // Normal header: avatar, thread name, call buttons — hidden while search is active
                 Container {
                     visible: !chatViewPage.searchVisible
                     horizontalAlignment: HorizontalAlignment.Fill
@@ -170,19 +141,15 @@ Page {
                         pressedImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
                         onClicked: { videoCallUnderDevDialog.show() }
                     }
-                    // Fixed-width spacer — physically pushes the icon pair away from the
-                    // screen's right edge. (A plain rightMargin on the last icon wasn't
-                    // enough: the spaceQuota title Container reclaims that space first.)
+                    // Fixed-width spacer to push the icons off the right edge — a plain
+                    // rightMargin isn't enough since spaceQuota reclaims that space first
                     Container {
                         preferredWidth: ui.du(0.2)
                     }
                 }
 
-                // In-chat message search box: toggled on by the search icon above.
-                // Browser-style find: matches are highlighted yellow inline (see
-                // rowRoot.searchHtml() in the delegate below) and the list scrolls
-                // to each match in turn via the Prev/Next arrows, rather than
-                // hiding non-matching messages.
+                // In-chat search, browser-find style: matches highlight yellow inline
+                // (see rowRoot.searchHtml() below) and Prev/Next scroll between them
                 Container {
                     visible: chatViewPage.searchVisible
                     horizontalAlignment: HorizontalAlignment.Fill
@@ -262,37 +229,19 @@ Page {
             items.push(d);
         }
         if (!found) return;
-        // Plain msgModel.replace(j, d) does not make the existing ImageView
-        // delegate re-bind imageSource on BB10/Cascades — the row already
-        // rendered once with an empty/failed source before the download
-        // finished, and that broken/blank state sticks even after the data
-        // is correct (confirmed on device: broken-image glyph stayed put).
-        // A lighter removeAt()+insert() of just this one row was also tried,
-        // but this delegate (kind === "message") is the one with
-        // rowRoot.preferredHeight wired to rowLUH.layoutFrame.height
-        // (attachedObjects, set up once at delegate creation) — recreating
-        // only this row in isolation left it with no valid layoutFrame yet
-        // and it rendered nothing at all, worse than the broken-icon state.
-        // rebuildGroups()'s OWN cheap path (no grouped/bubblePos change,
-        // which an image finishing download never causes) is just
-        // replace() per row too, so calling rebuildGroups() here wouldn't
-        // help either — this needs its proven heavy path specifically:
-        // clear() now, real re-append deferred to the next event-loop turn
-        // via rebuildFlushTimer, which is what actually gives Cascades an
-        // intervening empty-model layout pass to drop pooled/cached item
-        // Controls instead of recycling their stale imageSource binding.
+        // Plain msgModel.replace(j, d) doesn't make the ImageView delegate re-bind
+        // imageSource on this Cascades version — a broken/blank image stays stuck even
+        // after the data is fixed. Full clear() + deferred re-append (via rebuildFlushTimer)
+        // forces Cascades through an empty layout pass so it drops the stale pooled Controls.
         msgModel.clear();
         rebuildFlushTimer.pendingItems = items;
         rebuildFlushTimer.pendingScroll = false;
         rebuildFlushTimer.start();
     }
 
-    // Measures clockOffsetMs (see its declaration above) from the first
-    // outgoing message that carries both a cliMsgId (the device-clock ts the
-    // "local_" placeholder was created with — Zalo echoes this back
-    // unchanged) and a confirmed server ts. Cheap sanity bounds (a few
-    // minutes of noise is normal network latency, not clock drift) avoid
-    // latching onto a bogus offset from a malformed/missing cliMsgId.
+    // Measures clockOffsetMs from the first outgoing message with both a cliMsgId
+    // (device-clock ts) and a confirmed server ts. Sanity-bounded to avoid a bogus
+    // offset from a malformed cliMsgId.
     function updateClockOffset(cliMsgId, serverTs) {
         var cli = parseInt(cliMsgId || "0", 10);
         var srv = parseInt(serverTs || "0", 10);
@@ -304,12 +253,8 @@ Page {
         chatViewPage.clockOffsetSet = true;
     }
 
-    // "Delete for me" (as opposed to applyRecall's "recall/undo"): the message
-    // must vanish from OUR OWN view completely, with no placeholder text —
-    // unlike recall, which stays visible as "(this message was recalled)".
-    // Only ever called for deletions WE performed (see the backend's
-    // extractDeleteInfo() self-only guard) — the other participant's
-    // "delete for me" never reaches this function.
+    // "Delete for me": message vanishes from our view entirely, unlike recall which
+    // stays as a placeholder. Only called for deletions we performed ourselves.
     function applyLocalDelete(msgId) {
         chatViewPage.flushPendingRebuild();
         var size = msgModel.size();
@@ -317,25 +262,16 @@ Page {
             var d = msgModel.value(j);
             if ((d.msgId || "") === msgId) {
                 msgModel.removeAt(j);
-                // Removing a row changes who is now adjacent to whom, which
-                // changes bubblePos ("top"/"middle"/"bottom"/"full" — and with
-                // it, whether the accent strip renders) for the messages that
-                // used to sandwich this one. Without this, the neighbor above
-                // a deleted message could be left stuck with a stale "top"
-                // bubblePos and permanently lose its strip even though it's
-                // now the last message in its group.
+                // Re-run grouping — removing a row changes bubblePos for its former
+                // neighbors, which would otherwise be left with a stale accent strip
                 rebuildGroups();
                 return;
             }
         }
     }
 
-    // Companion to applyLocalDelete/applyRecall below — see
-    // onMessageTsCorrected's comment for why this exists. Patches an
-    // already-loaded row's ts to the just-arrived server value and re-runs
-    // grouping, since the 5-minute grouping window in rebuildGroups()
-    // compares ts across rows and a stale device-clock value can throw that
-    // comparison off by hours.
+    // Patches an already-loaded row's ts to the server value and re-runs grouping,
+    // since a stale device-clock ts can throw off the 5-minute grouping window
     function applyTsCorrection(msgId, newTs) {
         chatViewPage.flushPendingRebuild();
         var size = msgModel.size();
@@ -357,38 +293,25 @@ Page {
         for (var j = 0; j < size; j++) {
             var d = msgModel.value(j);
             if ((d.msgId || "") === msgId) {
-                // Preserve the original text/photo content so it can still be shown
-                // (with a "(This message was recalled)" tag) when the user has
-                // "Show Recalled Messages" enabled in Settings. msgType=99 still
-                // marks the message as recalled for everything else that checks it.
-                //
-                // Idempotency guard: the server can redeliver the same "chat.undo"
-                // event again (e.g. a resync after reopening the thread replays
-                // both the original message and its recall). If this message was
-                // already recalled once, d.content is already "" — without this
-                // guard, a second call would overwrite the text we already saved
-                // here with that empty string and the bubble would permanently
-                // lose its recovered text. Only capture it the first time.
+                // Preserve the original content so it can still be shown when
+                // "Show Recalled Messages" is enabled. Idempotency guard: the server
+                // can redeliver the same recall event, so only capture the original
+                // text the first time — otherwise a second call overwrites it with "".
                 if (!d.recalledOriginalContent || d.recalledOriginalContent.length === 0) {
                     d.recalledOriginalContent = d.content || "";
                 }
                 d.content    = "";
                 d.msgType    = 99;
-                // NOTE: localImage is intentionally left untouched here. It's the
-                // path to the already-downloaded photo file on disk; clearing it
-                // would make a recalled photo impossible to show again even when
-                // "Show Recalled Messages" is enabled. The delegate below decides
-                // whether to actually display it based on that setting.
+                // localImage is left untouched so a recalled photo can still be shown
+                // when "Show Recalled Messages" is enabled — the delegate decides whether to display it
                 msgModel.replace(j, d);
                 return;
             }
         }
     }
 
-    // In-chat message search ("find in page" style): scans the already-loaded
-    // messages for the query and records which indices match, without hiding
-    // any messages. The delegate (rowRoot.searchHtml) highlights the matched
-    // substring inline; gotoSearchMatch() scrolls the list to each result.
+    // "Find in page" style: scans loaded messages for matches without hiding any.
+    // rowRoot.searchHtml() highlights matches inline; gotoSearchMatch() scrolls to each
     function updateSearchMatches(resetToFirst) {
         var q = (chatViewPage.searchText || "").toLowerCase().trim();
         var found = [];
@@ -428,10 +351,8 @@ Page {
         msgList.scrollToItem([idx], ScrollAnimation.Default);
     }
 
-    // Jump to any message by id (used by: tapping a pinned-message entry in
-    // the pinboard bar/dim overlay, and tapping the quote strip inside a
-    // reply bubble) — scrolls it into view and gives it the same yellow
-    // highlight search matches get, for a couple seconds.
+    // Jump to a message by id (pinned entry tap, reply quote tap) — scrolls it into
+    // view and gives it the same yellow highlight as search matches, briefly
     function jumpToMessage(msgId) {
         if (!msgId || msgId.length === 0) return;
         var size = msgModel.size();
@@ -445,11 +366,8 @@ Page {
         }
     }
 
-    // Refreshes chatViewPage.boardItems (pin/note/poll items for this
-    // group) — feeds PinboardBar. 1-1 threads have no board concept
-    // server-side (same restriction the "Group board" overflow ActionItem
-    // already enforces), so this is a no-op there. Result arrives async via
-    // the groupBoardReady Connections block further down this file.
+    // Refreshes boardItems (pin/note/poll items), feeds PinboardBar
+    // No-op for 1-1 threads — no board concept exists there server-side
     function loadBoardItems() {
         if (!chatViewPage.isGroup || chatViewPage.threadId.length === 0) {
             chatViewPage.boardItems = [];
@@ -459,10 +377,8 @@ Page {
     }
 
     // ---- Inline poll cards in msgModel (kind: "poll" rows) -----------------
-    // See ChatView.qml's rowRoot delegate for how these render, and
-    // PollVotersSheet.qml for the "View voters" popup. Same vote-toggle
-    // logic as GroupBoardSheet.qml's doVoteOption (kept in sync manually —
-    // this codebase has no shared non-visual QML module to factor it into).
+    // Same vote-toggle logic as GroupBoardSheet.qml's doVoteOption, kept in sync
+    // manually since there's no shared QML module to factor it into
     function doVotePollOption(pollId, optionId, allowMulti, options) {
         if (!pollId || pollId.length === 0 || !options) return;
         var newIds = [];
@@ -514,11 +430,9 @@ Page {
         };
     }
 
-    // Inserts a synthetic row at the position matching its ts among the
-    // existing chronological rows (regular messages all carry a "ts", set
-    // by dbSaveMessage/the WS parsing — reused here rather than a new
-    // field). Falls back to the very end when nothing newer is found,
-    // which is the common case for a poll created "now".
+    // Inserts a synthetic row at the position matching its ts among the other
+    // chronological rows. Falls back to the end when nothing newer is found
+    // (the common case for a poll created "now")
     function insertPollAtChronological(row) {
         var insertIdx = msgModel.size();
         for (var i = 0; i < msgModel.size(); i++) {
@@ -529,13 +443,10 @@ Page {
         msgModel.insert(insertIdx, row);
     }
 
-    // Refresh-in-place: called from the groupBoardReady handler for every
-    // poll item currently on the board. Never repositions an ALREADY-known
-    // poll row (a plain board refresh isn't necessarily a vote — e.g. it
-    // also runs on every thread open); a poll seen for the first time gets
-    // inserted at its natural chronological slot. Compare with
-    // bumpPollToBottom() below, which is the one that actually moves a
-    // card, and is only called from an explicit vote signal.
+    // Called from groupBoardReady for every poll on the board. Never repositions
+    // an already-known row (a board refresh isn't necessarily a vote) — only inserts
+    // newly-seen polls at their chronological slot. bumpPollToBottom() below is what
+    // actually moves a card, and only runs on an explicit vote.
     function upsertPollRow(item) {
         var idx = chatViewPage.findPollRowIndex(item.id);
         var row = chatViewPage.buildPollRow(item);
@@ -543,23 +454,17 @@ Page {
         else chatViewPage.insertPollAtChronological(row);
     }
 
-    // The one place that actually moves a poll card: removes it from
-    // wherever it currently sits and re-appends it at the very bottom of
-    // msgModel with the fresh option data — the "poll trước khi ai đó vote
-    // đang ở dòng tin nào đó sẽ bị xóa đi và thêm lại ở bottom" behavior.
-    // detail (optional) is the full map from getPollDetail's pollDetailReady
-    // — only needed to seed a brand-new row (see call sites) when we don't
-    // already have one to update in place.
+    // The one place that actually moves a poll card: removes it and re-appends it
+    // at the bottom of msgModel with fresh option data, so a voted poll jumps to
+    // the bottom like a new message. detail is only needed to seed a brand-new row.
     function bumpPollToBottom(pollId, updatedOptions, detail) {
         var idx = chatViewPage.findPollRowIndex(pollId);
         var row;
         if (idx >= 0) {
             row = msgModel.value(idx);
             msgModel.removeAt(idx);
-            // Shallow clone so ArrayDataModel sees a distinct object (it
-            // compares by reference for change notification on append/
-            // insert, same assumption the rest of this file already makes
-            // for msgModel rows built fresh each time).
+            // Shallow clone so ArrayDataModel sees a distinct object — it compares
+            // by reference for change notification on append/insert
             row = JSON.parse(JSON.stringify(row));
         } else if (detail) {
             row = {
@@ -577,10 +482,8 @@ Page {
 
 
 
-    // Escapes HTML-sensitive characters, then wraps every case-insensitive
-    // occurrence of `query` in a yellow <span>, preserving the original
-    // casing of the matched text. Returns plain (non-html) text unchanged
-    // when there's no active query, so callers can use it unconditionally.
+    // Escapes HTML, wraps every case-insensitive match of `query` in a yellow
+    // <span>. Returns plain text unchanged when there's no query.
     function highlightMatches(text, query, color) {
         var esc = String(text)
             .replace(/&/g, "&amp;")
@@ -627,15 +530,8 @@ Page {
         chatViewPage.isMuted   = zService.isMutedThread(chatViewPage.threadId);
         blockedBanner.visible  = chatViewPage.isBlocked;
 
-        // Cancel (not apply) any deferred rebuild flush left over from
-        // whatever thread was open before this one — see
-        // flushPendingRebuild()'s comment for the general race this guards
-        // against. Applying a stale pendingItems here would be wrong in a
-        // different way than the original bug: it would leak the PREVIOUS
-        // thread's messages into this one's freshly-cleared msgModel. The
-        // clear() + dbLoadMessages()/fetchMessages() below already fully
-        // repopulate this thread's own messages, so the old pending flush
-        // is simply discarded.
+        // Cancel any deferred rebuild flush left from the previous thread — applying
+        // it here would leak the old thread's messages into this one's fresh model
         rebuildFlushTimer.stop();
         rebuildFlushTimer.pendingItems = null;
         rebuildFlushTimer.pendingScroll = false;
@@ -643,11 +539,8 @@ Page {
         msgModel.clear();
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
 
-        // Bulk-load every reaction for this thread in ONE call (msgId -> {uid:
-        // {icon, ts}}) rather than one query per message — same reasoning as
-        // dbLoadMessages() itself being a single bulk call below. Freshly
-        // replaces msgList.reactionsByMsg since this is a brand-new thread
-        // open (nothing from a previously-open thread should linger).
+        // Bulk-load every reaction for this thread in one call instead of one
+        // query per message. Replaces reactionsByMsg entirely for the new thread.
         msgList.reactionsByMsg = zService.dbLoadThreadReactions(chatViewPage.threadId) || {};
 
         var cached = zService.dbLoadMessages(chatViewPage.threadId);
@@ -658,9 +551,8 @@ Page {
                 c.selfName = chatViewPage.selfName || "Me";
                 c.isMine = (c.isMine === "true" || c.isMine === 1 || c.isMine === true);
                 if (c.msgId) newCache[c.msgId] = c.isMine;
-                // Pills computed up front (row not in msgModel yet, so
-                // refreshReactionsRow's msgModel.replace() has nothing to
-                // find) — avoids a flash of "no reactions" before a second pass.
+                // Compute pills up front, before the row is in msgModel, to avoid a
+                // flash of "no reactions" before a second pass
                 c.reactions = c.msgId ? msgList.summarizePills(c.msgId) : [];
                 msgModel.append(c);
 
@@ -695,25 +587,20 @@ Page {
         verticalAlignment:   VerticalAlignment.Fill
         background: chatViewPage.isDark ? Color.create("#1a1a1a") : Color.create("#d6d6d6")
 
-        // Pinned-items strip — see PinboardBar.qml's own header comment for
-        // exactly what it shows and why. Only relevant for groups (1-1
-        // threads have no board concept server-side); boardItems stays []
-        // there so the bar's own `visible: topItems.length > 0` keeps it
-        // collapsed to nothing without needing an isGroup check here too.
+        // Pinned-items strip (see PinboardBar.qml). Only relevant for groups —
+        // boardItems stays [] for 1-1 threads so the bar collapses itself
         PinboardBar {
             id: pinboardBar
             items: chatViewPage.boardItems
             isDark: chatViewPage.isDark
             horizontalAlignment: HorizontalAlignment.Fill
             onItemTapped: {
-                // boardType/itemId/title/creatorId — signal args, matching
-                // PinboardBar's `signal itemTapped(...)` declaration.
+                // Args match PinboardBar's `signal itemTapped(...)`
                 if (boardType === "pin") {
                     chatViewPage.jumpToMessage(itemId);
                 } else {
-                    // Notes/polls fall back to the same "Group board" entry
-                    // point as the overflow menu — currently under
-                    // development (see groupBoardUnderDevDialog).
+                    // Notes/polls fall back to the same "Group board" entry point,
+                    // still under development
                     groupBoardUnderDevDialog.show();
                 }
             }
@@ -733,21 +620,13 @@ Page {
             property string searchQuery: chatViewPage.searchVisible ? chatViewPage.searchText.toLowerCase().trim() : ""
             property int    searchCurrentMsgIndex: (chatViewPage.searchMatchPos >= 0 && chatViewPage.searchMatchPos < chatViewPage.searchMatches.length)
                                                      ? chatViewPage.searchMatches[chatViewPage.searchMatchPos] : -1
-            // Proxies for chatViewPage's own functions: ListItemComponent delegates
-            // (rowRoot and everything inside it) are a SEPARATE Cascades visual-root
-            // scope from the rest of the Page — a plain "chatViewPage.foo()" call from
-            // inside the delegate throws "ReferenceError: Can't find variable:
-            // chatViewPage" at runtime even though it looks like valid, in-scope QML
-            // (confirmed on-device; see doReply/doPin etc. above, which already work
-            // precisely because they go through "rowRoot.ListItem.view.doX(...)"
-            // instead of calling chatViewPage directly). highlightMatches()/
-            // jumpToMessage() need the same indirection.
+            // Proxies for chatViewPage's functions — ListItemComponent delegates are a
+            // separate Cascades scope, so calling chatViewPage.foo() directly from inside
+            // one throws "ReferenceError: Can't find variable: chatViewPage" at runtime
             function highlightMatchesProxy(text, query, color) { return chatViewPage.highlightMatches(text, query, color); }
             function jumpToMessageProxy(msgId) { chatViewPage.jumpToMessage(msgId); }
-            // Reliable group-member uid->name lookup (see m_memberNames in
-            // ZaloService — built from getmg-v2's currentMems, NOT the
-            // per-message wire dName field, which is unreliable for incoming
-            // messages in both 1-1 and group threads). Returns "" if unknown.
+            // Reliable uid->name lookup (built from getmg-v2's currentMems, not the
+            // per-message wire dName field, which is unreliable). Returns "" if unknown.
             function memberDisplayNameProxy(uid) { return zService.memberDisplayName(uid); }
             function votePollOptionProxy(pollId, optionId, allowMulti, options) { chatViewPage.doVotePollOption(pollId, optionId, allowMulti, options); }
             function viewPollVotersProxy(pollId) { chatViewPage.openPollVoters(pollId); }
@@ -760,12 +639,9 @@ Page {
 
             attachedObjects: [
                 ArrayDataModel { id: msgModel },
-                // Pairs with the clear()+deferred-append rebuild path in
-                // rebuildGroups() below: clear() runs synchronously, then
-                // this timer's zero-interval singleShot fire on the NEXT
-                // event loop turn is what gives Cascades an actual empty-
-                // dataModel layout pass in between, forcing it to drop
-                // pooled item heights instead of recycling them stale.
+                // Pairs with the clear()+deferred-append rebuild path below — the
+                // zero-interval singleShot fires on the next event loop turn, giving
+                // Cascades an empty layout pass so it drops stale pooled item heights
                 Timer {
                     id: rebuildFlushTimer
                     property variant pendingItems: null
@@ -785,20 +661,12 @@ Page {
                 }
             ]
 
-            // Bubble hold-menu action stubs. Wired to individual functions
-            // (not one generic dispatcher) so each can be implemented and
-            // tested independently later. Copy/Share are implemented below;
-            // the rest are still no-op besides a console.log.
-            // isPhoto + localImage let us branch to the image-aware copy/share
-            // path. Previously doCopy/doShare always treated bubble content as
-            // plain text, so copying/sharing a photo message copied/shared the
-            // {"normalUrl":...} JSON string instead of the picture — pasting
-            // it anywhere just showed that text, never an image. Now, when the
-            // bubble is a photo AND we already have it cached locally
-            // (localImage — the same file the bubble itself renders from),
-            // we copy/share the actual image bytes from disk instead.
-            // Falls back to the old text behavior if no local copy exists yet
-            // (e.g. still downloading) rather than silently doing nothing.
+            // Bubble hold-menu actions, wired to individual functions rather than one
+            // dispatcher so each can be tested independently. Copy/Share are implemented;
+            // the rest are still console.log-only stubs.
+            // isPhoto + localImage let Copy/Share use the actual image bytes for a photo
+            // message instead of copying the raw {"normalUrl":...} JSON text. Falls back
+            // to text if no local copy exists yet (e.g. still downloading).
             function doCopy(content, isPhoto, localImage) {
                 if (isPhoto) {
                     errorToast.body = "Copy isn't available for photos";
@@ -808,22 +676,12 @@ Page {
                 app.copyToClipboard(content);
                 copyToast.show();
             }
-            // Stages a reply above the input bar (see replyPreviewBar below),
-            // exactly like tapping an attachment stages a photo. A photo and a
-            // reply can't both be staged at once — starting a reply while a
-            // photo is pending clears the photo attach first, matching the
-            // "replace, don't stack" behaviour Jim asked for.
+            // Stages a reply above the input bar, same as tapping an attachment stages
+            // a photo — the two are mutually exclusive, starting one clears the other.
             //
-            // senderName resolution happens HERE rather than at the ActionItem
-            // call site in the delegate: rowRoot.otherDisplayName (computed via
-            // ListItem.view.threadNameProxy) looked right on paper but still
-            // came back "Unknown" on-device — ActionSet/ActionItem.onTriggered
-            // turned out to be yet another Cascades scope boundary, on top of
-            // the delegate-body one already worked around for
-            // highlightMatches/jumpToMessage. doReply() itself lives on
-            // msgList (confirmed reachable — chatViewPage.pendingAttachPath
-            // above already works), so resolving the name here sidesteps the
-            // problem instead of chasing another scope workaround.
+            // senderName is resolved here rather than at the delegate's ActionItem call
+            // site, since ActionSet/ActionItem.onTriggered is yet another Cascades scope
+            // boundary where rowRoot.otherDisplayName came back "Unknown" on-device.
             function doReply(msgId, cliMsgId, senderId, isMine, rawDName, content, msgType, ts) {
                 if (chatViewPage.pendingAttachPath.length > 0) {
                     chatViewPage.pendingAttachPath = "";
@@ -833,16 +691,12 @@ Page {
                 if (isMine) {
                     resolvedName = chatViewPage.selfName || "Me";
                 } else if (!chatViewPage.isGroup && chatViewPage.threadName.length > 0) {
-                    // 1-1 thread: Zalo's wire "dName" on an incoming message is
-                    // unreliable (confirmed on-device carrying OUR OWN name
-                    // instead of the sender's) — threadName is the contact's
-                    // real name from their profile, not from the message wire.
+                    // 1-1 thread: wire "dName" is unreliable (can carry our own name
+                    // instead of the sender's) — use threadName (the contact's real name) instead
                     resolvedName = chatViewPage.threadName;
                 } else if (chatViewPage.isGroup) {
-                    // Group: same wire-dName unreliability, confirmed on-device
-                    // in groups too (not just 1-1 as first assumed) — look the
-                    // real sender up by uid in zService's member-name cache
-                    // (built from getmg-v2's currentMems, not the message wire).
+                    // Group: same wire-dName unreliability — look the sender up by uid
+                    // in zService's member-name cache instead
                     var memName = zService.memberDisplayName(senderId || "");
                     resolvedName = (memName && memName.length > 0) ? memName : (rawDName || "Unknown");
                 } else {
@@ -859,12 +713,9 @@ Page {
                 inputField.requestFocus();
             }
             // ---- Reactions ------------------------------------------------
-            // 6 fixed icons, same order as ReactionPickerSheet.qml's fixed
-            // slots. Kept as plain id strings ("like"/"heart"/...) for all
-            // LOCAL bookkeeping (reactionsByMsg, the "mine" comparison,
-            // msgModel's reactions rows) — only reactRType() below ever
-            // converts an id to zService.reactMessage()'s numeric rType, right
-            // at the one call site that actually needs the wire format.
+            // 6 fixed icons, same order as ReactionPickerSheet.qml. Kept as plain id
+            // strings for local bookkeeping; reactRType() converts to the numeric
+            // wire format only at the one call site that needs it.
             property variant reactionAssets: ({
                 "like":  "asset:///images/emoji/people/emoji_1f44d_64.png",
                 "heart": "asset:///images/emoji/people/emoji_2764_64.png",
@@ -877,11 +728,8 @@ Page {
             function reactionAssetFor(iconId) { return msgList.reactionAssets[iconId] || ""; }
             function reactionRType(iconId)    { return (iconId in msgList.reactionRTypes) ? msgList.reactionRTypes[iconId] : 0; }
 
-            // msgId -> { uid: { icon, ts } }. Rebuilt/merged from
-            // zService.dbLoadThreadReactions() when a thread opens (see
-            // openThread's cached-load block below), then kept live by our
-            // own taps (doSendReaction) and other members' taps arriving over
-            // WS (onReactionUpdated, wired near forwardPickerSheet below).
+            // msgId -> { uid: { icon, ts } }. Loaded from zService.dbLoadThreadReactions()
+            // on thread open, kept live by our own taps and incoming WS updates.
             property variant reactionsByMsg: ({})
 
             function findMsgRowIndexById(msgId) {
@@ -893,13 +741,8 @@ Page {
             }
 
             // Pure computation: reactionsByMsg[msgId] -> [{icon, asset, count, mine}],
-            // ordered by whoever reacted with that icon FIRST (so a second
-            // person reacting with a different icon always adds a new pill to
-            // the right, never reorders the existing ones — the exact "thêm
-            // overlay xám tiếp theo... bên cạnh" behavior asked for). Doesn't
-            // touch msgModel — used both by refreshReactionsRow (row already
-            // in msgModel) and by the initial thread-load path (row not
-            // appended yet, so there's nothing to msgModel.replace() into).
+            // ordered by whoever reacted with that icon first, so new reactions add a
+            // pill on the right instead of reordering existing ones. Doesn't touch msgModel.
             function summarizePills(msgId) {
                 var byUid = msgList.reactionsByMsg[msgId] || {};
                 var uids = Object.keys(byUid);
@@ -924,9 +767,8 @@ Page {
                 return pills;
             }
 
-            // Recomputes the grouped pill list for one message already
-            // present in msgModel and writes it back into that row's
-            // `reactions` field.
+            // Recomputes the pill list for one message already in msgModel and
+            // writes it back into that row's `reactions` field
             function refreshReactionsRow(msgId) {
                 var idx = msgList.findMsgRowIndexById(msgId);
                 if (idx < 0) return;
@@ -936,24 +778,12 @@ Page {
                 msgModel.replace(idx, row);
             }
 
-            // Merges one (uid, icon) reaction record into reactionsByMsg —
-            // icon === "" removes that uid's reaction entirely — then
-            // refreshes the on-screen pills for that message. Used both for
-            // our own optimistic tap and for incoming WS updates about
-            // other members' taps.
+            // Merges one (uid, icon) reaction into reactionsByMsg (icon === "" removes
+            // it) then refreshes the pills. Used for both our own tap and incoming WS updates.
             function applyReactionRecord(msgId, uid, icon) {
-                // IMPORTANT: `property variant` here hands back a FRESH COPY
-                // on every read in this QtScript/Qt4 engine — it is NOT a
-                // live reference the way a plain JS object variable is. So
-                // `msgList.reactionsByMsg[msgId][uid] = x` silently mutates a
-                // throwaway copy and is lost, and the very next statement
-                // re-reading `msgList.reactionsByMsg[msgId]` sees it's still
-                // missing and throws ("... is undefined, not an object") the
-                // moment anything tries to index one level deeper into it.
-                // Fix: read the whole map into a local var ONCE, mutate that
-                // plain JS object as much as we like (no more property
-                // re-reads involved), then write it back with exactly ONE
-                // property assignment at the end.
+                // `property variant` returns a fresh copy on every read in this engine,
+                // not a live reference — mutating a nested path directly silently no-ops.
+                // Read into a local var once, mutate that, write back with one assignment.
                 var all = msgList.reactionsByMsg;
                 if (!all[msgId]) all[msgId] = {};
                 if (!icon || icon.length === 0) {
@@ -965,11 +795,8 @@ Page {
                 msgList.refreshReactionsRow(msgId);
             }
 
-            // Entry point for BOTH the picker sheet's onReacted AND a direct
-            // tap on one of the pills themselves (see the pill row further
-            // down) — tapping the icon the user already reacted with removes
-            // it (toggle), tapping any other icon switches to it, matching
-            // Zalo/Messenger's own one-reaction-per-person behavior.
+            // Entry point for both the picker sheet and a direct tap on a pill —
+            // tapping our own icon again removes it, tapping another switches to it
             function doSendReaction(msgId, cliMsgId, msgType, iconId) {
                 if (!msgId || msgId.length === 0) return;
                 var mine = (msgList.reactionsByMsg[msgId] && msgList.reactionsByMsg[msgId][zService.selfUid])
@@ -999,12 +826,8 @@ Page {
                 zService.recallMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId);
             }
             function doForward(msgId, content, msgType, ts) { forwardPickerSheet.openFor(content || "", msgType || 0, msgId || "", ts || ""); }
-            // Pin message: ported from zlapi's pinGroupMsg (a separate,
-            // independently reverse-engineered Zalo API for Python —
-            // zca-js has no equivalent call at all, which is why this used
-            // to be a silent console.log()-only stub; see pinGroupMessage()'s
-            // doc comment in ZaloService.hpp for the full story). Group-only,
-            // same as Zalo's own UI and zlapi itself (no 1-1 "pin" exists).
+            // Pin message: ported from zlapi's pinGroupMsg (zca-js has no equivalent).
+            // Group-only, same as Zalo's own UI — no 1-1 "pin" exists.
             function doPin(msgId, cliMsgId, senderId, isMine, rawDName, content, msgType) {
                 if (!chatViewPage.isGroup) {
                     errorToast.body = "Pinning is only available in group chats";
@@ -1018,8 +841,7 @@ Page {
                     var memName = zService.memberDisplayName(senderId || "");
                     resolvedName = (memName && memName.length > 0) ? memName : (rawDName || "Unknown");
                 }
-                // Same local(1/2)->wire(1/32) msgType conversion sendMessageQuote()
-                // already does for quotes — see its comment a bit further down.
+                // Same local(1/2)->wire(1/32) msgType conversion sendMessageQuote() does for quotes
                 var wireMsgType = (msgType === 2 || msgType === "2") ? 32 : 1;
                 var pinContent  = (msgType === 2 || msgType === "2") ? "[Photo]" : (content || "");
                 zService.pinGroupMessage(chatViewPage.threadId, msgId || "", cliMsgId || "",
@@ -1062,105 +884,21 @@ Page {
                         id: rowRoot
                         highlightAppearance: HighlightAppearance.None
                         dividerVisible: false
-                        // Do NOT set preferredHeight on rowRoot. Any binding here —
-                        // even to a "direct child" LayoutUpdateHandler like
-                        // rowContentRootLUH.layoutFrame.height — is still a
-                        // self-referential clamp: rowContentRoot is INSIDE rowRoot,
-                        // so once Cascades measures some height H for one line of
-                        // text, preferredHeight locks to H, and any later content
-                        // that would need to wrap onto more lines has nowhere to
-                        // grow (still measured against the just-locked H) and gets
-                        // truncated instead of wrapping. This reproduced on-device
-                        // as long messages getting cut off after the first line —
-                        // confirmed and reverted. rowRoot must stay fully auto-sized
-                        // (no preferredHeight set at all, not even -1, see the
-                        // CORRECTION note further down about -1 still counting as
-                        // "set"). The CustomListItem divider/highlight gap this was
-                        // trying to eliminate is instead handled entirely on
-                        // rowContentRoot's own bottomMargin below (a genuine,
-                        // non-self-referential Container property).
-                        // REMOVED: topPadding/bottomPadding/leftPadding/rightPadding
-                        // assignment that used to be here. Device log confirms
-                        // "WARNING: Padding is not supported for this control" fires
-                        // at this exact line on every single layout pass — CustomListItem
-                        // genuinely does not support these properties (same lesson as
-                        // the `background` and ActionItem `visible` mistakes documented
-                        // a few lines below: CustomListItem only exposes
-                        // highlightAppearance, dividerVisible, and its content child).
-                        // The assignment was silently rejected the whole time, so
-                        // whatever gap CustomListItem's own built-in default padding
-                        // was creating was NEVER actually being zeroed by this line —
-                        // it just looked like it should have been. Left removed rather
-                        // than kept as dead/misleading code; any remaining compensation
-                        // needed belongs on rowContentRoot's own real, working
-                        // bottomMargin below (a genuine Container property).
-                        // The yellow-background diagnostic (see git history) proved
-                        // this: even with dividerVisible:false and topPadding:0 here,
-                        // and even with every inner Container's height/y confirmed
-                        // correct via layoutFrame diagnostics, a real gray gap (the
-                        // Page's own background, not any Container this file draws)
-                        // still cut across the FULL WIDTH of the row at every boundary
-                        // between two CustomListItems. That location — outside every
-                        // Container we control, but between rows — is exactly where
-                        // CustomListItem's built-in divider reserves space even when
-                        // it isn't painted. There's no direct QML property to zero out
-                        // that reserved space.
+                        // Do NOT set preferredHeight on rowRoot, even via a binding to a child's
+                        // layoutFrame.height — that's self-referential: once Cascades measures one
+                        // height, it locks in, and later content that needs more lines gets clipped
+                        // instead of wrapping. rowRoot must stay fully auto-sized (not even -1,
+                        // which still counts as "set" and blocks the real auto-size default).
                         //
-                        // FIXED: this used to force rowRoot's own preferredHeight to
-                        // equal rowLUH.layoutFrame.height — the measured height of a
-                        // Container living INSIDE rowRoot itself. That's a
-                        // self-referential binding: once Cascades measured the row at
-                        // some height H (e.g. a 2-line bubble), preferredHeight got
-                        // locked to H. Any later growth of the same row's content
-                        // (a 3rd text line, a taller photo) then had to be squeezed
-                        // into that already-locked H, so it got clipped — and because
-                        // the clipped content still only measures out to H,
-                        // layoutFrame.height never reports the larger size either, so
-                        // the binding can never correct itself. This is exactly the
-                        // "always caps" bug the onLayoutFrameChanged diagnostic above
-                        // was trying to pin down: bubbles/images silently stuck at
-                        // their first-measured height forever.
-                        //
-                        // Fix: let rowRoot size itself normally (auto, like every
-                        // non-"message" kind already does) so content is always
-                        // measured fresh instead of being pre-clamped to a stale
-                        // self-measurement. The CustomListItem divider gap this was
-                        // originally working around is instead cancelled with a small
-                        // fixed negative bottomMargin on rowContentRoot below — a
-                        // constant offset, not a live binding back into this row's
-                        // own measured height, so it can't create the same loop.
-                        //
-                        // CORRECTION: setting preferredHeight to -1 is NOT the same
-                        // as leaving it unset. Per Cascades docs (Control::
-                        // preferredHeight / isPreferredHeightSet()), a control only
-                        // gets its true auto-size default when preferredHeight has
-                        // never been set at all — once set, even to -1, the parent
-                        // container has an explicit value to honor (and clamps it to
-                        // its allowed minimum rather than treating -1 as "no
-                        // preference"). That's almost certainly why every message
-                        // row's height (112.4 / 106 / 61.4 in the diagnostics) never
-                        // changed across every width-only fix attempted so far — the
-                        // row was never actually auto-sizing to its wrapped text at
-                        // all. Removed the property entirely so rowRoot gets its real
-                        // auto-size default.
-                        // (Reverted a diagnostic "background: Color.create(...)" that
-                        // was here — CustomListItem has no `background` property, same
-                        // class of error documented for ActionItem/visible right below:
-                        // it extends UIObject-level API, not Control, so this crashed
-                        // the ENTIRE QML document on load with "Cannot assign to
-                        // non-existent property background" and made every ChatView
-                        // tap fail. Lesson: CustomListItem's 3 stylable surfaces are
-                        // highlightAppearance, dividerVisible, and its `content` — no
-                        // raw background paint. Any future "make the row itself a
-                        // color" diagnostic needs to go on the content Container
-                        // instead (the ones already declared just below/inside).
+                        // CustomListItem also doesn't support topPadding/bottomPadding/etc (logs a
+                        // "Padding is not supported" warning) or a `background` property — it only
+                        // exposes highlightAppearance, dividerVisible, and its content child. The
+                        // divider/highlight gap between rows is instead cancelled with a fixed
+                        // negative bottomMargin on rowContentRoot below.
 
-                        // Cascades ActionItem/DeleteActionItem has no "visible" property
-                        // (they extend UIObject, not Control) — assigning one is a hard
-                        // QML parse error that fails the WHOLE document load, which is
-                        // why ChatView.qml refused to open entirely. Fix: build two full
-                        // ActionSets (member vs admin/owner) and pick one, instead of
-                        // trying to toggle visibility on a single item.
+                        // ActionItem/DeleteActionItem has no "visible" property (extends UIObject,
+                        // not Control) — assigning one is a hard QML parse error. Build two full
+                        // ActionSets (member vs admin/owner) and pick one instead.
                         contextActions: [
                             rowRoot.isAdminOrOwner ? bubbleActionsAdmin : bubbleActionsMember
                         ]
@@ -1290,9 +1028,8 @@ Page {
                         property bool isDark: ListItem.view.isDark
                         property bool isAdminOrOwner: ListItem.view.isAdminOrOwner
 
-                        // Browser-style find-in-page: query text and whether this exact
-                        // row is the currently-focused match (for a slightly stronger
-                        // highlight / outline than other, non-focused matches).
+                        // Query text and whether this row is the currently-focused match
+                        // (gets a slightly stronger highlight than other matches)
                         property string searchQuery: ListItem.view.searchQuery
                         property bool   isCurrentSearchMatch: rowRoot.searchQuery.length > 0
                                                                && ListItem.view.searchCurrentMsgIndex === ListItem.indexPath[0]
@@ -1300,44 +1037,26 @@ Page {
                         property bool mine: (ListItemData.isMine === true
                                              || ListItemData.isMine === "true"
                                              || ListItemData.isMine === 1)
-                        // Row kind: "message" (default, normal chat bubble — every
-                        // existing row already in msgModel has no "kind" field at
-                        // all, so the "|| " fallback keeps them exactly as before),
-                        // "poll" (inline poll card, see pollCardRow below) or
-                        // "boardEvent" (small colored system-notice pill, see
-                        // boardEventRow below). Deliberately a plain visible-toggle
-                        // on sibling Containers within this SAME ListItemComponent
-                        // rather than a second `type:` in listItemComponents — see
-                        // the "toggling listItemComponents' type per row" rejection
-                        // note further down this file (search "type-toggle") for
-                        // why that approach was already tried and abandoned here.
+                        // Row kind: "message" (default chat bubble), "poll" (inline poll card,
+                        // see pollCardRow), or "boardEvent" (system-notice pill, see boardEventRow).
+                        // A plain visible-toggle on sibling Containers, not a second `type:` in
+                        // listItemComponents — see the "type-toggle" rejection note further down.
                         property string kind: ListItemData.kind || "message"
                         property bool grouped: ListItemData.grouped === true
-                        // TEMP DIAGNOSTIC — pinpointing whether the "always caps at 2"
-                        // grouping bug is a QML binding problem (ListItemData.grouped
-                        // never reaching this row as true) or a Cascades-internal
-                        // layout/height cache problem (binding IS true but topPadding's
-                        // effect on measured height doesn't stick). rebuildGroups()
-                        // already logs what it WROTE into msgModel; this logs what this
-                        // delegate instance actually READS for the same row, so
-                        // diffing the two logs tells us which side is wrong. Safe to
-                        // delete once that's answered.
+                        // Diagnostic: logs what this delegate reads for `grouped`, to compare
+                        // against what rebuildGroups() wrote. Safe to remove.
                         onGroupedChanged: {
                             console.log("[Zalo QML] delegate grouped-binding: msgId=" + String(ListItemData.msgId).slice(-6)
                                 + " grouped=" + grouped + " bubblePos=" + (ListItemData.bubblePos || "full")
                                 + " index=" + rowRoot.ListItem.indexPath[0]);
                         }
                         property bool recalled: (ListItemData.msgType === 99 || ListItemData.msgType === "99")
-                        // "Show Recalled Messages" setting: when on, and the recalled message's
-                        // original content was plain text (not a photo/sticker JSON blob), keep
-                        // showing that original text instead of the generic placeholder banner.
+                        // When "Show Recalled Messages" is on and the original content was
+                        // plain text, keep showing it instead of the placeholder banner
                         property bool showRecalledSetting: ListItem.view.showRecalledMessages
                         property string recalledOriginal: ListItemData.recalledOriginalContent || ""
-                        // Recalled photo/sticker: detected either from the preserved original
-                        // content being a photo JSON blob, or simply from a cached local image
-                        // file still being on disk for this message (localImage is no longer
-                        // cleared on recall — see applyRecall()). Either signal means this was
-                        // an image message, so it should be recoverable as a photo, not text.
+                        // Recalled photo/sticker: detected from either the preserved original
+                        // content being a photo JSON blob, or a cached local image still on disk
                         property bool recalledIsPhoto: (rowRoot.recalledOriginal.length > 0
                                                          && rowRoot.recalledOriginal.charAt(0) === "{"
                                                          && (rowRoot.recalledOriginal.indexOf("normalUrl") >= 0
@@ -1346,18 +1065,16 @@ Page {
                                                              || rowRoot.recalledOriginal.indexOf("href") >= 0))
                                                         || !!(ListItemData.localImage && ListItemData.localImage !== "")
                         property bool recalledHasOriginalText: rowRoot.recalledOriginal.length > 0 && !rowRoot.recalledIsPhoto
-                        // True when we should fall back to the plain "This message was
-                        // recalled" placeholder bubble (setting off, or no recoverable
-                        // text/photo).
+                        // True when falling back to the plain "This message was recalled"
+                        // placeholder (setting off, or no recoverable text/photo)
                         property bool recalledHidden: rowRoot.recalled
                                                        && !(rowRoot.showRecalledSetting
                                                             && (rowRoot.recalledHasOriginalText || rowRoot.recalledIsPhoto))
 
-                        // Used to size photo bubbles to the image's real aspect ratio
-                        // without ever exceeding the bubble's own width. 94 = the two
-                        // side spacer Containers below (6+60) + bubble left/right padding (14+14).
+                        // Sizes photo bubbles to the image's real aspect ratio without exceeding
+                        // the bubble width. 94 = side spacers (6+60) + bubble padding (14+14).
                         property string bubblePos: ListItemData.bubblePos || "full"
-                        // TEMP DIAGNOSTIC — see onGroupedChanged above for why.
+                        // Diagnostic — see onGroupedChanged above
                         onBubblePosChanged: {
                             console.log("[Zalo QML] delegate bubblePos-binding: msgId=" + String(ListItemData.msgId).slice(-6)
                                 + " bubblePos=" + bubblePos + " index=" + rowRoot.ListItem.indexPath[0]);
@@ -1369,21 +1086,13 @@ Page {
                                                    ? (rowLUH.layoutFrame.width - 94)
                                                    : ui.du(40)
 
-                        // Reply/quote: true when this row is a reply to an earlier message
-                        // (quoteMsgId populated by dbSaveMessage/WS parsing — see doReply()/
-                        // sendMessageQuote() and the WS quote-object parsing in
-                        // ZaloService_WebSocket.cpp). Drives the separate dark quote-strip
-                        // block rendered above the message text below.
+                        // True when this row is a reply to an earlier message (quoteMsgId set
+                        // by dbSaveMessage/WS parsing). Drives the quote-strip block above the text.
                         property bool hasQuote: !!(ListItemData.quoteMsgId && ListItemData.quoteMsgId.length > 0)
 
-                        // Same "wire dName/quoteSenderName can be wrong" issue as
-                        // otherDisplayName below, but for the person being QUOTED —
-                        // which isn't necessarily "the other party": replying to your
-                        // own earlier message quotes yourself. quoteOwnerId (persisted
-                        // alongside quoteMsgId — see sendMessageQuote()'s qmsgOwner and
-                        // the WS quote.ownerId parsing) tells us which case this is;
-                        // ListItemData.selfUid is this device's own uid (already exposed
-                        // on ListView for the mine/theirs bubble-side logic elsewhere).
+                        // Same wire dName unreliability as otherDisplayName below, but for the
+                        // quoted person, who isn't always "the other party" (you can quote yourself).
+                        // quoteOwnerId tells us which case this is.
                         property bool quoteIsMine: !!(ListItemData.quoteOwnerId && ListItemData.quoteOwnerId === ListItem.view.selfUidProxy)
                         property string quoteMemberName: ListItem.view.isGroupChat
                             ? ListItem.view.memberDisplayNameProxy(ListItemData.quoteOwnerId || "")
@@ -1396,25 +1105,12 @@ Page {
                                   ? rowRoot.quoteMemberName
                                   : (ListItemData.quoteSenderName || "Unknown")))
 
-                        // Zalo's WS payload has a quirk on incoming messages: the
-                        // "dName" field is not reliably the sender's own name —
-                        // confirmed from a device log where a message actually sent
-                        // by another person carried dName="Berrylife" (OUR OWN
-                        // name) instead of theirs. Confirmed in BOTH 1-1 and group
-                        // threads (not just 1-1, as first assumed) — dbSaveMessage()
-                        // persists whatever the wire sent, so this is wrong both
-                        // live and after reload.
-                        // - 1-1: there's only one possible "other" person, so
-                        //   chatViewPage.threadName (from the contact's profile,
-                        //   not the message wire) is always correct.
-                        // - Group: every member needs their own per-message name,
-                        //   which threadName can't provide — memberDisplayNameProxy
-                        //   looks the sender up in m_memberNames (built from
-                        //   getmg-v2's currentMems, a reliable per-member source
-                        //   completely separate from the message wire).
-                        // If neither source has an answer (e.g. group details
-                        // haven't loaded this session yet), falls back to the
-                        // wire dName rather than showing nothing.
+                        // Zalo's WS "dName" field is unreliable — it can carry OUR OWN name
+                        // instead of the sender's, in both 1-1 and group threads.
+                        // - 1-1: use chatViewPage.threadName (from the contact's profile) instead
+                        // - Group: look the sender up via memberDisplayNameProxy (m_memberNames,
+                        //   built from getmg-v2's currentMems)
+                        // Falls back to the wire dName if neither source has an answer yet.
                         property string otherMemberName: ListItem.view.isGroupChat
                             ? ListItem.view.memberDisplayNameProxy(ListItemData.senderId || "")
                             : ""
@@ -1424,55 +1120,32 @@ Page {
                                ? rowRoot.otherMemberName
                                : (ListItemData.dName || "Unknown"))
 
-                        // Yellow highlight: true either while this row is the active
-                        // in-chat search match (isCurrentSearchMatch, declared above) or
-                        // while it's the target of a "jump to pinned message" tap (see
-                        // chatViewPage.jumpHighlightMsgId, set by the pinboard bar's
-                        // scrollToMsgIndex+highlight call and cleared after a short delay).
+                        // Yellow highlight: true for the active search match, or the target of
+                        // a "jump to pinned message" tap (jumpHighlightMsgId, cleared after a short delay)
                         property bool isJumpHighlighted: ListItem.view.jumpHighlightMsgId.length > 0
                                                           && ListItem.view.jumpHighlightMsgId === (ListItemData.msgId || "")
                         property bool isHighlighted: rowRoot.isCurrentSearchMatch || rowRoot.isJumpHighlighted
 
-                        // rowRoot (CustomListItem) accepts exactly one default-property
-                        // child — this wraps the three mutually-exclusive per-kind
-                        // sub-rows (message bubble / poll card / boardEvent pill) that
-                        // used to be declared as three illegal siblings directly under
-                        // rowRoot (visible:false-toggled, not removed, so only one is
-                        // ever actually shown at a time — that's still true here, just
-                        // now nested one level deeper to satisfy the single-child rule).
+                        // CustomListItem accepts exactly one default-property child — wraps
+                        // the three mutually-exclusive per-kind sub-rows (message/poll/boardEvent),
+                        // toggled via visible: false, one level deeper than they used to be
                         Container {
                             id: rowContentRoot
                             horizontalAlignment: HorizontalAlignment.Fill
                             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-                            // Fixed, constant offsets cancelling CustomListItem's
-                            // always-on, invisible divider/highlight gap (see
-                            // rowRoot's comments above for why these must be plain
-                            // constants and NOT a live binding into any measured
-                            // height inside this row — that was tried and caused
-                            // long messages to get clipped instead of wrapping).
-                            //
-                            // One constant is NOT enough: device logs show rows at
-                            // bubblePos "bottom" measure a different content height
-                            // (61.4) than "middle" rows (55) even before this margin
-                            // is applied, so a single flat number can only ever be
-                            // exactly right for one bubblePos and drifts for the
-                            // others — this is why the gap only became visible
-                            // starting at the 3rd message: that's exactly where the
-                            // first "middle" row appears. Tuned per bubblePos
-                            // instead. ADJUST THESE NUMBERS if the gap reappears or
-                            // over-corrects for a given position; each is
-                            // independent so fixing one won't disturb the others.
+                            // Fixed, constant offsets cancelling CustomListItem's invisible
+                            // divider gap. Must be plain constants, not a live binding to any
+                            // measured height (that clipped long messages instead of wrapping).
+                            // Tuned per bubblePos since "bottom" and "middle" rows measure
+                            // slightly different heights. Adjust independently if the gap reappears.
                             property int gapCompensation:
                                 rowRoot.bubblePos === "middle" ? -6 : -12
                             bottomMargin: rowRoot.kind === "message" ? gapCompensation : 0
                             attachedObjects: [
                                 LayoutUpdateHandler {
                                     id: rowContentRootLUH
-                                    // Diagnostic only — NOT wired to anything.
-                                    // rowRoot must stay auto-sized (see comments
-                                    // above); this log just helps confirm on-device
-                                    // that rowContentRoot itself is measuring/wrapping
-                                    // text correctly as message length grows.
+                                    // Diagnostic only — confirms rowContentRoot measures/wraps
+                                    // text correctly as message length grows
                                     onLayoutFrameChanged: {
                                         console.log("[Zalo QML] rowContentRoot layoutFrame CHANGED: msgId="
                                             + String(ListItemData.msgId).slice(-6)
@@ -1492,21 +1165,9 @@ Page {
                             attachedObjects: [
                                 LayoutUpdateHandler {
                                     id: rowLUH
-                                    // TEMP DIAGNOSTIC — logs the row's REAL measured
-                                    // height after layout, next to the grouped value
-                                    // that decided its topPadding. Everything logged
-                                    // so far (rebuildGroups' own dump, and the
-                                    // delegate's grouped/bubblePos bindings) only
-                                    // proves the JS-level values were correct — none
-                                    // of it proves Cascades actually shrank this
-                                    // Container's real height when topPadding dropped
-                                    // from 10 to 0. This is that missing proof: if
-                                    // height stays the same across a grouped:false→
-                                    // true transition, the padding change isn't
-                                    // reaching layout at all, confirming a
-                                    // Cascades-level measurement bug rather than
-                                    // anything left to fix in this file's own JS.
-                                    // Safe to delete once that's answered.
+                                    // Diagnostic: logs the row's real measured height next to the
+                                    // grouped value that decided its topPadding, to confirm the padding
+                                    // change actually reaches layout. Safe to remove.
                                     onLayoutFrameChanged: {
                                         console.log("[Zalo QML] row layoutFrame CHANGED: msgId=" + String(ListItemData.msgId).slice(-6)
                                             + " grouped=" + rowRoot.grouped + " bubblePos=" + rowRoot.bubblePos
@@ -1527,38 +1188,14 @@ Page {
 
                         Container {
                             id: bubbleWrap
-                            // Per explicit request: all bubbles in a conversation
-                            // should always render at the same fixed width
-                            // (bubbleMaxW), regardless of how short the text is —
-                            // only height should vary per message. preferredWidth
-                            // forces bubbleWrap to actually BE bubbleMaxW wide every
-                            // time (not just capped at it), so "Hi" renders exactly
-                            // as wide as the longest-message bubble in the same
-                            // conversation. maxWidth kept alongside as a safety
-                            // ceiling (belt-and-suspenders — preferredWidth alone
-                            // should already be sufficient here).
+                            // All bubbles render at a fixed width (bubbleMaxW) regardless of text
+                            // length, only height varies. preferredWidth forces this, maxWidth is
+                            // kept as a safety ceiling.
                             preferredWidth: rowRoot.bubbleMaxW
                             maxWidth:       rowRoot.bubbleMaxW
-                            // Reverted the nine-patch bubble-PNG rendering
-                            // attempt (DockLayout + ImageView using
-                            // rowRoot.bubbleImage) — on device the bubble
-                            // PNGs stretched into a blurry white/blue smear
-                            // instead of a clean bubble shape. These source
-                            // images are mostly transparent/very thin-
-                            // bordered, so force-scaling them up to fill an
-                            // entire row is the wrong technique for this
-                            // asset set regardless of the ScalingMethod
-                            // used. Back to the flat solid-color fill that
-                            // was there originally. The real "gap between
-                            // messages 1-2 and 3-4" bug is a SEPARATE issue
-                            // from bubble rendering — grouped/bubblePos/
-                            // layoutFrame height all already compute
-                            // correctly per the diagnostics (all 4 rows
-                            // here are grp=true past the first, all
-                            // "middle" rows measure height=55), so the gap
-                            // is coming from somewhere else — being
-                            // investigated separately rather than papered
-                            // over here.
+                            // Uses a flat solid-color fill, not a nine-patch bubble PNG — the
+                            // source PNGs are mostly transparent/thin-bordered and stretched into
+                            // a blurry smear when scaled up to fill a row.
                             background: rowRoot.isHighlighted
                                 ? Color.create("#fff3b0")
                                 : (rowRoot.isDark
@@ -1657,9 +1294,8 @@ Page {
                                     }
                                 }
 
-                                // Recovered photo bubble for a recalled image message, shown only
-                                // when "Show Recalled Messages" is on and the cached file is still
-                                // on disk (see recalledIsPhoto / applyRecall()).
+                                // Recovered photo bubble for a recalled image, shown only when
+                                // "Show Recalled Messages" is on and the cached file is still on disk
                                 Container {
                                     visible: rowRoot.recalled && !rowRoot.recalledHidden && rowRoot.recalledIsPhoto
                                     topMargin: 0; bottomMargin: 0
@@ -1687,16 +1323,9 @@ Page {
                                     }
                                 }
 
-                                // Reply/quote block — separate visual chunk sitting above the
-                                // actual message text, exactly like the photo-attachment bubble
-                                // is its own chunk rather than inline with text. Background is
-                                // darker than the bubble itself and colored by WHOSE bubble
-                                // this is (mine=gray strip color, theirs=blue strip color — the
-                                // same two colors the existing bottom accent-strip Container
-                                // already uses for mine/theirs, so the reply block visually
-                                // matches that established color language instead of inventing
-                                // a third color). Tapping it jumps to + highlights the original
-                                // quoted message (chatViewPage.jumpToMessage()).
+                                // Reply/quote block, a separate chunk above the message text.
+                                // Colored by whose bubble it is, matching the bottom accent-strip
+                                // colors. Tapping it jumps to and highlights the quoted message.
                                 Container {
                                     visible: !rowRoot.recalled && rowRoot.hasQuote
                                     horizontalAlignment: HorizontalAlignment.Fill
@@ -1748,47 +1377,10 @@ Page {
                                                       || ListItemData.content.indexOf("thumbUrl") >= 0
                                                       || ListItemData.content.indexOf("thumb") >= 0
                                                       || ListItemData.content.indexOf("href") >= 0))
-                                    // Corrected width behavior for this Label across a
-                                    // few rounds of iteration — recording the final
-                                    // reasoning here since it's non-obvious:
-                                    //
-                                    // 1) Originally pinned preferredWidth/maxWidth to
-                                    //    rowRoot.bubbleMaxW - 28 directly. Assumed this
-                                    //    caused clipping because bubbleMaxW read stale/
-                                    //    zero on first layout. Diagnostic logging (added
-                                    //    to onLayoutFrameChanged, see rowLUH above) later
-                                    //    proved this assumption WRONG: bubbleMaxW was
-                                    //    always a real, correctly-computed value (e.g.
-                                    //    320-626 depending on screen width), never 0 or
-                                    //    stale.
-                                    // 2) Removed the pin and added spaceQuota:1 + Fill
-                                    //    instead, assuming that would let the Label size
-                                    //    itself fresh each layout pass. This actually made
-                                    //    things worse: spaceQuota/Fill tells the Label
-                                    //    (and bubbleWrap around it, which was ALSO Fill-
-                                    //    chained) to stretch to fill all available width
-                                    //    up to bubbleMaxW — so short messages like "Hi"
-                                    //    started rendering as wide as bubbleMaxW too,
-                                    //    which is visibly wrong (confirmed via screenshot).
-                                    //
-                                    // Real fix, corrected once more: this Label should
-                                    // NOT be spaceQuota/Fill (that's what over-stretched
-                                    // "Hi" to bubbleMaxW width). But it also can't have
-                                    // NO width constraint at all — with neither Fill nor
-                                    // an explicit width, Cascades had nothing to wrap the
-                                    // long text against, so it rendered as one unwrapped
-                                    // line and got clipped by bubbleWrap's own maxWidth
-                                    // instead of wrapping to multiple lines within it.
-                                    //
-                                    // The correct pattern: maxWidth directly on THIS
-                                    // Label (not preferredWidth, not Fill/spaceQuota).
-                                    // maxWidth caps how wide Cascades will let the Label
-                                    // grow/wrap against, without forcing it to actually
-                                    // BE that wide when the content is shorter — so "Hi"
-                                    // still shrink-wraps to its own natural width, while
-                                    // the long test string now has an actual ceiling to
-                                    // wrap multiple lines within instead of rendering
-                                    // unbounded on one line.
+                                    // maxWidth (not preferredWidth or Fill/spaceQuota) is the right
+                                    // pattern here: it caps wrapping width without forcing short
+                                    // messages like "Hi" to stretch to bubbleMaxW, while still giving
+                                    // long text a ceiling to wrap against instead of clipping.
                                     maxWidth: Math.max(0, rowRoot.bubbleMaxW - 28)
                                     text: {
                                         var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
@@ -1811,10 +1403,8 @@ Page {
                                     topMargin: 0; bottomMargin: 0
                                 }
 
-                                // Photo attachment bubble.
-                                // Layout: caption (if any) → dashed separator → inline photo (capped
-                                // to bubbleMaxW, real aspect ratio) → status text. Shown directly in
-                                // the bubble, no separate full-screen viewer page.
+                                // Photo attachment bubble: caption (if any) -> dashed separator ->
+                                // inline photo (capped to bubbleMaxW) -> status text. No full-screen viewer.
                                 Container {
                                     id: photoBubble
                                     visible: !rowRoot.recalled
@@ -1829,15 +1419,11 @@ Page {
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     topMargin: 2; bottomMargin: 2
 
-                                    // Caption label — sits above the separator line.
-                                    // Only shown when the photo content JSON contains a "caption" key.
+                                    // Caption label, shown only when the photo JSON has a "caption" key
                                     Label {
                                         id: photoCaptionLbl
-                                        // Same stale-bubbleMaxW trap as the main message
-                                        // Label above — removed the preferredWidth/maxWidth
-                                        // pin. photoBubble (parent) is already
-                                        // HorizontalAlignment.Fill, so this inherits a
-                                        // freshly-measured width on every real layout pass.
+                                        // No preferredWidth/maxWidth pin — photoBubble is already
+                                        // Fill, so this inherits a fresh width each layout pass
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         visible: {
                                             var c = ListItemData.content || "";
@@ -1868,7 +1454,7 @@ Page {
                                         topMargin: 0; bottomMargin: 4
                                     }
 
-                                    // Separator line — only present when caption is showing.
+                                    // Separator line, only present when caption is showing
                                     Container {
                                         visible: photoCaptionLbl.visible
                                         horizontalAlignment: HorizontalAlignment.Fill
@@ -1877,10 +1463,8 @@ Page {
                                         bottomMargin: 6
                                     }
 
-                                    // Inline photo — shown at real (capped) size directly in the
-                                    // bubble, same sizing pattern as the recalled-photo preview
-                                    // above (bubbleMaxW + aspect ratio). No tap-to-open viewer,
-                                    // no filename/filesize row — just the picture.
+                                    // Inline photo at capped size, same pattern as the recalled-photo
+                                    // preview above. No tap-to-open viewer, no filename/size row.
                                     Container {
                                         horizontalAlignment: HorizontalAlignment.Left
                                         preferredWidth:  (ListItemData.imgWidth  && ListItemData.imgWidth  > 0)
@@ -1911,7 +1495,7 @@ Page {
                                         }
                                     }
 
-                                    // Status text: gray, shows "Sending..." for unconfirmed outgoing.
+                                    // Gray status text, shows "Sending..." for unconfirmed outgoing
                                     Label {
                                         text: {
                                             var mid = ListItemData.msgId || "";
@@ -1929,30 +1513,13 @@ Page {
                             }
                         } // bubble content Container
 
-                            // Accent strip along the bottom edge of the bubble —
-                            // gray for my own messages, blue for incoming ones.
-                            // Only the LAST bubble of a grouped cluster ("bottom")
-                            // or a standalone message ("full") gets the strip —
-                            // otherwise every message in a group drew its own
-                            // line, making a single grouped cluster look like it
-                            // kept splitting into separate bubbles.
+                            // Accent strip on the bubble's bottom edge — gray for mine, blue for
+                            // theirs. Only the last bubble in a group ("bottom") or a standalone
+                            // message ("full") gets it, so a grouped cluster doesn't look split.
                             //
-                            // NOT using visible: false to hide this anymore.
-                            // visible:false frequently does NOT collapse a
-                            // Container's reserved layout space in Cascades/
-                            // Qt4-era UI frameworks — the element stops being
-                            // painted but its preferredHeight can still get
-                            // counted by the parent's layout pass. That matches
-                            // exactly what device logs showed: a row that was
-                            // briefly "bottom" (strip visible, taller) when it
-                            // first arrived, then reclassified to "middle"
-                            // moments later once more messages arrived and
-                            // pushed it mid-cluster (strip should disappear),
-                            // never got a second "row layoutFrame CHANGED" log
-                            // line — its height/space from the strip never got
-                            // released. Setting height to 0 directly (instead
-                            // of toggling visible) forces the reserved space
-                            // itself to go to zero, not just the painting.
+                            // Height set to 0 rather than visible: false — on this Cascades version,
+                            // visible:false doesn't reliably release the Container's reserved layout
+                            // space, so a strip that should disappear could leave a lingering gap.
                             Container {
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 property bool showStrip: rowRoot.bubblePos === "bottom" || rowRoot.bubblePos === "full"
@@ -1972,21 +1539,10 @@ Page {
                         } // inner row Container
 
                         // ---- Reaction pills (kind === "message" only) -----------
-                        // One gray, square-cornered chip per DISTINCT icon anyone
-                        // reacted to this message with — "+N" where N is how many
-                        // people picked that icon (see msgList.summarizePills()).
-                        // Plain Color-filled Containers are naturally square-
-                        // cornered already (no cornerRadius applied anywhere here),
-                        // which is exactly the "overlay pill không bo góc" look
-                        // asked for. Sits flush under the bubble's own edge —
-                        // mirrors the SAME left/right spacer widths bubbleWrap
-                        // above uses (mine: 18 left / 60 right, incoming: 60 left
-                        // / 18 right) so the pill row lines up with the bubble
-                        // instead of the row's own full width.
-                        // 6 FIXED slots, not a loop/Repeater — same constraint
-                        // already established for the poll card right below (this
-                        // QtQuick version has no Repeater item) and for
-                        // ReactionPickerSheet.qml's own icon strip.
+                        // One square-cornered chip per distinct icon anyone reacted with,
+                        // "+N" for count (see msgList.summarizePills()). Lines up with the
+                        // bubble edge using the same left/right spacer widths as bubbleWrap.
+                        // 6 fixed slots, not a Repeater — this QtQuick version doesn't have one.
                         Container {
                             id: reactionRow
                             horizontalAlignment: HorizontalAlignment.Fill
@@ -2096,13 +1652,9 @@ Page {
                         } // reactionRow
 
                         // ---- Inline poll card (kind === "poll") -----------------
-                        // Mirrors GroupBoardSheet.qml's own poll-option rendering
-                        // (background #cfe3fa when voted else #f0f0f0, tap-to-vote,
-                        // fixed 0..5 option slots — see that file's long comment on
-                        // why no Repeater is used) so the same poll looks the same
-                        // whether seen here or in the full Group Board sheet. The
-                        // one addition here is "View voters", which the sheet
-                        // doesn't have.
+                        // Mirrors GroupBoardSheet.qml's poll rendering (voted/unvoted colors,
+                        // tap-to-vote, fixed 0..5 slots) so it looks the same in both places.
+                        // The one addition here is "View voters", which the sheet doesn't have.
                         Container {
                             id: pollCardRoot
                             visible: rowRoot.kind === "poll"
@@ -2290,9 +1842,9 @@ Page {
             ]
         }
 
-        // EmojiPanel is created lazily on first open to avoid its ~800ms
-        // object-creation cost delaying every chat tap. The slot container
-        // is always in the layout so the panel snaps into the correct position.
+        // EmojiPanel is created lazily on first open to avoid its ~800ms creation
+        // cost delaying every chat tap. The slot container stays in the layout so
+        // the panel snaps into the right position once created.
         Container {
             id: emojiPanelSlot
             horizontalAlignment: HorizontalAlignment.Fill
@@ -2300,10 +1852,8 @@ Page {
             visible: false
         }
 
-        // Thin single-row quick-message suggestion bar — mirrors
-        // attachPreviewBar's structure/height instead of the old tall
-        // scrollable list. Only the single best match is shown; typing
-        // more narrows which one that is.
+        // Single-row quick-message suggestion bar, mirrors attachPreviewBar's
+        // structure/height instead of a tall scrollable list. Shows only the best match.
         Container {
             id: qmSuggestBar
             visible: !!chatViewPage.qmMatch
@@ -2359,9 +1909,8 @@ Page {
             }
         }
 
-        // Attachment preview bar — shown when an image is staged for sending.
-        // Layout: [X]  [thumbnail]  [filename]
-        // User can optionally type a caption in the input field before pressing Send.
+        // Attachment preview bar, shown when an image is staged for sending
+        // Layout: [X] [thumbnail] [filename]. Caption is typed in the input field.
         Container {
             id: attachPreviewBar
             visible: chatViewPage.pendingAttachPath.length > 0
@@ -2373,7 +1922,7 @@ Page {
             rightPadding:  ui.du(1.5)
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-            // X — cancel pending attachment
+            // Cancel pending attachment
             Container {
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth:  ui.du(6)
@@ -2436,11 +1985,9 @@ Page {
             }
         }
 
-        // Reply staging bar — shown while a reply is pending, above the input.
-        // Same visual language as attachPreviewBar (same background colors,
-        // same [X] cancel pattern) so the two "something is queued to send"
-        // states read as one consistent affordance rather than two different
-        // UI languages. Layout: [X]  [colored quote strip]  [sender + snippet]
+        // Reply staging bar, shown above the input while a reply is pending
+        // Same visual language as attachPreviewBar for a consistent "queued to send" look
+        // Layout: [X] [colored quote strip] [sender + snippet]
         Container {
             id: replyPreviewBar
             visible: chatViewPage.pendingReplyMsgId.length > 0
@@ -2452,7 +1999,7 @@ Page {
             rightPadding:  ui.du(1.5)
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
 
-            // X — cancel pending reply
+            // Cancel pending reply
             Container {
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth:  ui.du(6)
@@ -2484,9 +2031,7 @@ Page {
                 }
             }
 
-            // Colored accent strip — echoes the quote-block strip rendered
-            // inside the bubble itself, so the preview and the eventual sent
-            // bubble visually match.
+            // Colored accent strip, matches the quote-block strip in the bubble itself
             Container {
                 verticalAlignment: VerticalAlignment.Fill
                 preferredWidth: ui.du(0.5)
@@ -2558,12 +2103,8 @@ Page {
                     sendAction.enabled = (text.trim().length > 0 || chatViewPage.pendingAttachPath.length > 0);
                     chatViewPage.refreshQuickMessageSuggestions(text);
                 }
-                // Without this, Cascades was defaulting initial focus/highlight to the
-                // first focusable control in the title bar (the voice-call button)
-                // whenever this page is pushed from ChatsTab, instead of the message
-                // input. Requesting focus here (the control's own onCreationCompleted,
-                // not the Page's) matches BlackBerry's own documented Cascades sample
-                // pattern for focusing a text field as soon as a page loads.
+                // Without this, Cascades defaults initial focus to the title bar's
+                // voice-call button instead of the message input
                 onCreationCompleted: {
                     requestFocus();
                 }
@@ -2595,13 +2136,9 @@ Page {
                         var ep = emojiPanelDef.createObject();
                         ep.isDark = chatViewPage.isDark;
                         ep.horizontalAlignment = HorizontalAlignment.Fill;
-                        // 23du = dot-row (2.5du) + 2 emoji rows tightly fit to
-                        // EmojiButton's own 7du height + grid padding (1du) +
-                        // bottom category bar (5.5du). The previous 28du left
-                        // ~2.5du of extra vertical space per row that GridLayout
-                        // spread out as padding around each button — visually
-                        // that read as "emoji look stretched" even though the
-                        // icon itself was already locked to a 1:1 box.
+                        // 23du = dot-row (2.5du) + 2 emoji rows sized to EmojiButton's 7du
+                        // height + grid padding (1du) + category bar (5.5du). 28du left extra
+                        // space that GridLayout spread as padding, making emoji look stretched.
                         ep.preferredHeight = ui.du(23);
                         ep.minHeight = ui.du(16);
                         emojiPanelSlot.add(ep);
@@ -2665,15 +2202,9 @@ Page {
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: { clearHistoryDialog.show() }
         },
-        // Group Board: shows all pinned messages/notes/polls in this group
-        // (GroupBoardSheet.qml, pushed via the groupBoardRequested flag —
-        // same "flip a bool, the owning NavigationPane watches and pushes"
-        // pattern qmRequested already uses just below in this same file,
-        // since ChatView itself can't push into its own parent Nav
-        // directly). 1-1 threads have no group board concept server-side,
-        // hence disabled (not hidden — same convention "Block user"/"Leave
-        // group" already use above for their own thread-type restrictions)
-        // outside of groups.
+        // Group Board: pushed via groupBoardRequested, same flip-a-bool pattern as
+        // qmRequested, since ChatView can't push into its own parent Nav directly.
+        // Disabled (not hidden) outside groups, same convention as Block/Leave group.
         ActionItem {
             title: "Group board"
             imageSource: "asset:///images/ChatView/ic_sb_notes.png"
@@ -2688,17 +2219,10 @@ Page {
             enabled: chatViewPage.isGroup
             onTriggered: { leaveGroupDialog.show() }
         },
-        // Create today's event: writes a real event into the device's
-        // default calendar via app.createTodayEvent() (ApplicationUI, which
-        // wraps bb::pim::calendar::CalendarService — see that C++ method's
-        // own comment in applicationui.cpp). Always today's date; this QML
-        // layer never passes a date, so there's no wiring here that could
-        // accidentally schedule the wrong day. Subject defaults to
-        // "Meeting with <thread name>" as a reasonable starting point, not
-        // left blank — shown back for review in createEventDialog's body
-        // before the event is actually created (not editable there: this
-        // codebase's ConfirmDialog is a SystemDialog wrapper with no text
-        // input, just confirm/cancel).
+        // Writes a real event to the device calendar via app.createTodayEvent()
+        // (wraps bb::pim::calendar::CalendarService). Always today's date.
+        // Subject defaults to "Meeting with <thread name>", shown for review in
+        // createEventDialog before creating (not editable — ConfirmDialog has no text input).
         ActionItem {
             title: "Create today's event"
             imageSource: "asset:///images/ChatView/ic_create_event.png"
@@ -2711,9 +2235,8 @@ Page {
     ]
 
     // --- Quick Messages "/command" autocomplete --------------------------
-    // Finds the "active" slash command at the end of the current text, if
-    // any: the LAST "/" that starts the string or follows whitespace, with
-    // no whitespace after it (i.e. the person is still typing that token).
+    // Finds the "active" slash command at the end of the current text — the last
+    // "/" that starts the string or follows whitespace, with no whitespace after it
     function activeSlashToken(text) {
         var slashIdx = text.lastIndexOf("/");
         if (slashIdx === -1) return null;
@@ -2738,8 +2261,7 @@ Page {
             chatViewPage.qmMatch = null;
             return;
         }
-        // Pick the single best match: an exact name match wins outright;
-        // otherwise the shortest prefix match (closest to what's typed).
+        // Pick the best match: exact name wins outright, otherwise shortest prefix match
         var best = null;
         for (var i = 0; i < all.length; i++) {
             var name = all[i].name.toLowerCase();
@@ -2834,9 +2356,8 @@ Page {
         chatViewPage.pendingMsg = txt;
 
         if (isReply) {
-            // qmsgType sent to the server is Zalo's own client-message-type code
-            // (1=text, 32=photo — see zca-js getClientMessageType()), which is
-            // NOT the same numbering as our local msgType (1=text, 2=photo).
+            // qmsgType is Zalo's own client-message-type code (1=text, 32=photo),
+            // not the same numbering as our local msgType (1=text, 2=photo)
             var qServerType = (chatViewPage.pendingReplyMsgType === 2 || chatViewPage.pendingReplyMsgType === "2") ? 32 : 1;
             var qContent = (chatViewPage.pendingReplyMsgType === 2 || chatViewPage.pendingReplyMsgType === "2")
                            ? "[Photo]" : chatViewPage.pendingReplyContent;
@@ -2877,11 +2398,9 @@ Page {
         return "";
     }
 
-    // A photo sent together with a text caption from the official Zalo app
-    // carries that caption as a "caption" key inside the photo's content JSON
-    // (see normalizePhotoContent() on the C++ side). Same regex-extraction
-    // style as extractPhotoUrl() above, kept separate since this one needs to
-    // un-escape \", \\, \n, \r, \t the C++ side escaped when building the JSON.
+    // Photo caption is a "caption" key inside the photo's content JSON. Same
+    // regex-extraction style as extractPhotoUrl(), but also un-escapes what the
+    // C++ side escaped when building the JSON.
     function extractPhotoCaption(content) {
         if (typeof content !== "string" || content.length === 0) return "";
         if (content.charAt(0) !== "{") return "";
@@ -2891,15 +2410,9 @@ Page {
                    .replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
     }
 
-    // See the detailed race-condition comment inside rebuildGroups() below for
-    // why this exists. Call this before ANY direct msgModel.append()/clear()
-    // (not just before rebuildGroups() itself) so a pending deferred flush
-    // from an earlier rebuildGroups() call always lands, in order, before
-    // new data goes in — otherwise a message appended while msgModel is
-    // sitting cleared-but-not-yet-reflushed can end up ordered before
-    // earlier messages once the flush finally fires, or (worse, the
-    // originally reported bug) get silently overwritten and lost entirely
-    // if the append is itself followed by another deferring rebuildGroups().
+    // Call before any direct msgModel.append()/clear() so a pending deferred flush
+    // from an earlier rebuildGroups() call lands first — otherwise new data can end
+    // up out of order, or get silently overwritten. See rebuildGroups() below for why.
     function flushPendingRebuild() {
         if (rebuildFlushTimer.running || rebuildFlushTimer.pendingItems) {
             rebuildFlushTimer.stop();
@@ -2912,46 +2425,25 @@ Page {
     }
 
     function rebuildGroups(scrollAfter) {
-        // Data-loss race fix: rebuildGroups() below can defer its own update
-        // onto rebuildFlushTimer (msgModel.clear() now, real content
-        // re-appended on the NEXT event loop turn — see the big comment
-        // further down explaining why that deferral exists). If a SECOND
-        // message arrives and calls onNewMessage -> msgModel.append() ->
-        // rebuildGroups() again before that timer fires, msgModel is still
-        // sitting empty from the first call's clear(). The second call's own
-        // "var size = msgModel.size()" then sees only whatever it just
-        // appended, and if IT also needs to defer, its pendingItems
-        // (containing only the second message) overwrites the first call's
-        // still-pending pendingItems (containing everything, including the
-        // first message) — the first message is silently gone forever once
-        // the timer finally fires. Confirmed on-device: a reply sent right
-        // after an incoming photo made that photo disappear.
+        // Data-loss race fix: if rebuildGroups() deferred an update onto
+        // rebuildFlushTimer and a second message arrives before that timer fires,
+        // the second call's pendingItems would overwrite the first's — silently
+        // losing the first message. Confirmed on-device: a reply sent right after
+        // an incoming photo made that photo disappear.
         //
-        // Fix: if a flush is already pending when we're called, apply it
-        // synchronously RIGHT NOW (stop the timer, append its pendingItems
-        // immediately) before doing anything else. This closes the race
-        // window entirely — by the time this function reads msgModel.size()
-        // below, any earlier deferred update has already landed for real,
-        // so nothing gets appended into a still-cleared model or overwrites
-        // a not-yet-flushed pendingItems.
+        // Fix: if a flush is already pending, apply it synchronously right now
+        // before doing anything else, closing the race window.
         chatViewPage.flushPendingRebuild();
 
         var size = msgModel.size();
         if (size === 0) return;
 
         var items = [];
-        // Snapshot each row's CURRENT grouped/bubblePos before anything below
-        // mutates it. msgModel.value(i) hands back the same underlying object
-        // that items[i] then points to and gets its fields overwritten on
-        // (cur.bubblePos = ...; cur.grouped = ...; a few dozen lines down) —
-        // so comparing "old = msgModel.value(i)" against "items[i]" later was
-        // really comparing that object against itself post-mutation, always
-        // equal. layoutChanged was effectively always false, so the
-        // remove+insert remeasure path documented below never actually ran —
-        // this is the real reason grouped bubbles kept rendering with a stale
-        // gap even though the recomputed grouped/bubblePos values were
-        // correct. Capturing plain old/new values up front (not object
-        // references) makes the before/after comparison meaningful again.
+        // Snapshot each row's current grouped/bubblePos before mutating it.
+        // msgModel.value(i) returns the same object items[i] points to and later
+        // mutates, so comparing them afterward was always comparing an object
+        // against itself post-mutation. Capturing plain values up front instead
+        // makes the before/after comparison actually work.
         var prevGrouped = [];
         var prevBubblePos = [];
         for (var i = 0; i < size; i++) {
@@ -2961,12 +2453,9 @@ Page {
             prevBubblePos.push(v.bubblePos);
         }
 
-        // Normalise a Zalo timestamp (may be seconds or ms) to milliseconds.
-        // isLocal rows (still-unconfirmed "local_"/"local_img_"/"local_file_"
-        // placeholders) carry a DEVICE-clock ts; confirmed rows carry a
-        // SERVER-clock ts. Bump local ones by clockOffsetMs so every ts being
-        // compared is on the same clock — see clockOffsetMs declaration above
-        // for why this is necessary.
+        // Normalize a timestamp (seconds or ms) to milliseconds. Unconfirmed "local_"
+        // rows carry a device-clock ts; bump those by clockOffsetMs so every ts
+        // being compared is on the same clock.
         function toMs(ts, isLocal) {
             var n = (ts || 0) * 1;
             if (n > 0 && n < 1e12) n *= 1000;
@@ -2987,18 +2476,13 @@ Page {
             var prevSender = prev ? (prev.senderId  || "") : "";
             var nextSender = next ? (next.senderId  || "") : "";
 
-            // Photo messages (msgType 2) always stand alone — never merged into
-            // an adjacent text bubble regardless of sender or timing.
+            // Photo messages (msgType 2) always stand alone, never merged into a text bubble
             var curIsPhoto  = (cur.msgType  === 2 || cur.msgType  === "2");
             var prevIsPhoto = prev ? (prev.msgType === 2 || prev.msgType === "2") : false;
             var nextIsPhoto = next ? (next.msgType === 2 || next.msgType === "2") : false;
 
-            // 5-minute grouping window — REMOVED for text messages per request:
-            // every text message now always stands alone as its own bubble
-            // (bubblePos always "full"), regardless of sender or timing.
-            // Photo grouping is untouched: photos already never merge with
-            // anything via the curIsPhoto/prevIsPhoto/nextIsPhoto checks below,
-            // so this change has no effect on photo bubbles.
+            // Text messages always stand alone now (bubblePos always "full"), no
+            // 5-minute grouping window. Photo grouping is untouched by this.
             var curId  = cur.msgId  || "";
             var prevId = prev ? (prev.msgId || "") : "";
             var nextId = next ? (next.msgId || "") : "";
@@ -3009,7 +2493,7 @@ Page {
             var curTs  = toMs(cur.ts,               curLocal);
             var prevTs = toMs(prev ? prev.ts : null, prevLocal);
             var nextTs = toMs(next ? next.ts : null, nextLocal);
-            // Always false now — text messages never merge based on timing.
+            // Always false — text messages never merge based on timing
             var withinPrev = false;
             var withinNext = false;
 
@@ -3030,9 +2514,8 @@ Page {
             cur.grouped   = samePrev;
             cur.isMine    = curMine;
 
-            // latestTs: the timestamp shown on the group header is always the
-            // time of the last message in the group. Back-propagate to the
-            // group start, stopping at the group boundary (grouped === false).
+            // The group header always shows the last message's time — back-propagate
+            // to the group start, stopping at the group boundary
             if (!sameNext) {
                 cur.latestTs = cur.ts;
                 if (cur.grouped) {
@@ -3046,44 +2529,20 @@ Page {
             }
         }
 
-        // Writing every index back with replace() unconditionally is not just
-        // wasteful — it's the actual cause of the "gap that only shows up after
-        // the next message arrives" bug: replace() only swaps the item's DATA in
-        // Cascades' ArrayDataModel, it does not reliably force the ListView to
-        // re-measure that row's height. topPadding/bottomPadding directly depend
-        // on `grouped`/`bubblePos` (see the Container bindings a few hundred
-        // lines up), so whenever this recompute actually CHANGES those two
-        // values for a row — e.g. a message that used to be "grouped" becomes
-        // ungrouped because a deleted message that used to sit next to it is
-        // gone now — the row's on-screen height silently goes stale at its OLD
-        // size until something else (like a brand new append()) forces a full
-        // relayout, which is exactly the "looked fine until the next message
-        // arrived" symptom. remove+insert forces Cascades to treat the row as a
-        // brand new item and re-measure it immediately instead of leaving a
-        // stale cached height around.
+        // replace() only swaps data in the ArrayDataModel, it doesn't force a
+        // re-measure — so when grouped/bubblePos actually changes for a row (which
+        // topPadding/bottomPadding depend on), its height can go stale until
+        // something else forces a full relayout.
         //
-        // Doing that removeAt+insert PER ROW, though, turned out to have its
-        // own failure mode: when several messages arrive close together (a
-        // second or less apart), rebuildGroups() runs once per message, and
-        // each run can touch multiple earlier rows whose grouped/bubblePos
-        // just shifted because a new row joined their cluster. Each of those
-        // per-row removeAt+insert calls kicks off Cascades' default
-        // remove/insert item animation; with runs stacking up faster than an
-        // animation can finish, a later run's removeAt+insert on the same
-        // index interrupts the still-running animation from the previous
-        // run, and the row is left with whatever half-finished height that
-        // interruption produced — visually stuck looking "split" even though
-        // the underlying grouped/bubblePos data is correct (confirmed by the
-        // diagnostic dump below matching the intended grouping while the
-        // screen still showed separate bubbles).
+        // Per-row removeAt+insert fixes that but has its own race: several messages
+        // arriving close together each trigger their own remove/insert animation,
+        // and a later one can interrupt an earlier still-running one, leaving a row
+        // stuck at a half-finished height.
         //
-        // Collapsing every row's update into a single clear()+append() avoids
-        // that entirely: it's one atomic model reset instead of N
-        // independently-animated per-row mutations, so there's nothing left
-        // to race. Only pay that (heavier) cost when something actually
-        // needs to re-layout; a run where nothing's grouping changed (e.g. a
-        // photo URL just finished downloading) still uses cheap in-place
-        // replace() per row, same as before.
+        // Collapsing every row's update into one clear()+append() avoids the race —
+        // one atomic reset instead of N animated per-row mutations. Only paid when
+        // something actually needs to re-layout; unchanged rows still use cheap
+        // in-place replace().
         var anyLayoutChanged = false;
         for (var i = 0; i < size; i++) {
             if (prevGrouped[i] !== items[i].grouped || prevBubblePos[i] !== items[i].bubblePos) {
@@ -3091,14 +2550,8 @@ Page {
                 break;
             }
         }
-        // TEMP DIAGNOSTIC — definitive proof of which branch actually runs
-        // and why, for the specific "gap after grouping change" bug report.
-        // Logs anyLayoutChanged's real value plus every row's prev vs new
-        // grouped/bubblePos side by side, so a fresh capture shows for
-        // certain whether the clear()+append() (heavy) path is actually
-        // being taken when "Hello" transitions bottom->middle, or whether
-        // it's silently falling through to the cheap replace() path
-        // despite a real grouping change. Safe to delete once answered.
+        // Diagnostic: logs anyLayoutChanged plus each row's prev vs new grouped/
+        // bubblePos, to confirm which path actually runs. Safe to remove.
         {
             var diagLine = "[Zalo QML] anyLayoutChanged=" + anyLayoutChanged;
             for (var di3 = 0; di3 < size; di3++) {
@@ -3109,54 +2562,20 @@ Page {
             console.log(diagLine);
         }
         if (anyLayoutChanged) {
-            // clear()+append() alone updates the ArrayDataModel's data, but the
-            // delegate-binding diagnostics above proved grouped/bubblePos were
-            // ALREADY arriving correctly at the delegate for the affected rows
-            // even while the gap still showed — meaning the ListView itself was
-            // reusing pooled Control instances whose already-measured height
-            // Cascades wasn't recomputing off the padding-only change.
+            // clear()+append() alone doesn't force a remeasure — the ListView was
+            // reusing pooled Control instances with a stale measured height. Several
+            // approaches were tried and rejected (see git history): a synchronous
+            // dataModel=null;dataModel=msgModel bounce turned out to be a no-op
+            // since it's the same model reference, so there's nothing for Cascades
+            // to diff.
             //
-            // Several approaches to forcing a hard remeasure were tried and
-            // rejected — see git history on this block for the details
-            // (empty-dataModel bounce via a second fixed ArrayDataModel done
-            // synchronously, deferred onto a Timer, via a fresh per-call
-            // ArrayDataModel, an unverified detachAttachedObjects() call, and
-            // toggling listItemComponents' `type` per row). Each relied on an
-            // unconfirmed Cascades API, broke msgModel's fixed QML id being
-            // read/written from ~50 other call sites in this file, or (the
-            // type-toggle) risked undefined/crash behavior from pointing rows
-            // at a type with no matching ListItemComponent.
+            // Deferring the re-append to the next event loop turn (via a zero-interval
+            // Timer) gives Cascades a real empty-dataModel layout pass in between,
+            // which is what actually forces it to drop the pooled item heights.
             //
-            // The dataModel=null;dataModel=msgModel bounce (previous attempt,
-            // see git history) turned out to be a no-op in practice: the
-            // delegate-binding diagnostics (grouped-binding/bubblePos-binding)
-            // fire correctly, but rowLUH's layoutFrameChanged never fires
-            // again for a row whose bubblePos changed without its INDEX
-            // changing — confirmed by a real device log capture where row
-            // 338345 went bubblePos "full"->"top" (a real padding/height
-            // change) with a bubblePos-binding log line proving the QML
-            // property updated, but no matching "row layoutFrame CHANGED"
-            // line, i.e. Cascades kept the row's originally-measured height.
-            // Reassigning the SAME msgModel object back to dataModel
-            // synchronously never gives Cascades an empty-model layout pass
-            // to actually drop its pooled/cached item heights — it's still
-            // the same model reference before and after, nothing to diff.
-            //
-            // Deferring the re-append to the NEXT event loop turn (via a
-            // zero-interval Timer) instead gives Cascades a real intervening
-            // layout pass over an EMPTY dataModel in between clear() and
-            // append(), which is what actually forces it to tear down and
-            // discard the pooled item Controls instead of recycling their
-            // stale measured heights back onto the new data.
-            // TEMP DIAGNOSTIC — investigating the "gap after delete+reopen+resend"
-            // bug report. Dumps every row's msgId/sender/content-length/grouped/
-            // bubblePos so a fresh log capture shows definitively whether there's
-            // a stray zero-content/ghost row still occupying a model slot near the
-            // deleted message, or whether bubblePos/grouped themselves are wrong.
-            // Reads from items[] (the just-computed values) rather than
-            // msgModel.value() here, since msgModel is deferred-empty until
-            // rebuildFlushTimer fires on the next event loop turn.
-            // Safe to delete once that bug is found — this is not a fix by itself.
+            // Diagnostic: dumps every row's msgId/sender/content-length/grouped/
+            // bubblePos, reading from items[] since msgModel is deferred-empty until
+            // rebuildFlushTimer fires. Safe to remove.
             var dbgLine = "[Zalo QML] rebuildGroups: size=" + size;
             for (var di = 0; di < size; di++) {
                 var dv = items[di];
@@ -3183,9 +2602,7 @@ Page {
             msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
         }
 
-        // TEMP DIAGNOSTIC — same dump as above, for the cheap-path (no
-        // layout change) branch, where msgModel already holds items[] via
-        // the in-place replace() calls just above.
+        // Diagnostic: same dump as above, for the cheap-path (no layout change) branch
         {
             var dbgLine2 = "[Zalo QML] rebuildGroups: size=" + size;
             for (var di2 = 0; di2 < size; di2++) {
@@ -3237,10 +2654,9 @@ Page {
             source: "EmojiPanel.qml"
         },
 
-        // Receives emojiPicked from the lazily-created EmojiPanel instance.
-        // target is set explicitly (not via .connect()) to avoid the BB10
-        // dynamic-signal-connection reliability issue.
-        // target: null disables validation until we assign the real instance.
+        // Receives emojiPicked from the lazily-created EmojiPanel instance
+        // target is set explicitly (not via .connect()) — dynamic signal connections
+        // aren't reliable on BB10. target: null until the real instance is assigned.
         Connections {
             id: emojiSignalCon
             target: null
@@ -3249,17 +2665,15 @@ Page {
             }
         },
 
-        // ---- Copy & Share (bubble hold-menu) — ported from SmartList10 ----
+        // ---- Copy & Share (bubble hold-menu) ----
         SystemToast {
             id: copyToast
             body: "Copied to clipboard"
             position: SystemUiPosition.MiddleCenter
         },
 
-        // Clears jumpHighlightMsgId a couple seconds after jumpToMessage()
-        // sets it, so the yellow "just jumped here" highlight is transient
-        // (matches the feel of the search-match highlight) instead of
-        // sticking on the row forever.
+        // Clears jumpHighlightMsgId a couple seconds after jumpToMessage() sets it,
+        // so the highlight is transient instead of sticking on the row
         Timer {
             id: jumpHighlightTimer
             interval: 2000
@@ -3267,25 +2681,21 @@ Page {
             onTriggered: { chatViewPage.jumpHighlightMsgId = ""; }
         },
 
-        // Generic error toast for Delete/Recall/Download failures — body is set
-        // by the caller right before show().
+        // Generic error toast for Delete/Recall/Download failures, body set by the caller
         SystemToast {
             id: errorToast
             position: SystemUiPosition.MiddleCenter
         },
 
-        // Separate from copyToast: copyToast's body is a static binding
-        // ("Copied to clipboard"), so reusing it here for Download would
-        // permanently overwrite that binding for every future Copy too.
+        // Separate from copyToast — its body is a static "Copied to clipboard" binding
+        // that reusing here for Download would permanently overwrite
         SystemToast {
             id: downloadToast
             body: "Saved to Downloads"
             position: SystemUiPosition.MiddleCenter
         },
 
-        // Feedback for doPin()'s zService.pinGroupMessage() call — body is
-        // set right before show(), same pattern as errorToast/copyToast/
-        // downloadToast above (all shown synchronously, no deferral).
+        // Feedback for doPin()'s zService.pinGroupMessage() call, body set right before show()
         SystemToast {
             id: pinToast
             position: SystemUiPosition.MiddleCenter
@@ -3305,22 +2715,16 @@ Page {
             }
         },
 
-        // Feeds PinboardBar (see its own header comment for the "3 newest
-        // board items of any type" shown there) and upserts every poll
-        // item into msgModel as an inline poll card (see upsertPollRow's
-        // own comment for why this never repositions an existing row).
-        // Filtered by groupId so a fetch kicked off for a DIFFERENT group/
-        // thread the user has since navigated away from can't clobber this
-        // one's bar/cards — same "ignore stale replies for a thread we've
-        // left" guard the rest of this file already applies to
-        // messagesReady/etc.
+        // Feeds PinboardBar and upserts every poll item into msgModel as an inline
+        // card. Filtered by groupId so a stale fetch for a thread we've left can't
+        // clobber this one's bar/cards.
         Connections {
             target: zService
             onGroupBoardReady: {
                 if (groupId !== chatViewPage.threadId) return;
                 chatViewPage.boardItems = items;
-                // POLL DISABLED (temporary — keep project lean): re-enable
-                // inline poll cards in ChatView by uncommenting below.
+                // POLL DISABLED (temporary — keep project lean): uncomment to re-enable
+                // inline poll cards in ChatView
                 // for (var i = 0; i < items.length; i++) {
                 //     if (items[i].boardType === "poll") chatViewPage.upsertPollRow(items[i]);
                 // }
@@ -3352,25 +2756,17 @@ Page {
             }
         },
 
-        // Others' board activity while this exact thread is open — see
-        // ZaloService_WebSocket.cpp's cmd601 handler for why this is a
-        // SEPARATE signal from the Hub OS notification (that one is
-        // deliberately suppressed for the active thread; this one exists
-        // precisely to cover that gap in-app instead). isSelf events are
-        // skipped here since the *Done handlers above already cover this
-        // client's own actions more reliably (no dependency on whether
-        // Zalo's WS actually echoes a client's own action back).
+        // Others' board activity while this thread is open — a separate signal from
+        // the Hub OS notification (suppressed for the active thread) to cover that
+        // gap in-app. isSelf events are skipped since the *Done handlers above
+        // already cover our own actions.
         Connections {
             target: zService
             onBoardEventOccurred: {
                 if (groupId !== chatViewPage.threadId || isSelf) return;
                 chatViewPage.loadBoardItems();
-                // update_board fires for both "poll created" and "someone
-                // voted" alike (can't tell them apart from the WS event —
-                // see the C++ handler's comment) — fetching full detail
-                // covers both: bumpPollToBottom seeds a brand-new row from
-                // `detail` when this poll has no card yet, or just
-                // refreshes+repositions an existing one.
+                // update_board fires for both "poll created" and "someone voted" —
+                // fetching full detail covers both cases via bumpPollToBottom
                 if (topicType === 3 && topicId.length > 0 && act !== "remove_board" && act !== "remove_topic") {
                     zService.getPollDetail(topicId);
                 }
@@ -3383,13 +2779,9 @@ Page {
                 // POLL DISABLED (temporary): chatViewPage.bumpPollToBottom(pollId, detail.options || [], detail);
             }
         },
-        // Real-time reaction pushed from the server — either someone else's
-        // tap on a message in this thread, or the WS echo of our own
-        // reactMessage() call (harmless no-op re-apply, same
-        // already-applied-optimistically pattern the rest of this file uses
-        // for its own actions). icon === "" means that uid removed their
-        // reaction. Filtered by threadId so a push for a thread we've since
-        // navigated away from can't touch this screen's msgModel.
+        // Real-time reaction from the server — either another member's tap, or the
+        // WS echo of our own (harmless no-op re-apply). icon === "" means removed.
+        // Filtered by threadId so a stale push can't touch this screen's msgModel.
         Connections {
             target: zService
             onReactionUpdated: {
@@ -3408,8 +2800,7 @@ Page {
         SharePickerSheet { id: sharePicker },
 
         // "app" is a stable context property set once at startup (unlike
-        // chatsNav.activeChatPage/etc. in ChatsTab.qml, which start null) —
-        // safe to bind target directly here, no target:null dance needed.
+        // chatsNav.activeChatPage, which starts null) — safe to bind target directly
         Connections {
             target: app
             onShareTargetsReady: {
@@ -3418,8 +2809,7 @@ Page {
             }
         },
 
-        // Dim overlay shown while querying share targets — same pattern as
-        // SmartList10's main.qml dimDialog.
+        // Dim overlay shown while querying share targets
         Dialog {
             id: shareDimDialog
             Container {
@@ -3480,9 +2870,7 @@ Page {
 
             onMessagesReady: {
                 if (threadId !== chatViewPage.threadId) return;
-                // See flushPendingRebuild()'s comment for why this must run
-                // before any direct msgModel read/append in a handler that
-                // can fire from an async C++ signal.
+                // Must run before any direct msgModel read/append — see flushPendingRebuild()
                 chatViewPage.flushPendingRebuild();
 
                 var existing = chatViewPage.buildExistingIds();
@@ -3547,15 +2935,10 @@ Page {
 
             onNewMessage: {
                 if (threadId !== chatViewPage.threadId) return;
-                // Primary fix point for the reported "reply right after a
-                // photo makes the photo vanish" bug — see flushPendingRebuild()'s
-                // comment. This handler is exactly what fires back-to-back for
-                // two messages arriving close together (an incoming photo, then
-                // an outgoing reply's confirmation), and it does its own direct
-                // msgModel.append() further down without going through
-                // rebuildGroups() first — so without this, a pending deferred
-                // flush from the PREVIOUS message could still be sitting on
-                // rebuildFlushTimer when this one's append() runs.
+                // Fixes the "reply right after a photo makes the photo vanish" bug —
+                // this handler appends directly without going through rebuildGroups(),
+                // so a pending deferred flush from the previous message needs to be
+                // applied first. See flushPendingRebuild().
                 chatViewPage.flushPendingRebuild();
 
                 var msg = message;
@@ -3572,20 +2955,17 @@ Page {
                 var handledInPlace = false;
 
                 if (chatViewPage.normMine(msg.isMine)) {
-                    // This is the server's confirmation of one of our own outgoing
-                    // messages — cliMsgId is the device-clock ts its "local_"
-                    // placeholder was created with, msg.ts is the real server ts.
-                    // See updateClockOffset()/clockOffsetMs for why this is needed.
+                    // Server confirmation of our own outgoing message — cliMsgId is the
+                    // device-clock ts, msg.ts is the real server ts. See updateClockOffset().
                     chatViewPage.updateClockOffset(msg.cliMsgId, msg.ts);
 
                     if (msg.msgType === 2 || msg.msgType === "2") {
-                        // Early dedup: if the model already has a confirmed row for this
-                        // msgId, skip entirely (HTTP confirm + WS echo can both fire).
+                        // Early dedup — HTTP confirm and WS echo can both fire for the same msgId
                         if (msg.msgId) {
                             for (var di0 = 0; di0 < msgModel.size(); di0++) {
                                 var dv0 = msgModel.value(di0);
                                 if (dv0.msgId === msg.msgId && dv0.msgId.indexOf("local_") !== 0) {
-                                    // Already stored — only patch localImage if newly available.
+                                    // Already stored — only patch localImage if newly available
                                     if (msg.localImage && msg.localImage.length > 0
                                         && (!dv0.localImage || dv0.localImage.length === 0)) {
                                         dv0.localImage = msg.localImage;
@@ -3614,10 +2994,8 @@ Page {
                         if (savedLocalImage.length > 0) msg.localImage = savedLocalImage;
                         if (!msg.imgWidth  && savedImgWidth  > 0) msg.imgWidth  = savedImgWidth;
                         if (!msg.imgHeight && savedImgHeight > 0) msg.imgHeight = savedImgHeight;
-                        // The server confirmation (HTTP contentJson / WS normalizePhotoContent)
-                        // never carries a file-size field — only the QML-built placeholder did —
-                        // so re-inject it here or the size disappears from the bubble the moment
-                        // "Sending..." flips to "Picture sent".
+                        // The server confirmation never carries a file-size field, only the
+                        // placeholder did — re-inject it or the size disappears from the bubble
                         if (savedFileSize > 0 && (msg.content || "").indexOf('"fileSize"') < 0) {
                             if (msg.content && msg.content.charAt(0) === "{")
                                 msg.content = msg.content.slice(0, -1) + ',"fileSize":' + savedFileSize + '}';
@@ -3626,18 +3004,14 @@ Page {
                         }
 
                         if (placeholderIdx >= 0) {
-                            // Replace the placeholder row in place (same index) instead of
-                            // remove+append — avoids a brief duplicate-looking flicker in the
-                            // ListView when the server confirmation (HTTP + WS can both fire
-                            // close together) lands while the row is still animating in.
+                            // Replace in place instead of remove+append — avoids a brief
+                            // duplicate-looking flicker when HTTP and WS confirmations land close together
                             msgModel.replace(placeholderIdx, msg);
                             handledInPlace = true;
                         } else if (savedLocalImage.length === 0 && msg.localImage && msg.localImage.length > 0) {
-                            // Placeholder already consumed by an earlier confirmation for this
-                            // same photo (e.g. HTTP confirm + WS echo both arriving) — if we
+                            // Placeholder already consumed by an earlier confirmation — if we
                             // already have a row with this exact image, update it instead of
-                            // adding a second one, even if msgId happened to differ between
-                            // the two confirmations.
+                            // adding a duplicate
                             for (var li = msgModel.size() - 1; li >= 0; li--) {
                                 if (msgModel.value(li).localImage === msg.localImage) {
                                     msgModel.replace(li, msg);
@@ -3647,14 +3021,10 @@ Page {
                             }
                         }
 
-                        // Last-resort dedup: the HTTP send-msg confirmation and the WS echo
-                        // for the SAME photo can carry two different msgId values (the HTTP
-                        // response's id field is occasionally 0/missing, so the C++ side falls
-                        // back to a locally-generated id) — neither the msgId nor localImage
-                        // match above would catch that case, since the WS copy never carries
-                        // a localImage. Treat any other already-stored mine/photo row sent
-                        // within the last 8s with the same caption as the same physical send
-                        // and merge into it instead of appending a visual duplicate.
+                        // Last-resort dedup: HTTP confirm and WS echo for the same photo can
+                        // carry different msgIds (HTTP's id is occasionally 0/missing). Merge
+                        // any other mine/photo row sent in the last 8s with the same caption
+                        // instead of appending a duplicate.
                         if (!handledInPlace) {
                             var myTs = parseInt(msg.ts || "0", 10);
                             var myCap = chatViewPage.extractPhotoCaption(msg.content || "");
@@ -3684,17 +3054,10 @@ Page {
                         if (msgModel.value(di).msgId === msg.msgId) { dupIdx = di; break; }
                     }
                     if (dupIdx >= 0) {
-                        // Same msgId already recorded — typically the optimistic row
-                        // created right after the HTTP send-confirm (which only knows
-                        // the local device clock, not the server's real ts) getting a
-                        // second echo from the WS confirm (which carries the real,
-                        // authoritative server ts). Previously this duplicate was
-                        // silently dropped, so the row stayed stuck on local-clock ts
-                        // forever. If the local device clock drifts from server time
-                        // (as it does here, ~4h off), that stale ts both displays the
-                        // wrong time AND falls outside the 5-minute grouping window,
-                        // splitting a bubble that should still be merged with its
-                        // neighbours. Adopt the newer ts when it actually differs.
+                        // Same msgId already recorded — typically the HTTP send-confirm's
+                        // optimistic row (device-clock ts) getting a second echo from the WS
+                        // confirm (real server ts). Adopt the newer ts when it differs, or the
+                        // row stays stuck on a stale device-clock ts (wrong time, wrong grouping).
                         var existingRow = msgModel.value(dupIdx);
                         if (msg.ts && String(msg.ts) !== String(existingRow.ts)) {
                             msgModel.replace(dupIdx, msg);
@@ -3731,25 +3094,18 @@ Page {
                 chatViewPage.applyRecall(msgId);
             }
 
-            // Companion to the C++-side fix in ZaloService_WebSocket.cpp's
-            // m_seenMsgIds branch: an outgoing message saved via the HTTP
-            // send-confirm path (device-clock ts, since no server ts is
-            // available yet at that point) has just had its DB row corrected
-            // to the real server ts once the WS echo arrived. If this
-            // message happens to be currently loaded in msgModel, patch its
-            // ts in place here too and re-run grouping — otherwise the
-            // in-memory row would keep the stale device-clock ts (and the
-            // gap it causes) until the thread is closed and reopened, even
-            // though the DB itself is now correct.
+            // Companion to the C++-side fix in ZaloService_WebSocket.cpp: once the DB
+            // row's device-clock ts gets corrected to the real server ts via the WS echo,
+            // patch the in-memory row too if it's currently loaded — otherwise it'd keep
+            // the stale ts until the thread is reopened.
             onMessageTsCorrected: {
                 if (threadId !== chatViewPage.threadId) return;
                 chatViewPage.applyTsCorrection(msgId, newTs);
             }
 
-            // Result of our OWN recallMessage() call. On success, apply the same
-            // in-place bubble update as an incoming chat.undo notification
-            // (applyRecall) rather than waiting for a WS echo/re-fetch. On
-            // failure, surface why via a toast instead of failing silently.
+            // Result of our own recallMessage() call. On success, apply the same
+            // update as an incoming chat.undo (applyRecall) instead of waiting for a
+            // WS echo. On failure, show why via a toast.
             onMessageRecalledDone: {
                 if (threadId !== chatViewPage.threadId) return;
                 if (success) {
@@ -3760,13 +3116,9 @@ Page {
                 }
             }
 
-            // Result of our OWN deleteMessage() call ("Delete for me only", or
-            // "delete for everyone" in a group). On success, remove the bubble
-            // entirely from our own view (applyLocalDelete) — delete-for-me has
-            // no placeholder, unlike recall. The actual WS confirmation (the
-            // chat.delete event) arrives separately via onMessageDeletedLocally
-            // below; doing it here too means the bubble disappears immediately
-            // without waiting for that round-trip. On failure, show why.
+            // Result of our own deleteMessage() call. On success, remove the bubble
+            // right away (applyLocalDelete) instead of waiting for the WS confirmation
+            // in onMessageDeletedLocally below. On failure, show why.
             onMessageDeleted: {
                 if (threadId !== chatViewPage.threadId) return;
                 if (success) {
@@ -3777,12 +3129,9 @@ Page {
                 }
             }
 
-            // WS-side confirmation of OUR OWN "delete for me" (chat.delete),
-            // already filtered server/backend-side to only ever fire for
-            // deletions we performed (see extractDeleteInfo() in
-            // ZaloServiceUtils.hpp) — another participant's delete-for-me never
-            // reaches this signal. Re-applies applyLocalDelete as a harmless
-            // no-op if onMessageDeleted above already removed the bubble.
+            // WS confirmation of our own "delete for me", filtered server-side to
+            // only fire for deletions we performed. Harmless no-op if onMessageDeleted
+            // above already removed the bubble.
             onMessageDeletedLocally: {
                 if (threadId !== chatViewPage.threadId) return;
                 chatViewPage.applyLocalDelete(msgId);
@@ -3833,15 +3182,11 @@ Page {
                              || ext === "gif" || ext === "webp" || ext === "bmp");
 
                 if (isImg) {
-                    // Copy into the persistent "/tmp/zalo_img_local_<ts>.<ext>" cache right away
-                    // (not just on Send) so the original picked photo survives even if the
-                    // picker's own path is transient/sandboxed, and is never lost regardless
-                    // of what happens with the upload/WS echo afterwards.
+                    // Cache the picked photo right away, not just on Send — the picker's
+                    // own path may be transient/sandboxed
                     var cachedPath = zService.cacheLocalImage(path);
-                    // Stage the image — user can type a caption then press Send.
-                    // Clears any pending reply first: the two staging bars are
-                    // mutually exclusive (same reasoning as doReply() clearing
-                    // a pending photo when a reply is started).
+                    // Stage the image — clears any pending reply first, since the two
+                    // staging bars are mutually exclusive
                     var fname = path.substring(path.lastIndexOf('/') + 1);
                     chatViewPage.pendingReplyMsgId      = "";
                     chatViewPage.pendingReplyCliMsgId   = "";
@@ -3898,14 +3243,9 @@ Page {
             onConfirmed: zService.leaveGroup(chatViewPage.threadId)
         },
 
-        // Confirms the event subject (pre-filled by the "Create today's
-        // event" overflow ActionItem above) before actually writing it to
-        // the calendar. eventSubject is a plain property here rather than
-        // a text-entry field because ConfirmDialog (this codebase's shared
-        // SystemDialog wrapper — see ConfirmDialog.qml) only exposes
-        // title/body/confirmLabel, no input control; the subject is
-        // computed once at trigger time from the thread name, shown back
-        // in the body for confirmation, and used as-is on confirm.
+        // Confirms the event subject before writing it to the calendar. Plain property
+        // rather than a text field since ConfirmDialog has no input control — subject
+        // is computed once at trigger time and shown for confirmation.
         ConfirmDialog {
             id: createEventDialog
             property string eventSubject: ""

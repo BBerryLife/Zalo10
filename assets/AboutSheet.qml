@@ -28,18 +28,10 @@ Sheet {
             return false;
         }
 
-        // Earlier attempts rendered the changelog as one HTML string in a WebView,
-        // sized either by asking the WebView to measure its own content
-        // (document.body.scrollHeight) or by a hand-estimated pixel height. Both
-        // under-sized the WebView on device and cut the list off partway through —
-        // this WebView engine just isn't a reliable source of its own content height.
-        // This now builds plain row data for a native ListView (same pattern as
-        // ChatsTab/GroupsTab/InvitesTab), whose scrolling already works correctly
-        // everywhere else in this app. The leading NEW:/IMPROVE:/FIX:/REMOVED: tag is
-        // split out so it can be rendered bold via a separate Label (mirrors the
-        // bold-name + plain-preview pattern ChatsTab already uses); markdown "**"
-        // emphasis elsewhere in a line is stripped to plain text rather than guessing
-        // at an unverified rich-text Label API.
+        // Builds plain row data for a native ListView (same pattern as ChatsTab/
+        // GroupsTab/InvitesTab) instead of a WebView, which couldn't reliably size
+        // itself to the content on device. The leading NEW:/IMPROVE:/FIX:/REMOVED:
+        // tag is split out to render bold; markdown "**" emphasis is stripped to plain text.
         function buildChangelogRows(versions) {
             var tags = ["NEW:", "IMPROVE:", "FIX:", "REMOVED:"];
             var rows = [];
@@ -224,11 +216,8 @@ Sheet {
                                 updateCheckingToast.show();
                                 aboutNav.pendingManifestAction = "update";
                                 manifestTimeoutTimer.restart();
-                                // Cache-bust: jsDelivr sends a max-age cache-control header,
-                                // so the device's own WebView/network cache can keep serving an
-                                // old copy long after the CDN side has already been purged.
-                                // A changing query string makes every fetch look like a brand
-                                // new URL the device has never cached.
+                                // Cache-bust: jsDelivr sends a long max-age header, so a changing
+                                // query string is needed to avoid the WebView serving a stale copy
                                 manifestFetcher.url = manifestFetcher.manifestUrl + "?t=" + new Date().getTime();
                             }
                         }
@@ -249,12 +238,9 @@ Sheet {
                         }
                     }
 
-                    // Hidden — used purely to fetch Data/Zalo10-version.json through
-                    // BB10's WebView/browser TLS stack instead of QNetworkAccessManager.
-                    // The bare Qt4 networking stack fails the TLS handshake against
-                    // GitHub's CDN (SslHandshakeFailedError) no matter what
-                    // QSslConfiguration is thrown at it; the WebView's engine is kept
-                    // current through OS updates independently of the frozen NDK Qt/OpenSSL.
+                    // Hidden — fetches Data/Zalo10-version.json through the WebView's TLS
+                    // stack instead of QNetworkAccessManager, since the bare Qt4 networking
+                    // stack fails the TLS handshake against GitHub's CDN
                     WebView {
                         id: manifestFetcher
                         visible: false
@@ -262,13 +248,8 @@ Sheet {
                         preferredWidth: 1
                         preferredHeight: 1
 
-                        // raw.githubusercontent.com sends a CSP "sandbox" directive on
-                        // every response, which makes BB10's WebKit engine treat the
-                        // loaded document as an opaque origin — evaluateJavaScript then
-                        // can't reliably read document.body, so JSON.parse() gets back
-                        // an empty/garbled string ("Unable to parse JSON string || got:").
-                        // jsDelivr mirrors GitHub repo files without that header, so the
-                        // same WebView approach actually works against it.
+                        // Using jsDelivr instead of raw.githubusercontent.com — the latter's
+                        // CSP header breaks evaluateJavaScript() on BB10's WebKit engine
                         property string manifestUrl: "https://cdn.jsdelivr.net/gh/BBerryLife/BBerryLife.github.io@main/Data/Zalo10-version.json"
 
                         onLoadingChanged: {
@@ -276,9 +257,7 @@ Sheet {
                                 manifestFetcher.evaluateJavaScript("document.body.textContent || document.body.innerText || ''");
                             } else if (loadRequest.status === WebLoadStatus.Failed) {
                                 if (aboutNav.pendingManifestAction.length === 0) return; // already handled (e.g. by the timeout)
-                                // Include the URL so it can be pasted into the Browser to check
-                                // whether this is a real connectivity issue or specific to the
-                                // WebView/CDN — loadRequest itself doesn't expose an error code.
+                                // Include the URL so it can be checked in the Browser directly
                                 aboutNav.onManifestFailed("Could not load update info from " + manifestFetcher.manifestUrl + ". Try opening that link in Browser to check.");
                             }
                         }
@@ -289,9 +268,7 @@ Sheet {
                                 var manifest = JSON.parse(result);
                                 aboutNav.onManifestLoaded(manifest);
                             } catch (e) {
-                                // Surface what we actually got back instead of a generic
-                                // "malformed" message — needed to diagnose why JSON.parse
-                                // is failing (wrong field name? extra wrapper markup? etc).
+                                // Show what we actually got back instead of a generic error message
                                 var preview = (typeof result === "undefined") ? "<undefined>" : String(result).substring(0, 200);
                                 aboutNav.onManifestFailed("Parse failed: " + e + " || got: " + preview);
                             }
@@ -302,10 +279,7 @@ Sheet {
         }
 
         attachedObjects: [
-            // Safety net: if the WebView never reports back (no Succeeded, no
-            // Failed — e.g. the request just hangs), pendingManifestAction would
-            // stay set forever and updateBtn would stay disabled forever with
-            // zero feedback to the user. This guarantees a result within 15s.
+            // Safety net in case the WebView never reports back and just hangs
             Timer {
                 id: manifestTimeoutTimer
                 interval: 15000
@@ -399,8 +373,7 @@ Sheet {
                 id: updateResultToast
                 body: ""
             },
-            // Confirmation dialog: shown when a newer version is found.
-            // User can choose to download or cancel.
+            // Shown when a newer version is found — user can download or cancel
             SystemDialog {
                 id: updateConfirmDialog
                 title: "New Update Available"
@@ -409,10 +382,8 @@ Sheet {
                 cancelButton.label: "Cancel"
                 onFinished: {
                     if (value === SystemUiResult.ConfirmButtonSelection) {
-                        // BB10's Qt4 TLS stack can't complete the handshake against this
-                        // CDN via QNetworkAccessManager — confirmed on real hardware, even
-                        // with QSslConfiguration set to QSsl::AnyProtocol. Delegate to the
-                        // Browser, which has its own independently-updated TLS stack.
+                        // Delegate to the Browser — BB10's Qt4 TLS stack can't complete the
+                        // handshake against this CDN via QNetworkAccessManager
                         Qt.openUrlExternally(aboutNav.pendingDownloadUrl);
                         updateResultToast.body = "Opening download in Browser. Check your Downloads folder when done.";
                         updateResultToast.show();

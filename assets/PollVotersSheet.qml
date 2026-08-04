@@ -1,13 +1,10 @@
 import bb.cascades 1.4
 import QtQuick 1.0
 
-// PollVotersSheet — "who voted" detail for a single poll, opened from the
-// inline poll card's "View voters" link and from boardEvent rows of kind
-// "poll" (see ChatView.qml). Fetches fresh detail (including per-option
-// voter uids — zca-js's PollOptions.voters[], ported by
-// ZaloService::getPollDetail()) every time it opens rather than reusing
-// whatever's cached in msgModel/boardItems, since neither of those carries
-// voter names, only vote counts.
+// "Who voted" detail for a single poll, opened from the inline poll card's
+// "View voters" link and from poll rows on the group board (see ChatView.qml)
+// Always fetches fresh via ZaloService::getPollDetail() since the cached poll
+// data only has vote counts, not voter names
 Sheet {
     id: votersSheet
 
@@ -99,10 +96,8 @@ Sheet {
                         bottomMargin: ui.du(2)
                     }
 
-                    // Fixed 0..5 slots — same "no Repeater inside a Cascades
-                    // Container" constraint GroupBoardSheet.qml's own poll
-                    // rendering already works around (see that file/
-                    // PinboardBar.qml for the same pattern), applied here too.
+                    // Fixed 0..5 slots — Cascades Container can't use a Repeater,
+                    // same workaround as GroupBoardSheet.qml/PinboardBar.qml
 
                     Container {
                         visible: (votersSheet.detail.options || []).length > 0

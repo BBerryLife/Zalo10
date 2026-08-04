@@ -379,17 +379,9 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f48b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48d_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48e_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                    // This is the LAST page of the FIRST category and only has 3
-                    // real emojis. Every other page in this panel has a full (or
-                    // near-full, anchored by a preceding full row) 6-item row, so
-                    // GridLayout keeps a fixed per-column width. A lone partial row
-                    // with nothing to anchor it instead gets evenly redistributed
-                    // across the entire Fill-width container, which is exactly the
-                    // "emojis pulled far apart" bug on this page. Padding the row
-                    // out to 6 cells with invisible, non-interactive spacers (same
-                    // footprint as EmojiButton) makes GridLayout treat it like any
-                    // other full row, so the 3 real emojis pack tightly on the left
-                    // instead of stretching across the whole width.
+                    // Last page of the first category has only 3 real emojis. Without a
+                    // full row to anchor it, GridLayout stretches them across the whole
+                    // width, so pad out to 6 cells with invisible spacers to keep them packed left
                     Container {
                         preferredHeight: ui.du(7); maxHeight: ui.du(7); maxWidth: ui.du(7.5)
                         opacity: 0

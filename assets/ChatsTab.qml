@@ -30,24 +30,11 @@ NavigationPane {
             repeat: false
             onTriggered: chatsNav.refreshCooldown = false
         }
-        // NOTE: previously had a "warm-up" Timer here that pre-parsed
-        // ChatView.qml via chatsDef.createObject() + immediate destroy(),
-        // to avoid paying parse cost on the user's first real tap into a
-        // conversation. Removed — creating a Page-derived UIObject with no
-        // parent and destroying it while Cascades is still validating its
-        // trigger-signal bindings logged "Encountered unexpected parent
-        // QObject(0x0)... when validating trigger-signal" for two separate
-        // ChatView instances right before a SIGSEGV in QString::clear()
-        // moments later (device log, post-QR-scan). ChatView.qml has grown
-        // substantially heavier since this trick was added (poll cards,
-        // board-event pills, forward picker, multiple Connections blocks),
-        // and createObject()-without-a-parent + destroy() on a document
-        // this size is exactly the pattern BB10/QNX's older Qt4 Cascades
-        // runtime warns is unsafe ("not allowed to change parent on
-        // UIObjects that belongs to other UIObjects"). This was a pure
-        // perf optimization with admittedly "no visible effect" — not
-        // required for correctness — so removing it trades a marginally
-        // slower first chat-open for not risking a native crash.
+        // NOTE: used to have a warm-up Timer here that pre-parsed ChatView.qml via
+        // createObject()+destroy() to avoid a parse-cost hit on first tap. Removed —
+        // it caused a SIGSEGV on device (creating/destroying a parentless Page-derived
+        // UIObject isn't safe on this Qt4 Cascades runtime). Not worth the crash risk
+        // for a minor perf win.
     ]
 
     Page {
@@ -270,9 +257,7 @@ NavigationPane {
                     if (d) { d.hasUnread = false; friendModel.replace(idx, d); }
                     chatsNav.activeChatPage = page;
                     chatPageConn.target = page;
-                    // Push first, load second: navigation should never wait on
-                    // dbLoadMessages()/fetchMessages() — the conversation opens
-                    // immediately and its messages populate right after.
+                    // Push first, load second — navigation shouldn't wait on message fetch
                     var t1 = Date.now();
                     chatsNav.push(page);
                     console.log("[ChatsTab] push() took " + (Date.now() - t1) + "ms, total tap-to-push " + (Date.now() - t0) + "ms");
@@ -327,13 +312,10 @@ NavigationPane {
                 source: "asset:///QuickMessagesSheet.qml"
             },
             Connections {
-                // target starts null — binding directly to chatsNav.activeChatPage
-                // (which is null until a page is pushed) makes Cascades try to
-                // validate onQmRequestedChanged against a null target at
-                // construction time, which is what caused the "Cannot assign to
-                // non-existent property" warning on every launch. Assigned
-                // explicitly in JS instead (see openThread() and onTriggered
-                // below) once the real page instance exists.
+                // target starts null and is assigned once the page exists (see
+                // openThread()) — binding directly to chatsNav.activeChatPage causes a
+                // "Cannot assign to non-existent property" warning since it's null
+                // at construction time
                 id: chatPageConn
                 target: null
                 onQmRequestedChanged: {
@@ -362,20 +344,12 @@ NavigationPane {
                 onFriendsReady: {
                     chatsLoading.visible = false;
                     friendModel.clear();
-                    // The server's friends-list API never includes a last-message
-                    // field, so without this, every restart shows "No messages yet"
-                    // for everyone until a fresh message happens to arrive over the
-                    // network. Pull the last message we already have locally for
-                    // each thread and merge it in before the model is even built.
+                    // Server's friends list has no last-message field, so pull it from
+                    // local history and merge in before building the model
                     var lastMsgs = zService.getThreadLastMessages();
-                    // Build a fresh plain JS array instead of writing merged fields
-                    // back into `friends[i]` in place — `friends` here is backed by
-                    // a QVariantList marshalled over from the C++ signal, and this
-                    // codebase has hit multiple cases (see Qt4 QScriptEngine notes)
-                    // where that bridge doesn't reliably persist array-element
-                    // reassignment. Writing back silently no-opped, so the last
-                    // message/time (and the sort key) were computed correctly but
-                    // then lost before ever reaching friendModel.
+                    // Build a fresh array instead of mutating `friends` in place —
+                    // it's a QVariantList from a C++ signal and writes back to it
+                    // silently no-op on this runtime
                     var outArr = [];
                     for (var i = 0; i < friends.length; i++) {
                         var f = friends[i];
@@ -408,22 +382,16 @@ NavigationPane {
                         if (out.lastTime && out.lastTime !== "") {
                             var ts = parseInt(out.lastTime);
                             if (!isNaN(ts)) {
-                                // Keep the raw numeric timestamp around under its own
-                                // key so we can still sort threads by recency below,
-                                // even after lastTime itself gets overwritten with a
-                                // human-readable string ("11:37 PM") on the next line.
+                                // Keep the raw timestamp for sorting since lastTime gets
+                                // overwritten with a formatted string below
                                 out.sortTs = ts;
                                 out.lastTime = chatsNav.formatTime(ts);
                             }
                         }
                         outArr.push(out);
                     }
-                    // The friends-list API returns threads in a fixed server-side
-                    // order, not by recency. Without re-sorting here, every
-                    // logout/login (or cold app restart) reset each thread back to
-                    // that original position instead of keeping the most recently
-                    // active conversation at the top, which is what onNewMessage
-                    // below maintains while the app stays running.
+                    // Server returns threads in a fixed order, not by recency — re-sort
+                    // so the most recently active conversation stays on top
                     outArr.sort(function(a, b) { return (b.sortTs || 0) - (a.sortTs || 0); });
                     for (var j = 0; j < outArr.length; j++) {
                         var ff = outArr[j];
@@ -482,10 +450,7 @@ NavigationPane {
                             d.lastMsgIsMine  = isMine;
                             d.lastSenderName = senderName;
                             d.hasUnread      = !isMine;
-                            // Was missing entirely — the list previously froze on
-                            // whatever time was last loaded from disk/server and
-                            // never advanced as new messages came in (or went
-                            // out), no matter how much later they actually arrived.
+                            // Update the displayed time as new messages come in
                             if (message.ts) d.lastTime = chatsNav.formatTime(message.ts);
                             friendModel.removeAt(i);
                             friendModel.insert(0, d);

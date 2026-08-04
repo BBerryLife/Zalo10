@@ -1,7 +1,4 @@
-// ActiveFrameCover.qml
-// Context property from applicationui.cpp:
-//   coverImg : QString — full asset URL for the correct cover image
-//              (already selected in C++ based on screen size)
+// coverImg is set from applicationui.cpp, already picked for the current screen size
 
 import bb.cascades 1.0
 

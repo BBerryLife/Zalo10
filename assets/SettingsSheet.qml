@@ -48,10 +48,8 @@ Sheet {
             exportProgressToast.body = "Exporting data…";
             exportProgressToast.show();
 
-            // exportData() is synchronous, text-only SQLite + file-write work —
-            // fast enough (well under a second) that a real worker thread isn't
-            // needed. The progress toast just covers that brief window so the UI
-            // never looks unresponsive while it runs.
+            // exportData() runs synchronously but is fast, so a worker thread isn't
+            // needed — the progress toast just covers the brief blocking window
             var result = zService.exportData("/accounts/1000/shared/documents");
 
             exportProgressToast.cancel();

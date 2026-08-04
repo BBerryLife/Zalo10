@@ -2,13 +2,7 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// Create Note dialog for the Group Board, opened from GroupBoardSheet.qml's
-// "Create note" action-bar item. Layout follows the reference screenshot
-// (Zalo's own web UI "Create note" dialog): title + close X, a "Content"
-// labeled multiline text area with hint "Enter content or paste link", a
-// "Pin conversation note" toggle, Cancel/Create note buttons at the bottom.
-// Styled after QuickMessageEditSheet.qml's header/body conventions (same
-// FreeForm titleBar-with-close-X pattern, same field-container styling).
+// "Create note" dialog opened from GroupBoardSheet.qml's action bar
 Sheet {
     id: createNoteSheetRoot
 

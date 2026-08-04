@@ -2,12 +2,8 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// Add / Edit form for a single Quick Message. Opened on top of
-// QuickMessagesSheet.qml. editId < 0 means "creating a new one";
-// editId >= 0 means "editing the quick message with that id".
-//
-// Header styled after AboutSheet.qml: ImageButton close on left, title label.
-// Save action moved to action bar with ic_save.png icon.
+// Add/edit form for a single Quick Message, opened on top of QuickMessagesSheet.qml
+// editId < 0 = creating a new one, editId >= 0 = editing that message
 Sheet {
     id: qmEditSheetRoot
 

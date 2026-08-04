@@ -1,20 +1,15 @@
 import bb.cascades 1.4
 import QtQuick 1.0
 
-// Ported from SmartList10's SharePickerSheet.qml. Lists every app registered
-// for bb.action.SHARE, ordered the way app.queryShareTargets()/
-// onQueryTargetsFinished() groups them (BBM contact -> BBM group -> BBM
-// channel -> Text -> Email -> Meeting -> Bluetooth/NFC -> Remember -> other
-// native -> third-party).
+// Lists every app registered for bb.action.SHARE, in the order
+// app.queryShareTargets() returns them
 Sheet {
     id: sharePickerSheetRoot
 
     property variant targets: []
     property string pendingShareText: ""   // set by ChatView before opening
-    // Set by ChatView instead of pendingShareText when the bubble being
-    // shared is a photo message with a locally cached copy — routes the
-    // onTriggered handler below to invokeShareTargetForImage() so the
-    // receiving app gets the actual picture, not the JSON URL text.
+    // Set instead of pendingShareText when sharing a photo message that has a
+    // local cached copy, so the target app gets the actual image, not a URL
     property bool   pendingShareIsImage: false
     property string pendingShareImagePath: ""
 

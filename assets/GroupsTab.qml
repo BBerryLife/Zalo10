@@ -23,9 +23,7 @@ NavigationPane {
             repeat: false
             onTriggered: groupsNav.refreshCooldown = false
         },
-        // Same reasoning as ChatsTab.qml's chatViewWarmupTimer: forces the
-        // ChatView.qml component to be parsed/cached once in the background
-        // instead of on the user's first real tap into a group.
+        // Pre-warms ChatView.qml in the background, same as ChatsTab.qml's chatViewWarmupTimer
         Timer {
             id: groupViewWarmupTimer
             interval: 800
@@ -336,11 +334,9 @@ NavigationPane {
                 source: "asset:///GroupBoardSheet.qml"
             },
             Connections {
-                // Group Board is only ever opened from a group ChatView (see
-                // chatViewPage's "Group board" overflow ActionItem — disabled
-                // outside of groups), so this only needs wiring in GroupsTab,
-                // not ChatsTab. Same null-target-then-assign pattern as
-                // groupQmTriggerConn above, for the same reason.
+                // Group Board only opens from a group ChatView, so this only needs
+                // wiring here, not in ChatsTab. Same null-target-then-assign pattern
+                // as groupQmTriggerConn below.
                 id: groupBoardTriggerConn
                 target: null
                 onGroupBoardRequestedChanged: {
@@ -356,13 +352,10 @@ NavigationPane {
                 }
             },
             Connections {
-                // target starts null (see chatPageConn in ChatsTab.qml for why:
-                // binding directly to groupsNav.currentPage, which is null
-                // until a page is pushed, made Cascades validate
-                // onQmRequestedChanged against a null target at construction
-                // time — that's the "Cannot assign to non-existent property"
-                // warning seen on every launch). Assigned explicitly once the
-                // real page instance exists (see onTriggered below / openThread()).
+                // target starts null and is assigned once the real page exists (see
+                // openThread()) — binding directly to groupsNav.currentPage triggers a
+                // "Cannot assign to non-existent property" warning since it's null at
+                // construction time
                 id: groupQmTriggerConn
                 target: null
                 onQmRequestedChanged: {
@@ -402,11 +395,9 @@ NavigationPane {
                     groupsLoading.visible = false;
                     groupModel.clear();
                     var arr = [];
-                    // Same restore-from-local-history fix as ChatsTab.qml's
-                    // onFriendsReady — the server's group list never includes a
-                    // last-message field, so every restart would otherwise show
-                    // "No messages yet" for every group until a fresh message
-                    // happens to arrive over the network during that session.
+                    // Restore last messages from local history — the server's group list
+                    // doesn't include one, so without this every group shows
+                    // "No messages yet" until a new message arrives
                     var lastMsgs = zService.getThreadLastMessages();
                     for (var i = 0; i < threads.length; i++) {
                         if (!threads[i].isGroup) continue;
@@ -441,10 +432,8 @@ NavigationPane {
                         }
                         arr.push(g);
                     }
-                    // Same recency-sort fix as ChatsTab.qml's onFriendsReady: the
-                    // server's thread order is fixed, not by recency, so without
-                    // this every logout/login reset groups back to their original
-                    // position instead of keeping the most recently active one on top.
+                    // Server's thread order isn't sorted by recency, so sort here to keep
+                    // the most recently active group on top
                     arr.sort(function(a, b) { return (b.sortTs || 0) - (a.sortTs || 0); });
                     for (var j = 0; j < arr.length; j++) {
                         var gg = arr[j];
@@ -501,9 +490,7 @@ NavigationPane {
                                 d.lastMsgIsMine  = isMine;
                                 d.lastSenderName = message.dName || "";
                                 d.hasUnread      = !isMine;
-                                // Was missing entirely — same bug as ChatsTab.qml:
-                                // the displayed time never advanced past whatever
-                                // was last loaded from disk/server.
+                                // Update the displayed time, otherwise it never advances
                                 if (message.ts) d.lastTime = groupsNav.formatTime(message.ts);
                                 groupModel.removeAt(i);
                                 groupModel.insert(0, d);
@@ -535,10 +522,8 @@ NavigationPane {
                             break;
                         }
                     }
-                    // Belt-and-braces: if we're still sitting on the ChatView for the
-                    // group we just left, pop back to the list directly here instead
-                    // of relying solely on the ChatView.popRequested -> popWatcher
-                    // chain, which depends on currentPage having stayed in sync.
+                    // Extra safety: pop back to the list directly here in case the
+                    // popRequested -> popWatcher chain doesn't fire
                     if (groupsNav.currentPage && groupsNav.currentPage.threadId === groupId) {
                         groupsNav.pop();
                     }
