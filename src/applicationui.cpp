@@ -166,7 +166,7 @@ void ApplicationUI::createTodayEvent(const QString &subject, const QString &body
     QPair<AccountId, FolderId> defFolder = calSvc.defaultCalendarFolder(&folderResult);
     if (folderResult != Result::Success) {
         qDebug() << "[App] createTodayEvent: defaultCalendarFolder() failed, result=" << folderResult;
-        emit eventCreated(false, "Khong lay duoc lich mac dinh cua thiet bi");
+        emit eventCreated(false, "Could not retrieve the device's default calendar");
         return;
     }
 
@@ -187,7 +187,7 @@ void ApplicationUI::createTodayEvent(const QString &subject, const QString &body
     qDebug() << "[App] createTodayEvent: subject=" << subject << "start=" << start
               << "accountId=" << defFolder.first << "folderId=" << defFolder.second
               << "result=" << createResult << "ok=" << ok;
-    emit eventCreated(ok, ok ? QString() : QString("Loi tao su kien, ma loi: %1").arg((int)createResult));
+    emit eventCreated(ok, ok ? QString() : QString("Error creating event, error code: %1").arg((int)createResult));
 }
 
 void ApplicationUI::copyToClipboard(const QString &text)

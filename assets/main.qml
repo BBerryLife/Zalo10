@@ -167,8 +167,8 @@ TabbedPane {
             // is shared across all tabs (avoids missed or duplicate result dialogs)
             onEventCreated: {
                 eventResultDialog.body = success
-                    ? "Da them su kien vao lich hom nay."
-                    : ("Khong the tao su kien: " + error);
+                    ? "Added event to today's calendar"
+                    : ("Cannot create event: " + error);
                 eventResultDialog.show();
             }
         },

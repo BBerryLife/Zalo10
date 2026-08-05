@@ -108,13 +108,6 @@ public:
                                        const QString &quoteOwnerId, const QString &quoteContent,
                                        int quoteMsgType, const QString &quoteTs,
                                        const QString &quoteSenderName);
-    // Gửi tin nhắn text kèm reply/quote 1 tin trước đó. quoteMsgType là mã
-    // message type của Zalo (1=text, 32=photo), không phải msgType nội bộ.
-    Q_INVOKABLE void sendMessageQuote(const QString &threadId, const QString &content, bool isGroup,
-                                       const QString &quoteMsgId, const QString &quoteCliMsgId,
-                                       const QString &quoteOwnerId, const QString &quoteContent,
-                                       int quoteMsgType, const QString &quoteTs,
-                                       const QString &quoteSenderName);
     // Forward nội dung 1 tin nhắn đã gửi sang 1 hay nhiều thread KHÁC, cùng
     // loại (toàn group hoặc toàn 1-1, không trộn). Post lên file service
     // (không phải group/chat service như sendMessage()). content là nội
