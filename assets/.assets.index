@@ -1,7 +1,8 @@
 1
-799
+800
 AboutSheet.qml
 ActiveFrameCover.qml
+AttachPickerSheet.qml
 ChangelogPage.qml
 ChatsTab.qml
 ChatView.qml

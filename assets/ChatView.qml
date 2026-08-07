@@ -631,6 +631,22 @@ Page {
             function votePollOptionProxy(pollId, optionId, allowMulti, options) { chatViewPage.doVotePollOption(pollId, optionId, allowMulti, options); }
             function viewPollVotersProxy(pollId) { chatViewPage.openPollVoters(pollId); }
             function openGroupBoardProxy() { groupBoardUnderDevDialog.show(); }
+            // Video download progress tracking for tap-to-play bubbles. Only one
+            // video can be downloading at a time (see ZaloService::m_videoDownloadReply),
+            // so a single msgId+percent pair is enough — the delegate for that msgId
+            // binds videoBubble.vDownloading/vProgress off these two properties.
+            property string pendingVideoOpenMsgId: ""
+            property string videoProgressMsgId: ""
+            property int    videoProgressPercent: 0
+            function updateVideoBubbleProgress(msgId, percent, done) {
+                if (done) {
+                    msgList.videoProgressMsgId = "";
+                    msgList.videoProgressPercent = 0;
+                } else {
+                    msgList.videoProgressMsgId = msgId;
+                    msgList.videoProgressPercent = percent;
+                }
+            }
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -861,6 +877,26 @@ Page {
                     errorToast.show();
                 }
             }
+            // Tap bubble: tải video về /tmp rồi mở ngay bằng app ngoài (video
+            // player) qua app.openLocalFile(). Progress/finish/fail đến async
+            // qua zService.videoDownload* signals (xem Connections ở dưới,
+            // matched bằng msgList.pendingVideoOpenMsgId, declared above with
+            // the other msgList proxy properties).
+            function playVideoMsg(msgId, href, fileName) {
+                msgList.pendingVideoOpenMsgId = msgId;
+                zService.downloadVideoMessage(msgId, href, fileName);
+            }
+            // Nút "Download" trong context menu (long-press) — giống ảnh:
+            // chỉ lưu về /tmp, KHÔNG tự mở.
+            function doDownloadVideo(msgId, href, fileName) {
+                if (!href || href.length === 0) {
+                    errorToast.body = "Video not available";
+                    errorToast.show();
+                    return;
+                }
+                msgList.pendingVideoOpenMsgId = ""; // không mở, chỉ báo toast khi xong
+                zService.downloadVideoMessage(msgId, href, fileName);
+            }
             function doShare(content, isPhoto, localImage) {
                 if (isPhoto) {
                     errorToast.body = "Share isn't available for photos";
@@ -948,7 +984,32 @@ Page {
                                 ActionItem {
                                     title: "Download"
                                     imageSource: "asset:///images/ChatView/ic_download.png"
-                                    onTriggered: { rowRoot.ListItem.view.doDownload(ListItemData.msgId, ListItemData.localImage); }
+                                    onTriggered: {
+                                        if (ListItemData.msgType === 3 || ListItemData.msgType === "3") {
+                                            var c = ListItemData.content || "";
+                                            var hKey = '"href":"';
+                                            var hi = c.indexOf(hKey);
+                                            var href = "";
+                                            if (hi >= 0) {
+                                                hi += hKey.length;
+                                                var he = hi;
+                                                while (he < c.length && c.charAt(he) !== '"') he++;
+                                                href = c.substring(hi, he);
+                                            }
+                                            var nKey = '"fileName":"';
+                                            var ni = c.indexOf(nKey);
+                                            var fname = "video.mp4";
+                                            if (ni >= 0) {
+                                                ni += nKey.length;
+                                                var ne = ni;
+                                                while (ne < c.length && c.charAt(ne) !== '"') ne++;
+                                                fname = c.substring(ni, ne) || "video.mp4";
+                                            }
+                                            rowRoot.ListItem.view.doDownloadVideo(ListItemData.msgId, href, fname);
+                                        } else {
+                                            rowRoot.ListItem.view.doDownload(ListItemData.msgId, ListItemData.localImage);
+                                        }
+                                    }
                                 }
                                 ActionItem {
                                     title: "Share"
@@ -1005,7 +1066,32 @@ Page {
                                 ActionItem {
                                     title: "Download"
                                     imageSource: "asset:///images/ChatView/ic_download.png"
-                                    onTriggered: { rowRoot.ListItem.view.doDownload(ListItemData.msgId, ListItemData.localImage); }
+                                    onTriggered: {
+                                        if (ListItemData.msgType === 3 || ListItemData.msgType === "3") {
+                                            var c = ListItemData.content || "";
+                                            var hKey = '"href":"';
+                                            var hi = c.indexOf(hKey);
+                                            var href = "";
+                                            if (hi >= 0) {
+                                                hi += hKey.length;
+                                                var he = hi;
+                                                while (he < c.length && c.charAt(he) !== '"') he++;
+                                                href = c.substring(hi, he);
+                                            }
+                                            var nKey = '"fileName":"';
+                                            var ni = c.indexOf(nKey);
+                                            var fname = "video.mp4";
+                                            if (ni >= 0) {
+                                                ni += nKey.length;
+                                                var ne = ni;
+                                                while (ne < c.length && c.charAt(ne) !== '"') ne++;
+                                                fname = c.substring(ni, ne) || "video.mp4";
+                                            }
+                                            rowRoot.ListItem.view.doDownloadVideo(ListItemData.msgId, href, fname);
+                                        } else {
+                                            rowRoot.ListItem.view.doDownload(ListItemData.msgId, ListItemData.localImage);
+                                        }
+                                    }
                                 }
                                 ActionItem {
                                     title: "Share"
@@ -1509,6 +1595,110 @@ Page {
                                         }
                                         topMargin: 4; bottomMargin: 0
                                     }
+                                }
+
+                                // Video/file attachment bubble (msgType === 3): file-type icon on the
+                                // left, filename on the right, tap to download-and-open. Content JSON
+                                // shape: {"fileName":"...","href":"...","fileSize":...} — same on both
+                                // the outgoing (sendVideo) and incoming (share.file normalization) paths.
+                                Container {
+                                    id: videoBubble
+                                    visible: !rowRoot.recalled
+                                             && (ListItemData.msgType === 3 || ListItemData.msgType === "3")
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    topMargin: 2; bottomMargin: 2
+                                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                    maxWidth: rowRoot.bubbleMaxW
+
+                                    property string vFileName: {
+                                        var c = ListItemData.content || "";
+                                        if (c.length === 0 || c.charCodeAt(0) !== 123) return "video.mp4";
+                                        var key = '"fileName":"';
+                                        var si = c.indexOf(key);
+                                        if (si < 0) return "video.mp4";
+                                        si += key.length;
+                                        var ei = si;
+                                        while (ei < c.length) {
+                                            var code = c.charCodeAt(ei);
+                                            if (code === 92) { ei += 2; continue; }
+                                            if (code === 34) break;
+                                            ei++;
+                                        }
+                                        return c.substring(si, ei) || "video.mp4";
+                                    }
+                                    property string vHref: {
+                                        var c = ListItemData.content || "";
+                                        if (c.length === 0 || c.charCodeAt(0) !== 123) return "";
+                                        var key = '"href":"';
+                                        var si = c.indexOf(key);
+                                        if (si < 0) return "";
+                                        si += key.length;
+                                        var ei = si;
+                                        while (ei < c.length) {
+                                            var code = c.charCodeAt(ei);
+                                            if (code === 92) { ei += 2; continue; }
+                                            if (code === 34) break;
+                                            ei++;
+                                        }
+                                        return c.substring(si, ei);
+                                    }
+                                    // Bound to msgList's single-slot progress tracker (only one video
+                                    // downloads at a time) — true only while THIS bubble's msgId matches.
+                                    property bool vDownloading: rowRoot.ListItem.view.videoProgressMsgId === (ListItemData.msgId || "")
+                                                                 && rowRoot.ListItem.view.videoProgressMsgId !== ""
+                                    property int  vProgress: vDownloading ? rowRoot.ListItem.view.videoProgressPercent : 0
+
+                                    ImageView {
+                                        imageSource: "asset:///images/File Types/File Type - Video.png"
+                                        scalingMethod: ScalingMethod.AspectFit
+                                        verticalAlignment: VerticalAlignment.Center
+                                        preferredWidth: 44; preferredHeight: 44
+                                        minWidth: 44
+                                        rightMargin: 10
+                                    }
+
+                                    Container {
+                                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                        verticalAlignment: VerticalAlignment.Center
+
+                                        Label {
+                                            text: videoBubble.vFileName
+                                            horizontalAlignment: HorizontalAlignment.Fill
+                                            multiline: true
+                                            textStyle {
+                                                base:  SystemDefaults.TextStyles.BodyText
+                                                color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
+                                            }
+                                        }
+                                        Label {
+                                            text: {
+                                                var mid = ListItemData.msgId || "";
+                                                if (rowRoot.mine && mid.indexOf("local_video_") === 0) return "Sending...";
+                                                if (videoBubble.vDownloading) return "Downloading " + videoBubble.vProgress + "%...";
+                                                return "Tap to play";
+                                            }
+                                            textStyle {
+                                                fontSize: FontSize.XSmall
+                                                fontStyle: FontStyle.Italic
+                                                color: Color.create("#888888")
+                                            }
+                                            topMargin: 2
+                                        }
+                                    }
+
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                if (videoBubble.vDownloading) return;
+                                                if (!videoBubble.vHref || videoBubble.vHref === "") return;
+                                                // vDownloading/vProgress are computed off msgList's
+                                                // shared progress tracker — playVideoMsg() kicks off
+                                                // the download, and the first progress signal flips
+                                                // vDownloading true for this bubble.
+                                                rowRoot.ListItem.view.playVideoMsg(ListItemData.msgId, videoBubble.vHref, videoBubble.vFileName);
+                                            }
+                                        }
+                                    ]
                                 }
                             }
                         } // bubble content Container
@@ -2082,7 +2272,7 @@ Page {
                 rightMargin: ui.du(0.8)
                 defaultImageSource: chatViewPage.isDark ? "asset:///images/ChatView/attach_icon.png" : "asset:///images/ChatView/ic_attach.png"
                 pressedImageSource: chatViewPage.isDark ? "asset:///images/ChatView/attach_icon.png" : "asset:///images/ChatView/ic_attach.png"
-                onClicked: { filePicker.open() }
+                onClicked: { attachPickerSheet.open() }
             }
 
             TextField {
@@ -2790,6 +2980,38 @@ Page {
             }
         },
 
+        // Video/file download progress for the tapped bubble or the long-press
+        // "Download" action. pendingVideoOpenMsgId (set in playVideoMsg) tells
+        // Finished whether to auto-open (tap-to-play) or just toast (Download
+        // menu item) — matches doDownloadVideo() clearing it to "".
+        Connections {
+            target: zService
+            onVideoDownloadProgress: {
+                msgList.updateVideoBubbleProgress(msgId, percent);
+            }
+        },
+        Connections {
+            target: zService
+            onVideoDownloadFinished: {
+                msgList.updateVideoBubbleProgress(msgId, 100, true);
+                if (msgList.pendingVideoOpenMsgId === msgId && msgId.length > 0) {
+                    app.openLocalFile(localPath);
+                } else {
+                    downloadToast.show();
+                }
+                msgList.pendingVideoOpenMsgId = "";
+            }
+        },
+        Connections {
+            target: zService
+            onVideoDownloadFailed: {
+                msgList.updateVideoBubbleProgress(msgId, 0, true);
+                msgList.pendingVideoOpenMsgId = "";
+                errorToast.body = "Video download failed" + (errorMsg && errorMsg.length > 0 ? (": " + errorMsg) : "");
+                errorToast.show();
+            }
+        },
+
         PollVotersSheet { id: pollVotersSheet },
         ForwardPickerSheet { id: forwardPickerSheet; isDark: chatViewPage.isDark },
         ReactionPickerSheet {
@@ -3169,6 +3391,72 @@ Page {
             }
         },
 
+        AttachPickerSheet {
+            id: attachPickerSheet
+            onPictureSelected: { imagePicker.open(); }
+            onVideoSelected:   { videoPicker.open(); }
+        },
+
+        FilePicker {
+            id: imagePicker
+            type: FileType.Picture
+            mode: FilePickerMode.Picker
+            title: "Select Picture"
+            onFileSelected: {
+                var path = selectedFiles[0];
+                // Cache the picked photo right away, not just on Send — the picker's
+                // own path may be transient/sandboxed
+                var cachedPath = zService.cacheLocalImage(path);
+                // Stage the image — clears any pending reply first, since the two
+                // staging bars are mutually exclusive
+                var fname = path.substring(path.lastIndexOf('/') + 1);
+                chatViewPage.pendingReplyMsgId      = "";
+                chatViewPage.pendingReplyCliMsgId   = "";
+                chatViewPage.pendingReplyOwnerId    = "";
+                chatViewPage.pendingReplySenderName = "";
+                chatViewPage.pendingReplyContent    = "";
+                chatViewPage.pendingReplyMsgType    = 0;
+                chatViewPage.pendingReplyTs         = "";
+                chatViewPage.pendingAttachPath = cachedPath;
+                chatViewPage.pendingAttachName = fname;
+                inputField.requestFocus();
+                sendAction.enabled = true;
+            }
+        },
+
+        FilePicker {
+            id: videoPicker
+            type: FileType.Video
+            mode: FilePickerMode.Picker
+            title: "Select Video"
+            onFileSelected: {
+                var path = selectedFiles[0];
+                var ext  = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
+                if (ext !== "mp4") {
+                    errorToast.body = "Only .mp4 videos are supported";
+                    errorToast.show();
+                    return;
+                }
+                var fname = path.substring(path.lastIndexOf('/') + 1);
+                var mf = {
+                    msgId:    "local_video_" + new Date().getTime(),
+                    content:  JSON.stringify({ fileName: fname, href: "", fileSize: 0 }),
+                    msgType:  3,
+                    isMine:   true,
+                    isGroup:  chatViewPage.isGroup,
+                    senderId: "self",
+                    dName:    chatViewPage.selfName,
+                    ts:       String(new Date().getTime()),
+                    selfName: chatViewPage.selfName
+                };
+                msgModel.append(mf);
+                chatViewPage.rebuildGroups(true);
+                zService.sendVideo(chatViewPage.threadId, path, chatViewPage.isGroup);
+            }
+        },
+
+        // Giữ lại cho nhánh "File" (share.file loại khác video) sẽ nối sau —
+        // hiện Attach sheet chưa gọi tới, chỉ Picture/Video hoạt động.
         FilePicker {
             id: filePicker
             type: FileType.Other
@@ -3176,46 +3464,21 @@ Page {
             title: "Select File"
             onFileSelected: {
                 var path = selectedFiles[0];
-
-                var ext = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
-                var isImg = (ext === "jpg" || ext === "jpeg" || ext === "png"
-                             || ext === "gif" || ext === "webp" || ext === "bmp");
-
-                if (isImg) {
-                    // Cache the picked photo right away, not just on Send — the picker's
-                    // own path may be transient/sandboxed
-                    var cachedPath = zService.cacheLocalImage(path);
-                    // Stage the image — clears any pending reply first, since the two
-                    // staging bars are mutually exclusive
-                    var fname = path.substring(path.lastIndexOf('/') + 1);
-                    chatViewPage.pendingReplyMsgId      = "";
-                    chatViewPage.pendingReplyCliMsgId   = "";
-                    chatViewPage.pendingReplyOwnerId    = "";
-                    chatViewPage.pendingReplySenderName = "";
-                    chatViewPage.pendingReplyContent    = "";
-                    chatViewPage.pendingReplyMsgType    = 0;
-                    chatViewPage.pendingReplyTs         = "";
-                    chatViewPage.pendingAttachPath = cachedPath;
-                    chatViewPage.pendingAttachName = fname;
-                    inputField.requestFocus();
-                    sendAction.enabled = true;
-                } else {
-                    var fname = path.substring(path.lastIndexOf('/') + 1);
-                    var mf = {
-                        msgId:    "local_file_" + new Date().getTime(),
-                        content:  "[File: " + fname + "]",
-                        msgType:  0,
-                        isMine:   true,
-                        isGroup:  chatViewPage.isGroup,
-                        senderId: "self",
-                        dName:    chatViewPage.selfName,
-                        ts:       String(new Date().getTime()),
-                        selfName: chatViewPage.selfName
-                    };
-                    msgModel.append(mf);
-                    chatViewPage.rebuildGroups(true);
-                    zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
-                }
+                var fname = path.substring(path.lastIndexOf('/') + 1);
+                var mf = {
+                    msgId:    "local_file_" + new Date().getTime(),
+                    content:  "[File: " + fname + "]",
+                    msgType:  0,
+                    isMine:   true,
+                    isGroup:  chatViewPage.isGroup,
+                    senderId: "self",
+                    dName:    chatViewPage.selfName,
+                    ts:       String(new Date().getTime()),
+                    selfName: chatViewPage.selfName
+                };
+                msgModel.append(mf);
+                chatViewPage.rebuildGroups(true);
+                zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
             }
         },
 

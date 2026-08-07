@@ -1,0 +1,87 @@
+import bb.cascades 1.4
+import QtQuick 1.0
+
+// Attach sheet giống list "Attach" gốc của BB10 Hub (icon vuông màu + tên).
+// Hiện chỉ Picture/Video hoạt động thật — các mục còn lại (Location, Audio,
+// Voice Note, Contact, Appointment, File) hiển thị mờ (disabled), sẽ nối
+// dần sau. Không dùng Repeater (không tồn tại ở QtQuick1/Cascades) — build
+// tĩnh từng CustomListItem.
+Sheet {
+    id: attachPickerSheetRoot
+
+    signal pictureSelected()
+    signal videoSelected()
+
+    Page {
+        titleBar: TitleBar {
+            title: "Attach"
+            dismissAction: ActionItem {
+                title: "Cancel"
+                onTriggered: { attachPickerSheetRoot.close(); }
+            }
+        }
+
+        Container {
+            horizontalAlignment: HorizontalAlignment.Fill
+
+            ListView {
+                dataModel: ArrayDataModel {
+                    id: attachModel
+                    // enabled=true chỉ cho Picture/Video — phần còn lại disabled,
+                    // giữ nguyên thứ tự/tên của Attach sheet gốc BB10.
+                    items: [
+                        { key: "picture",     label: "Picture",     icon: "asset:///images/File Types/BT File - Picture (Image).png", enabled: true  },
+                        { key: "video",       label: "Video",       icon: "asset:///images/File Types/BT File - Video.png",           enabled: true  },
+                        { key: "location",    label: "Location",    icon: "asset:///images/File Types/File Type - Location.png",      enabled: false },
+                        { key: "audio",       label: "Audio",       icon: "asset:///images/File Types/File Type - Audio.png",         enabled: false },
+                        { key: "voicenote",   label: "Voice Note",  icon: "asset:///images/File Types/File Type - Voice Note (Audio Recording).png", enabled: false },
+                        { key: "contact",     label: "Contact",     icon: "asset:///images/File Types/File Type - VCF (Contanct).png", enabled: false },
+                        { key: "appointment", label: "Appointment", icon: "asset:///images/File Types/File Type - Calendar.png",       enabled: false },
+                        { key: "file",        label: "File",        icon: "asset:///images/File Types/File Type - Generic.png",       enabled: false }
+                    ]
+                }
+
+                listItemComponents: [
+                    ListItemComponent {
+                        CustomListItem {
+                            dividerVisible: true
+                            highlightAppearance: ListItemData.enabled ? HighlightAppearance.Default : HighlightAppearance.None
+
+                            Container {
+                                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                                verticalAlignment: VerticalAlignment.Center
+                                leftPadding: 0; rightPadding: 16; topPadding: 10; bottomPadding: 10
+                                opacity: ListItemData.enabled ? 1.0 : 0.35
+
+                                ImageView {
+                                    imageSource: ListItemData.icon
+                                    scalingMethod: ScalingMethod.AspectFit
+                                    verticalAlignment:   VerticalAlignment.Center
+                                    horizontalAlignment: HorizontalAlignment.Left
+                                    minWidth: 70
+                                    preferredWidth:  68
+                                    preferredHeight: 68
+                                }
+                                Label {
+                                    text: ListItemData.label
+                                    verticalAlignment: VerticalAlignment.Center
+                                    layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                                    leftMargin: 10
+                                    textStyle.base: SystemDefaults.TextStyles.TitleText
+                                }
+                            }
+                        }
+                    }
+                ]
+
+                onTriggered: {
+                    var item = dataModel.data(indexPath);
+                    if (!item.enabled) return;
+                    attachPickerSheetRoot.close();
+                    if (item.key === "picture")     attachPickerSheetRoot.pictureSelected();
+                    else if (item.key === "video")  attachPickerSheetRoot.videoSelected();
+                }
+            }
+        }
+    }
+}

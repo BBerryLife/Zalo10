@@ -885,6 +885,48 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (mtStr.isEmpty()) mtStr = m["msgtype"].toString().toLower();
                 if (mtStr.contains("photo") || mtStr.contains("image") || mtStr == "2")
                     mt = 2;
+                // Video/file (msgType wire = "share.file"): content mang
+                // title (tên file gốc), href (URL CDN tải), description,
+                // thumb, params ({fileSize, checksum,...}). Chuẩn hóa content
+                // thành {"fileName":...,"href":...,"fileSize":...} để QML
+                // render bubble file — cùng shape với content video mình tự
+                // gửi (xem sendVideo()/handleFileUploadDone() ở
+                // ZaloService_Messages.cpp) để 1 bubble QML dùng chung được
+                // cho cả 2 chiều.
+                else if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
+                    mt = 3;
+            }
+
+            if (mt == 3) {
+                QVariantMap fm = m["content"].toMap();
+                if (fm.isEmpty()) {
+                    QString fStr = m["content"].toString();
+                    if (!fStr.isEmpty() && fStr.trimmed().startsWith("{"))
+                        fm = jsonToMap(fStr.toUtf8());
+                }
+                QString fTitle = fm["title"].toString();
+                QString fHref  = fm["href"].toString();
+                qint64  fSize  = 0;
+                QVariant paramsV = fm["params"];
+                QVariantMap paramsMap = (paramsV.type() == QVariant::String)
+                    ? jsonToMap(paramsV.toString().toUtf8())
+                    : paramsV.toMap();
+                if (!paramsMap.isEmpty())
+                    fSize = paramsMap["fileSize"].toString().toLongLong();
+
+                if (!fHref.isEmpty()) {
+                    QString fTitleEsc = fTitle;
+                    fTitleEsc.replace("\\", "\\\\").replace("\"", "\\\"");
+                    QString newContent = QString("{\"fileName\":\"%1\",\"href\":\"%2\"")
+                                              .arg(fTitleEsc).arg(fHref);
+                    if (fSize > 0) newContent += QString(",\"fileSize\":%1").arg(fSize);
+                    newContent += "}";
+                    m["content"] = newContent;
+                    qDebug() << "[Zalo WS] share.file detected: fileName=" << fTitle
+                             << "href=" << fHref.left(80) << "size=" << fSize;
+                } else {
+                    qDebug() << "[Zalo WS] share.file but no href found, keys=" << fm.keys();
+                }
             }
 
             // QScriptEngine của Qt4 tự convert nested JSON object thành
@@ -923,8 +965,11 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                          << "previewThumb(60)=" << previewThumb.left(60);
             }
 
-            // Zalo WS real-time photo: msgType may be 0 but photo URLs are in paramsExt/previewThumb
-            if (mt == 2 || rawContent.isEmpty()) {
+            // Zalo WS real-time photo: msgType may be 0 but photo URLs are in paramsExt/previewThumb.
+            // mt == 3 (video/file) loại trừ tường minh — nếu share.file thiếu
+            // href, để nó rơi vào text thô thay vì bị normalizePhotoContent()
+            // nhận nhầm thành ảnh.
+            if (mt != 3 && (mt == 2 || rawContent.isEmpty())) {
                 QString normalized = normalizePhotoContent(m, rawContent);
                 if (normalized != rawContent && !normalized.isEmpty()) {
                     rawContent = normalized;
@@ -1531,6 +1576,27 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             QVariantMap control = controls[i].toMap();
             QVariantMap content = control["content"].toMap();
             QString actType = content["act_type"].toString();
+
+            // Video/file upload xong: server báo async qua đây, không phải
+            // response HTTP của asyncfile/upload. content.data có thể là
+            // QVariantMap hoặc chuỗi JSON tùy phiên bản — thử cả hai.
+            // Khớp fileId với m_pendingVideoUpload (set trong sendVideo())
+            // rồi tiếp tục bước 2 (gửi tin nhắn) qua handleFileUploadDone().
+            if (actType == "file_done") {
+                QString fileId = content["fileId"].toString();
+                QVariant fdV = content["data"];
+                QVariantMap fdMap = (fdV.type() == QVariant::String)
+                    ? jsonToMap(fdV.toString().toUtf8())
+                    : fdV.toMap();
+                QString fileUrl = fdMap["url"].toString();
+                if (fileUrl.isEmpty()) fileUrl = fdMap["fileUrl"].toString();
+                qDebug() << "[Zalo WS] cmd601 file_done fileId=" << fileId
+                         << "fileUrl=" << fileUrl.left(80);
+                if (!fileId.isEmpty() && !fileUrl.isEmpty())
+                    handleFileUploadDone(fileId, fileUrl);
+                continue;
+            }
+
             if (actType != "group") continue;
 
             QString act = content["act"].toString();

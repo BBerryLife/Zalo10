@@ -530,6 +530,91 @@ QString ZaloService::downloadPhotoToGallery(const QString &localImagePath, const
     return destPath;
 }
 
+// ─── Download video/file message (msgType=3) to /tmp ────────────────────────
+// Tap bubble hoặc long-press "Download": tải file từ href CDN về
+// "/tmp/zalo_video_<msgId>.<ext>". Idempotent — nếu file đã tồn tại (tải
+// trước đó rồi) thì bắn videoDownloadFinished() luôn, không tải lại.
+static QString videoExtensionFor(const QString &fileName)
+{
+    QString ext = fileName.section('.', -1).toLower();
+    if (ext.isEmpty() || ext.length() > 4) ext = "mp4";
+    return "." + ext;
+}
+
+void ZaloService::downloadVideoMessage(const QString &msgId, const QString &url, const QString &fileName)
+{
+    if (url.isEmpty() || msgId.isEmpty()) {
+        emit videoDownloadFailed(msgId, "Missing URL");
+        return;
+    }
+
+    QString ext = videoExtensionFor(fileName.isEmpty() ? url : fileName);
+    QString destPath = "/tmp/zalo_video_" + msgId + ext;
+
+    if (QFile::exists(destPath)) {
+        qDebug() << "[Zalo] downloadVideoMessage: already cached" << destPath;
+        emit videoDownloadFinished(msgId, destPath);
+        return;
+    }
+
+    if (m_videoDownloadReply) {
+        m_videoDownloadReply->abort();
+        m_videoDownloadReply->deleteLater();
+        m_videoDownloadReply = 0;
+    }
+
+    m_videoDownloadMsgId   = msgId;
+    m_videoDownloadDestPath = destPath;
+
+    QNetworkRequest req = buildRequest(url, "https://chat.zalo.me/");
+    m_videoDownloadReply = m_manager->get(req);
+    connect(m_videoDownloadReply, SIGNAL(downloadProgress(qint64,qint64)),
+            this, SLOT(onVideoDownloadProgress(qint64,qint64)));
+    connect(m_videoDownloadReply, SIGNAL(finished()),
+            this, SLOT(onVideoDownloadFinished()));
+
+    qDebug() << "[Zalo] downloadVideoMessage: fetching" << url.left(100) << "-> " << destPath;
+}
+
+void ZaloService::onVideoDownloadProgress(qint64 received, qint64 total)
+{
+    if (total <= 0) return;
+    int pct = (int)((received * 100) / total);
+    emit videoDownloadProgress(m_videoDownloadMsgId, pct);
+}
+
+void ZaloService::onVideoDownloadFinished()
+{
+    if (!m_videoDownloadReply) return;
+    QString msgId   = m_videoDownloadMsgId;
+    QString dest    = m_videoDownloadDestPath;
+
+    if (m_videoDownloadReply->error() != QNetworkReply::NoError) {
+        QString err = m_videoDownloadReply->errorString();
+        m_videoDownloadReply->deleteLater();
+        m_videoDownloadReply = 0;
+        qDebug() << "[Zalo] downloadVideoMessage: failed" << err;
+        emit videoDownloadFailed(msgId, err);
+        return;
+    }
+
+    QByteArray data = m_videoDownloadReply->readAll();
+    m_videoDownloadReply->deleteLater();
+    m_videoDownloadReply = 0;
+
+    QFile f(dest);
+    if (!f.open(QIODevice::WriteOnly)) {
+        emit videoDownloadFailed(msgId, "Cannot write to " + dest);
+        return;
+    }
+    f.write(data);
+    f.close();
+
+    qDebug() << "[Zalo] downloadVideoMessage: saved" << dest;
+    emit videoDownloadProgress(msgId, 100);
+    emit videoDownloadFinished(msgId, dest);
+}
+
 // sslErrors() chỉ bắn cho lỗi phát hiện SAU khi handshake xong (cert lạ/
 // self-signed). SslHandshakeFailedError thường không tới đây, nhưng giữ
 // lại phòng hờ — giống ApplicationUI::onManifestSslErrors().

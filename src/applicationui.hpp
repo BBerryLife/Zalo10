@@ -61,6 +61,11 @@ public slots:
     // text/plain, và gửi kèm file ảnh thay vì text. Dùng khi share 1 bubble ảnh.
     Q_INVOKABLE void queryShareTargetsForImage(const QString &localPath);
     Q_INVOKABLE void invokeShareTargetForImage(const QString &target, const QString &action, const QString &localPath);
+    // Mở 1 file local bằng app ngoài phù hợp (video player, v.v.) qua
+    // bb.action.OPEN với target rỗng — hệ thống tự chọn app theo MIME type
+    // suy ra từ đuôi file. Dùng cho tap-to-play video bubble trong ChatView.
+    // localPath có thể là path thường hoặc URI "file://".
+    Q_INVOKABLE void openLocalFile(const QString &localPath);
 
     // ---- Calendar event creation -----------------------------------------
     // Tạo event thật trong calendar mặc định của máy qua CalendarService.

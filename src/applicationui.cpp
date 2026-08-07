@@ -77,6 +77,18 @@ static QString mimeTypeForImagePath(const QString &path)
     return "image/jpeg"; // sensible default — this is what onImageMsgDownloaded transcodes most photos to
 }
 
+// Video mime type by extension — used by openLocalFile() for bb.action.OPEN
+// so the system picks a compatible video player. Falls back to video/mp4
+// since that's the only format Zalo10 currently sends/receives.
+static QString mimeTypeForVideoPath(const QString &path)
+{
+    QString lower = path.toLower();
+    if (lower.endsWith(".3gp")) return "video/3gpp";
+    if (lower.endsWith(".mov")) return "video/quicktime";
+    if (lower.endsWith(".mkv")) return "video/x-matroska";
+    return "video/mp4";
+}
+
 // Strips a "file://" prefix if present, leaving a bare filesystem path.
 static QString toLocalFilePath(const QString &pathOrUri)
 {
@@ -352,6 +364,26 @@ void ApplicationUI::invokeShareTargetForImage(const QString &target, const QStri
     req.setMimeType(mimeTypeForImagePath(path));
     req.setData(bytes);
     m_pInvokeManager->invoke(req);
+}
+
+void ApplicationUI::openLocalFile(const QString &localPath)
+{
+    QString path = toLocalFilePath(localPath);
+    if (!QFile::exists(path)) {
+        qDebug() << "[App] openLocalFile: file does not exist" << path;
+        return;
+    }
+
+    // setUri() (not setData()) — video files can be hundreds of MB, so hand
+    // the target app a file:// reference to read from disk itself rather
+    // than loading the whole thing into this process' memory.
+    InvokeRequest req;
+    req.setTarget("");
+    req.setAction("bb.action.OPEN");
+    req.setMimeType(mimeTypeForVideoPath(path));
+    req.setUri("file://" + path);
+    m_pInvokeManager->invoke(req);
+    qDebug() << "[App] openLocalFile: invoked bb.action.OPEN for" << path;
 }
 
 void ApplicationUI::minimizeApp()

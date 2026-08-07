@@ -145,7 +145,19 @@ public:
     // WS echo/CDN thất bại. Trả về path mới, hoặc path gốc nếu copy lỗi.
     Q_INVOKABLE QString cacheLocalImage(const QString &sourcePath);
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
+    // Gửi video .mp4: upload asyncfile/upload rồi đợi WS cmd=601 act_type=
+    // "file_done" trả fileUrl thật (khác ảnh, upload video không trả URL
+    // ngay trong response HTTP) trước khi gửi tin nhắn qua asyncfile/msg.
+    Q_INVOKABLE void sendVideo(const QString &threadId, const QString &localFilePath, bool isGroup);
+    // Gọi nội bộ từ WebSocket handler (cmd=601 act_type="file_done") khi
+    // fileId khớp 1 video đang chờ trong m_pendingVideoUpload — không expose
+    // ra QML.
+    void handleFileUploadDone(const QString &fileId, const QString &fileUrl);
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId = QString());
+    // Tải video/file (msgType=3) từ href CDN về /tmp. Idempotent — nếu file
+    // đã tồn tại ở /tmp cho msgId đó thì trả về path luôn, không tải lại.
+    // Kết quả trả về async qua videoDownloadProgress/Finished/Failed.
+    Q_INVOKABLE void downloadVideoMessage(const QString &msgId, const QString &url, const QString &fileName);
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
     // Update downloader — gọi từ AboutSheet khi user xác nhận update.
     // Lưu vào /accounts/1000/shared/downloads/<filename>.
@@ -305,6 +317,11 @@ signals:
     void updateDownloadProgress(int percent);
     void updateDownloadFinished(const QString &localPath);
     void updateDownloadFailed(const QString &errorMsg);
+    // Tải video/file message (msgType=3) về /tmp — msgId để QML khớp đúng
+    // bubble đang chờ, localPath rỗng nghĩa là lỗi (kèm errorMsg).
+    void videoDownloadProgress(const QString &msgId, int percent);
+    void videoDownloadFinished(const QString &msgId, const QString &localPath);
+    void videoDownloadFailed(const QString &msgId, const QString &errorMsg);
 
 private slots:
     void onStep1Done();
@@ -349,6 +366,10 @@ private slots:
     void onSendPhotoDone();
     void onSendPhotoMsgDone();
     void onSendFileDone();
+    void onSendVideoUploadDone();
+    void onSendVideoMsgDone();
+    void onVideoDownloadProgress(qint64 received, qint64 total);
+    void onVideoDownloadFinished();
     void onRefreshSessionKeyDone();
     void onImageMsgDownloaded();
     void onBlockUserDone();
@@ -578,6 +599,19 @@ private:
     // vì tải lại từ CDN (nguyên nhân cũ khiến ảnh vừa gửi hiện ô xám sau
     // logout/login). Entry bị xóa khi đã dùng xong, dù từ WS echo hay HTTP confirm.
     QMap<QString, QVariantMap> m_pendingSentPhotoInfo;
+
+    // fileId (từ response asyncfile/upload) -> {"threadId","clientId",
+    // "fileName","fileSize","isGroup","localPath"} — video/file chờ WS
+    // cmd=601 act_type="file_done" trả fileUrl thật trước khi gửi bước 2
+    // (asyncfile/msg). Khác ảnh: upload video KHÔNG trả URL ngay trong
+    // response HTTP.
+    QMap<QString, QVariantMap> m_pendingVideoUpload;
+
+    // Video/file đang tải về /tmp qua downloadVideoMessage(). Chỉ 1 tại 1
+    // thời điểm (đủ dùng — tap-to-download tuần tự, không cần hàng đợi).
+    QNetworkReply *m_videoDownloadReply;
+    QString        m_videoDownloadMsgId;
+    QString        m_videoDownloadDestPath;
 
     // Cache avatar: url -> localPath (file:///tmp/avatar_<md5>.jpg)
     QMap<QString, QString> m_avatarCache;
