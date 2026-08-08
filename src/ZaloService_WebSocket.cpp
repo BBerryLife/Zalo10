@@ -1430,6 +1430,17 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 if (mtStr.isEmpty()) mtStr = m["msgtype"].toString().toLower();
                 if (mtStr.contains("photo") || mtStr.contains("image") || mtStr == "2")
                     mtH = 2;
+                // FIX: nhánh real-time (line ~896) đã nhận diện "share.file" ->
+                // mt=3, nhưng nhánh old_messages/history (cmd=510 poll) này thì
+                // chưa từng có — nên khi cùng 1 tin nhắn video bị poll lại lần 2
+                // (rất hay xảy ra, "DM incremental poll cmd=510" định kỳ), nó
+                // rơi thẳng vào nhánh "nested content obj -> mt=2" bên dưới,
+                // ghi đè msgType=2 + content sai dạng lên bản ghi DB đúng đã lưu
+                // từ lần nhận real-time trước đó -> video hiển thị sai vĩnh
+                // viễn kể cả sau khi khởi động lại app (vì DB đã bị hỏng thật,
+                // không phải chỉ là dòng trùng tạm trong bộ nhớ).
+                else if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
+                    mtH = 3;
             }
 
             // Re-serialize nested content object lại thành JSON, cùng lý do như trên.
@@ -1449,6 +1460,37 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     qDebug() << "[Zalo WS] old_messages: content was nested obj, serialized:"
                              << rawContentH.left(200);
                     if (mtH == 0) mtH = 2; // nested content obj → photo message
+                }
+            }
+            // FIX: video/file (mt==3) counterpart to the photo normalization
+            // right below — was missing entirely, so old_messages left
+            // rawContentH as the raw {"title":...,"href":...,"params":"{...}"}
+            // shape instead of the {"fileName":...,"href":...,"fileSize":...}
+            // shape ChatView.qml's videoBubble parser expects. Same field
+            // extraction as the real-time path (see share.file handling above
+            // in this file's cmd=501/521 branch).
+            if (mtH == 3) {
+                QVariantMap fmH = m["content"].toMap();
+                if (fmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
+                    fmH = jsonToMap(rawContentH.toUtf8());
+                QString fTitleH = fmH["title"].toString();
+                QString fHrefH  = fmH["href"].toString();
+                qint64  fSizeH  = 0;
+                QVariant paramsVH = fmH["params"];
+                QVariantMap paramsMapH = (paramsVH.type() == QVariant::String)
+                    ? jsonToMap(paramsVH.toString().toUtf8())
+                    : paramsVH.toMap();
+                if (!paramsMapH.isEmpty())
+                    fSizeH = paramsMapH["fileSize"].toString().toLongLong();
+                if (!fHrefH.isEmpty()) {
+                    QString fTitleEscH = fTitleH;
+                    fTitleEscH.replace("\\", "\\\\").replace("\"", "\\\"");
+                    rawContentH = QString("{\"fileName\":\"%1\",\"href\":\"%2\"")
+                                      .arg(fTitleEscH).arg(fHrefH);
+                    if (fSizeH > 0) rawContentH += QString(",\"fileSize\":%1").arg(fSizeH);
+                    rawContentH += "}";
+                    qDebug() << "[Zalo WS] old_messages: share.file detected fileName=" << fTitleH
+                             << "href=" << fHrefH.left(80) << "size=" << fSizeH;
                 }
             }
             // Normalize photo: also handles paramsExt/previewThumb (msgType may be 0)

@@ -371,6 +371,8 @@ NavigationPane {
                                 snippet = isMine ? "You recalled a message" : "This message was recalled";
                             } else if (mt === 2 || mt === "2") {
                                 snippet = "[Photo]";
+                            } else if (mt === 3 || mt === "3") {
+                                snippet = "[Video]";
                             } else {
                                 snippet = (lm.content || "").substring(0, 60);
                             }
@@ -439,7 +441,8 @@ NavigationPane {
                 onNewMessage: {
                     var tid = threadId;
                     var snippet = (message.msgType === 2 || message.msgType === "2")
-                        ? "[Photo]" : (message.content || "").substring(0, 60);
+                        ? "[Photo]" : ((message.msgType === 3 || message.msgType === "3")
+                        ? "[Video]" : (message.content || "").substring(0, 60));
                     var isMine = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
                     var senderName = message.dName || "";
                     if (!isMine) chatsNav.onUnreadMessage();

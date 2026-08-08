@@ -29,16 +29,21 @@ Sheet {
                     id: attachModel
                     // enabled=true chỉ cho Picture/Video — phần còn lại disabled,
                     // giữ nguyên thứ tự/tên của Attach sheet gốc BB10.
-                    items: [
-                        { key: "picture",     label: "Picture",     icon: "asset:///images/File Types/BT File - Picture (Image).png", enabled: true  },
-                        { key: "video",       label: "Video",       icon: "asset:///images/File Types/BT File - Video.png",           enabled: true  },
-                        { key: "location",    label: "Location",    icon: "asset:///images/File Types/File Type - Location.png",      enabled: false },
-                        { key: "audio",       label: "Audio",       icon: "asset:///images/File Types/File Type - Audio.png",         enabled: false },
-                        { key: "voicenote",   label: "Voice Note",  icon: "asset:///images/File Types/File Type - Voice Note (Audio Recording).png", enabled: false },
-                        { key: "contact",     label: "Contact",     icon: "asset:///images/File Types/File Type - VCF (Contanct).png", enabled: false },
-                        { key: "appointment", label: "Appointment", icon: "asset:///images/File Types/File Type - Calendar.png",       enabled: false },
-                        { key: "file",        label: "File",        icon: "asset:///images/File Types/File Type - Generic.png",       enabled: false }
-                    ]
+                    // ArrayDataModel không có property "items" để gán mảng khai báo
+                    // trực tiếp — phải nạp dữ liệu bằng append() trong JS, gọi có định
+                    // danh id (attachModel.append), giống pattern dùng ở ChatsTab/
+                    // GroupsTab/ForwardPickerSheet... Gọi insertList()/append() trần
+                    // (không qualify) sẽ ra ReferenceError vì không tự suy ra "this".
+                    Component.onCompleted: {
+                        attachModel.append({ key: "picture",     label: "Picture",     icon: "asset:///images/File Types/File Type - Picture (Image).png", enabled: true  });
+                        attachModel.append({ key: "video",       label: "Video",       icon: "asset:///images/File Types/File Type - Video.png",           enabled: true  });
+                        attachModel.append({ key: "location",    label: "Location",    icon: "asset:///images/File Types/File Type - Location.png",      enabled: false });
+                        attachModel.append({ key: "audio",       label: "Audio",       icon: "asset:///images/File Types/File Type - Audio.png",         enabled: false });
+                        attachModel.append({ key: "voicenote",   label: "Voice Note",  icon: "asset:///images/File Types/File Type - Voice Note (Audio Recording).png", enabled: false });
+                        attachModel.append({ key: "contact",     label: "Contact",     icon: "asset:///images/File Types/File Type - VCF (Contanct).png", enabled: false });
+                        attachModel.append({ key: "appointment", label: "Appointment", icon: "asset:///images/File Types/File Type - Calendar.png",       enabled: false });
+                        attachModel.append({ key: "file",        label: "File",        icon: "asset:///images/File Types/File Type - Generic.png",       enabled: false });
+                    }
                 }
 
                 listItemComponents: [
@@ -50,7 +55,7 @@ Sheet {
                             Container {
                                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                 verticalAlignment: VerticalAlignment.Center
-                                leftPadding: 0; rightPadding: 16; topPadding: 10; bottomPadding: 10
+                                leftPadding: 16; rightPadding: 16; topPadding: 10; bottomPadding: 10
                                 opacity: ListItemData.enabled ? 1.0 : 0.35
 
                                 ImageView {

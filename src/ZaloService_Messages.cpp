@@ -1495,19 +1495,75 @@ void ZaloService::sendVideo(const QString &threadId, const QString &localFilePat
     QString filename = path.section('/', -1);
     qint64  ts        = QDateTime::currentMSecsSinceEpoch();
     QString clientId  = QString::number(ts);
-    QString boundary  = "----ZaloVideoBoundary" + clientId;
+    // FIX: checksum/checksumSha were always sent as empty strings in the
+    // final asyncfile/msg call. The server ack'd that call with
+    // error_code=0 regardless, but a follow-up cmd=510 history poll showed
+    // it never actually created the message — an empty checksum on a
+    // required-looking field is a plausible reason the server accepts the
+    // request shape but silently drops it. Computing a real MD5 costs one
+    // pass over data already in memory, so there's no reason not to send one.
+    QString md5Checksum = QCryptographicHash::hash(fileData, QCryptographicHash::Md5).toHex();
+
+    // FIX: server rejects any single chunk over 512K with error_code 201
+    // ("Dung lượng chunk upload không được vượt quá 512K"). The old code
+    // always sent totalChunk=1 with the WHOLE file in one POST — silently
+    // failed for anything bigger than 512K (i.e. basically every real
+    // video), which is why sendVideo appeared to hang forever on
+    // "Sending..." with no feedback. Split into <=512K chunks uploaded
+    // sequentially via sendVideoChunk(); each chunk's success also gives us
+    // a natural progress percentage to report back to the bubble.
+    const qint64 CHUNK_SIZE = 512 * 1024;
+    int totalChunks = (int)((fileData.size() + CHUNK_SIZE - 1) / CHUNK_SIZE);
+    if (totalChunks < 1) totalChunks = 1;
+
+    QVariantMap ctx;
+    ctx["threadId"]    = threadId;
+    ctx["isGroup"]     = isGroup;
+    ctx["localPath"]   = "file://" + path;
+    ctx["clientId"]    = clientId;
+    ctx["fileName"]    = filename;
+    ctx["fileSize"]    = (qint64)fileData.size();
+    ctx["checksum"]    = md5Checksum;
+    ctx["totalChunks"] = totalChunks;
+    ctx["chunkIndex"]  = 1;
+    ctx["fileData"]    = fileData; // kept in memory until the last chunk is sent
+    m_pendingVideoChunkUpload[clientId] = ctx;
+
+    qDebug() << "[Zalo] sendVideo: splitting into" << totalChunks
+             << "chunk(s), size:" << fileData.size() << "md5:" << md5Checksum;
+    emit videoUploadProgress(threadId, 0);
+    sendVideoChunk(clientId);
+}
+
+void ZaloService::sendVideoChunk(const QString &clientId)
+{
+    if (!m_pendingVideoChunkUpload.contains(clientId)) return;
+    QVariantMap ctx     = m_pendingVideoChunkUpload[clientId];
+    QString threadId    = ctx["threadId"].toString();
+    bool    isGroup     = ctx["isGroup"].toBool();
+    QString filename    = ctx["fileName"].toString();
+    QByteArray fileData = ctx["fileData"].toByteArray();
+    int totalChunks     = ctx["totalChunks"].toInt();
+    int chunkIndex      = ctx["chunkIndex"].toInt();
+
+    const qint64 CHUNK_SIZE = 512 * 1024;
+    qint64 offset  = (qint64)(chunkIndex - 1) * CHUNK_SIZE;
+    qint64 thisLen = qMin((qint64)fileData.size() - offset, CHUNK_SIZE);
+    QByteArray chunkData = fileData.mid(offset, thisLen);
+
+    QString boundary = "----ZaloVideoBoundary" + clientId + "_" + QString::number(chunkIndex);
 
     QVariantMap p;
     if (isGroup) p["grid"] = threadId;
     else         p["toid"] = threadId;
-    p["totalChunk"] = 1;
+    p["totalChunk"] = totalChunks;
     p["fileName"]   = filename;
     p["clientId"]   = clientId.toLongLong();
     p["totalSize"]  = (int)fileData.size();
     p["imei"]       = m_imei;
     p["isE2EE"]     = 0;
     p["jxl"]        = 0;
-    p["chunkId"]    = 1;
+    p["chunkId"]    = chunkIndex;
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(p)));
 
     QString fileBase = m_fileServiceUrl;
@@ -1527,47 +1583,63 @@ void ZaloService::sendVideo(const QString &threadId, const QString &localFilePat
     body += ("--" + boundary + "\r\n").toUtf8();
     body += ("Content-Disposition: form-data; name=\"chunkContent\"; filename=\"" + filename + "\"\r\n").toUtf8();
     body += QByteArray("Content-Type: application/octet-stream\r\n\r\n");
-    body += fileData + "\r\n";
+    body += chunkData + "\r\n";
     body += ("--" + boundary + "--\r\n").toUtf8();
 
     QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   "multipart/form-data; boundary=" + boundary);
 
-    qDebug() << "[Zalo] sendVideo upload POST" << urlStr.left(120) << "size:" << fileData.size();
+    qDebug() << "[Zalo] sendVideo upload chunk" << chunkIndex << "/" << totalChunks
+             << "chunkSize:" << chunkData.size();
     QNetworkReply *reply = m_manager->post(req, body);
-    reply->setProperty("threadId",  threadId);
-    reply->setProperty("localPath", "file://" + path);
-    reply->setProperty("isGroup",   isGroup);
-    reply->setProperty("clientId",  clientId);
-    reply->setProperty("fileName",  filename);
-    reply->setProperty("fileSize",  (qint64)fileData.size());
-    connect(reply, SIGNAL(finished()), this, SLOT(onSendVideoUploadDone()));
+    reply->setProperty("clientId", clientId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onSendVideoChunkUploadDone()));
 }
 
-void ZaloService::onSendVideoUploadDone()
+void ZaloService::onSendVideoChunkUploadDone()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
-    bool ok           = (reply->error() == QNetworkReply::NoError);
-    QString tid       = reply->property("threadId").toString();
-    QString localPath = reply->property("localPath").toString();
-    bool isGroup      = reply->property("isGroup").toBool();
-    QString clientId  = reply->property("clientId").toString();
-    QString fileName  = reply->property("fileName").toString();
-    qint64  fileSize  = reply->property("fileSize").toLongLong();
-    QByteArray raw    = reply->readAll();
+    QString clientId = reply->property("clientId").toString();
+    bool ok          = (reply->error() == QNetworkReply::NoError);
+    QByteArray raw   = reply->readAll();
     reply->deleteLater();
-    qDebug() << "[Zalo] sendVideo upload response:" << raw.left(300);
 
-    if (!ok) { emit messageSent(false, tid); return; }
+    if (!m_pendingVideoChunkUpload.contains(clientId)) return;
+    QVariantMap ctx  = m_pendingVideoChunkUpload[clientId];
+    QString threadId = ctx["threadId"].toString();
+    qDebug() << "[Zalo] sendVideo upload chunk response:" << raw.left(300);
+
+    if (!ok) {
+        qDebug() << "[Zalo] sendVideo upload chunk: network error" << reply->errorString();
+        m_pendingVideoChunkUpload.remove(clientId);
+        emit messageSent(false, threadId);
+        return;
+    }
 
     QVariantMap outer = jsonToMap(raw);
     if (outer["error_code"].toInt() != 0) {
-        qDebug() << "[Zalo] sendVideo upload error:" << outer["error_message"].toString();
-        emit messageSent(false, tid);
+        qDebug() << "[Zalo] sendVideo upload chunk error:" << outer["error_message"].toString();
+        m_pendingVideoChunkUpload.remove(clientId);
+        emit messageSent(false, threadId);
         return;
     }
+
+    int chunkIndex  = ctx["chunkIndex"].toInt();
+    int totalChunks = ctx["totalChunks"].toInt();
+    int pct = totalChunks > 0 ? (int)((qint64)chunkIndex * 100 / totalChunks) : 100;
+    emit videoUploadProgress(threadId, pct);
+
+    if (chunkIndex < totalChunks) {
+        ctx["chunkIndex"] = chunkIndex + 1;
+        m_pendingVideoChunkUpload[clientId] = ctx;
+        sendVideoChunk(clientId);
+        return;
+    }
+
+    // Last chunk done — server's response to the FINAL chunk carries the
+    // real upload result (fileId), same shape as the old single-shot reply.
     QString decStr = aesDecryptBase64(m_secretKey, outer["data"].toString());
     qDebug() << "[Zalo] sendVideo upload decrypted:" << decStr.left(200);
 
@@ -1581,20 +1653,23 @@ void ZaloService::onSendVideoUploadDone()
     if (fileId.isEmpty()) fileId = uploadData["photoId"].toString(); // Zalo dùng chung field ở vài phiên bản API
     if (fileId.isEmpty() || fileId == "-1") {
         qDebug() << "[Zalo] sendVideo: upload OK but no valid fileId, raw:" << raw.left(200);
-        emit messageSent(false, tid);
+        m_pendingVideoChunkUpload.remove(clientId);
+        emit messageSent(false, threadId);
         return;
     }
 
     // Lưu info, chờ WS cmd=601 act_type="file_done" khớp fileId để lấy
     // fileUrl thật rồi mới gửi bước 2 — xem handleFileUploadDone().
     QVariantMap pending;
-    pending["threadId"]  = tid;
-    pending["isGroup"]   = isGroup;
-    pending["localPath"] = localPath;
+    pending["threadId"]  = threadId;
+    pending["isGroup"]   = ctx["isGroup"].toBool();
+    pending["localPath"] = ctx["localPath"].toString();
     pending["clientId"]  = clientId;
-    pending["fileName"]  = fileName;
-    pending["fileSize"]  = fileSize;
+    pending["fileName"]  = ctx["fileName"].toString();
+    pending["fileSize"]  = ctx["fileSize"].toLongLong();
+    pending["checksum"]  = ctx["checksum"].toString();
     m_pendingVideoUpload[fileId] = pending;
+    m_pendingVideoChunkUpload.remove(clientId);
 
     qDebug() << "[Zalo] sendVideo: upload done, waiting WS file_done for fileId=" << fileId;
 }
@@ -1613,11 +1688,15 @@ void ZaloService::handleFileUploadDone(const QString &fileId, const QString &fil
     QString clientId   = pending["clientId"].toString();
     QString fileName   = pending["fileName"].toString();
     qint64  fileSize   = pending["fileSize"].toLongLong();
+    QString checksum   = pending["checksum"].toString();
     QString ext        = fileName.section('.', -1).toLower();
 
     QVariantMap mp;
     mp["fileId"]      = fileId;
-    mp["checksum"]    = "";
+    // FIX: was always "" — see the comment in sendVideo() where this is
+    // computed. Left checksumSha empty since we only have MD5 on hand and
+    // sending a wrong SHA is worse than sending none.
+    mp["checksum"]    = checksum;
     mp["checksumSha"] = "";
     mp["extention"]   = ext;
     mp["totalSize"]   = QString::number(fileSize);
@@ -1689,13 +1768,36 @@ void ZaloService::onSendVideoMsgDone()
 
     QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
     QVariantMap data = jsonToMap(dec.toUtf8());
+    // FIX: was only logging raw.left(300) — that's the OUTER encrypted
+    // envelope, always just {"error_code":0,"error_message":"Successful.",
+    // "data":"<ciphertext>"} regardless of what actually happened. Log the
+    // DECRYPTED inner payload too so a future report of "sent but recipient
+    // never got it" has real diagnostic data instead of just msgId==0.
+    qDebug() << "[Zalo] sendVideo send-msg decrypted data:" << dec.left(300);
     qint64 msgIdInt = data["msgId"].toLongLong();
 
     if (msgIdInt == 0) {
-        // Giống sendPhoto(): không có msgId thật thì để WS echo cmd=501 tự
-        // lưu DB, tránh tạo dòng trùng.
-        qDebug() << "[Zalo] sendVideo: no real msgId in send-msg response, deferring to WS echo";
-        emit messageSent(true, tid);
+        // FIX: this used to fabricate a local "sent_"-prefixed message and
+        // report messageSent(true, tid) unconditionally here, on the theory
+        // that the WS self-echo carrying the real msgId just doesn't
+        // reliably arrive for video/file sends. That theory was wrong (or
+        // at least incomplete): a subsequent cmd=510 history poll on this
+        // same thread, run repeatedly for over a minute after this branch
+        // fired, kept returning zero messages — meaning the server never
+        // actually created the message at all despite this HTTP call
+        // reporting error_code=0/"Successful.". Claiming success here was
+        // actively misleading (the sender's own app showed "sent" while the
+        // recipient's real Zalo app never received anything). Until the
+        // real cause of msgId==0 is understood (possibly a missing/wrong
+        // field in the asyncfile/msg params below — checksum/checksumSha/
+        // fdata are currently placeholders), treat this as a failure so the
+        // "local_video_..." placeholder gets cleaned up (see onMessageSent
+        // in ChatView.qml) and the person can see it failed and retry,
+        // rather than being falsely told it went through.
+        qDebug() << "[Zalo] sendVideo: no real msgId in send-msg response — "
+                    "server likely did not create the message (see decrypted "
+                    "data above); reporting failure instead of a false success";
+        emit messageSent(false, tid);
         return;
     }
 

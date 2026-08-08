@@ -647,6 +647,13 @@ Page {
                     msgList.videoProgressPercent = percent;
                 }
             }
+            // Upload-side counterpart — sendVideo() has no msgId yet while
+            // uploading (only cliMsgId), so keyed by threadId instead; only
+            // one video can be uploading per chat at a time, matching the
+            // "local_video_..." placeholder that's showing "Sending..." at
+            // that moment.
+            property int uploadVideoPercent: 0
+            property bool uploadVideoActive: false
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -1494,6 +1501,7 @@ Page {
                                 Container {
                                     id: photoBubble
                                     visible: !rowRoot.recalled
+                                             && (ListItemData.msgType !== 3 && ListItemData.msgType !== "3")
                                              && ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
                                                  || (typeof ListItemData.content === "string"
                                                      && ListItemData.content.length > 1
@@ -1610,29 +1618,28 @@ Page {
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     maxWidth: rowRoot.bubbleMaxW
 
-                                    property string vFileName: {
-                                        var c = ListItemData.content || "";
-                                        if (c.length === 0 || c.charCodeAt(0) !== 123) return "video.mp4";
-                                        var key = '"fileName":"';
-                                        var si = c.indexOf(key);
-                                        if (si < 0) return "video.mp4";
-                                        si += key.length;
-                                        var ei = si;
-                                        while (ei < c.length) {
-                                            var code = c.charCodeAt(ei);
-                                            if (code === 92) { ei += 2; continue; }
-                                            if (code === 34) break;
-                                            ei++;
-                                        }
-                                        return c.substring(si, ei) || "video.mp4";
-                                    }
-                                    property string vHref: {
-                                        var c = ListItemData.content || "";
+                                    // FIX: these used to be property bindings that wrapped their
+                                    // logic in an immediately-invoked function expression, e.g.
+                                    // "property string vFileName: (function(){ ...uses
+                                    // ListItemData.content... })()". That pattern is unreliable on
+                                    // this QtQuick1/Cascades engine — the binding's dependency on
+                                    // ListItemData.content, read from inside the nested closure,
+                                    // wasn't always captured, so the very first evaluation (right
+                                    // when the row is created) could see a stale/default content
+                                    // value and never re-run once the real content arrived, leaving
+                                    // the bubble stuck showing a garbled filename/href from tapping
+                                    // too soon after the message appeared (self-"fixed" only once
+                                    // something else forced a re-bind, e.g. a second tap). Calling a
+                                    // plain function with ListItemData.content passed explicitly, as
+                                    // the top-level binding expression, makes the dependency
+                                    // unambiguous to the binding engine.
+                                    function extractJsonStringField(content, key) {
+                                        var c = content || "";
                                         if (c.length === 0 || c.charCodeAt(0) !== 123) return "";
-                                        var key = '"href":"';
-                                        var si = c.indexOf(key);
+                                        var k = '"' + key + '":"';
+                                        var si = c.indexOf(k);
                                         if (si < 0) return "";
-                                        si += key.length;
+                                        si += k.length;
                                         var ei = si;
                                         while (ei < c.length) {
                                             var code = c.charCodeAt(ei);
@@ -1642,6 +1649,8 @@ Page {
                                         }
                                         return c.substring(si, ei);
                                     }
+                                    property string vFileName: videoBubble.extractJsonStringField(ListItemData.content, "fileName") || "video.mp4"
+                                    property string vHref: videoBubble.extractJsonStringField(ListItemData.content, "href")
                                     // Bound to msgList's single-slot progress tracker (only one video
                                     // downloads at a time) — true only while THIS bubble's msgId matches.
                                     property bool vDownloading: rowRoot.ListItem.view.videoProgressMsgId === (ListItemData.msgId || "")
@@ -1652,8 +1661,8 @@ Page {
                                         imageSource: "asset:///images/File Types/File Type - Video.png"
                                         scalingMethod: ScalingMethod.AspectFit
                                         verticalAlignment: VerticalAlignment.Center
-                                        preferredWidth: 44; preferredHeight: 44
-                                        minWidth: 44
+                                        preferredWidth: 68; preferredHeight: 68
+                                        minWidth: 68
                                         rightMargin: 10
                                     }
 
@@ -1673,7 +1682,11 @@ Page {
                                         Label {
                                             text: {
                                                 var mid = ListItemData.msgId || "";
-                                                if (rowRoot.mine && mid.indexOf("local_video_") === 0) return "Sending...";
+                                                if (rowRoot.mine && mid.indexOf("local_video_") === 0) {
+                                                    return rowRoot.ListItem.view.uploadVideoActive
+                                                        ? "Sending " + rowRoot.ListItem.view.uploadVideoPercent + "%..."
+                                                        : "Sending...";
+                                                }
                                                 if (videoBubble.vDownloading) return "Downloading " + videoBubble.vProgress + "%...";
                                                 return "Tap to play";
                                             }
@@ -2986,6 +2999,14 @@ Page {
         // menu item) — matches doDownloadVideo() clearing it to "".
         Connections {
             target: zService
+            onVideoUploadProgress: {
+                if (threadId !== chatViewPage.threadId) return;
+                msgList.uploadVideoActive = (percent < 100);
+                msgList.uploadVideoPercent = percent;
+            }
+        },
+        Connections {
+            target: zService
             onVideoDownloadProgress: {
                 msgList.updateVideoBubbleProgress(msgId, percent);
             }
@@ -3136,13 +3157,16 @@ Page {
             onMessageSent: {
                 if (threadId !== chatViewPage.threadId) return;
                 chatViewPage.flushPendingRebuild();
+                msgList.uploadVideoActive = false;
+                msgList.uploadVideoPercent = 0;
                 if (!success) {
                     chatViewPage.removeLocalPlaceholder(chatViewPage.pendingMsg);
                     inputField.text = chatViewPage.pendingMsg;
                     for (var ri = msgModel.size() - 1; ri >= 0; ri--) {
                         var ritem = msgModel.value(ri);
                         if (ritem.msgId && (ritem.msgId.indexOf("local_img_") === 0
-                                         || ritem.msgId.indexOf("local_file_") === 0)) {
+                                         || ritem.msgId.indexOf("local_file_") === 0
+                                         || ritem.msgId.indexOf("local_video_") === 0)) {
                             msgModel.removeAt(ri);
                             break;
                         }
@@ -3264,6 +3288,42 @@ Page {
                                 handledInPlace = true;
                                 break;
                             }
+                        }
+                    } else if (msg.msgType === 3 || msg.msgType === "3") {
+                        // Video's counterpart to the photo dedup/replace block above — was
+                        // previously missing entirely, so a confirmed video message fell
+                        // through to the generic text-only removeLocalPlaceholder() (which
+                        // never matches, since the placeholder's content differs from the
+                        // confirmed one: empty href/fileSize:0 vs the real href/size) and then
+                        // got appended as a second row, leaving the "local_video_..." row
+                        // stuck forever at "Sending...". Restarting the app "fixed" it only
+                        // because the DB never persisted the orphaned placeholder in the
+                        // first place — replacing in place here fixes it without a restart.
+
+                        // Early dedup — HTTP confirm and WS echo can both fire for the same msgId
+                        if (msg.msgId) {
+                            for (var vdi0 = 0; vdi0 < msgModel.size(); vdi0++) {
+                                var vdv0 = msgModel.value(vdi0);
+                                if (vdv0.msgId === msg.msgId && vdv0.msgId.indexOf("local_") !== 0) {
+                                    return;
+                                }
+                            }
+                        }
+
+                        var vPlaceholderIdx = -1;
+                        for (var vpi = msgModel.size() - 1; vpi >= 0; vpi--) {
+                            var vpitem = msgModel.value(vpi);
+                            if (vpitem.msgId && vpitem.msgId.indexOf("local_video_") === 0) {
+                                vPlaceholderIdx = vpi;
+                                break;
+                            }
+                        }
+                        if (vPlaceholderIdx >= 0) {
+                            // Replace in place instead of remove+append — avoids a brief
+                            // duplicate-looking flicker when HTTP and WS confirmations land
+                            // close together, same reasoning as the photo branch above.
+                            msgModel.replace(vPlaceholderIdx, msg);
+                            handledInPlace = true;
                         }
                     } else {
                         chatViewPage.removeLocalPlaceholder(msg.content);
@@ -3451,6 +3511,8 @@ Page {
                 };
                 msgModel.append(mf);
                 chatViewPage.rebuildGroups(true);
+                msgList.uploadVideoActive = true;
+                msgList.uploadVideoPercent = 0;
                 zService.sendVideo(chatViewPage.threadId, path, chatViewPage.isGroup);
             }
         },

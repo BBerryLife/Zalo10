@@ -322,6 +322,10 @@ signals:
     void videoDownloadProgress(const QString &msgId, int percent);
     void videoDownloadFinished(const QString &msgId, const QString &localPath);
     void videoDownloadFailed(const QString &msgId, const QString &errorMsg);
+    // Gửi video (sendVideo) — chia file thành nhiều chunk <=512K (giới hạn
+    // server), percent = số chunk đã gửi / tổng chunk. threadId để QML khớp
+    // đúng cuộc trò chuyện đang gửi (chỉ 1 video gửi cùng lúc/thread).
+    void videoUploadProgress(const QString &threadId, int percent);
 
 private slots:
     void onStep1Done();
@@ -366,7 +370,7 @@ private slots:
     void onSendPhotoDone();
     void onSendPhotoMsgDone();
     void onSendFileDone();
-    void onSendVideoUploadDone();
+    void onSendVideoChunkUploadDone();
     void onSendVideoMsgDone();
     void onVideoDownloadProgress(qint64 received, qint64 total);
     void onVideoDownloadFinished();
@@ -606,6 +610,15 @@ private:
     // (asyncfile/msg). Khác ảnh: upload video KHÔNG trả URL ngay trong
     // response HTTP.
     QMap<QString, QVariantMap> m_pendingVideoUpload;
+
+    // clientId -> {"threadId","isGroup","localPath","fileName","fileSize",
+    // "totalChunks","chunkIndex","fileData"} — state for the chunked
+    // sendVideo() upload in progress. Server rejects any single chunk over
+    // 512K, so a video is split into <=512K pieces uploaded one at a time
+    // via sendVideoChunk(); this map carries the remaining bytes + progress
+    // between each chunk's async QNetworkReply.
+    QMap<QString, QVariantMap> m_pendingVideoChunkUpload;
+    void sendVideoChunk(const QString &clientId);
 
     // Video/file đang tải về /tmp qua downloadVideoMessage(). Chỉ 1 tại 1
     // thời điểm (đủ dùng — tap-to-download tuần tự, không cần hàng đợi).

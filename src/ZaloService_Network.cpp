@@ -530,15 +530,33 @@ QString ZaloService::downloadPhotoToGallery(const QString &localImagePath, const
     return destPath;
 }
 
-// ─── Download video/file message (msgType=3) to /tmp ────────────────────────
-// Tap bubble hoặc long-press "Download": tải file từ href CDN về
-// "/tmp/zalo_video_<msgId>.<ext>". Idempotent — nếu file đã tồn tại (tải
-// trước đó rồi) thì bắn videoDownloadFinished() luôn, không tải lại.
+// ─── Download video/file message (msgType=3) ─────────────────────────────
+// Tap bubble ("Tap to play") hoặc long-press "Download": tải file từ href
+// CDN về "/accounts/1000/shared/downloads/zalo10/videos/<tên gốc>" — cùng
+// thư mục chia sẻ với ảnh (downloadPhotoToGallery ở trên), thay vì /tmp
+// trước đây (mất khi thoát app, không thấy trong File Manager/gallery).
+// Giữ nguyên TÊN FILE GỐC (khác downloadPhotoToGallery đổi tên
+// Zalo10_<msgId> cho ảnh) — video mở trong BB10 Media Player hiển thị tên
+// file, đổi tên khiến người dùng không nhận ra video của mình
+// ("na'vi s1mple.mp4" hiện thành "Zalo10_8131303682015.mp4"). Idempotent —
+// nếu file cùng tên đã tồn tại (tải trước đó rồi) thì bắn
+// videoDownloadFinished() luôn, không tải lại.
 static QString videoExtensionFor(const QString &fileName)
 {
     QString ext = fileName.section('.', -1).toLower();
     if (ext.isEmpty() || ext.length() > 4) ext = "mp4";
     return "." + ext;
+}
+
+// Bỏ ký tự không hợp lệ trên filesystem BB10 (QNX) khỏi tên file gốc —
+// server không đảm bảo fileName sạch, và '/' đặc biệt nguy hiểm vì sẽ bị
+// hiểu thành thư mục con.
+static QString sanitizeFileName(const QString &name)
+{
+    QString s = name;
+    s.replace(QRegExp("[/\\\\:*?\"<>|]"), "_");
+    s = s.trimmed();
+    return s;
 }
 
 void ZaloService::downloadVideoMessage(const QString &msgId, const QString &url, const QString &fileName)
@@ -548,8 +566,24 @@ void ZaloService::downloadVideoMessage(const QString &msgId, const QString &url,
         return;
     }
 
+    QString destDir = "/accounts/1000/shared/downloads/zalo10/videos";
+    QDir dir;
+    if (!dir.exists(destDir) && !dir.mkpath(destDir)) {
+        qDebug() << "[Zalo] downloadVideoMessage: mkpath failed" << destDir;
+        emit videoDownloadFailed(msgId, "Cannot create " + destDir);
+        return;
+    }
+
     QString ext = videoExtensionFor(fileName.isEmpty() ? url : fileName);
-    QString destPath = "/tmp/zalo_video_" + msgId + ext;
+    QString cleanName = sanitizeFileName(fileName);
+    QString destPath;
+    if (cleanName.isEmpty()) {
+        // Không có tên gốc dùng được (rỗng, hoặc chỉ toàn ký tự bị lọc) —
+        // dùng lại msgId để tránh file tên rỗng/trùng nhau.
+        destPath = destDir + "/Zalo10_" + msgId + ext;
+    } else {
+        destPath = destDir + "/" + cleanName;
+    }
 
     if (QFile::exists(destPath)) {
         qDebug() << "[Zalo] downloadVideoMessage: already cached" << destPath;
