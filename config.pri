@@ -272,6 +272,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/File Types/File Type - APK.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Attachment.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Audio.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - BAR.png.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Calendar.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Certificate Message.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Certificate.png) \
@@ -301,6 +302,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/File Types/File Type - Webpage (Hyperlink).png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - XLS (Spreadsheet).png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - ZIP (Compressed).png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - ePUB.png) \
         $$quote($$BASEDIR/assets/images/File Types/Thumbs.db) \
         $$quote($$BASEDIR/assets/images/GroupsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/blank.png) \

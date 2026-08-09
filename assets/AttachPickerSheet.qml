@@ -2,15 +2,17 @@ import bb.cascades 1.4
 import QtQuick 1.0
 
 // Attach sheet giống list "Attach" gốc của BB10 Hub (icon vuông màu + tên).
-// Hiện chỉ Picture/Video hoạt động thật — các mục còn lại (Location, Audio,
-// Voice Note, Contact, Appointment, File) hiển thị mờ (disabled), sẽ nối
-// dần sau. Không dùng Repeater (không tồn tại ở QtQuick1/Cascades) — build
-// tĩnh từng CustomListItem.
+// Picture/Video/File hoạt động thật — các mục còn lại (Location, Audio,
+// Voice Note, Contact) hiển thị mờ (disabled), sẽ nối dần sau. Appointment
+// bị bỏ hẳn khỏi danh sách (không phải chỉ disable) theo yêu cầu. Không
+// dùng Repeater (không tồn tại ở QtQuick1/Cascades) — build tĩnh từng
+// CustomListItem.
 Sheet {
     id: attachPickerSheetRoot
 
     signal pictureSelected()
     signal videoSelected()
+    signal fileSelected()
 
     Page {
         titleBar: TitleBar {
@@ -27,8 +29,9 @@ Sheet {
             ListView {
                 dataModel: ArrayDataModel {
                     id: attachModel
-                    // enabled=true chỉ cho Picture/Video — phần còn lại disabled,
-                    // giữ nguyên thứ tự/tên của Attach sheet gốc BB10.
+                    // enabled=true cho Picture/Video/File — phần còn lại disabled,
+                    // giữ nguyên thứ tự/tên của Attach sheet gốc BB10. Appointment
+                    // bị loại bỏ hẳn (không append) theo yêu cầu.
                     // ArrayDataModel không có property "items" để gán mảng khai báo
                     // trực tiếp — phải nạp dữ liệu bằng append() trong JS, gọi có định
                     // danh id (attachModel.append), giống pattern dùng ở ChatsTab/
@@ -41,8 +44,7 @@ Sheet {
                         attachModel.append({ key: "audio",       label: "Audio",       icon: "asset:///images/File Types/File Type - Audio.png",         enabled: false });
                         attachModel.append({ key: "voicenote",   label: "Voice Note",  icon: "asset:///images/File Types/File Type - Voice Note (Audio Recording).png", enabled: false });
                         attachModel.append({ key: "contact",     label: "Contact",     icon: "asset:///images/File Types/File Type - VCF (Contanct).png", enabled: false });
-                        attachModel.append({ key: "appointment", label: "Appointment", icon: "asset:///images/File Types/File Type - Calendar.png",       enabled: false });
-                        attachModel.append({ key: "file",        label: "File",        icon: "asset:///images/File Types/File Type - Generic.png",       enabled: false });
+                        attachModel.append({ key: "file",        label: "File",        icon: "asset:///images/File Types/File Type - Generic.png",       enabled: true  });
                     }
                 }
 
@@ -85,6 +87,7 @@ Sheet {
                     attachPickerSheetRoot.close();
                     if (item.key === "picture")     attachPickerSheetRoot.pictureSelected();
                     else if (item.key === "video")  attachPickerSheetRoot.videoSelected();
+                    else if (item.key === "file")   attachPickerSheetRoot.fileSelected();
                 }
             }
         }

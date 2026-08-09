@@ -77,15 +77,26 @@ static QString mimeTypeForImagePath(const QString &path)
     return "image/jpeg"; // sensible default — this is what onImageMsgDownloaded transcodes most photos to
 }
 
-// Video mime type by extension — used by openLocalFile() for bb.action.OPEN
-// so the system picks a compatible video player. Falls back to video/mp4
-// since that's the only format Zalo10 currently sends/receives.
+// MIME type by extension for openLocalFile()'s bb.action.OPEN — covers both
+// video (Zalo10's original use of this function) and document attachments
+// (doc/docx, ppt/pptx, xls/xlsx, txt, pdf) added alongside file-attachment
+// support, so bb.action.OPEN routes each to the right handler app instead of
+// always guessing video/mp4. Falls back to video/mp4 for anything unmatched
+// since video was (until now) the only type this function ever received.
 static QString mimeTypeForVideoPath(const QString &path)
 {
     QString lower = path.toLower();
-    if (lower.endsWith(".3gp")) return "video/3gpp";
-    if (lower.endsWith(".mov")) return "video/quicktime";
-    if (lower.endsWith(".mkv")) return "video/x-matroska";
+    if (lower.endsWith(".3gp"))  return "video/3gpp";
+    if (lower.endsWith(".mov"))  return "video/quicktime";
+    if (lower.endsWith(".mkv"))  return "video/x-matroska";
+    if (lower.endsWith(".pdf"))  return "application/pdf";
+    if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if (lower.endsWith(".doc"))  return "application/msword";
+    if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    if (lower.endsWith(".ppt"))  return "application/vnd.ms-powerpoint";
+    if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    if (lower.endsWith(".xls"))  return "application/vnd.ms-excel";
+    if (lower.endsWith(".txt"))  return "text/plain";
     return "video/mp4";
 }
 

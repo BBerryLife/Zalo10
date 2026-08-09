@@ -654,6 +654,14 @@ Page {
             // that moment.
             property int uploadVideoPercent: 0
             property bool uploadVideoActive: false
+            // sendFile() (document attachments) giờ dùng chung chunked-upload
+            // pipeline với sendVideo() — có progress % thật qua
+            // fileUploadProgress, tách riêng khỏi uploadVideoActive/Percent
+            // để 1 chat gửi file không làm nhảy % của video đang gửi ở chat
+            // khác (và ngược lại). Cùng lý do keyed-by-threadId như video:
+            // chỉ 1 file gửi cùng lúc/thread.
+            property bool uploadFileActive: false
+            property int  uploadFilePercent: 0
             horizontalAlignment: HorizontalAlignment.Fill
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             dataModel: msgModel
@@ -927,6 +935,67 @@ Page {
                         id: rowRoot
                         highlightAppearance: HighlightAppearance.None
                         dividerVisible: false
+
+                        // Helper functions for bindings that would otherwise need a block body
+                        // ({ var x; ...; return x; } inline in a property/text binding) — that
+                        // pattern is a hard parse-time error on this QtQuick1/Cascades engine
+                        // (confirmed on-device: "Expected token `numeric literal'" at the first
+                        // such binding the parser reached deep in this delegate). Every
+                        // multi-statement binding in this delegate must go through a named
+                        // function like these instead of an inline block.
+                        function timestampLabel(latestTs, ts) {
+                            var t = latestTs || ts;
+                            if (!t) return "";
+                            var n = t * 1;
+                            if (n > 0 && n < 1e12) n *= 1000;
+                            var d   = new Date(n);
+                            var dow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
+                            var h   = d.getHours();
+                            var m2  = d.getMinutes();
+                            var ap  = h >= 12 ? "PM" : "AM";
+                            var h12 = h % 12; if (h12 === 0) h12 = 12;
+                            return dow + " " + h12 + ":" + (m2 < 10 ? "0" : "") + m2 + " " + ap;
+                        }
+                        function bubbleText(content, msgType, searchQuery, isCurrentSearchMatch) {
+                            var raw = (typeof content === "string" && content.length > 0)
+                                  ? content
+                                  : ((msgType === 2 || msgType === "2")
+                                     ? "[Photo]"
+                                     : ((msgType === 6 || msgType === "6")
+                                        ? "[Sticker]" : "[Photo]"));
+                            if (searchQuery && searchQuery.length > 0) {
+                                var hlColor = isCurrentSearchMatch ? "#ff9800" : "#ffeb3b";
+                                return "<html>" + rowRoot.ListItem.view.highlightMatchesProxy(raw, searchQuery, hlColor) + "</html>";
+                            }
+                            return raw;
+                        }
+                        function hasCaption(content) {
+                            var c = content || "";
+                            if (c.length === 0 || c.charCodeAt(0) !== 123) return false;
+                            return c.indexOf('"caption":"') >= 0;
+                        }
+                        function extractCaption(content) {
+                            var c = content || "";
+                            if (c.length === 0) return "";
+                            var key = '"caption":"';
+                            var si = c.indexOf(key);
+                            if (si < 0) return "";
+                            si += key.length;
+                            var ei = si;
+                            while (ei < c.length) {
+                                var code = c.charCodeAt(ei);
+                                if (code === 92) { ei += 2; continue; }
+                                if (code === 34) break;
+                                ei++;
+                            }
+                            return c.substring(si, ei);
+                        }
+                        function photoStatusText(mine, msgId) {
+                            var mid = msgId || "";
+                            if (mine && mid.indexOf("local_img_") === 0) return "Sending...";
+                            return mine ? "Picture sent" : "Photo";
+                        }
+
                         // Do NOT set preferredHeight on rowRoot, even via a binding to a child's
                         // layoutFrame.height — that's self-referential: once Cascades measures one
                         // height, it locks in, and later content that needs more lines gets clipped
@@ -1326,19 +1395,7 @@ Page {
                                 }
 
                                 Label {
-                                    text: {
-                                        var ts = ListItemData.latestTs || ListItemData.ts;
-                                        if (!ts) return "";
-                                        var n = ts * 1;
-                                        if (n > 0 && n < 1e12) n *= 1000;
-                                        var d   = new Date(n);
-                                        var dow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
-                                        var h   = d.getHours();
-                                        var m2  = d.getMinutes();
-                                        var ap  = h >= 12 ? "PM" : "AM";
-                                        var h12 = h % 12; if (h12 === 0) h12 = 12;
-                                        return dow + " " + h12 + ":" + (m2 < 10 ? "0" : "") + m2 + " " + ap;
-                                    }
+                                    text: rowRoot.timestampLabel(ListItemData.latestTs, ListItemData.ts)
                                     horizontalAlignment: HorizontalAlignment.Right
                                     textStyle { fontSize: FontSize.XSmall; color: rowRoot.isDark ? Color.create("#888888") : Color.create("#777777") }
                                     topMargin: 0; bottomMargin: 0
@@ -1475,19 +1532,8 @@ Page {
                                     // messages like "Hi" to stretch to bubbleMaxW, while still giving
                                     // long text a ceiling to wrap against instead of clipping.
                                     maxWidth: Math.max(0, rowRoot.bubbleMaxW - 28)
-                                    text: {
-                                        var raw = (typeof ListItemData.content === "string" && ListItemData.content.length > 0)
-                                              ? ListItemData.content
-                                              : ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
-                                                 ? "[Photo]"
-                                                 : ((ListItemData.msgType === 6 || ListItemData.msgType === "6")
-                                                    ? "[Sticker]" : "[Photo]"));
-                                        if (rowRoot.searchQuery.length > 0) {
-                                            var hlColor = rowRoot.isCurrentSearchMatch ? "#ff9800" : "#ffeb3b";
-                                            return "<html>" + rowRoot.ListItem.view.highlightMatchesProxy(raw, rowRoot.searchQuery, hlColor) + "</html>";
-                                        }
-                                        return raw;
-                                    }
+                                    text: rowRoot.bubbleText(ListItemData.content, ListItemData.msgType,
+                                                              rowRoot.searchQuery, rowRoot.isCurrentSearchMatch)
                                     textStyle {
                                         base:  SystemDefaults.TextStyles.BodyText
                                         color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
@@ -1519,27 +1565,8 @@ Page {
                                         // No preferredWidth/maxWidth pin — photoBubble is already
                                         // Fill, so this inherits a fresh width each layout pass
                                         horizontalAlignment: HorizontalAlignment.Fill
-                                        visible: {
-                                            var c = ListItemData.content || "";
-                                            if (c.length === 0 || c.charCodeAt(0) !== 123) return false;
-                                            return c.indexOf('"caption":"') >= 0;
-                                        }
-                                        text: {
-                                            var c = ListItemData.content || "";
-                                            if (c.length === 0) return "";
-                                            var key = '"caption":"';
-                                            var si = c.indexOf(key);
-                                            if (si < 0) return "";
-                                            si += key.length;
-                                            var ei = si;
-                                            while (ei < c.length) {
-                                                var code = c.charCodeAt(ei);
-                                                if (code === 92) { ei += 2; continue; }
-                                                if (code === 34) break;
-                                                ei++;
-                                            }
-                                            return c.substring(si, ei);
-                                        }
+                                        visible: rowRoot.hasCaption(ListItemData.content)
+                                        text: rowRoot.extractCaption(ListItemData.content)
                                         textStyle {
                                             base:  SystemDefaults.TextStyles.BodyText
                                             color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
@@ -1591,11 +1618,7 @@ Page {
 
                                     // Gray status text, shows "Sending..." for unconfirmed outgoing
                                     Label {
-                                        text: {
-                                            var mid = ListItemData.msgId || "";
-                                            if (rowRoot.mine && mid.indexOf("local_img_") === 0) return "Sending...";
-                                            return rowRoot.mine ? "Picture sent" : "Photo";
-                                        }
+                                        text: rowRoot.photoStatusText(rowRoot.mine, ListItemData.msgId)
                                         textStyle {
                                             fontSize: FontSize.XSmall
                                             fontStyle: FontStyle.Italic
@@ -1651,6 +1674,55 @@ Page {
                                     }
                                     property string vFileName: videoBubble.extractJsonStringField(ListItemData.content, "fileName") || "video.mp4"
                                     property string vHref: videoBubble.extractJsonStringField(ListItemData.content, "href")
+                                    // Helper functions instead of block-body property declarations
+                                    // (property string foo: { var x; return x; } is a parse-time
+                                    // error on this QtQuick1/Cascades engine) — plain functions
+                                    // called from a single-expression property binding instead.
+                                    function extFor(fileName) {
+                                        var n = fileName || "";
+                                        var di = n.lastIndexOf(".");
+                                        return di >= 0 ? n.substring(di + 1).toLowerCase() : "";
+                                    }
+                                    function iconFor(ext) {
+                                        if (ext === "txt")                 return "asset:///images/File Types/File Type - TXT.png";
+                                        if (ext === "doc" || ext === "docx") return "asset:///images/File Types/File Type - Document.png";
+                                        if (ext === "pdf")                 return "asset:///images/File Types/File Type - PDF.png";
+                                        if (ext === "ppt" || ext === "pptx") return "asset:///images/File Types/File Type - PPT.png";
+                                        if (ext === "xls" || ext === "xlsx") return "asset:///images/File Types/File Type - XLS (Spreadsheet).png";
+                                        return "asset:///images/File Types/File Type - Video.png";
+                                    }
+                                    // Trạng thái hiển thị dưới tên file — cũng phải là function thay vì
+                                    // block-body binding trên Label.text (cùng lý do như extFor/iconFor).
+                                    // Nhận tham số tường minh thay vì đọc thẳng ListItemData/rowRoot bên
+                                    // trong, để binding engine thấy rõ dependency (không bị stale như
+                                    // ghi chú extractJsonStringField ở trên).
+                                    function statusText(mine, msgId, uploadVideoActive, uploadVideoPercent,
+                                                         uploadFileActive, uploadFilePercent,
+                                                         downloading, progress, isVideo) {
+                                        var mid = msgId || "";
+                                        if (mine && mid.indexOf("local_video_") === 0) {
+                                            return uploadVideoActive
+                                                ? "Sending " + uploadVideoPercent + "%..."
+                                                : "Sending...";
+                                        }
+                                        // sendFile() (document) now shares the same chunked-upload
+                                        // progress as video — same "Sending N%..." pattern.
+                                        if (mine && mid.indexOf("local_file_") === 0) {
+                                            return uploadFileActive
+                                                ? "Sending " + uploadFilePercent + "%..."
+                                                : "Sending...";
+                                        }
+                                        if (downloading) return "Downloading " + progress + "%...";
+                                        return isVideo ? "Tap to play" : "Tap to open";
+                                    }
+                                    // Extension đọc từ vFileName để chọn icon đúng loại tài liệu —
+                                    // video giữ nguyên File Type - Video.png, các loại tài liệu khác
+                                    // (doc/docx, ppt/pptx, xls/xlsx, txt, pdf) map sang icon tương ứng
+                                    // theo yêu cầu; phần mở rộng lạ rơi về icon Video (mặc định cũ).
+                                    property string vExt: videoBubble.extFor(videoBubble.vFileName)
+                                    property bool vIsVideo: videoBubble.vExt === "mp4" || videoBubble.vExt === "mov"
+                                                          || videoBubble.vExt === "3gp" || videoBubble.vExt === "mkv"
+                                    property string vIconSource: videoBubble.iconFor(videoBubble.vExt)
                                     // Bound to msgList's single-slot progress tracker (only one video
                                     // downloads at a time) — true only while THIS bubble's msgId matches.
                                     property bool vDownloading: rowRoot.ListItem.view.videoProgressMsgId === (ListItemData.msgId || "")
@@ -1658,7 +1730,7 @@ Page {
                                     property int  vProgress: vDownloading ? rowRoot.ListItem.view.videoProgressPercent : 0
 
                                     ImageView {
-                                        imageSource: "asset:///images/File Types/File Type - Video.png"
+                                        imageSource: videoBubble.vIconSource
                                         scalingMethod: ScalingMethod.AspectFit
                                         verticalAlignment: VerticalAlignment.Center
                                         preferredWidth: 68; preferredHeight: 68
@@ -1680,16 +1752,10 @@ Page {
                                             }
                                         }
                                         Label {
-                                            text: {
-                                                var mid = ListItemData.msgId || "";
-                                                if (rowRoot.mine && mid.indexOf("local_video_") === 0) {
-                                                    return rowRoot.ListItem.view.uploadVideoActive
-                                                        ? "Sending " + rowRoot.ListItem.view.uploadVideoPercent + "%..."
-                                                        : "Sending...";
-                                                }
-                                                if (videoBubble.vDownloading) return "Downloading " + videoBubble.vProgress + "%...";
-                                                return "Tap to play";
-                                            }
+                                            text: videoBubble.statusText(rowRoot.mine, ListItemData.msgId || "",
+                                                      rowRoot.ListItem.view.uploadVideoActive, rowRoot.ListItem.view.uploadVideoPercent,
+                                                      rowRoot.ListItem.view.uploadFileActive, rowRoot.ListItem.view.uploadFilePercent,
+                                                      videoBubble.vDownloading, videoBubble.vProgress, videoBubble.vIsVideo)
                                             textStyle {
                                                 fontSize: FontSize.XSmall
                                                 fontStyle: FontStyle.Italic
@@ -3005,6 +3071,16 @@ Page {
                 msgList.uploadVideoPercent = percent;
             }
         },
+        // sendFile() upload progress — same shape as video's, on its own
+        // signal so a file upload's % doesn't drive the video bubble's UI.
+        Connections {
+            target: zService
+            onFileUploadProgress: {
+                if (threadId !== chatViewPage.threadId) return;
+                msgList.uploadFileActive = (percent < 100);
+                msgList.uploadFilePercent = percent;
+            }
+        },
         Connections {
             target: zService
             onVideoDownloadProgress: {
@@ -3159,6 +3235,8 @@ Page {
                 chatViewPage.flushPendingRebuild();
                 msgList.uploadVideoActive = false;
                 msgList.uploadVideoPercent = 0;
+                msgList.uploadFileActive = false;
+                msgList.uploadFilePercent = 0;
                 if (!success) {
                     chatViewPage.removeLocalPlaceholder(chatViewPage.pendingMsg);
                     inputField.text = chatViewPage.pendingMsg;
@@ -3310,10 +3388,14 @@ Page {
                             }
                         }
 
+                        // local_file_ (document attachment) placeholders reconcile the
+                        // same way as local_video_ — both are msgType 3 and share the
+                        // same {"fileName","href","fileSize"} content shape.
                         var vPlaceholderIdx = -1;
                         for (var vpi = msgModel.size() - 1; vpi >= 0; vpi--) {
                             var vpitem = msgModel.value(vpi);
-                            if (vpitem.msgId && vpitem.msgId.indexOf("local_video_") === 0) {
+                            if (vpitem.msgId && (vpitem.msgId.indexOf("local_video_") === 0
+                                              || vpitem.msgId.indexOf("local_file_") === 0)) {
                                 vPlaceholderIdx = vpi;
                                 break;
                             }
@@ -3455,6 +3537,7 @@ Page {
             id: attachPickerSheet
             onPictureSelected: { imagePicker.open(); }
             onVideoSelected:   { videoPicker.open(); }
+            onFileSelected:    { filePicker.open(); }
         },
 
         FilePicker {
@@ -3517,8 +3600,13 @@ Page {
             }
         },
 
-        // Giữ lại cho nhánh "File" (share.file loại khác video) sẽ nối sau —
-        // hiện Attach sheet chưa gọi tới, chỉ Picture/Video hoạt động.
+        // File đính kèm dạng tài liệu: doc/docx, ppt/pptx, xls/xlsx, txt, pdf.
+        // Cùng shape content {"fileName","href","fileSize"} và cùng msgType=3
+        // như video (xem ghi chú ở videoBubble trong bubble delegate) — nhờ vậy
+        // dùng chung được 1 bubble QML lẫn pipeline reconcile/tải-về/mở file,
+        // chỉ khác icon hiển thị (theo phần mở rộng). sendFile() giờ dùng
+        // chung chunked-upload (<=512K/chunk) với sendVideo() — an toàn cho
+        // file nặng (vd. ~30MB) và có % tiến trình thật qua fileUploadProgress.
         FilePicker {
             id: filePicker
             type: FileType.Other
@@ -3526,11 +3614,18 @@ Page {
             title: "Select File"
             onFileSelected: {
                 var path = selectedFiles[0];
+                var ext  = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
+                var allowedExt = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "pdf"];
+                if (allowedExt.indexOf(ext) < 0) {
+                    errorToast.body = "Unsupported file type: ." + ext;
+                    errorToast.show();
+                    return;
+                }
                 var fname = path.substring(path.lastIndexOf('/') + 1);
                 var mf = {
                     msgId:    "local_file_" + new Date().getTime(),
-                    content:  "[File: " + fname + "]",
-                    msgType:  0,
+                    content:  JSON.stringify({ fileName: fname, href: "", fileSize: 0 }),
+                    msgType:  3,
                     isMine:   true,
                     isGroup:  chatViewPage.isGroup,
                     senderId: "self",
@@ -3540,6 +3635,8 @@ Page {
                 };
                 msgModel.append(mf);
                 chatViewPage.rebuildGroups(true);
+                msgList.uploadFileActive = true;
+                msgList.uploadFilePercent = 0;
                 zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
             }
         },

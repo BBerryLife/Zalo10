@@ -144,6 +144,10 @@ public:
     // ngay trước khi upload, để ảnh gốc không mất kể cả khi round-trip
     // WS echo/CDN thất bại. Trả về path mới, hoặc path gốc nếu copy lỗi.
     Q_INVOKABLE QString cacheLocalImage(const QString &sourcePath);
+    // Gửi file tài liệu (doc/docx, ppt/pptx, xls/xlsx, txt, pdf). Dùng chung
+    // pipeline chunked-upload (<=512K/chunk) với sendVideo() — an toàn cho
+    // file nặng (vd. ~30MB): tránh 1 POST khổng lồ dễ timeout, và progress
+    // báo về qua fileUploadProgress thay vì videoUploadProgress.
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     // Gửi video .mp4: upload asyncfile/upload rồi đợi WS cmd=601 act_type=
     // "file_done" trả fileUrl thật (khác ảnh, upload video không trả URL
@@ -326,6 +330,13 @@ signals:
     // server), percent = số chunk đã gửi / tổng chunk. threadId để QML khớp
     // đúng cuộc trò chuyện đang gửi (chỉ 1 video gửi cùng lúc/thread).
     void videoUploadProgress(const QString &threadId, int percent);
+    // Cùng cơ chế chunk <=512K như video nhưng cho file tài liệu (doc/docx,
+    // ppt/pptx, xls/xlsx, txt, pdf) — sendFile() giờ dùng chung pipeline
+    // chunked-upload với sendVideo() (an toàn cho file nặng, ví dụ ~30MB,
+    // tránh 1 POST khổng lồ dễ timeout/lỗi giữa chừng không rõ nguyên nhân).
+    // Tách signal riêng khỏi videoUploadProgress để QML không lẫn lộn 2
+    // thanh tiến trình khi cả video lẫn file cùng đang gửi ở các thread khác nhau.
+    void fileUploadProgress(const QString &threadId, int percent);
 
 private slots:
     void onStep1Done();
@@ -369,7 +380,6 @@ private slots:
     void onReactMsgDone();
     void onSendPhotoDone();
     void onSendPhotoMsgDone();
-    void onSendFileDone();
     void onSendVideoChunkUploadDone();
     void onSendVideoMsgDone();
     void onVideoDownloadProgress(qint64 received, qint64 total);
@@ -605,18 +615,22 @@ private:
     QMap<QString, QVariantMap> m_pendingSentPhotoInfo;
 
     // fileId (từ response asyncfile/upload) -> {"threadId","clientId",
-    // "fileName","fileSize","isGroup","localPath"} — video/file chờ WS
-    // cmd=601 act_type="file_done" trả fileUrl thật trước khi gửi bước 2
-    // (asyncfile/msg). Khác ảnh: upload video KHÔNG trả URL ngay trong
-    // response HTTP.
+    // "fileName","fileSize","isGroup","localPath","isFile"} — video/file
+    // chờ WS cmd=601 act_type="file_done" trả fileUrl thật trước khi gửi
+    // bước 2 (asyncfile/msg). Khác ảnh: upload video/file KHÔNG trả URL
+    // ngay trong response HTTP. "isFile" (bool) phân biệt gửi progress qua
+    // videoUploadProgress hay fileUploadProgress ở bước chunk — dùng chung
+    // 1 map cho cả 2 loại vì cấu trúc pending giống hệt nhau.
     QMap<QString, QVariantMap> m_pendingVideoUpload;
 
     // clientId -> {"threadId","isGroup","localPath","fileName","fileSize",
-    // "totalChunks","chunkIndex","fileData"} — state for the chunked
-    // sendVideo() upload in progress. Server rejects any single chunk over
-    // 512K, so a video is split into <=512K pieces uploaded one at a time
-    // via sendVideoChunk(); this map carries the remaining bytes + progress
-    // between each chunk's async QNetworkReply.
+    // "totalChunks","chunkIndex","fileData","isFile"} — state for the
+    // chunked sendVideo()/sendFile() upload in progress. Server rejects any
+    // single chunk over 512K, so both are split into <=512K pieces uploaded
+    // one at a time via sendVideoChunk(); this map carries the remaining
+    // bytes + progress between each chunk's async QNetworkReply. "isFile"
+    // routes the progress signal (videoUploadProgress vs fileUploadProgress)
+    // so a document upload doesn't drive the video bubble's UI or vice versa.
     QMap<QString, QVariantMap> m_pendingVideoChunkUpload;
     void sendVideoChunk(const QString &clientId);
 
