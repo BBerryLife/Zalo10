@@ -78,8 +78,9 @@ static QString mimeTypeForImagePath(const QString &path)
 }
 
 // MIME type by extension for openLocalFile()'s bb.action.OPEN — covers both
-// video (Zalo10's original use of this function) and document attachments
-// (doc/docx, ppt/pptx, xls/xlsx, txt, pdf) added alongside file-attachment
+// video (Zalo10's original use of this function) and document/misc/audio
+// attachments (doc/docx, ppt/pptx, xls/xlsx, txt, pdf, epub, apk, cer,
+// zip/rar/7z, vcf, mp3/flac, m4a, bar) added alongside file-attachment
 // support, so bb.action.OPEN routes each to the right handler app instead of
 // always guessing video/mp4. Falls back to video/mp4 for anything unmatched
 // since video was (until now) the only type this function ever received.
@@ -97,6 +98,17 @@ static QString mimeTypeForVideoPath(const QString &path)
     if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     if (lower.endsWith(".xls"))  return "application/vnd.ms-excel";
     if (lower.endsWith(".txt"))  return "text/plain";
+    if (lower.endsWith(".epub")) return "application/epub+zip";
+    if (lower.endsWith(".apk"))  return "application/vnd.android.package-archive";
+    if (lower.endsWith(".cer"))  return "application/x-x509-ca-cert";
+    if (lower.endsWith(".zip"))  return "application/zip";
+    if (lower.endsWith(".rar"))  return "application/x-rar-compressed";
+    if (lower.endsWith(".7z"))   return "application/x-7z-compressed";
+    if (lower.endsWith(".vcf"))  return "text/x-vcard";
+    if (lower.endsWith(".mp3"))  return "audio/mpeg";
+    if (lower.endsWith(".flac")) return "audio/flac";
+    if (lower.endsWith(".m4a"))  return "audio/mp4";
+    if (lower.endsWith(".bar"))  return "application/octet-stream"; // BB10 app package, no standard MIME
     return "video/mp4";
 }
 

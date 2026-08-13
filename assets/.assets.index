@@ -1,5 +1,5 @@
 1
-800
+803
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -711,11 +711,13 @@ images/File Types/BT File- Calendar.png
 images/File Types/File Type - APK.png
 images/File Types/File Type - Attachment.png
 images/File Types/File Type - Audio.png
+images/File Types/File Type - BAR.png
 images/File Types/File Type - Calendar.png
 images/File Types/File Type - Certificate Message.png
 images/File Types/File Type - Certificate.png
 images/File Types/File Type - Certificates.png
 images/File Types/File Type - Document.png
+images/File Types/File Type - ePUB.png
 images/File Types/File Type - Failed Certificate.png
 images/File Types/File Type - Failed Certificates.png
 images/File Types/File Type - Folder.png
@@ -800,3 +802,4 @@ QuickMessagesSheet.qml
 ReactionPickerSheet.qml
 SettingsSheet.qml
 SharePickerSheet.qml
+VoiceNoteSheet.qml

@@ -1689,6 +1689,14 @@ Page {
                                         if (ext === "pdf")                 return "asset:///images/File Types/File Type - PDF.png";
                                         if (ext === "ppt" || ext === "pptx") return "asset:///images/File Types/File Type - PPT.png";
                                         if (ext === "xls" || ext === "xlsx") return "asset:///images/File Types/File Type - XLS (Spreadsheet).png";
+                                        if (ext === "epub")                return "asset:///images/File Types/File Type - ePUB.png";
+                                        if (ext === "apk")                 return "asset:///images/File Types/File Type - APK.png";
+                                        if (ext === "cer")                 return "asset:///images/File Types/File Type - Certificate.png";
+                                        if (ext === "zip" || ext === "rar" || ext === "7z") return "asset:///images/File Types/File Type - ZIP (Compressed).png";
+                                        if (ext === "vcf")                 return "asset:///images/File Types/File Type - VCF (Contanct).png";
+                                        if (ext === "mp3" || ext === "flac") return "asset:///images/File Types/File Type - Music.png";
+                                        if (ext === "m4a")                 return "asset:///images/File Types/File Type - Voice Note (Audio Recording).png";
+                                        if (ext === "bar")                 return "asset:///images/File Types/File Type - BAR.png";
                                         return "asset:///images/File Types/File Type - Video.png";
                                     }
                                     // Trạng thái hiển thị dưới tên file — cũng phải là function thay vì
@@ -1716,9 +1724,10 @@ Page {
                                         return isVideo ? "Tap to play" : "Tap to open";
                                     }
                                     // Extension đọc từ vFileName để chọn icon đúng loại tài liệu —
-                                    // video giữ nguyên File Type - Video.png, các loại tài liệu khác
-                                    // (doc/docx, ppt/pptx, xls/xlsx, txt, pdf) map sang icon tương ứng
-                                    // theo yêu cầu; phần mở rộng lạ rơi về icon Video (mặc định cũ).
+                                    // video giữ nguyên File Type - Video.png, các loại tài liệu/định
+                                    // dạng khác (doc/docx, ppt/pptx, xls/xlsx, txt, pdf, epub, apk,
+                                    // cer, zip/rar/7z, vcf, mp3/flac, m4a, bar) map sang icon tương
+                                    // ứng theo yêu cầu; phần mở rộng lạ rơi về icon Video (mặc định cũ).
                                     property string vExt: videoBubble.extFor(videoBubble.vFileName)
                                     property bool vIsVideo: videoBubble.vExt === "mp4" || videoBubble.vExt === "mov"
                                                           || videoBubble.vExt === "3gp" || videoBubble.vExt === "mkv"
@@ -2693,6 +2702,31 @@ Page {
         }
     }
 
+    // Dùng chung bởi filePicker/audioPicker/voiceNoteSheet/contact-vcf —
+    // 4 nguồn file khác nhau nhưng cùng 1 luồng: build local echo bubble
+    // (msgType=3, "local_file_" prefix) rồi gọi sendFile(). path phải là
+    // đường dẫn hệ thống thật, KHÔNG có tiền tố "file://" (khớp cách
+    // FilePicker.selectedFiles và VoiceNoteSheet.voiceNoteReady đều trả về).
+    function stageAndSendLocalFile(path) {
+        var fname = path.substring(path.lastIndexOf('/') + 1);
+        var mf = {
+            msgId:    "local_file_" + new Date().getTime(),
+            content:  JSON.stringify({ fileName: fname, href: "", fileSize: 0 }),
+            msgType:  3,
+            isMine:   true,
+            isGroup:  chatViewPage.isGroup,
+            senderId: "self",
+            dName:    chatViewPage.selfName,
+            ts:       String(new Date().getTime()),
+            selfName: chatViewPage.selfName
+        };
+        msgModel.append(mf);
+        chatViewPage.rebuildGroups(true);
+        msgList.uploadFileActive = true;
+        msgList.uploadFilePercent = 0;
+        zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
+    }
+
     function rebuildGroups(scrollAfter) {
         // Data-loss race fix: if rebuildGroups() deferred an update onto
         // rebuildFlushTimer and a second message arrives before that timer fires,
@@ -3535,9 +3569,57 @@ Page {
 
         AttachPickerSheet {
             id: attachPickerSheet
-            onPictureSelected: { imagePicker.open(); }
-            onVideoSelected:   { videoPicker.open(); }
-            onFileSelected:    { filePicker.open(); }
+            onPictureSelected:  { imagePicker.open(); }
+            onVideoSelected:    { videoPicker.open(); }
+            onFileSelected:     { filePicker.open(); }
+            onAudioSelected:    { audioPicker.open(); }
+            onVoiceNoteSelected: { voiceNoteSheet.open(); }
+            // pickContact() sống thẳng trên zService (không có class/bridge
+            // riêng) — mở ContactPicker, build .vcf, rồi emit
+            // contactVcfReady/contactPickError, xử lý ở Connections bên dưới.
+            // Truyền threadId để kết quả trả về đúng Page này — bắt buộc,
+            // xem ghi chú dài ở khai báo pickContact() trong ZaloService.hpp.
+            onContactSelected:  { zService.pickContact(chatViewPage.threadId); }
+        },
+
+        // Voice Note recording sheet — ghi ra .m4a rồi gửi qua sendFile()
+        // giống mọi file đính kèm khác (msgType=3, cùng bubble/pipeline).
+        VoiceNoteSheet {
+            id: voiceNoteSheet
+            onVoiceNoteReady: {
+                chatViewPage.stageAndSendLocalFile(path);
+            }
+            onVoiceNoteError: {
+                errorToast.body = message;
+                errorToast.show();
+            }
+        },
+
+        // Kết quả pickContact() (mở từ AttachPickerSheet.onContactSelected
+        // ở trên) — .vcf build xong thì gửi luôn qua sendFile(), y hệt
+        // VoiceNoteSheet.onVoiceNoteReady. Không hiện toast khi bị huỷ
+        // (contactPickError("canceled")) vì đó là hành động chủ động của
+        // người dùng, không phải lỗi; chỉ báo toast cho reason "error".
+        //
+        // BẮT BUỘC lọc theo threadId ở cả 2 handler: zService là singleton
+        // toàn app, và mỗi ChatView Page từng được push vẫn có thể còn sống
+        // trong NavigationPane history (chưa bị destroy khi pop) — nếu
+        // không lọc, MỌI Page còn sống đều nhận cùng 1 signal và tự gửi
+        // file, gây gửi trùng nhiều lần (bug đã xảy ra thật: chọn 1 contact
+        // gửi ra 3 file .vcf vì 3 ChatView Page cùng lắng nghe không lọc).
+        Connections {
+            target: zService
+            onContactVcfReady: {
+                if (threadId !== chatViewPage.threadId) return;
+                chatViewPage.stageAndSendLocalFile(path);
+            }
+            onContactPickError: {
+                if (threadId !== chatViewPage.threadId) return;
+                if (reason !== "canceled") {
+                    errorToast.body = "Could not get contact";
+                    errorToast.show();
+                }
+            }
         },
 
         FilePicker {
@@ -3600,44 +3682,41 @@ Page {
             }
         },
 
-        // File đính kèm dạng tài liệu: doc/docx, ppt/pptx, xls/xlsx, txt, pdf.
+        // File đính kèm dạng bất kỳ. FileType.Other là type ĐÚNG cho nút
+        // "File" này (không đổi sang type khác) — nó cho picker hiển thị
+        // MỌI định dạng, không lọc theo Picture/Music/Video. Trước đây có
+        // 1 whitelist chỉ cho qua doc/docx/ppt/pptx/xls/xlsx/txt/pdf sau khi
+        // picker đã cho chọn, chặn silently mọi định dạng khác bằng toast
+        // lỗi — mâu thuẫn với việc picker vốn hiển thị mọi loại. Đã BỎ
+        // whitelist: cho gửi bất kỳ file nào người dùng chọn qua picker này.
         // Cùng shape content {"fileName","href","fileSize"} và cùng msgType=3
         // như video (xem ghi chú ở videoBubble trong bubble delegate) — nhờ vậy
         // dùng chung được 1 bubble QML lẫn pipeline reconcile/tải-về/mở file,
-        // chỉ khác icon hiển thị (theo phần mở rộng). sendFile() giờ dùng
-        // chung chunked-upload (<=512K/chunk) với sendVideo() — an toàn cho
-        // file nặng (vd. ~30MB) và có % tiến trình thật qua fileUploadProgress.
+        // chỉ khác icon hiển thị (theo phần mở rộng, xem iconFor() ở
+        // videoBubble — bao gồm cả các định dạng chưa được liệt kê icon riêng,
+        // sẽ rơi về icon Video mặc định cho tới khi được thêm). sendFile() giờ
+        // dùng chung chunked-upload (<=512K/chunk) với sendVideo() — an toàn
+        // cho file nặng (vd. ~30MB) và có % tiến trình thật qua fileUploadProgress.
         FilePicker {
             id: filePicker
             type: FileType.Other
             mode: FilePickerMode.Picker
             title: "Select File"
             onFileSelected: {
-                var path = selectedFiles[0];
-                var ext  = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
-                var allowedExt = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "pdf"];
-                if (allowedExt.indexOf(ext) < 0) {
-                    errorToast.body = "Unsupported file type: ." + ext;
-                    errorToast.show();
-                    return;
-                }
-                var fname = path.substring(path.lastIndexOf('/') + 1);
-                var mf = {
-                    msgId:    "local_file_" + new Date().getTime(),
-                    content:  JSON.stringify({ fileName: fname, href: "", fileSize: 0 }),
-                    msgType:  3,
-                    isMine:   true,
-                    isGroup:  chatViewPage.isGroup,
-                    senderId: "self",
-                    dName:    chatViewPage.selfName,
-                    ts:       String(new Date().getTime()),
-                    selfName: chatViewPage.selfName
-                };
-                msgModel.append(mf);
-                chatViewPage.rebuildGroups(true);
-                msgList.uploadFileActive = true;
-                msgList.uploadFilePercent = 0;
-                zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
+                chatViewPage.stageAndSendLocalFile(selectedFiles[0]);
+            }
+        },
+
+        // Audio = chọn 1 file âm thanh có sẵn (mp3/flac/m4a/...) từ máy —
+        // khác Voice Note (ghi âm mới). Cùng pipeline gửi/nhận/bubble với
+        // File ở trên (msgType=3, chunked upload) — chỉ khác nguồn file.
+        FilePicker {
+            id: audioPicker
+            type: FileType.Music
+            mode: FilePickerMode.Picker
+            title: "Select Audio"
+            onFileSelected: {
+                chatViewPage.stageAndSendLocalFile(selectedFiles[0]);
             }
         },
 

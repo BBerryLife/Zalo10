@@ -1062,6 +1062,22 @@ QString ZaloService::cacheLocalImage(const QString &sourcePath)
     return destPath;
 }
 
+// Xoá 1 file cục bộ — dùng bởi VoiceNoteSheet (Discard/Cancel một bản ghi
+// .m4a chưa gửi) và ContactPickerBridge (Cancel một .vcf vừa build xong
+// trước khi kịp gửi). Không log lỗi/không emit gì nếu file không tồn tại —
+// Discard có thể gọi hàm này ngay cả khi bước ghi/build trước đó thất bại,
+// đó là tình huống bình thường chứ không phải lỗi.
+void ZaloService::deleteLocalFile(const QString &path)
+{
+    QString p = path;
+    if (p.startsWith("file://")) p = p.mid(7);
+    if (p.isEmpty()) return;
+    if (QFile::exists(p)) {
+        QFile::remove(p);
+        qDebug() << "[Zalo] deleteLocalFile:" << p;
+    }
+}
+
 void ZaloService::sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption)
 {
     if (!m_loggedIn) return;
@@ -1371,7 +1387,9 @@ void ZaloService::onSendPhotoMsgDone()
     emit messageSent(ok, tid);
 }
 
-// ─── sendFile: gửi file tài liệu (doc/docx, ppt/pptx, xls/xlsx, txt, pdf) ──
+// ─── sendFile: gửi file đính kèm bất kỳ định dạng nào (doc/docx, ppt/pptx,
+// xls/xlsx, txt, pdf, epub, apk, cer, zip/rar/7z, vcf, mp3/flac, m4a, bar,
+// và bất kỳ định dạng nào khác người dùng chọn qua FilePicker) ──────────────
 // Dùng chung pipeline chunked-upload với sendVideo() (xem ghi chú ở đó) thay
 // vì 1 POST duy nhất như trước — file 30MB đọc hết vào 1 request rất dễ
 // timeout hoặc bị server từ chối giữa chừng không rõ lý do, còn 512K/chunk

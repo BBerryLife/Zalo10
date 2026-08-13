@@ -163,10 +163,23 @@ NavigationPane {
 
                 function itemType(data, indexPath) { return "item"; }
 
+                // Proxy function — ListItemComponent delegates KHÔNG resolve được
+                // id của Page/NavigationPane cha (đây chính là nguyên nhân dòng
+                // preview tin nhắn cuối biến mất hoàn toàn: "chatsNav.lastMessagePreview"
+                // gọi thẳng từ trong delegate ném ReferenceError "Can't find variable:
+                // chatsNav" ở mọi lần re-evaluate, binding rỗng nên Label không hiện gì).
+                // ListView (friendList) thì gọi được chatsNav bình thường vì nó không
+                // nằm trong 1 ListItemComponent — nên "tunnel" qua đây, delegate gọi
+                // ListItem.view.lastMessagePreview(...) thay vì chatsNav trực tiếp.
+                function lastMessagePreview(lastMessage, lastMsg, lastMsgIsMine, lastSenderName) {
+                    return chatsNav.lastMessagePreview(lastMessage, lastMsg, lastMsgIsMine, lastSenderName);
+                }
+
                 listItemComponents: [
                     ListItemComponent {
                         type: "item"
                         CustomListItem {
+                            id: friendRow
                             dividerVisible: true
                             Container {
                                 layout: DockLayout {}
@@ -216,17 +229,8 @@ NavigationPane {
                                     }
 
                                     Label {
-                                        text: {
-                                            var lm = ListItemData.lastMessage || ListItemData.lastMsg || "";
-                                            if (lm.length === 0) return "No messages yet";
-                                            var prefix = "";
-                                            if (ListItemData.lastMsgIsMine === true || ListItemData.lastMsgIsMine === "true") {
-                                                prefix = "Me: ";
-                                            } else if (ListItemData.lastSenderName && ListItemData.lastSenderName.length > 0) {
-                                                prefix = ListItemData.lastSenderName.split(" ")[0] + ": ";
-                                            }
-                                            return prefix + lm;
-                                        }
+                                        text: friendRow.ListItem.view.lastMessagePreview(ListItemData.lastMessage, ListItemData.lastMsg,
+                                                  ListItemData.lastMsgIsMine, ListItemData.lastSenderName)
                                         textStyle {
                                             base: SystemDefaults.TextStyles.SubtitleText
                                             color: Color.DarkGray
@@ -371,10 +375,8 @@ NavigationPane {
                                 snippet = isMine ? "You recalled a message" : "This message was recalled";
                             } else if (mt === 2 || mt === "2") {
                                 snippet = "[Photo]";
-                            } else if (mt === 3 || mt === "3") {
-                                snippet = "[Video]";
                             } else {
-                                snippet = (lm.content || "").substring(0, 60);
+                                snippet = chatsNav.msgSnippet(mt, lm.content);
                             }
                             out.lastMessage    = snippet;
                             out.lastMsgIsMine  = isMine;
@@ -441,8 +443,7 @@ NavigationPane {
                 onNewMessage: {
                     var tid = threadId;
                     var snippet = (message.msgType === 2 || message.msgType === "2")
-                        ? "[Photo]" : ((message.msgType === 3 || message.msgType === "3")
-                        ? "[Video]" : (message.content || "").substring(0, 60));
+                        ? "[Photo]" : chatsNav.msgSnippet(message.msgType, message.content);
                     var isMine = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
                     var senderName = message.dName || "";
                     if (!isMine) chatsNav.onUnreadMessage();
@@ -540,5 +541,56 @@ NavigationPane {
         }
         var mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][date.getMonth()];
         return mon + " " + date.getDate();
+    }
+
+    // Preview snippet cho tin nhắn cuối trong danh sách chat. msgType===3
+    // (video/file, xem ghi chú videoBubble ở ChatView.qml) trước đây luôn
+    // hiện cứng "[Video]" kể cả với file tài liệu — giờ chỉ hiện "[Video]"
+    // cho đúng .mp4/.mov/.3gp/.mkv, còn lại hiện tên file thật (theo yêu
+    // cầu, không dùng "[File]"). fileName đọc thủ công từ content JSON
+    // ({"fileName":"...","href":"...","fileSize":...}) bằng string scan
+    // đơn giản, không parse JSON đầy đủ — đủ dùng và nhất quán với cách
+    // ChatView.qml đọc field này (extractJsonStringField).
+    function extractFileName(content) {
+        var c = content || "";
+        if (c.length === 0 || c.charCodeAt(0) !== 123) return "";
+        var key = '"fileName":"';
+        var si = c.indexOf(key);
+        if (si < 0) return "";
+        si += key.length;
+        var ei = si;
+        while (ei < c.length) {
+            var code = c.charCodeAt(ei);
+            if (code === 92) { ei += 2; continue; }
+            if (code === 34) break;
+            ei++;
+        }
+        return c.substring(si, ei);
+    }
+    function msgSnippet(mt, content) {
+        if (mt !== 3 && mt !== "3") return (content || "").substring(0, 60);
+        var fname = chatsNav.extractFileName(content);
+        var ext = fname.substring(fname.lastIndexOf('.') + 1).toLowerCase();
+        var isVideo = (ext === "mp4" || ext === "mov" || ext === "3gp" || ext === "mkv");
+        if (isVideo) return "[Video]";
+        return fname.length > 0 ? fname : "[File]";
+    }
+    // Nội dung dòng preview thứ 2 trong mỗi ô danh sách chat (tên người gửi
+    // + tin nhắn cuối). Trước đây đây là 1 block-body binding trực tiếp
+    // trên Label.text ({ var lm = ...; ...; return prefix + lm; }) — pattern
+    // này bị cấm trên QtQuick1/Cascades (xem ghi chú ở videoBubble trong
+    // ChatView.qml, nơi cùng lỗi này từng gây crash parse thật trên máy).
+    // Chuyển thành hàm riêng để nhất quán và loại bỏ rủi ro, dù chỗ này có
+    // thể đã "chạy được" nhờ may mắn về context binding cụ thể.
+    function lastMessagePreview(lastMessage, lastMsg, lastMsgIsMine, lastSenderName) {
+        var lm = lastMessage || lastMsg || "";
+        if (lm.length === 0) return "No messages yet";
+        var prefix = "";
+        if (lastMsgIsMine === true || lastMsgIsMine === "true") {
+            prefix = "Me: ";
+        } else if (lastSenderName && lastSenderName.length > 0) {
+            prefix = lastSenderName.split(" ")[0] + ": ";
+        }
+        return prefix + lm;
     }
 }

@@ -72,6 +72,54 @@ NavigationPane {
         return mon + " " + date.getDate();
     }
 
+    // Preview snippet cho tin nhắn cuối trong danh sách nhóm — cùng logic
+    // với ChatsTab.qml (xem ghi chú ở đó). Trước đây GroupsTab hoàn toàn
+    // không xử lý msgType===3, nên preview 1 video/file gửi trong nhóm hiện
+    // thẳng JSON thô (dạng {"fileName":"...",...}) thay vì "[Video]" hay tên file.
+    function extractFileName(content) {
+        var c = content || "";
+        if (c.length === 0 || c.charCodeAt(0) !== 123) return "";
+        var key = '"fileName":"';
+        var si = c.indexOf(key);
+        if (si < 0) return "";
+        si += key.length;
+        var ei = si;
+        while (ei < c.length) {
+            var code = c.charCodeAt(ei);
+            if (code === 92) { ei += 2; continue; }
+            if (code === 34) break;
+            ei++;
+        }
+        return c.substring(si, ei);
+    }
+    function msgSnippet(mt, content) {
+        if (mt !== 3 && mt !== "3") return (content || "").substring(0, 60);
+        var fname = groupsNav.extractFileName(content);
+        var ext = fname.substring(fname.lastIndexOf('.') + 1).toLowerCase();
+        var isVideo = (ext === "mp4" || ext === "mov" || ext === "3gp" || ext === "mkv");
+        if (isVideo) return "[Video]";
+        return fname.length > 0 ? fname : "[File]";
+    }
+    // Nội dung dòng preview thứ 2 trong mỗi ô danh sách nhóm. Trước đây đây
+    // là 1 block-body binding trực tiếp trên Label.text — pattern này bị
+    // cấm trên QtQuick1/Cascades (xem ghi chú ở videoBubble trong
+    // ChatView.qml, nơi cùng lỗi này từng gây crash parse thật trên máy).
+    // Chuyển thành hàm riêng để nhất quán và loại bỏ rủi ro, dù chỗ này có
+    // thể đã "chạy được" nhờ may mắn về context binding cụ thể. Prefix
+    // "You: " (không phải "Me: " như ChatsTab.qml) — giữ nguyên khác biệt
+    // gốc, không tự ý đồng bộ hoá 2 chỗ.
+    function lastMessagePreview(lastMessage, lastMsgIsMine, lastSenderName) {
+        var lm = lastMessage || "";
+        if (lm.length === 0) return "No messages yet";
+        var prefix = "";
+        if (lastMsgIsMine === true || lastMsgIsMine === "true") {
+            prefix = "You: ";
+        } else if (lastSenderName && lastSenderName.length > 0) {
+            prefix = lastSenderName.split(" ")[0] + ": ";
+        }
+        return prefix + lm;
+    }
+
     onPopTransitionEnded: {
         zService.clearActiveThread();
     }
@@ -203,10 +251,21 @@ NavigationPane {
 
                 function itemType(data, indexPath) { return "item"; }
 
+                // Proxy function — ListItemComponent delegates KHÔNG resolve được
+                // id của Page/NavigationPane cha (nguyên nhân dòng preview tin
+                // nhắn cuối biến mất hoàn toàn: gọi thẳng "groupsNav.lastMessagePreview"
+                // từ trong delegate ném ReferenceError "Can't find variable: groupsNav").
+                // ListView (groupList) gọi được groupsNav bình thường vì nó không
+                // nằm trong 1 ListItemComponent — nên "tunnel" qua đây.
+                function lastMessagePreview(lastMessage, lastMsgIsMine, lastSenderName) {
+                    return groupsNav.lastMessagePreview(lastMessage, lastMsgIsMine, lastSenderName);
+                }
+
                 listItemComponents: [
                     ListItemComponent {
                         type: "item"
                         CustomListItem {
+                            id: groupRow
                             dividerVisible: true
                             Container {
                                 layout: DockLayout {}
@@ -251,17 +310,8 @@ NavigationPane {
                                     }
 
                                     Label {
-                                        text: {
-                                            var lm = ListItemData.lastMessage || "";
-                                            if (lm.length === 0) return "No messages yet";
-                                            var prefix = "";
-                                            if (ListItemData.lastMsgIsMine === true || ListItemData.lastMsgIsMine === "true") {
-                                                prefix = "You: ";
-                                            } else if (ListItemData.lastSenderName && ListItemData.lastSenderName.length > 0) {
-                                                prefix = ListItemData.lastSenderName.split(" ")[0] + ": ";
-                                            }
-                                            return prefix + lm;
-                                        }
+                                        text: groupRow.ListItem.view.lastMessagePreview(ListItemData.lastMessage,
+                                                  ListItemData.lastMsgIsMine, ListItemData.lastSenderName)
                                         textStyle {
                                             base: SystemDefaults.TextStyles.SubtitleText
                                             color: Color.DarkGray
@@ -416,7 +466,7 @@ NavigationPane {
                             } else if (mt === 2 || mt === "2") {
                                 snippet = "[Photo]";
                             } else {
-                                snippet = (lm.content || "").substring(0, 60);
+                                snippet = groupsNav.msgSnippet(mt, lm.content);
                             }
                             g.lastMessage    = snippet;
                             g.lastMsgIsMine  = isMine;
@@ -481,7 +531,7 @@ NavigationPane {
                         var isMine = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
                         var tid = threadId;
                         var snippet = (message.msgType === 2 || message.msgType === "2")
-                            ? "[Photo]" : (message.content || "").substring(0, 60);
+                            ? "[Photo]" : groupsNav.msgSnippet(message.msgType, message.content);
                         if (!isMine) groupsNav.onUnreadMessage();
                         for (var i = 0; i < groupModel.size(); i++) {
                             var d = groupModel.value(i);

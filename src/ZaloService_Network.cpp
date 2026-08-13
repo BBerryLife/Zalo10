@@ -559,6 +559,27 @@ static QString sanitizeFileName(const QString &name)
     return s;
 }
 
+// Thư mục tải về theo loại file, theo yêu cầu — video vẫn giữ nguyên
+// "videos" (không nằm trong yêu cầu đổi), các loại còn lại route theo
+// nhóm: documents / music / voice / misc. Phần mở rộng lạ (không khớp
+// danh sách nào ở dưới, kể cả các loại tài liệu cũ như doc/docx/txt/pdf/
+// xls/xlsx/ppt/pptx) rơi về "documents" — an toàn hơn "misc" vì đa số
+// file người dùng gửi qua chat là tài liệu, và nhất quán với các định
+// dạng tài liệu đã liệt kê rõ trong yêu cầu.
+static QString destDirFor(const QString &fileName)
+{
+    QString ext = fileName.section('.', -1).toLower();
+    static const char* kVideoExt[] = { "mp4", "mov", "3gp", "mkv", 0 };
+    static const char* kMusicExt[] = { "mp3", "flac", 0 };
+    static const char* kVoiceExt[] = { "m4a", 0 };
+    static const char* kMiscExt[]  = { "apk", "cer", "zip", "rar", "7z", "vcf", "bar", 0 };
+    for (int i = 0; kVideoExt[i]; ++i) if (ext == kVideoExt[i]) return "/accounts/1000/shared/downloads/zalo10/videos";
+    for (int i = 0; kMusicExt[i]; ++i) if (ext == kMusicExt[i]) return "/accounts/1000/shared/downloads/zalo10/music";
+    for (int i = 0; kVoiceExt[i]; ++i) if (ext == kVoiceExt[i]) return "/accounts/1000/shared/downloads/zalo10/voice";
+    for (int i = 0; kMiscExt[i]; ++i)  if (ext == kMiscExt[i])  return "/accounts/1000/shared/downloads/zalo10/misc";
+    return "/accounts/1000/shared/downloads/zalo10/documents";
+}
+
 void ZaloService::downloadVideoMessage(const QString &msgId, const QString &url, const QString &fileName)
 {
     if (url.isEmpty() || msgId.isEmpty()) {
@@ -566,7 +587,7 @@ void ZaloService::downloadVideoMessage(const QString &msgId, const QString &url,
         return;
     }
 
-    QString destDir = "/accounts/1000/shared/downloads/zalo10/videos";
+    QString destDir = destDirFor(fileName.isEmpty() ? url : fileName);
     QDir dir;
     if (!dir.exists(destDir) && !dir.mkpath(destDir)) {
         qDebug() << "[Zalo] downloadVideoMessage: mkpath failed" << destDir;

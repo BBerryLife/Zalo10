@@ -11,6 +11,11 @@ QT += network script gui
 
 # BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
 LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform -lbbdevice -lbbpim
+# bbcascadespickers = bb::cascades::pickers (ContactPicker) — FilePicker
+# trước đây dùng đã kéo namespace pickers vào runtime rồi nhưng chưa từng
+# link tường minh; ContactPicker cần include header thật (không chỉ QML
+# plugin), nên phải thêm -lbbcascadespickers ở đây để linker resolve được.
+LIBS += -lbbcascadespickers
 LIBS += -lQtNetwork -lQtScript -lQtGui
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3
@@ -32,6 +37,7 @@ SOURCES += \
     src/ZaloService_WebSocket.cpp \
     src/ZaloService_Contacts.cpp \
     src/ZaloService_Messages.cpp \
+    src/ZaloService_ContactPicker.cpp \
     src/ZaloService_Crypto.cpp \
     src/ZaloService_Network.cpp \
     src/ZaloService_Db.cpp \
@@ -56,4 +62,6 @@ OTHER_FILES += \
     assets/SettingsSheet.qml \
     assets/AboutSheet.qml \
     assets/QuickMessagesSheet.qml \
-    assets/QuickMessageEditSheet.qml
+    assets/QuickMessageEditSheet.qml \
+    assets/AttachPickerSheet.qml \
+    assets/VoiceNoteSheet.qml

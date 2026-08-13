@@ -23,6 +23,13 @@
 #include <QSize>
 #include <sqlite3.h>
 
+// Forward-declare thay vì #include <bb/cascades/pickers/ContactPicker> ở
+// đây — header đó kéo theo khá nhiều dependency (bb/pim/contacts, QtDeclarative)
+// không cần thiết cho các file khác chỉ include ZaloService.hpp để dùng các
+// hàm không liên quan tới contact. Include đầy đủ nằm trong
+// ZaloService_ContactPicker.cpp, nơi thực sự dùng class này.
+namespace bb { namespace cascades { namespace pickers { class ContactPicker; } } }
+
 class ZaloService : public QObject
 {
     Q_OBJECT
@@ -149,6 +156,33 @@ public:
     // file nặng (vd. ~30MB): tránh 1 POST khổng lồ dễ timeout, và progress
     // báo về qua fileUploadProgress thay vì videoUploadProgress.
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
+    // Xoá 1 file cục bộ — dùng bởi các luồng tạo file tạm trước khi gửi
+    // (VoiceNoteSheet ghi .m4a ra /tmp, ContactPicker build .vcf ra /tmp)
+    // để dọn dẹp khi người dùng huỷ (Discard/Cancel) thay vì gửi đi. Chấp
+    // nhận cả path có/không có tiền tố "file://". Không log lỗi nếu file
+    // không tồn tại — Discard gọi hàm này ngay cả khi chưa từng ghi được gì.
+    Q_INVOKABLE void deleteLocalFile(const QString &path);
+    // Mở bb::cascades::pickers::ContactPicker (single-select) để chọn 1
+    // danh bạ trên máy. Khi người dùng chọn xong, build 1 file .vcf (VCF
+    // 3.0, tự viết tay — BB10 SDK không có API export vCard sẵn cho
+    // Contact) từ bb::pim::contacts::ContactService::contactDetails(), lưu
+    // vào /tmp, rồi emit contactVcfReady(threadId, path) để QML gửi đi qua
+    // sendFile() giống mọi file đính kèm khác. Nếu người dùng bấm Cancel
+    // trên picker, hoặc contact rỗng/không tìm thấy, emit contactPickError
+    // thay vào đó — không có gì được gửi trong cả 2 trường hợp.
+    //
+    // threadId phải được truyền vào và mang theo lại trong cả 2 signal kết
+    // quả — KHÔNG được bỏ qua dù chỉ có 1 ContactPicker mở tại 1 thời điểm.
+    // Lý do: mỗi lần push 1 ChatView, ComponentDefinition.createObject() tạo
+    // 1 Page mới, và Page đó không bị destroy ngay khi pop khỏi
+    // NavigationPane — nó có thể còn sống trong lịch sử pane. Mỗi Page còn
+    // sống đều có 1 "Connections { target: zService; onContactVcfReady }"
+    // của riêng nó lắng nghe zService (singleton toàn app). Nếu signal
+    // không mang threadId để mỗi Page tự lọc "đây có phải thread của tôi
+    // không", MỌI Page còn sống đều nhận và gửi file — đây chính là
+    // nguyên nhân bug gửi trùng .vcf 3 lần (3 ChatView instance còn sống
+    // cùng lắng nghe 1 signal không phân biệt được thread).
+    Q_INVOKABLE void pickContact(const QString &threadId);
     // Gửi video .mp4: upload asyncfile/upload rồi đợi WS cmd=601 act_type=
     // "file_done" trả fileUrl thật (khác ảnh, upload video không trả URL
     // ngay trong response HTTP) trước khi gửi tin nhắn qua asyncfile/msg.
@@ -337,6 +371,16 @@ signals:
     // Tách signal riêng khỏi videoUploadProgress để QML không lẫn lộn 2
     // thanh tiến trình khi cả video lẫn file cùng đang gửi ở các thread khác nhau.
     void fileUploadProgress(const QString &threadId, int percent);
+    // Kết quả pickContact(threadId) — threadId khớp lại đúng cuộc trò
+    // chuyện đã gọi pickContact() (xem ghi chú dài ở khai báo pickContact()
+    // để hiểu vì sao bắt buộc phải có, không phải tuỳ chọn). path là
+    // đường dẫn hệ thống (không tiền tố "file://") .vcf đã build xong, sẵn
+    // sàng gửi qua sendFile() từ phía QML. Emit đúng 1 trong 2 signal này
+    // (không cả 2) mỗi lần pickContact() được gọi.
+    void contactVcfReady(const QString &threadId, const QString &path);
+    // reason: "canceled" (người dùng bấm Cancel trên ContactPicker) hoặc
+    // "error" (contactId không hợp lệ / contact rỗng / ghi file thất bại).
+    void contactPickError(const QString &threadId, const QString &reason);
 
 private slots:
     void onStep1Done();
@@ -382,6 +426,14 @@ private slots:
     void onSendPhotoMsgDone();
     void onSendVideoChunkUploadDone();
     void onSendVideoMsgDone();
+    // ContactPicker chỉ emit 1 trong 3 signal này mỗi lần open() — canceled()
+    // khi bấm Cancel, error() khi picker không mở được (tài nguyên hệ thống
+    // cạn), contactSelected(id) khi chọn xong (mode Single, đúng mode
+    // pickContact() dùng). Không cần onContactsSelected/onContactAttribute*
+    // vì không dùng multi-select hay attribute-selection mode.
+    void onContactPickerCanceled();
+    void onContactPickerError();
+    void onContactPickerContactSelected(int contactId);
     void onVideoDownloadProgress(qint64 received, qint64 total);
     void onVideoDownloadFinished();
     void onRefreshSessionKeyDone();
@@ -639,6 +691,17 @@ private:
     QNetworkReply *m_videoDownloadReply;
     QString        m_videoDownloadMsgId;
     QString        m_videoDownloadDestPath;
+
+    // ContactPicker đang mở qua pickContact(). Cần giữ làm member (không
+    // phải biến cục bộ) vì open() không blocking — object phải sống tới
+    // khi 1 trong 3 signal (contactSelected/canceled/error) bắn về ở slot
+    // riêng. deleteLater() ở cuối mỗi slot, con trỏ set về 0 ngay sau đó.
+    bb::cascades::pickers::ContactPicker *m_contactPicker;
+    // threadId của ChatView đã gọi pickContact() — mang theo lại trong
+    // contactVcfReady/contactPickError để đúng 1 ChatView instance (Page)
+    // xử lý kết quả, không phải mọi Page còn sống trong NavigationPane
+    // history đều nhận và tự gửi (xem ghi chú dài ở khai báo pickContact()).
+    QString m_contactPickerThreadId;
 
     // Cache avatar: url -> localPath (file:///tmp/avatar_<md5>.jpg)
     QMap<QString, QString> m_avatarCache;

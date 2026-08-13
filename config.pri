@@ -63,6 +63,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ReactionPickerSheet.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
         $$quote($$BASEDIR/assets/SharePickerSheet.qml) \
+        $$quote($$BASEDIR/assets/VoiceNoteSheet.qml) \
         $$quote($$BASEDIR/assets/images/AboutSheet/barcode.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/berrylife.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/ic_close_white.png) \
@@ -272,7 +273,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/File Types/File Type - APK.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Attachment.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Audio.png) \
-        $$quote($$BASEDIR/assets/images/File Types/File Type - BAR.png.png) \
+        $$quote($$BASEDIR/assets/images/File Types/File Type - BAR.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Calendar.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Certificate Message.png) \
         $$quote($$BASEDIR/assets/images/File Types/File Type - Certificate.png) \
@@ -845,6 +846,7 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/ActiveFrameCover.cpp) \
         $$quote($$BASEDIR/src/ZaloService.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Auth.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_ContactPicker.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Contacts.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Crypto.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Db.cpp) \
