@@ -11,6 +11,12 @@ QT += network script gui
 
 # BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
 LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform -lbbdevice -lbbpim
+# -lunifieddatasourcec: thư viện thật của UDS API (unified_data_source.h) —
+# TÊN THẬT theo doc chính thức của BlackBerry là "unifieddatasourcec", KHÔNG
+# phải "uds" (đã build lỗi "cannot find -luds" vì đoán sai tên link trước
+# đó). Dùng để đăng ký Zalo10 thành 1 account/tab riêng trong BlackBerry Hub
+# (xem src/HubIntegration.cpp).
+LIBS += -lunifieddatasourcec
 # bbcascadespickers = bb::cascades::pickers (ContactPicker) — FilePicker
 # trước đây dùng đã kéo namespace pickers vào runtime rồi nhưng chưa từng
 # link tường minh; ContactPicker cần include header thật (không chỉ QML
@@ -27,7 +33,8 @@ HEADERS += \
     src/applicationui.hpp \
     src/ZaloService.hpp \
     src/ZaloServiceUtils.hpp \
-    src/ActiveFrameCover.hpp
+    src/ActiveFrameCover.hpp \
+    src/HubIntegration.hpp
 
 SOURCES += \
     src/main.cpp \
@@ -41,7 +48,8 @@ SOURCES += \
     src/ZaloService_Crypto.cpp \
     src/ZaloService_Network.cpp \
     src/ZaloService_Db.cpp \
-    src/ActiveFrameCover.cpp
+    src/ActiveFrameCover.cpp \
+    src/HubIntegration.cpp
 
 OTHER_FILES += \
     bar-descriptor.xml \

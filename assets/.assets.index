@@ -1,5 +1,5 @@
 1
-803
+804
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -784,6 +784,7 @@ images/Message States/sent.png
 images/Message States/splat.png
 images/Message States/Square_badge.png
 images/Message States/yellow_pellet.png
+images/PreviewNoti.png
 images/ProfileView/blank.png
 images/ProfileView/default_caller.png
 images/ProfileView/ic_bbm.png

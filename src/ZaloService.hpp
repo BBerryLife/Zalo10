@@ -30,6 +30,8 @@
 // ZaloService_ContactPicker.cpp, nơi thực sự dùng class này.
 namespace bb { namespace cascades { namespace pickers { class ContactPicker; } } }
 
+class HubIntegration;
+
 class ZaloService : public QObject
 {
     Q_OBJECT
@@ -648,6 +650,10 @@ private:
 
     QString m_activeThreadId;
     bool    m_activeThreadIsGroup;
+    // Đăng ký Zalo10 thành 1 account/tab riêng trong BlackBerry Hub (kiểu
+    // TBBX) thay vì rơi vào mục Notifications chung — xem HubIntegration.hpp
+    // để biết lý do. Owned bởi ZaloService (parented), không cần tự delete.
+    HubIntegration *m_hub;
     QString m_lastPollMsgId; // msgId cuối cùng đã biết, tránh emit trùng
     QMap<QString, QString> m_threadLastMsgId; // per-thread last msgId để fetch chính xác
     QMap<QString, QString> m_groupNames;        // groupId -> group name for notifications

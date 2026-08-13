@@ -1,5 +1,6 @@
 #include "ZaloService.hpp"
 #include "ZaloServiceUtils.hpp"
+#include "HubIntegration.hpp"
 #include <bb/platform/Notification>
 #include <bb/platform/NotificationDefaultApplicationSettings>
 #include <bb/platform/NotificationDialog>
@@ -2313,6 +2314,9 @@ void ZaloService::setActiveThread(const QString &threadId, bool isGroup)
         m_seenMsgIds.clear();
         m_pending510Toid.clear();
     }
+    // User đang xem thread này ngay bây giờ -> tắt badge unread trên item
+    // tương ứng trong tab Zalo10 của Hub (không xoá item, chỉ đánh dấu đọc).
+    m_hub->markThreadRead(threadId);
     qDebug() << "[Zalo] setActiveThread:" << threadId << "isGroup:" << isGroup << "changed:" << changed;
 }
 
@@ -2321,6 +2325,18 @@ void ZaloService::sendHubNotification(const QString &title, const QString &body,
     bb::platform::Notification *notif = new bb::platform::Notification(this);
     notif->setTitle(title);
     notif->setBody(body);
+    // iconUrl là icon hiện trên instant preview (lock screen). Theo header
+    // <bb/platform/Notification>, instant preview mặc định TẮT trừ khi app
+    // có account đăng ký trong Hub — m_hub->upsertThreadItem() bên dưới lo
+    // phần đó; setIconUrl() ở đây chỉ định icon dùng cho preview đó.
+    //
+    // Doc của iconUrl yêu cầu "file URI to a public asset" (không phải
+    // "asset:///" — scheme đó chỉ dùng trong QML/Cascades resource loading,
+    // không phải file URI thật) — dùng chung công thức path với
+    // HubIntegration (HubIntegration::hubIconUrl(), dựa trên __progname),
+    // để không lặp lại logic đường dẫn ở 2 nơi và luôn đồng bộ nếu công
+    // thức đổi.
+    notif->setIconUrl(HubIntegration::hubIconUrl());
 
     bb::system::InvokeRequest req;
     // Must match <invoke-target id> in bar-descriptor.xml
@@ -2334,6 +2350,13 @@ void ZaloService::sendHubNotification(const QString &title, const QString &body,
 
     notif->notify();
     qDebug() << "[Zalo] Hub notification sent:" << title << body.left(40) << "data=" << data;
+
+    // Đẩy dòng hội thoại vào tab "Zalo10" riêng trong Hub (kiểu TBBX), tách
+    // khỏi mục Notifications chung. Xem HubIntegration.hpp để biết chi tiết.
+    // isGroup dùng title đã có sẵn (tên nhóm) làm tên item; DM thì title đã
+    // là "Zalo10" theo call site hiện tại (ZaloService_WebSocket.cpp), nên
+    // dùng thẳng title + body không cần biến đổi thêm ở đây.
+    m_hub->upsertThreadItem(threadId, isGroup, title, body, QDateTime::currentMSecsSinceEpoch());
 }
 
 // Banner đầu màn hình qua bb::platform::NotificationDialog.

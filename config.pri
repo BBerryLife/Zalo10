@@ -332,6 +332,9 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/Message States/sent.png) \
         $$quote($$BASEDIR/assets/images/Message States/splat.png) \
         $$quote($$BASEDIR/assets/images/Message States/yellow_pellet.png) \
+        $$quote($$BASEDIR/assets/images/PreviewNoti.png) \
+        $$quote($$BASEDIR/assets/images/PreviewNotiRead.png) \
+        $$quote($$BASEDIR/assets/images/PreviewNotiUNRead.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/blank.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/default_caller.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/ic_bbm.png) \
@@ -844,6 +847,7 @@ config_pri_assets {
 config_pri_source_group1 {
     SOURCES += \
         $$quote($$BASEDIR/src/ActiveFrameCover.cpp) \
+        $$quote($$BASEDIR/src/HubIntegration.cpp) \
         $$quote($$BASEDIR/src/ZaloService.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Auth.cpp) \
         $$quote($$BASEDIR/src/ZaloService_ContactPicker.cpp) \
@@ -858,6 +862,7 @@ config_pri_source_group1 {
 
     HEADERS += \
         $$quote($$BASEDIR/src/ActiveFrameCover.hpp) \
+        $$quote($$BASEDIR/src/HubIntegration.hpp) \
         $$quote($$BASEDIR/src/ZaloService.hpp) \
         $$quote($$BASEDIR/src/ZaloServiceUtils.hpp) \
         $$quote($$BASEDIR/src/applicationui.hpp)

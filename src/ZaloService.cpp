@@ -1,5 +1,6 @@
 #include "ZaloService.hpp"
 #include "ZaloServiceUtils.hpp"
+#include "HubIntegration.hpp"
 #include <bb/platform/Notification>
 #include <bb/platform/NotificationDefaultApplicationSettings>
 #include <bb/system/InvokeRequest>
@@ -79,7 +80,8 @@ ZaloService::ZaloService(QObject *parent)
       m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false),
       m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),
       m_lastFetchFriendsTime(0), m_lastFetchConvoTime(0), m_db(0),
-      m_updateReply(0), m_videoDownloadReply(0), m_contactPicker(0)
+      m_updateReply(0), m_videoDownloadReply(0), m_contactPicker(0),
+      m_hub(new HubIntegration(this))
 {
     m_qrExpireTimer->setSingleShot(true);
     m_wsReconnectTimer->setSingleShot(true);
@@ -89,6 +91,10 @@ ZaloService::ZaloService(QObject *parent)
     connect(m_keepAliveTimer,   SIGNAL(timeout()), this, SLOT(onKeepAliveTimer()));
     qsrand((uint)QDateTime::currentMSecsSinceEpoch());
     qDebug() << "[Zalo] ZaloService initialized";
+    // Đăng ký account Hub ngay lúc khởi động (không đợi tin nhắn đầu tiên) —
+    // để tab "Zalo10" xuất hiện trong Hub ngay cả khi chưa có tin nhắn mới,
+    // giống TBBX/BBM luôn hiện sẵn. init() tự no-op an toàn nếu UDS lỗi.
+    m_hub->init();
 
     QString dbPath = QDir::homePath() + "/zalo_messages.db";
     if (sqlite3_open(dbPath.toUtf8().constData(), &m_db) == SQLITE_OK) {

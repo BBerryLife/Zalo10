@@ -65,6 +65,14 @@
     <asset path="splash1280x768.png">splash1280x768.png</asset>
     <asset path="splash600x1024.png">splash600x1024.png</asset>
     <asset path="assets">assets</asset>
+    <!-- PreviewNoti.png cần đọc được bởi Hub process (khác process với app),
+         nên phải khai báo public="true" riêng — asset "assets" ở dòng trên
+         là private (chỉ app tự đọc được), không đủ cho UDS icon/instant
+         preview. Khi public, file này được cài vào app/public/... thay vì
+         app/native/..., xem HubIntegration.cpp (assetPath) và
+         ZaloService_Messages.cpp (Notification::setIconUrl) phải khớp path
+         "assets/images/PreviewNoti.png" này. -->
+    <asset path="assets/images/PreviewNoti.png" public="true">assets/images/PreviewNoti.png</asset>
     <asset path="translations" dest="qm">
         <include name="*.qm"/>
     </asset>
@@ -77,6 +85,17 @@
     <permission>run_when_backgrounded</permission>
     <permission system="true">_sys_run_headless</permission>
     <permission system="true">_sys_headless_nostop</permission>
+    <!-- Bắt buộc cho UDS (Unified Data Source / Hub integration, xem
+         src/HubIntegration.cpp): PPS object "/pps/services/pim/unified" mà
+         uds_register_client() nói chuyện tới được BlackBerry bảo vệ bởi
+         quyền hệ thống này. Đây là quyền hạn chế ("_sys_" prefix) — theo
+         tài liệu BlackBerry, cần GỬI YÊU CẦU RIÊNG tới BlackBerry để được
+         cấp (không tự động có chỉ vì khai báo trong bar-descriptor.xml, dù
+         vẫn phải khai báo). Nếu app được build/sign qua quy trình nội bộ
+         không qua BlackBerry (self-signed / debug token), quyền restricted
+         này có thể không được thực thi chặt — nhưng để chạy đúng trên thiết
+         bị production/qua BlackBerry World trước đây thì cần xin cấp. -->
+    <permission system="true">_sys_access_pim_unified</permission>
     <permission>access_wifi_public</permission>
     <permission>access_shared</permission>
     <permission>access_pimdomain_calendars</permission>
