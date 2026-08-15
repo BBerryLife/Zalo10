@@ -65,14 +65,19 @@
     <asset path="splash1280x768.png">splash1280x768.png</asset>
     <asset path="splash600x1024.png">splash600x1024.png</asset>
     <asset path="assets">assets</asset>
-    <!-- PreviewNoti.png cần đọc được bởi Hub process (khác process với app),
-         nên phải khai báo public="true" riêng — asset "assets" ở dòng trên
-         là private (chỉ app tự đọc được), không đủ cho UDS icon/instant
-         preview. Khi public, file này được cài vào app/public/... thay vì
-         app/native/..., xem HubIntegration.cpp (assetPath) và
-         ZaloService_Messages.cpp (Notification::setIconUrl) phải khớp path
-         "assets/images/PreviewNoti.png" này. -->
-    <asset path="assets/images/PreviewNoti.png" public="true">assets/images/PreviewNoti.png</asset>
+    <!-- Icon dùng cho Hub (account tab + inbox item, xem HubIntegration.cpp)
+         nằm ở thư mục top-level "hubicons/" — KHÔNG đặt tên bắt đầu bằng
+         "assets" (đã thử "assets-public" ở gốc project, ngang hàng thật sự
+         với "assets/", vẫn bị Momentics báo lỗi y hệt "Asset folder is
+         packaged by another asset folder: assets-public" — validator này
+         có vẻ so khớp theo TIỀN TỐ TÊN CHUỖI ("assets-public" bắt đầu bằng
+         "assets") chứ không kiểm tra containment thật theo filesystem, nên
+         dù 2 thư mục ngang hàng, tên gần giống vẫn bị coi là xung đột).
+         "hubicons" không dính dáng gì tới chữ "assets" nên né được hẳn kiểu
+         nhầm lẫn này. Icon filename giữ nguyên (PreviewNoti.png,
+         PreviewNotiRead.png, PreviewNotiUNRead.png) — HubIntegration.cpp
+         (publicAssetPath()) phải khớp: "/apps/<progname>/public/hubicons/". -->
+    <asset path="hubicons" public="true">hubicons</asset>
     <asset path="translations" dest="qm">
         <include name="*.qm"/>
     </asset>
@@ -123,14 +128,29 @@
             <action>bb.action.OPEN</action>
             <mime-type>text/plain</mime-type>
         </filter>
+        <!-- Thêm filter cho bb.action.VIEW: nghi ngờ Hub gửi invoke với
+             action này khi user tap 1 item (thay vì "OPEN" như filter cũ) —
+             chưa xác nhận được, thử thêm để mở rộng khả năng khớp, không
+             ảnh hưởng gì tới filter OPEN đã có. -->
+        <filter>
+            <action>bb.action.VIEW</action>
+            <mime-type>text/plain</mime-type>
+        </filter>
     </invoke-target>
 
     <!-- Active frame images (resolution-aware, selected at runtime via DisplayInfo) -->
     <!-- 720x720  (Q10/Q5)      -> medium -->
     <!-- 720x1280 (Z10/Z30/Z3)  -> big    -->
     <!-- 1440x1440 (Passport)   -> big + small -->
-    <asset path="assets/images/ActiveFrame/activeframe_zl10_big.png">assets/images/ActiveFrame/activeframe_zl10_big.png</asset>
-    <asset path="assets/images/ActiveFrame/activeframe_zl10_medium.png">assets/images/ActiveFrame/activeframe_zl10_medium.png</asset>
-    <asset path="assets/images/ActiveFrame/Activeframe_zl10_Small.png">assets/images/ActiveFrame/Activeframe_zl10_Small.png</asset>
+    <!-- 3 dòng khai báo riêng cho từng file ActiveFrame trước đây ở đây đã
+         bị XOÁ: chúng dùng đúng path/dest mà rule bulk "assets" ở trên đã
+         bao phủ sẵn ("assets" -> "assets", đệ quy toàn bộ cây thư mục) —
+         là khai báo trùng 100%, không có thuộc tính gì khác biệt. Momentics
+         (NDK 10.3.1) validate nghiêm hơn các bản cũ, báo lỗi "Only one asset
+         may be packaged as ..." và chặn hẳn build khi phát hiện trùng —
+         trước đây có thể từng "chạy được" chỉ vì build qua command-line
+         qcc/make (không đi qua bước Diagnosis này), không phải vì khai báo
+         đúng. Xoá 3 dòng thừa không ảnh hưởng gì: file vẫn được đóng gói
+         bình thường qua rule "assets" chung. -->
 
 </qnx>

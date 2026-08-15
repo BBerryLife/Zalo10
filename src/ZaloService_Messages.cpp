@@ -2322,41 +2322,29 @@ void ZaloService::setActiveThread(const QString &threadId, bool isGroup)
 
 void ZaloService::sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup)
 {
-    bb::platform::Notification *notif = new bb::platform::Notification(this);
-    notif->setTitle(title);
-    notif->setBody(body);
-    // iconUrl là icon hiện trên instant preview (lock screen). Theo header
-    // <bb/platform/Notification>, instant preview mặc định TẮT trừ khi app
-    // có account đăng ký trong Hub — m_hub->upsertThreadItem() bên dưới lo
-    // phần đó; setIconUrl() ở đây chỉ định icon dùng cho preview đó.
+    // QUAN TRỌNG: KHÔNG dùng bb::platform::Notification ở đây nữa (trước
+    // đây có new Notification(...) + notify()). Lý do gỡ bỏ, phát hiện sau
+    // khi test thực tế thấy Hub hiện 2 dòng trùng nhau cho cùng 1 tin nhắn:
     //
-    // Doc của iconUrl yêu cầu "file URI to a public asset" (không phải
-    // "asset:///" — scheme đó chỉ dùng trong QML/Cascades resource loading,
-    // không phải file URI thật) — dùng chung công thức path với
-    // HubIntegration (HubIntegration::hubIconUrl(), dựa trên __progname),
-    // để không lặp lại logic đường dẫn ở 2 nơi và luôn đồng bộ nếu công
-    // thức đổi.
-    notif->setIconUrl(HubIntegration::hubIconUrl());
-
-    bb::system::InvokeRequest req;
-    // Must match <invoke-target id> in bar-descriptor.xml
-    req.setTarget("com.BerryLife.Zalo10.invoke");
-    req.setAction("bb.action.OPEN");
-    req.setMimeType("text/plain");
-    // Encode: "threadId|1" for group, "threadId|0" for DM
-    QString data = threadId + "|" + (isGroup ? "1" : "0");
-    req.setData(data.toUtf8());
-    notif->setInvokeRequest(req);
-
-    notif->notify();
-    qDebug() << "[Zalo] Hub notification sent:" << title << body.left(40) << "data=" << data;
-
-    // Đẩy dòng hội thoại vào tab "Zalo10" riêng trong Hub (kiểu TBBX), tách
-    // khỏi mục Notifications chung. Xem HubIntegration.hpp để biết chi tiết.
-    // isGroup dùng title đã có sẵn (tên nhóm) làm tên item; DM thì title đã
-    // là "Zalo10" theo call site hiện tại (ZaloService_WebSocket.cpp), nên
-    // dùng thẳng title + body không cần biến đổi thêm ở đây.
+    // uds_item_added()/uds_item_updated() (bên dưới, qua m_hub->upsertThreadItem())
+    // LUÔN LUÔN tạo ra 1 dòng hiển thị trong Hub — bất kể notification_state
+    // là true hay false (notification_state chỉ quyết định có tự bắn thêm
+    // hiệu ứng cảnh báo hay không, KHÔNG quyết định dòng có hiện hay không —
+    // xem doc uds_inbox_item_data_set_notification_state() trong
+    // unified_data_source.h). Vì vậy nếu vẫn gọi thêm
+    // bb::platform::Notification::notify() song song, sẽ luôn có 2 dòng độc
+    // lập cho cùng 1 sự kiện: 1 dòng do Notification::notify() tạo, 1 dòng
+    // do UDS item tạo — bất kể notification_state ở item được set thế nào.
+    // Đặt notification_state=false ở fix trước đó KHÔNG giải quyết được vụ
+    // này (chỉ giảm khả năng kêu chuông kép, không giảm số dòng hiện).
+    //
+    // Cách đúng cho app đã tích hợp Hub account riêng: chỉ dùng DUY NHẤT 1
+    // nguồn — UDS item với notification_state=true (xem
+    // HubIntegration::upsertThreadItem()) — item đó tự đảm nhiệm luôn cả
+    // phần banner/sound/instant-preview lock-screen, không cần
+    // bb::platform::Notification song song nữa.
     m_hub->upsertThreadItem(threadId, isGroup, title, body, QDateTime::currentMSecsSinceEpoch());
+    qDebug() << "[Zalo] Hub item upserted:" << title << body.left(40) << "thread=" << threadId << "isGroup=" << isGroup;
 }
 
 // Banner đầu màn hình qua bb::platform::NotificationDialog.

@@ -332,9 +332,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/Message States/sent.png) \
         $$quote($$BASEDIR/assets/images/Message States/splat.png) \
         $$quote($$BASEDIR/assets/images/Message States/yellow_pellet.png) \
-        $$quote($$BASEDIR/assets/images/PreviewNoti.png) \
-        $$quote($$BASEDIR/assets/images/PreviewNotiRead.png) \
-        $$quote($$BASEDIR/assets/images/PreviewNotiUNRead.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/blank.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/default_caller.png) \
         $$quote($$BASEDIR/assets/images/ProfileView/ic_bbm.png) \

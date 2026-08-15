@@ -31,7 +31,7 @@
  * HubIntegration làm đúng việc đó cho Zalo10:
  *   - uds_init() + uds_register_client(): mở kết nối tới Hub, đăng ký app.
  *   - uds_account_added(): tạo 1 tab "Zalo10" riêng trong Hub, icon lấy từ
- *     PreviewNoti.png (assets/images/PreviewNoti.png).
+ *     PreviewNoti.png (assets/public/PreviewNoti.png).
  *   - uds_item_added()/uds_item_updated(): mỗi thread (DM hoặc group) là 1
  *     inbox item, source_id = threadId, gộp tin nhắn mới vào cùng 1 dòng
  *     (update timestamp/preview/unread_count) thay vì tạo dòng mới mỗi tin
@@ -101,6 +101,25 @@ public:
 private:
     Q_DISABLE_COPY(HubIntegration)
 
+    // uds_item_updated() KHÔNG patch từng field — nó THAY THẾ TOÀN BỘ
+    // record bằng đúng những gì được set trong lệnh gọi đó; field nào
+    // không set sẽ bị reset về rỗng/0 (đã tận mắt thấy: markThreadRead()
+    // trước đây chỉ set 5/9 field, kết quả Hub hiện tên rỗng (fallback về
+    // tên account), mô tả rỗng, timestamp về epoch "Thursday, January 1,
+    // 1970"). Vì vậy MỌI lần gọi uds_item_updated() phải cung cấp ĐẦY ĐỦ
+    // toàn bộ field hiện tại của item, không chỉ phần muốn đổi — struct này
+    // lưu lại đúng những gì cần để tái tạo đầy đủ.
+    struct ThreadItemState {
+        QString title;
+        QString preview;
+        qint64  timestampMs;
+    };
+    // threadId -> state đầy đủ gần nhất đã gửi cho item đó, để
+    // markThreadRead() (và bất kỳ update một-phần nào khác sau này) có thể
+    // tái tạo lại toàn bộ record thay vì vô tình xoá mất name/description/
+    // timestamp cũ.
+    QMap<QString, ThreadItemState> m_threadItemState;
+
     void *m_udsHandle;      // uds_context_t thật, xem HubIntegration.cpp
     bool  m_ready;          // true nếu init() + account_added() thành công
     bool  m_initAttempted;  // tránh log spam / retry init() lặp lại mỗi tin nhắn
@@ -111,7 +130,25 @@ private:
     // threadId đã từng uds_item_added() thành công — quyết định add vs update.
     QSet<QString> m_knownThreadIds;
 
-    static const long long ACCOUNT_ID = 424242001LL; // id nội bộ cố định cho account Zalo10 trong Hub
+    // Đổi từ 424242001 -> 424242002: nghi ngờ account cũ bị dính trạng thái
+    // "half-broken" trong database của Hub (hệ thống, độc lập với app) do
+    // rất nhiều lần add/update lộn xộn trong lúc debug (icon sai path, đổi
+    // qua đổi lại notification_state...). Gỡ-cài-lại app KHÔNG xoá được
+    // trạng thái này vì nó nằm ở phía Hub, không phải trong app. Đổi ID là
+    // cách rẻ nhất để loại trừ khả năng này — buộc Hub tạo 1 bản ghi hoàn
+    // toàn mới, sạch, thay vì update lên bản ghi cũ khả nghi.
+    // Đổi tiếp 424242002 -> 424242003: đang thử account type khác (IM ->
+    // TEXT_MESSAGE), đổi ID luôn để chắc chắn Hub tạo bản ghi hoàn toàn
+    // mới với type mới, không phải update lên account cũ đã từng đăng ký
+    // type=IM (tránh khả năng Hub giữ/cache type cũ khi chỉ update).
+    // Đổi tiếp 424242003 -> 424242004: vừa trả account type từ TEXT_MESSAGE
+    // về lại IM — đổi ID để Hub tạo bản ghi hoàn toàn sạch với type đúng,
+    // không update lên bản ghi vừa test type khác.
+    // Đổi tiếp 424242004 -> 424242005: vừa thêm item context action "Open in
+    // Zalo10" (uds_register_item_context_action) — chưa có cơ chế "update"
+    // action cho account cũ chưa từng đăng ký nó, đổi ID để chắc chắn có
+    // bản đăng ký sạch từ đầu, kèm action mới.
+    static const long long ACCOUNT_ID = 424242005LL;
 };
 
 #endif // HUBINTEGRATION_HPP
