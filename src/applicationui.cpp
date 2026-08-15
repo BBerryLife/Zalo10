@@ -33,6 +33,7 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QStringList>
+#include <QRegExp>
 #include <QVariant>
 #include <QSslConfiguration>
 #include <QSslSocket>
@@ -478,16 +479,80 @@ void ApplicationUI::onTermSignal(int fd)
 void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
 {
     // Called when app is opened from Hub notification.
-    // data format sent by ZaloService: "threadId|isGroup" (isGroup: 1=group, 0=DM)
-    QString raw = QString::fromUtf8(request.data());
-    qDebug() << "[App] onInvoked data:" << raw;
-    if (raw.isEmpty()) return;
+    //
+    // Có 2 nguồn invoke KHÁC NHAU tới cùng target này, và mỗi nguồn mang
+    // payload theo cách khác nhau:
+    //
+    //   1) sendBannerNotification()/InvokeRequest tự app soạn trước đây
+    //      (đã gỡ) — set data() = "threadId|isGroup" thủ công. Không còn
+    //      call site nào tạo ra path này nữa, nhưng giữ lại làm fallback
+    //      vô hại phòng khi cần dùng lại sau này.
+    //   2) BlackBerry Hub tự soạn InvokeRequest khi user tap 1 UDS inbox
+    //      item (xem HubIntegration::upsertThreadItem()). ĐÃ XÁC NHẬN qua
+    //      log thực tế trên máy: Hub gửi qua data() (không phải uri(), uri()
+    //      luôn rỗng) một khối JSON dạng:
+    //        { "attributes": { "sourceId": "<threadId>", "unread": bool,
+    //                          "accountid": "...", "messageid": "...", ... } }
+    //      "sourceId" đúng bằng threadId đã set qua
+    //      uds_inbox_item_data_set_source_id() trong upsertThreadItem().
+    //      Đây là format riêng của Hub, không phải "URI theo chuẩn pim:"
+    //      như suy đoán ban đầu — bài học: field "attributes.sourceId",
+    //      không phải path/uri.
+    QString rawData = QString::fromUtf8(request.data());
+    QUrl    rawUri  = request.uri();
+    qDebug() << "[App] onInvoked action:" << request.action()
+              << "target:" << request.target()
+              << "mimeType:" << request.mimeType()
+              << "data:" << rawData
+              << "uri:" << rawUri.toString();
 
-    QStringList parts = raw.split("|");
-    QString threadId  = parts.value(0);
-    bool    isGroup   = (parts.value(1) == "1");
+    QString threadId;
+    bool    isGroup = false;
 
-    if (threadId.isEmpty()) return;
+    QString trimmed = rawData.trimmed();
+    if (trimmed.startsWith("{")) {
+        // Path Hub thật (xem giải thích ở trên). jsonToMap() (ZaloServiceUtils.hpp)
+        // dùng chung với phần parse response Zalo — đã tự xử lý big-int
+        // 19-chữ-số như sourceId ở đây (quoteBigJsonInts trong hàm đó) nên
+        // không mất độ chính xác số như JSON.parse thường sẽ bị.
+        QVariantMap root  = jsonToMap(rawData.toUtf8());
+        QVariantMap attrs = root.value("attributes").toMap();
+        threadId = attrs.value("sourceId").toString();
+        // Hub không có field "isGroup"/"is_group" trong payload này — item
+        // group hay DM đều dùng chung 1 cấu trúc attributes. Tra lại từ
+        // state đã lưu trong HubIntegration lúc item được tạo (xem
+        // ZaloService::isGroupHubThread() / HubIntegration::isGroupThread()),
+        // thay vì đoán mù false cho mọi trường hợp.
+        isGroup = m_zService ? m_zService->isGroupHubThread(threadId) : false;
+    } else if (!trimmed.isEmpty()) {
+        // Path cũ: data() dạng "threadId|isGroup" (không còn call site nào
+        // tạo ra, giữ fallback).
+        QStringList parts = trimmed.split("|");
+        threadId = parts.value(0);
+        isGroup  = (parts.value(1) == "1");
+    } else if (!rawUri.isEmpty()) {
+        // Path uri(): chưa từng thấy Hub dùng path này trên thực tế (log
+        // thật cho thấy uri() luôn rỗng khi Hub invoke), giữ lại làm
+        // fallback cuối cùng vô hại.
+        QString path = rawUri.path();
+        if (path.isEmpty()) path = rawUri.toString();
+        QStringList segments = path.split(QRegExp("[/:]"), QString::SkipEmptyParts);
+        threadId = segments.isEmpty() ? QString() : segments.last();
+
+        if (rawUri.hasQueryItem("isGroup")) {
+            isGroup = (rawUri.queryItemValue("isGroup") == "1");
+        } else if (rawUri.hasQueryItem("is_group")) {
+            isGroup = (rawUri.queryItemValue("is_group") == "1");
+        }
+
+        qDebug() << "[App] onInvoked parsed from uri() fallback, threadId guess:" << threadId;
+    }
+
+    if (threadId.isEmpty()) {
+        qDebug() << "[App] onInvoked: không tìm được threadId từ data() lẫn uri() — "
+                     "xem log 'action/target/mimeType/data/uri' ở trên để biết Hub thật sự gửi gì.";
+        return;
+    }
 
     emit openThreadRequested(threadId, isGroup);
 }

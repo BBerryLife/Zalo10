@@ -2383,6 +2383,12 @@ void ZaloService::sendBannerNotification(const QString &title, const QString &bo
     qDebug() << "[Zalo] Banner notification shown:" << title << body.left(40);
 }
 
+bool ZaloService::isGroupHubThread(const QString &threadId) const
+{
+    if (!m_hub) return false;
+    return m_hub->isGroupThread(threadId);
+}
+
 void ZaloService::clearActiveThread()
 {
     qDebug() << "[Zalo] clearActiveThread (was:" << m_activeThreadId << ")";

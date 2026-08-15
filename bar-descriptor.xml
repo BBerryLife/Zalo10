@@ -22,7 +22,7 @@
     </configuration>
 
     <name>Zalo10</name>
-    <versionNumber>1.3.0</versionNumber>
+    <versionNumber>1.4.0</versionNumber>
     <description>The Zalo10 application for BB10</description>
     <author>BerryLife</author>
     <buildId>0</buildId>

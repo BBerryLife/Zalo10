@@ -25,6 +25,31 @@ static const char *HUB_SERVICE_URL = "com.BerryLife.Zalo10.hub";
 // đúng app qua cùng 1 cơ chế invoke đã hoạt động.
 static const char *HUB_INVOKE_TARGET = "com.BerryLife.Zalo10.invoke";
 
+// Bit context state cho item — PHẢI khớp với context_mask của action "Open
+// in Zalo10" (uds_item_action_data_set_context_mask, xem init()). Đây chính
+// là mảnh còn thiếu gây ra bug "tap không phản ứng gì cả" (đã xác nhận qua
+// đọc doc uds_inbox_item_data_set_context_state(): "the context mask is
+// used to query the context state of the inbox item, determining the
+// actions that should appear" — nghĩa là item KHÔNG set context_state thì
+// Hub không tìm được action nào khớp cho item đó, kể cả action đã đăng ký
+// UDS_PLACEMENT_DEFAULT ở cấp account. Trước đây upsertThreadItem()/
+// markThreadRead() chưa từng gọi uds_inbox_item_data_set_context_state() —
+// so với code mẫu chính thức trong unified_data_source.h (dòng ví dụ
+// "uds_inbox_item_data_set_context_state(pInboxItem,Read)"), đây là dòng
+// duy nhất bị thiếu so với mẫu chuẩn.
+static const unsigned int HUB_CONTEXT_STATE_READ   = 0x01;
+static const unsigned int HUB_CONTEXT_STATE_UNREAD = 0x02;
+
+// category_id: field DUY NHẤT còn thiếu so với code mẫu chính thức trong
+// unified_data_source.h (dòng ví dụ "uds_inbox_item_data_set_category_id(
+// pInboxItem,1)", ngay trước context_state). Doc mô tả field này chỉ để
+// "sort/filter theo category (kiểu folder)", KHÔNG có dòng nào nói nó liên
+// quan tới preview pane khi short-tap — đây là suy đoán dựa trên "chênh
+// lệch duy nhất còn lại so với mẫu chuẩn", KHÔNG phải nguyên nhân đã xác
+// nhận chắc chắn. Set = 1 (giá trị mẫu dùng, không có ý nghĩa đặc biệt gì
+// khác ngoài "1 category duy nhất cho toàn bộ item Zalo10").
+static const long long HUB_CATEGORY_ID = 1;
+
 HubIntegration::HubIntegration(QObject *parent)
     : QObject(parent), m_udsHandle(0), m_ready(false), m_initAttempted(false)
 {
@@ -98,8 +123,20 @@ bool HubIntegration::init()
     }
 
     int regStatus = uds_get_service_status(m_udsHandle);
-    qDebug() << "[Hub] uds_register_client OK, serviceId=" << uds_get_service_id(m_udsHandle)
-              << "status=" << regStatus << "assetPath=" << assetPath;
+    int serviceId = uds_get_service_id(m_udsHandle);
+    // So sánh serviceId + status giữa các lần chạy: nếu serviceId đổi mỗi
+    // lần build lại (qua Momentics, __progname hash đổi) VÀ status luôn là
+    // 1 (UDS_REGISTRATION_NEW, không bao giờ 2=UDS_REGISTRATION_EXISTS),
+    // xác nhận Hub coi mỗi build là 1 service hoàn toàn mới — đây là bằng
+    // chứng cho nghi vấn "account_id cố định dính state cũ từ service_id
+    // trước" ghi trong HubIntegration.hpp (xem comment ACCOUNT_ID). Log lần
+    // này dùng ACCOUNT_ID mới (424242006) để so sánh: nếu tap vẫn im lặng
+    // dù account_id sạch hoàn toàn, giả thuyết này coi như bị loại.
+    qDebug() << "[Hub] uds_register_client OK, serviceId=" << serviceId
+              << "status=" << regStatus
+              << "(1=NEW 2=EXISTS)"
+              << "assetPath=" << assetPath
+              << "accountId=" << ACCOUNT_ID;
 
     uds_account_data_t *account = uds_account_data_create();
     uds_account_data_set_id(account, ACCOUNT_ID);
@@ -141,16 +178,26 @@ bool HubIntegration::init()
     qDebug() << "[Hub] Zalo10 account registered in BlackBerry Hub, id=" << ACCOUNT_ID;
     m_ready = true;
 
-    // Đăng ký "Open in Zalo10" — item context action, đây là mảnh còn
-    // thiếu phát hiện được qua so sánh trực tiếp menu long-press của TBBX
-    // (có dòng "Open in TBBX" kèm icon, nằm TRÊN CÙNG) với Zalo10 (không
-    // có dòng nào, nhảy thẳng vào menu chung Search/Select/Delete). Không
-    // có action tường minh này, Hub không có gì để invoke — dù target_name
-    // ở account đã set đúng. UDS_PLACEMENT_DEFAULT: hy vọng vừa quyết định
-    // vị trí nổi bật đầu menu (khớp vị trí "Open in TBBX" trong ảnh) vừa
-    // là hành động mặc định khi tap — doc không xác nhận rõ placement có
-    // ảnh hưởng gì đến single-tap hay không, đây là suy luận tốt nhất có
-    // thể từ tài liệu + bằng chứng hình ảnh, cần test thật để xác nhận.
+    // Đăng ký "Open in Zalo10" — item context action, tái tạo đúng dòng
+    // "Open in TBBX" thấy trong menu long-press của TBBX (ảnh so sánh).
+    //
+    // ĐÃ XÁC NHẬN qua đọc trực tiếp unified_data_source.h (header Cascades
+    // thật, không phải suy đoán): "Inbox item actions appear in the context
+    // menu when a user presses and hold an inbox list item." — nghĩa là
+    // action này CHỈ điều khiển menu long-press, KHÔNG liên quan gì đến
+    // việc single-tap có mở app hay không. UDS_PLACEMENT_DEFAULT cũng chỉ
+    // quyết định vị trí action trong action bar/overflow khi xem account,
+    // không phải "default action khi tap 1 item" — nhầm lẫn trước đó ở
+    // đúng chỗ này đã được gỡ (xem lịch sử: từng nghi ngờ placement ảnh
+    // hưởng single-tap, giờ đã loại trừ).
+    //
+    // Nguyên nhân thật của vụ short-tap không mở được: xem
+    // ApplicationUI::onInvoked() (applicationui.cpp) — mất payload
+    // threadId/isGroup khi Hub tự soạn InvokeRequest lúc user tap item
+    // (khác hẳn case app tự soạn InvokeRequest, ví dụ banner cũ). Action
+    // "Open in Zalo10" ở đây vẫn cần thiết — nó lấp đúng chỗ trống long-press
+    // menu (so với TBBX) — nhưng không phải fix cho vụ tap.
+    //
     // Đăng ký 1 lần ở cấp account (áp dụng cho MỌI item của account này),
     // không phải per-item.
     uds_item_action_data_t *openAction = uds_item_action_data_create();
@@ -168,7 +215,7 @@ bool HubIntegration::init()
     uds_item_action_data_set_placement(openAction, UDS_PLACEMENT_DEFAULT);
     // Read=0x01, Unread=0x02 (xem doc uds_item_action_data_set_context_mask)
     // — hiện action này bất kể item đang ở trạng thái đọc hay chưa đọc.
-    uds_item_action_data_set_context_mask(openAction, 0x03);
+    uds_item_action_data_set_context_mask(openAction, HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD);
 
     int actionRc = uds_register_item_context_action(m_udsHandle, ACCOUNT_ID, openAction);
     uds_item_action_data_destroy(openAction);
@@ -210,9 +257,16 @@ void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
     uds_inbox_item_data_set_icon(item, HUB_ICON_UNREAD_FILE);
     uds_inbox_item_data_set_mime_type(item, "text/plain");
+    uds_inbox_item_data_set_category_id(item, HUB_CATEGORY_ID);
     uds_inbox_item_data_set_timestamp(item, timestampMs);
     uds_inbox_item_data_set_unread_count(item, unread);
     uds_inbox_item_data_set_total_count(item, unread);
+    // QUAN TRỌNG (xem giải thích đầy đủ ở khai báo HUB_CONTEXT_STATE_* đầu
+    // file): thiếu dòng này khiến Hub không tìm được action nào khớp cho
+    // item — tap không phản ứng gì cả, kể cả nháy/highlight. Item luôn còn
+    // ít nhất 1 tin chưa đọc tại thời điểm gọi hàm này (unread vừa +1 ở
+    // trên), nên context_state luôn là Unread ở đây.
+    uds_inbox_item_data_set_context_state(item, HUB_CONTEXT_STATE_UNREAD);
     // true: từ giờ item này là NGUỒN DUY NHẤT chịu trách nhiệm cả dòng hiển
     // thị trong Hub lẫn hiệu ứng cảnh báo (banner/sound/lock-screen instant
     // preview) — sendHubNotification() (ZaloService_Messages.cpp) đã BỎ
@@ -246,6 +300,7 @@ void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
         st.title = title;
         st.preview = preview;
         st.timestampMs = timestampMs;
+        st.isGroup = isGroup;
         m_threadItemState[threadId] = st;
     }
     uds_inbox_item_data_destroy(item);
@@ -288,10 +343,17 @@ void HubIntegration::markThreadRead(const QString &threadId)
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
     uds_inbox_item_data_set_mime_type(item, "text/plain");
+    uds_inbox_item_data_set_category_id(item, HUB_CATEGORY_ID);
     uds_inbox_item_data_set_timestamp(item, st.timestampMs);
     uds_inbox_item_data_set_total_count(item, 0);
     uds_inbox_item_data_set_icon(item, HUB_ICON_READ_FILE);
     uds_inbox_item_data_set_unread_count(item, 0);
+    // Đổi Unread -> Read (xem giải thích đầy đủ ở khai báo HUB_CONTEXT_STATE_*
+    // đầu file) — nếu không đổi, item vẫn giữ context_state=Unread cũ từ lần
+    // upsertThreadItem() gần nhất dù unread_count đã về 0 (uds_item_updated()
+    // thay thế toàn bộ record, field nào không set lại sẽ mất, không phải
+    // "giữ nguyên giá trị cũ").
+    uds_inbox_item_data_set_context_state(item, HUB_CONTEXT_STATE_READ);
     uds_inbox_item_data_set_notification_state(item, false); // chỉ đổi badge, không muốn trigger lại effects
 
     int rc = uds_item_updated(m_udsHandle, item);
@@ -320,4 +382,11 @@ void HubIntegration::removeThreadItem(const QString &threadId)
     m_knownThreadIds.remove(threadId);
     m_unreadCounts.remove(threadId);
     m_threadItemState.remove(threadId);
+}
+
+bool HubIntegration::isGroupThread(const QString &threadId) const
+{
+    QMap<QString, ThreadItemState>::const_iterator it = m_threadItemState.find(threadId);
+    if (it == m_threadItemState.end()) return false; // chưa từng có state -> mặc định DM
+    return it.value().isGroup;
 }

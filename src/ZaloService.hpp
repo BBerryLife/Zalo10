@@ -225,6 +225,11 @@ public:
     // foreground — khác sendHubNotification() vì banner của Hub chỉ hiện
     // khi app KHÔNG active, ngược với cái cần ở đây.
     Q_INVOKABLE void sendBannerNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
+    // Tra lại isGroup đã lưu khi item được đẩy lên Hub (upsertThreadItem)
+    // cho threadId này — dùng ở ApplicationUI::onInvoked() vì payload JSON
+    // Hub gửi khi tap item không có field isGroup/is_group nào (chỉ có
+    // "attributes.sourceId"). Xem HubIntegration::isGroupThread().
+    Q_INVOKABLE bool isGroupHubThread(const QString &threadId) const;
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
     // Returns, for every thread that has at least one locally-stored message,

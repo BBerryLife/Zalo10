@@ -499,8 +499,15 @@ NavigationPane {
     }
 
     function openThread(threadId, isGroup) {
-        // Pop về root trước nếu đang trong chat khác
-        chatsNav.popToRoot();
+        // Pop về root trước nếu đang trong chat khác. NavigationPane
+        // (Cascades) KHÔNG có method popToRoot()/popAll() — chỉ có pop()
+        // từng page 1 và count() (xem navigationpane.h). Đây là bug có
+        // thật, độc lập với vụ Hub — nhưng nằm ngay trên code path mà
+        // luồng Hub-invoke (ApplicationUI::onInvoked -> openThreadRequested)
+        // chạy tới lần đầu tiên, nên sửa luôn cùng đợt.
+        while (chatsNav.count() > 1) {
+            chatsNav.pop();
+        }
         var page = chatsDef.createObject();
         if (!page) return;
         // Tìm tên từ model nếu có

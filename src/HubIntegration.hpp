@@ -84,6 +84,15 @@ public:
     // sửa lại header nếu sau này ZaloService_Contacts.cpp cần gọi.
     void removeThreadItem(const QString &threadId);
 
+    // Tra lại isGroup đã lưu từ lần upsertThreadItem() gần nhất cho
+    // threadId này. Dùng khi app được Hub invoke (tap item) — payload JSON
+    // Hub gửi qua InvokeRequest::data() (xem ApplicationUI::onInvoked())
+    // chỉ có "attributes.sourceId", KHÔNG có field isGroup/is_group nào, nên
+    // phải tự tra lại từ state đã lưu khi item được tạo, không đoán mù.
+    // Trả về false (mặc định DM) nếu threadId chưa từng qua upsertThreadItem()
+    // thành công trong phiên hiện tại.
+    bool isGroupThread(const QString &threadId) const;
+
     // Đường dẫn tuyệt đối tới thư mục asset PUBLIC đã cài đặt của app trên
     // máy ("/apps/<progname>/public/assets/images/"), dùng làm pAssetPath
     // cho uds_register_client() bên trong class này, và cũng cần dùng lại
@@ -113,6 +122,7 @@ private:
         QString title;
         QString preview;
         qint64  timestampMs;
+        bool    isGroup; // lưu lại cho isGroupThread() — xem khai báo trên
     };
     // threadId -> state đầy đủ gần nhất đã gửi cho item đó, để
     // markThreadRead() (và bất kỳ update một-phần nào khác sau này) có thể
@@ -148,7 +158,24 @@ private:
     // Zalo10" (uds_register_item_context_action) — chưa có cơ chế "update"
     // action cho account cũ chưa từng đăng ký nó, đổi ID để chắc chắn có
     // bản đăng ký sạch từ đầu, kèm action mới.
-    static const long long ACCOUNT_ID = 424242005LL;
+    // Đổi tiếp 424242005 -> 424242006: log thực tế (uds_register_client OK,
+    // serviceId=5, status=1=UDS_REGISTRATION_NEW) cho thấy MỖI LẦN build lại
+    // qua Momentics, __progname/app hash đổi -> uds_register_client() luôn
+    // trả về NEW (không phải EXISTS), nghĩa là Hub coi đây là 1 SERVICE hoàn
+    // toàn mới mỗi lần deploy. Doc uds_account_added()/uds_account_updated()
+    // KHÔNG nói rõ account_id có scoped theo service_id hay là global toàn
+    // hệ thống Hub. Nghi vấn hiện tại: nếu global, ACCOUNT_ID cố định qua
+    // nhiều lần build khác service_id có thể khiến Hub giữ 1 bản ghi account
+    // với routing/target liên kết ngầm tới service instance CŨ đã chết,
+    // trong khi phần hiển thị (tên/icon/item) vẫn cập nhật bình thường vì đó
+    // chỉ là data — giải thích đúng triệu chứng quan sát được: item hiện
+    // đúng, nhận tin đúng, nhưng tap không invoke được gì (không có log
+    // onInvoked nào dù app đang chạy nền, xem applicationui.cpp). Đổi ID lần
+    // nữa để loại trừ dứt điểm khả năng dính state cũ trong namespace hiện
+    // tại — nếu tap vẫn im lặng sau lần đổi này, giả thuyết "dính state cũ"
+    // coi như bị loại, vấn đề nằm ở chỗ khác (xem thêm log serviceId ở
+    // HubIntegration.cpp::init() để so sánh qua các lần build).
+    static const long long ACCOUNT_ID = 424242006LL;
 };
 
 #endif // HUBINTEGRATION_HPP

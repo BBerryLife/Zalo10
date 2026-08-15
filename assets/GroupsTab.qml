@@ -583,7 +583,11 @@ NavigationPane {
     }
 
     function openThread(threadId, isGroup) {
-        groupsNav.popToRoot();
+        // NavigationPane không có popToRoot()/popAll() — xem giải thích đầy
+        // đủ tại ChatsTab.qml::openThread(), cùng lỗi lặp lại ở đây.
+        while (groupsNav.count() > 1) {
+            groupsNav.pop();
+        }
         var page = groupsDef.createObject();
         if (!page) return;
         var threadName = "Group";
