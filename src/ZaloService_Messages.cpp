@@ -162,17 +162,34 @@ void ZaloService::onFetchMsgDone()
         out["isGroup"]  = isGroup;
         out["isMine"]   = isMine;
         int mt = m["msgType"].toInt();
-        // Zalo history cũng có thể gửi msgType dạng chuỗi ("share.file")
-        // thay vì số, giống WS real-time (xem ZaloService_WebSocket.cpp) —
-        // fallback theo tên chuỗi khi toInt() không parse được số.
+        // Zalo history cũng có thể gửi msgType dạng chuỗi ("share.file",
+        // "chat.recommended") thay vì số, giống WS real-time (xem
+        // ZaloService_WebSocket.cpp) — fallback theo tên chuỗi khi toInt()
+        // không parse được số.
         if (mt == 0) {
             QString mtStr = m["msgType"].toString().toLower();
             if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
                 mt = 3;
+            else if (mtStr.contains("chat.recommended"))
+                mt = 4;
         }
         QString rawContent = m["content"].toString();
         if (mt == 2) {
             rawContent = normalizePhotoContent(m, rawContent);
+        } else if (mt == 4) {
+            QVariantMap rm = m["content"].toMap();
+            if (rm.isEmpty() && !rawContent.isEmpty() && rawContent.trimmed().startsWith("{"))
+                rm = jsonToMap(rawContent.toUtf8());
+            QString action = rm["action"].toString();
+            QVariant paramsV = rm["params"];
+            QVariantMap paramsMap = (paramsV.type() == QVariant::String)
+                ? jsonToMap(paramsV.toString().toUtf8())
+                : paramsV.toMap();
+            QString callResult = action.contains("misscall") ? "missed" : "ended";
+            QString callKind   = (paramsMap["calltype"].toInt() == 1) ? "video" : "voice";
+            qint64  duration   = paramsMap["duration"].toString().toLongLong();
+            rawContent = QString("{\"callResult\":\"%1\",\"callKind\":\"%2\",\"duration\":%3}")
+                             .arg(callResult).arg(callKind).arg(duration);
         } else if (mt == 3) {
             QVariantMap fm = m["content"].toMap();
             if (fm.isEmpty() && !rawContent.isEmpty() && rawContent.trimmed().startsWith("{"))

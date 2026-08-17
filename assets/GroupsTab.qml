@@ -93,6 +93,13 @@ NavigationPane {
         return c.substring(si, ei);
     }
     function msgSnippet(mt, content) {
+        if (mt === 4 || mt === "4") {
+            var c = content || "";
+            var missed = c.indexOf('"callResult":"missed"') >= 0;
+            var video  = c.indexOf('"callKind":"video"') >= 0;
+            if (missed) return video ? "Missed video call" : "Missed call";
+            return video ? "Video call" : "Voice call";
+        }
         if (mt !== 3 && mt !== "3") return (content || "").substring(0, 60);
         var fname = groupsNav.extractFileName(content);
         var ext = fname.substring(fname.lastIndexOf('.') + 1).toLowerCase();

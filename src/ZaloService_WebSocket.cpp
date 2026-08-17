@@ -895,6 +895,37 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // cho cả 2 chiều.
                 else if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
                     mt = 3;
+                // Call log bubble (msgType wire = "chat.recommended"): content
+                // carries action ("recommened.calltime" = ended normally,
+                // "recommened.misscall" = missed/rejected/no-answer) and a
+                // stringified params JSON with duration/calltype(0=voice,1=video)/
+                // isCaller. Normalize into {"callResult","callKind","duration"}
+                // so QML has one flat shape to key off, same idea as the
+                // share.file normalization above.
+                else if (mtStr.contains("chat.recommended"))
+                    mt = 4;
+            }
+
+            if (mt == 4) {
+                QVariantMap rm = m["content"].toMap();
+                if (rm.isEmpty()) {
+                    QString rStr = m["content"].toString();
+                    if (!rStr.isEmpty() && rStr.trimmed().startsWith("{"))
+                        rm = jsonToMap(rStr.toUtf8());
+                }
+                QString action = rm["action"].toString();
+                QVariant paramsV = rm["params"];
+                QVariantMap paramsMap = (paramsV.type() == QVariant::String)
+                    ? jsonToMap(paramsV.toString().toUtf8())
+                    : paramsV.toMap();
+                QString callResult = action.contains("misscall") ? "missed" : "ended";
+                QString callKind   = (paramsMap["calltype"].toInt() == 1) ? "video" : "voice";
+                qint64  duration   = paramsMap["duration"].toString().toLongLong();
+                QString newContent = QString("{\"callResult\":\"%1\",\"callKind\":\"%2\",\"duration\":%3}")
+                                          .arg(callResult).arg(callKind).arg(duration);
+                m["content"] = newContent;
+                qDebug() << "[Zalo WS] chat.recommended call bubble: result=" << callResult
+                         << "kind=" << callKind << "duration=" << duration;
             }
 
             if (mt == 3) {
@@ -969,7 +1000,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             // mt == 3 (video/file) loại trừ tường minh — nếu share.file thiếu
             // href, để nó rơi vào text thô thay vì bị normalizePhotoContent()
             // nhận nhầm thành ảnh.
-            if (mt != 3 && (mt == 2 || rawContent.isEmpty())) {
+            if (mt != 3 && mt != 4 && (mt == 2 || rawContent.isEmpty())) {
                 QString normalized = normalizePhotoContent(m, rawContent);
                 if (normalized != rawContent && !normalized.isEmpty()) {
                     rawContent = normalized;
@@ -1183,7 +1214,18 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 QString senderName = out["dName"].toString();
                 if (senderName.isEmpty()) senderName = "Unknown";
                 int mt = out["msgType"].toInt();
-                QString msgPreview = (mt == 2) ? "[Photo]" : out["content"].toString().left(80);
+                QString msgPreview;
+                if (mt == 2) {
+                    msgPreview = "[Photo]";
+                } else if (mt == 4) {
+                    QString cs = out["content"].toString();
+                    bool missed = cs.contains("\"callResult\":\"missed\"");
+                    bool video  = cs.contains("\"callKind\":\"video\"");
+                    msgPreview = missed ? (video ? "Missed video call" : "Missed call")
+                                        : (video ? "Video call" : "Voice call");
+                } else {
+                    msgPreview = out["content"].toString().left(80);
+                }
                 if (msgPreview.isEmpty()) msgPreview = "[Message]";
                 bool isGrp = out["isGroup"].toBool();
                 QString notifTitle = isGrp ? m_groupNames.value(threadId, "Zalo10") : "Zalo10";
