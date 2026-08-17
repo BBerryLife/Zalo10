@@ -1973,7 +1973,8 @@ Page {
                                     visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 0)
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     background: (ListItemData.pollOptions && ListItemData.pollOptions[0] && ListItemData.pollOptions[0].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
-                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
+                                    leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
@@ -1995,7 +1996,8 @@ Page {
                                     visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 1)
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     background: (ListItemData.pollOptions && ListItemData.pollOptions[1] && ListItemData.pollOptions[1].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
-                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
+                                    leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
@@ -2017,7 +2019,8 @@ Page {
                                     visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 2)
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     background: (ListItemData.pollOptions && ListItemData.pollOptions[2] && ListItemData.pollOptions[2].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
-                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
+                                    leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
@@ -2039,7 +2042,8 @@ Page {
                                     visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 3)
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     background: (ListItemData.pollOptions && ListItemData.pollOptions[3] && ListItemData.pollOptions[3].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
-                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
+                                    leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
@@ -2061,7 +2065,8 @@ Page {
                                     visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 4)
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     background: (ListItemData.pollOptions && ListItemData.pollOptions[4] && ListItemData.pollOptions[4].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
-                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
+                                    leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
@@ -2083,7 +2088,8 @@ Page {
                                     visible: !!(ListItemData.pollOptions && ListItemData.pollOptions.length > 5)
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     background: (ListItemData.pollOptions && ListItemData.pollOptions[5] && ListItemData.pollOptions[5].voted) ? Color.create("#cfe3fa") : (rowRoot.isDark ? Color.create("#33404a") : Color.create("#f0f0f0"))
-                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8); leftPadding: ui.du(1); rightPadding: ui.du(1)
+                                    topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
+                                    leftPadding: ui.du(1); rightPadding: ui.du(1)
                                     bottomMargin: ui.du(0.5)
                                     layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                     gestureHandlers: [ TapHandler { onTapped: {
