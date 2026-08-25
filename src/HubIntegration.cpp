@@ -20,10 +20,28 @@ static const char *HUB_ICON_FILE = "PreviewNoti.png";
 static const char *HUB_ICON_UNREAD_FILE = "PreviewNotiUNRead.png";
 static const char *HUB_ICON_READ_FILE   = "PreviewNotiRead.png";
 static const char *HUB_SERVICE_URL = "com.BerryLife.Zalo10.hub";
-// Phải khớp <invoke-target id> trong bar-descriptor.xml — dùng chung target
-// với sendHubNotification() hiện có, để tap vào item/account trong Hub mở
-// đúng app qua cùng 1 cơ chế invoke đã hoạt động.
+// Phải khớp <invoke-target id> trong bar-descriptor.xml — dùng cho item
+// action "Open in Zalo10" (long-press context menu), route qua invoke
+// filter tường minh (bb.action.OPEN + mime-type text/plain) đã xác nhận
+// hoạt động đúng qua test thực tế trên máy.
 static const char *HUB_INVOKE_TARGET = "com.BerryLife.Zalo10.invoke";
+// Application ID thật (khớp <id> ở đầu bar-descriptor.xml) — dùng RIÊNG
+// cho uds_account_data_set_target_name() (cấp account, không phải cấp
+// item action). Truoc day dung nham HUB_INVOKE_TARGET (co hau to ".invoke")
+// cho ca 2 muc dich — sai khac quan trong: doi chieu source that cua
+// txtmpp (github.com/singpolyma/txtmpp, app BB10 open-source co Hub
+// integration hoat dong dung, ca long-press LAN single-tap), target_name
+// cua ho ("net.singpolyma.txtmpp") TRUNG KHOP 100% voi app ID that cua ho,
+// khong co hau to invoke-target rieng nao. Gia thuyet: Hub dung
+// target_name o cap account de tu dinh vi/khoi dong DUNG APP SO HUU
+// account do khi single-tap (khac co che voi long-press, di qua invoke
+// filter/action registry rieng) — mot invoke-target id con tu dat ten
+// (nhu ".invoke" truoc day) khong phai gia tri Hub mong doi o day, du
+// bar-descriptor.xml co khai bao dung filter cho no. Day la thay doi
+// chua-xac-nhan-100% (khong co doc chinh thuc noi ro), dua tren doi
+// chieu 1 app that duy nhat co san — neu single-tap van khong hoat dong
+// sau lan doi nay, gia thuyet nay coi nhu bi loai, can tim huong khac.
+static const char *HUB_APP_ID = "com.BerryLife.Zalo10";
 
 // Bit context state cho item — PHẢI khớp với context_mask của action "Open
 // in Zalo10" (uds_item_action_data_set_context_mask, xem init()). Đây chính
@@ -166,7 +184,7 @@ bool HubIntegration::init()
     uds_account_data_set_name(account, "Zalo10");
     uds_account_data_set_description(account, "Zalo10 messages");
     uds_account_data_set_icon(account, HUB_ICON_FILE);
-    uds_account_data_set_target_name(account, HUB_INVOKE_TARGET);
+    uds_account_data_set_target_name(account, HUB_APP_ID);
     // false: account này không hỗ trợ tạo tin nhắn mới thẳng từ Hub (chưa
     // có handler cho action "bb.action.CREATE" phía app) — chỉ hiển thị +
     // mở tới thread có sẵn qua sendHubNotification()'s InvokeRequest.
@@ -218,12 +236,19 @@ bool HubIntegration::init()
     uds_item_action_data_t *openAction = uds_item_action_data_create();
     uds_item_action_data_set_action(openAction, "bb.action.OPEN");
     uds_item_action_data_set_target(openAction, HUB_INVOKE_TARGET);
-    // "APPLICATION": target là 1 app thật (khớp <invoke-target-type>application</invoke-target-type>
-    // trong bar-descriptor.xml) — không phải "service" hay "card.composer"
-    // như 2 ví dụ duy nhất có trong doc (không có ví dụ nào cho trường hợp
-    // target là application thường, đây là suy luận theo quy ước, chưa
-    // xác nhận được casing/giá trị chính xác).
-    uds_item_action_data_set_type(openAction, "APPLICATION");
+    // "service": doi tu "APPLICATION" (suy doan sai truoc day, khong ton
+    // tai trong header unified_data_source.h chinh thuc — da doi chieu truc
+    // tiep). Header chi liet ke DUY NHAT 2 gia tri hop le cho targetType:
+    // "card.composer" (target la 1 Compose card) va "service" (moi truong
+    // hop khac, ke ca khi target la 1 application thuong nhu truong hop
+    // nay) — vi du mau chinh thuc dung dung cap "service" + target la ten
+    // app ("UDSTestApp") y het cau truc HUB_INVOKE_TARGET o day. UDS chi
+    // validate cu phap luc register (khong bao gio fail voi type sai), nen
+    // "APPLICATION" truoc day van tra ve UDS_SUCCESS binh thuong dua den
+    // nham lan — loi chi lo ra luc THUC SU invoke (Hub khong biet cach
+    // dung target voi 1 type khong ton tai, single-tap im lang khong lam
+    // gi ca, dung trieu chung da quan sat duoc qua nhieu lan test).
+    uds_item_action_data_set_type(openAction, "service");
     uds_item_action_data_set_title(openAction, "Open in Zalo10");
     uds_item_action_data_set_image_source(openAction, HUB_ICON_FILE);
     uds_item_action_data_set_mime_type(openAction, "text/plain");

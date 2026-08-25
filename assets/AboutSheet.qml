@@ -178,7 +178,7 @@ Sheet {
                             verticalAlignment: VerticalAlignment.Center
                             Label { text: "Zalo10"; textStyle.base: SystemDefaults.TextStyles.BigText }
                             Label { text: "Version: " + app.appVersion(); textStyle.color: Color.Gray; topMargin: 4 }
-                            Label { text: "Developed by BerryLife© 2026"; textStyle.color: Color.Gray; topMargin: 4 }
+                            Label { text: "Developed by BBerryLife© 2026"; textStyle.color: Color.Gray; topMargin: 4 }
                         }
 
                         ImageView {

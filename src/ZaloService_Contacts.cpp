@@ -32,6 +32,8 @@
 #include <zlib.h>
 #include <string.h>
 
+#include <webp/decode.h>
+
 // Conversations, friends, group details/avatars, invites, and per-thread
 // settings (mute, block, clear history, leave group).
 
@@ -296,9 +298,16 @@ void ZaloService::downloadSticker(const QString &stickerIdStr)
         return;
     }
 
-    QString fname = QString("/tmp/sticker_%1.webp").arg(stickerId);
-    if (QFile::exists(fname)) {
-        QString localPath = "file://" + fname;
+    // Sticker tren dia co the la .png hoac .gif tuy dinh dang CDN thuc te
+    // tra ve (xem ghi chu o saveStickerData() ben duoi) — kiem tra ca 2
+    // duoi truoc khi quyet dinh tai lai tu mang.
+    QString base = QString("/tmp/sticker_%1").arg(stickerId);
+    QString cachedPath;
+    if (QFile::exists(base + ".png")) cachedPath = base + ".png";
+    else if (QFile::exists(base + ".gif")) cachedPath = base + ".gif";
+
+    if (!cachedPath.isEmpty()) {
+        QString localPath = "file://" + cachedPath;
         m_stickerCache[stickerId] = localPath;
         emit stickerReady(stickerIdStr, localPath);
         return;
@@ -323,6 +332,126 @@ void ZaloService::downloadSticker(const QString &stickerIdStr)
     connect(reply, SIGNAL(finished()), this, SLOT(onStickerDownloaded()));
 }
 
+// Cascades/bb::cascades::Image (dung boi ImageView) KHONG co codec WebP
+// built-in tren BB10 — set imageSource thang toi 1 file .webp fail am tham
+// (log "UIObjectPrivate::notifyMessage: Unable to set property", khong
+// exception, khong signal loi gi de bat). Nhung Cascades LAI doc duoc GIF
+// (ke ca animated) va PNG ngay tu dau, chi WebP la khong doc duoc.
+//
+// Thuc nghiem cho thay CDN sticker (endpoint ten "webpc", size=130) tra ve
+// CA 3 dinh dang khac nhau tuy sticker, khong co quy luat co dinh theo id:
+//   - PNG that (magic 89 50 4E 47 0D 0A 1A 0A) — sticker tinh
+//   - GIF (magic "GIF89a"/"GIF87a") — sticker dong (animated)
+//   - WebP that (RIFF....WEBP) — it gap hon voi tham so hien dung, nhung
+//     van co the xay ra (vd sticker khac size/version)
+// Ten endpoint "webpc" chi la lich su, khong phan anh dinh dang tra ve
+// thuc te. Vi vay phai tu doc magic bytes de quyet dinh:
+//   - PNG/GIF: luu thang file voi dung phan mo rong, khong convert gi ca
+//     (Cascades doc duoc thang)
+//   - WebP that: decode bang libwebpdecoder (vendored, decode-only —
+//     src/third_party/webp/) ra buffer RGBA roi encode lai thanh PNG qua
+//     QImage::save() (Qt/QImage co san PNG writer, khong can them lib nao
+//     khac)
+// Ham tra ve duong dan file THAT SU da ghi (co the la .png hoac .gif tuy
+// truong hop), khong con luon la .png nhu truoc.
+static bool isPngData(const QByteArray &data)
+{
+    static const char PNG_MAGIC[8] = {
+        (char)0x89, 'P', 'N', 'G', '\r', '\n', (char)0x1a, '\n'
+    };
+    return data.size() >= 8 && memcmp(data.constData(), PNG_MAGIC, 8) == 0;
+}
+
+static bool isGifData(const QByteArray &data)
+{
+    return data.size() >= 6
+        && (data.startsWith("GIF89a") || data.startsWith("GIF87a"));
+}
+
+static bool isWebpData(const QByteArray &data)
+{
+    // RIFF <4-byte size> WEBP
+    return data.size() >= 12
+        && data.startsWith("RIFF")
+        && memcmp(data.constData() + 8, "WEBP", 4) == 0;
+}
+
+// basePathNoExt: duong dan KHONG kem phan mo rong, vd "/tmp/sticker_18009".
+// Ham tu them dung phan mo rong (.png hoac .gif) roi tra ve qua outPath.
+static bool saveStickerData(const QByteArray &data, const QString &basePathNoExt,
+                             QString *outPath)
+{
+    if (isPngData(data) || isGifData(data)) {
+        // Da la dinh dang Cascades doc duoc thang — luu nguyen bytes,
+        // khong convert.
+        const QString ext = isPngData(data) ? ".png" : ".gif";
+        QString path = basePathNoExt + ext;
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) {
+            qDebug() << "[Zalo] saveStickerData: khong mo duoc file de ghi:" << path;
+            return false;
+        }
+        f.write(data);
+        f.close();
+        *outPath = path;
+        return true;
+    }
+
+    if (!isWebpData(data)) {
+        QByteArray header = data.left(16).toHex();
+        qDebug() << "[Zalo] saveStickerData: du lieu khong phai PNG/GIF/WebP, size="
+                 << data.size() << "header(hex)=" << header
+                 << "asAscii=" << data.left(16);
+        return false;
+    }
+
+    // Tu day tro di: WebP that, can decode roi encode lai PNG.
+    int width = 0, height = 0;
+    uint8_t *rgba = WebPDecodeRGBA(
+        reinterpret_cast<const uint8_t*>(data.constData()),
+        data.size(), &width, &height);
+
+    if (!rgba || width <= 0 || height <= 0) {
+        // Toi day chac chan data da la WebP hop le ve mat container (da
+        // qua isWebpData() o tren), nhung WebPDecodeRGBA van fail — kha
+        // nang cao nhat la WebP dang ANIMATED (VP8X + chunk ANIM), ma
+        // WebPDecodeRGBA (decoder anh tinh) khong doc duoc, can
+        // WebPAnimDecoder rieng (chua trien khai o day).
+        qDebug() << "[Zalo] saveStickerData: la WebP hop le nhung WebPDecodeRGBA van fail (co the la WebP animated), size="
+                 << data.size();
+        if (rgba) WebPFree(rgba);
+        return false;
+    }
+
+    // Project nay dung Qt4 (xem qt4/QtGui trong Zalo10.pro) — Qt4 KHONG co
+    // QImage::Format_RGBA8888 (chi co tu Qt 5.2). Format gan nhat co san la
+    // Format_ARGB32, nhung byte order trong bo nho tren little-endian la
+    // B,G,R,A — nguoc voi buffer R,G,B,A ma WebPDecodeRGBA tra ve — nen
+    // phai tu swap R<->B truoc khi dua vao QImage, khong the doi ten enum
+    // suong roi dung thang buffer duoc.
+    uint8_t *px = rgba;
+    const int total = width * height;
+    for (int i = 0; i < total; ++i) {
+        uint8_t r = px[0];
+        px[0] = px[2];
+        px[2] = r;
+        px += 4;
+    }
+    QImage img(rgba, width, height, width * 4, QImage::Format_ARGB32);
+    // QImage khong own buffer cua libwebp — .copy() de tach han truoc khi
+    // WebPFree(), tranh dangling pointer luc save().
+    QImage owned = img.copy();
+    WebPFree(rgba);
+
+    QString path = basePathNoExt + ".png";
+    if (!owned.save(path, "PNG")) {
+        qDebug() << "[Zalo] saveStickerData: QImage::save PNG failed for" << path;
+        return false;
+    }
+    *outPath = path;
+    return true;
+}
+
 void ZaloService::onStickerDownloaded()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
@@ -342,16 +471,23 @@ void ZaloService::onStickerDownloaded()
         return;
     }
 
-    QString fname = QString("/tmp/sticker_%1.webp").arg(stickerId);
-    QFile f(fname);
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(data);
-        f.close();
+    // Duong dan CHUA co phan mo rong — saveStickerData() se tu quyet dinh
+    // .png hay .gif tuy dinh dang thuc te CDN tra ve, roi tra lai qua
+    // savedPath.
+    QString base = QString("/tmp/sticker_%1").arg(stickerId);
+    QString savedPath;
+    if (!saveStickerData(data, base, &savedPath)) {
+        // Luu/decode that bai (vd file CDN tra ve khong dung dinh dang nao
+        // trong 3 dinh dang da biet) — bo qua, khong cache, se retry
+        // (downloadSticker() se thu lai vi khong file .png/.gif nao ton
+        // tai) lan sau thread duoc mo lai.
+        return;
     }
-    QString localPath = "file://" + fname;
+
+    QString localPath = "file://" + savedPath;
     m_stickerCache[stickerId] = localPath;
 
-    qDebug() << "[Zalo] sticker saved:" << stickerId << "->" << fname;
+    qDebug() << "[Zalo] sticker saved:" << stickerId << "->" << savedPath;
     emit stickerReady(QString::number(stickerId), localPath);
 }
 

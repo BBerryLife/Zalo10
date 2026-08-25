@@ -26,6 +26,13 @@ LIBS += -lQtNetwork -lQtScript -lQtGui
 LIBS += -lssl -lcrypto
 LIBS += -lsqlite3
 
+# libwebpdecoder (vendored, decode-only build cho QNX armv7le/gcc4.6.3 —
+# xem src/third_party/webp/README.md) — dung de decode sticker .webp tai ve
+# tu CDN Zalo (chat.sticker) truoc khi luu thanh PNG cho Cascades ImageView,
+# vi Cascades/bb::cascades::Image KHONG co codec WebP built-in.
+LIBS += -L$$PWD/src/third_party/webp/lib -lwebpdecoder
+INCLUDEPATH += $$PWD/src/third_party/webp/include
+
 INCLUDEPATH += src
 INCLUDEPATH += $$(QNX_TARGET)/usr/include/qt4/QtGui
 

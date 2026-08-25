@@ -838,6 +838,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_save.png) \
         $$quote($$BASEDIR/assets/images/ic_settings.png) \
         $$quote($$BASEDIR/assets/images/ic_start_chat.png) \
+        $$quote($$BASEDIR/assets/images/ic_status.png) \
         $$quote($$BASEDIR/assets/main.qml)
 }
 
@@ -862,7 +863,9 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/HubIntegration.hpp) \
         $$quote($$BASEDIR/src/ZaloService.hpp) \
         $$quote($$BASEDIR/src/ZaloServiceUtils.hpp) \
-        $$quote($$BASEDIR/src/applicationui.hpp)
+        $$quote($$BASEDIR/src/applicationui.hpp) \
+        $$quote($$BASEDIR/src/third_party/webp/include/webp/decode.h) \
+        $$quote($$BASEDIR/src/third_party/webp/include/webp/types.h)
 }
 
 CONFIG += precompile_header
@@ -876,6 +879,31 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../src/*.cc) \
         $$quote($$BASEDIR/../src/*.cpp) \
         $$quote($$BASEDIR/../src/*.cxx) \
+        $$quote($$BASEDIR/../src/third_party/*.c) \
+        $$quote($$BASEDIR/../src/third_party/*.c++) \
+        $$quote($$BASEDIR/../src/third_party/*.cc) \
+        $$quote($$BASEDIR/../src/third_party/*.cpp) \
+        $$quote($$BASEDIR/../src/third_party/*.cxx) \
+        $$quote($$BASEDIR/../src/third_party/webp/*.c) \
+        $$quote($$BASEDIR/../src/third_party/webp/*.c++) \
+        $$quote($$BASEDIR/../src/third_party/webp/*.cc) \
+        $$quote($$BASEDIR/../src/third_party/webp/*.cpp) \
+        $$quote($$BASEDIR/../src/third_party/webp/*.cxx) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/*.c) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/*.c++) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/*.cc) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/*.cpp) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/*.cxx) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/webp/*.c) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/webp/*.c++) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/webp/*.cc) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/webp/*.cpp) \
+        $$quote($$BASEDIR/../src/third_party/webp/include/webp/*.cxx) \
+        $$quote($$BASEDIR/../src/third_party/webp/lib/*.c) \
+        $$quote($$BASEDIR/../src/third_party/webp/lib/*.c++) \
+        $$quote($$BASEDIR/../src/third_party/webp/lib/*.cc) \
+        $$quote($$BASEDIR/../src/third_party/webp/lib/*.cpp) \
+        $$quote($$BASEDIR/../src/third_party/webp/lib/*.cxx) \
         $$quote($$BASEDIR/../assets/*.qml) \
         $$quote($$BASEDIR/../assets/*.js) \
         $$quote($$BASEDIR/../assets/*.qs) \

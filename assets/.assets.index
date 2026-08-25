@@ -1,5 +1,5 @@
 1
-803
+804
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -762,6 +762,7 @@ images/ic_microphone.png
 images/ic_save.png
 images/ic_settings.png
 images/ic_start_chat.png
+images/ic_status.png
 images/InvitesTab/action_icon_search.png
 images/InvitesTab/ai_add_task.png
 images/InvitesTab/blank.png
