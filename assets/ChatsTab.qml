@@ -582,6 +582,7 @@ NavigationPane {
             if (missed) return video ? "Missed video call" : "Missed call";
             return video ? "Video call" : "Voice call";
         }
+        if (mt === 5 || mt === "5") return "[Sticker]";
         if (mt !== 3 && mt !== "3") return (content || "").substring(0, 60);
         var fname = chatsNav.extractFileName(content);
         var ext = fname.substring(fname.lastIndexOf('.') + 1).toLowerCase();

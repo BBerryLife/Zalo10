@@ -276,6 +276,85 @@ void ZaloService::onGroupDetailsDone()
     m_isFetchingConversations = false;
 }
 
+// Sticker (msgType=5): tải ảnh từ CDN public zalo-api.zadn.vn/api/emoticon/
+// sticker/webpc?eid={stickerId}, cache vĩnh viễn theo stickerId — không như
+// avatar (đổi theo thời gian, cần so hash URL), ảnh của 1 stickerId không
+// bao giờ đổi nên chỉ cần "file đã có trên đĩa chưa" là đủ điều kiện dùng
+// lại, không cần bảng dedup riêng trong SQLite như avatar_meta.
+//
+// URL công thức này được xác nhận bằng thực nghiệm (DevTools Network trên
+// Zalo Web khi mở 1 tin sticker đã nhận), không phải suy luận: content tin
+// nhắn (msgType wire "chat.sticker") chỉ có {"id":N,"catId":M,"type":7} —
+// KHÔNG có URL ảnh — và id đó chính là tham số eid của endpoint trên.
+void ZaloService::downloadSticker(const QString &stickerIdStr)
+{
+    qint64 stickerId = stickerIdStr.toLongLong();
+    if (stickerId == 0) return;
+
+    if (m_stickerCache.contains(stickerId)) {
+        emit stickerReady(stickerIdStr, m_stickerCache[stickerId]);
+        return;
+    }
+
+    QString fname = QString("/tmp/sticker_%1.webp").arg(stickerId);
+    if (QFile::exists(fname)) {
+        QString localPath = "file://" + fname;
+        m_stickerCache[stickerId] = localPath;
+        emit stickerReady(stickerIdStr, localPath);
+        return;
+    }
+
+    if (m_pendingStickers.contains(stickerId)) return;
+    m_pendingStickers.insert(stickerId);
+
+    // downloadAvatar() downgrades https->http for the same avatar CDN family
+    // (*.zadn.vn) — a known workaround for an SSL/cert issue on this BB10
+    // NDK's OpenSSL build, not a Zalo API requirement. Applying it here too
+    // since zalo-api.zadn.vn is the same domain family.
+    QString url = QString("http://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid=%1&size=130&version=4")
+                      .arg(stickerId);
+    QUrl stickerQUrl(url);
+    QNetworkRequest stickerReq(stickerQUrl);
+    stickerReq.setRawHeader("Referer",    "https://chat.zalo.me/");
+    stickerReq.setRawHeader("User-Agent", m_userAgent.toUtf8());
+    stickerReq.setRawHeader("Accept",     "image/webp,image/apng,image/*,*/*;q=0.8");
+    QNetworkReply *reply = m_manager->get(stickerReq);
+    reply->setProperty("stickerId", stickerId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onStickerDownloaded()));
+}
+
+void ZaloService::onStickerDownloaded()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    qint64 stickerId = reply->property("stickerId").toLongLong();
+    bool hasError     = (reply->error() != QNetworkReply::NoError);
+    QByteArray data   = reply->readAll();
+    reply->deleteLater();
+
+    m_pendingStickers.remove(stickerId);
+
+    if (hasError || data.isEmpty()) {
+        int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        qDebug() << "[Zalo] sticker download failed for" << stickerId
+                 << "error:" << reply->errorString()
+                 << "HTTP:" << httpStatus;
+        return;
+    }
+
+    QString fname = QString("/tmp/sticker_%1.webp").arg(stickerId);
+    QFile f(fname);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(data);
+        f.close();
+    }
+    QString localPath = "file://" + fname;
+    m_stickerCache[stickerId] = localPath;
+
+    qDebug() << "[Zalo] sticker saved:" << stickerId << "->" << fname;
+    emit stickerReady(QString::number(stickerId), localPath);
+}
+
 void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
 {
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;

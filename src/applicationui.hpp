@@ -80,6 +80,9 @@ signals:
     // Bắn khi setShowRecalledMessages() thay đổi, để ChatView đang mở
     // re-render lại bubble ngay mà không cần rời/mở lại thread.
     void showRecalledMessagesChanged(bool show);
+    // Bắn khi setDarkTheme() thay đổi, cùng lý do như trên — ChatView đang
+    // mở tự cập nhật isDark ngay thay vì kẹt màu cũ tới khi rời/mở lại thread.
+    void darkThemeChanged(bool dark);
     // isLatest: true nếu appVersion() đã >= latestVersion.
     // error chỉ khác rỗng khi network/parse lỗi.
     void updateCheckResult(bool isLatest, const QString &latestVersion, const QString &downloadUrl, const QString &error);

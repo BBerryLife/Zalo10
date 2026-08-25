@@ -904,6 +904,44 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // share.file normalization above.
                 else if (mtStr.contains("chat.recommended"))
                     mt = 4;
+                // Sticker (msgType wire = "chat.sticker"): content =
+                // {"id":18009,"catId":10130,"type":7}. Xác nhận bằng thực
+                // nghiệm (không phải suy luận): id trong content ghép thẳng
+                // vào eid của endpoint ảnh public
+                // https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid={id}
+                // cho ra đúng sticker đã gửi — không cần catId, không cần
+                // gọi thêm API tra cứu nào (đã thử và loại: eid KHÔNG suy ra
+                // được từ catId, và getStickersDetail của zca-js là 1 API
+                // riêng chỉ cần khi *tìm/gửi* sticker, không cần để hiển thị
+                // sticker đã *nhận*). Chuẩn hóa content thành
+                // {"stickerId":N} cho gọn, QML tự ghép URL.
+                else if (mtStr.contains("chat.sticker"))
+                    mt = 5;
+            }
+
+            if (mt == 5) {
+                QVariantMap sm = m["content"].toMap();
+                if (sm.isEmpty()) {
+                    QString sStr = m["content"].toString();
+                    if (!sStr.isEmpty() && sStr.trimmed().startsWith("{"))
+                        sm = jsonToMap(sStr.toUtf8());
+                }
+                qint64 stickerId = sm["id"].toString().toLongLong();
+                if (stickerId == 0) stickerId = sm["id"].toLongLong();
+                QString newContent = QString("{\"stickerId\":%1}").arg(stickerId);
+                m["content"] = newContent;
+                qDebug() << "[Zalo WS] chat.sticker bubble: id=" << stickerId;
+                // Kick off the image download here (C++, right when we first learn the
+                // stickerId) instead of waiting on ChatView.qml to trigger it once the
+                // bubble renders. QML-side init signals (Component.onCompleted,
+                // onVisibleChanged) both proved unreliable for this on device — either
+                // zService wasn't resolvable yet from that nested delegate Container, or
+                // the signal just never fired for the initial state. Firing eagerly here
+                // means downloadSticker()'s own dedup (m_pendingStickers/m_stickerCache)
+                // does the "already downloading/cached" check, and the QML side only ever
+                // needs to *read* ListItemData.stickerLocalPath once applyStickerUpdate()
+                // patches it in — no trigger logic left in QML at all.
+                if (stickerId > 0) downloadSticker(QString::number(stickerId));
             }
 
             if (mt == 4) {
@@ -1000,7 +1038,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             // mt == 3 (video/file) loại trừ tường minh — nếu share.file thiếu
             // href, để nó rơi vào text thô thay vì bị normalizePhotoContent()
             // nhận nhầm thành ảnh.
-            if (mt != 3 && mt != 4 && (mt == 2 || rawContent.isEmpty())) {
+            if (mt != 3 && mt != 4 && mt != 5 && (mt == 2 || rawContent.isEmpty())) {
                 QString normalized = normalizePhotoContent(m, rawContent);
                 if (normalized != rawContent && !normalized.isEmpty()) {
                     rawContent = normalized;
@@ -1223,6 +1261,8 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                     bool video  = cs.contains("\"callKind\":\"video\"");
                     msgPreview = missed ? (video ? "Missed video call" : "Missed call")
                                         : (video ? "Video call" : "Voice call");
+                } else if (mt == 5) {
+                    msgPreview = "[Sticker]";
                 } else {
                     msgPreview = out["content"].toString().left(80);
                 }
@@ -1483,6 +1523,22 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // không phải chỉ là dòng trùng tạm trong bộ nhớ).
                 else if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
                     mtH = 3;
+                // Call log bubble history counterpart — cùng lý do đã ghi ở
+                // real-time path (cmd=501/521, ~dòng 900): thiếu nhánh này ở
+                // "old_messages" (cmd=510 poll) khiến content thô ("action":
+                // "recommened.misscall", chưa chuẩn hóa) ghi đè lên bản ghi
+                // DB đúng (đã chuẩn hóa) mỗi lần WS poll lại history, làm
+                // callBubble ở ChatView.qml "biến mất" khi mở lại thread
+                // (msgType vẫn=4 nhưng content không còn khớp {"callResult"
+                // ...} mà callBubble.extractJsonStringField parse nữa).
+                else if (mtStr.contains("chat.recommended"))
+                    mtH = 4;
+                // Sticker history counterpart (msgType wire = "chat.sticker")
+                // — cùng lý do các nhánh trên: thiếu ở đây thì content thô
+                // {"catId":...,"id":...,"type":...} ghi đè bản {"stickerId":N}
+                // đã chuẩn hóa mỗi lần cmd=510 poll lại history.
+                else if (mtStr.contains("chat.sticker"))
+                    mtH = 5;
             }
 
             // Re-serialize nested content object lại thành JSON, cùng lý do như trên.
@@ -1511,6 +1567,38 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             // shape ChatView.qml's videoBubble parser expects. Same field
             // extraction as the real-time path (see share.file handling above
             // in this file's cmd=501/521 branch).
+            if (mtH == 5) {
+                QVariantMap smH = m["content"].toMap();
+                if (smH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
+                    smH = jsonToMap(rawContentH.toUtf8());
+                qint64 stickerIdH = smH["id"].toString().toLongLong();
+                if (stickerIdH == 0) stickerIdH = smH["id"].toLongLong();
+                rawContentH = QString("{\"stickerId\":%1}").arg(stickerIdH);
+                out["msgType"] = 5;
+                qDebug() << "[Zalo WS] old_messages: chat.sticker bubble id=" << stickerIdH;
+                // Eager download, same reasoning as the real-time (mt==5) branch above.
+                if (stickerIdH > 0) downloadSticker(QString::number(stickerIdH));
+            }
+
+            if (mtH == 4) {
+                QVariantMap rmH = m["content"].toMap();
+                if (rmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
+                    rmH = jsonToMap(rawContentH.toUtf8());
+                QString actionH = rmH["action"].toString();
+                QVariant paramsVH2 = rmH["params"];
+                QVariantMap paramsMapH2 = (paramsVH2.type() == QVariant::String)
+                    ? jsonToMap(paramsVH2.toString().toUtf8())
+                    : paramsVH2.toMap();
+                QString callResultH = actionH.contains("misscall") ? "missed" : "ended";
+                QString callKindH   = (paramsMapH2["calltype"].toInt() == 1) ? "video" : "voice";
+                qint64  durationH   = paramsMapH2["duration"].toString().toLongLong();
+                rawContentH = QString("{\"callResult\":\"%1\",\"callKind\":\"%2\",\"duration\":%3}")
+                                  .arg(callResultH).arg(callKindH).arg(durationH);
+                out["msgType"] = 4;
+                qDebug() << "[Zalo WS] old_messages: chat.recommended call bubble result=" << callResultH
+                         << "kind=" << callKindH << "duration=" << durationH;
+            }
+
             if (mtH == 3) {
                 QVariantMap fmH = m["content"].toMap();
                 if (fmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))

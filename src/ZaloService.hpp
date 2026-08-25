@@ -199,6 +199,19 @@ public:
     // Kết quả trả về async qua videoDownloadProgress/Finished/Failed.
     Q_INVOKABLE void downloadVideoMessage(const QString &msgId, const QString &url, const QString &fileName);
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
+    // Tải ảnh sticker (msgType=5, content={"stickerId":N}) từ CDN public
+    // zalo-api.zadn.vn về /tmp. Cache theo stickerId vĩnh viễn (không như
+    // avatar, ảnh sticker của 1 id không bao giờ đổi) — 1 lần tải cho mọi
+    // thread/mọi lần xem sau, kể cả restart app. Kết quả async qua
+    // stickerReady(stickerId, localPath).
+    //
+    // stickerId là QString (không phải qint64) dù bản chất là số — mọi ID
+    // khác truyền qua ranh giới QML/C++ trong codebase này đều theo convention
+    // QString (threadId, msgId, groupId, pollId...); qint64 là kiểu Q_INVOKABLE
+    // param duy nhất phá lệ và gây SIGSEGV thật trong QString::fromLatin1_helper
+    // khi QML JS number marshal sang qint64 qua Qt 4.8's meta-object system —
+    // đổi về QString rồi parse bằng toLongLong() bên trong là an toàn.
+    Q_INVOKABLE void downloadSticker(const QString &stickerId);
     // Update downloader — gọi từ AboutSheet khi user xác nhận update.
     // Lưu vào /accounts/1000/shared/downloads/<filename>.
     Q_INVOKABLE void downloadUpdate(const QString &url, const QString &filename);
@@ -347,6 +360,10 @@ signals:
     void threadLastMessageChanged(const QString &threadId, const QString &lastMsg, const QString &lastTime);
     // threadId, localFilePath (file:///tmp/...)
     void avatarReady(const QString &threadId, const QString &localPath);
+    // stickerId, localFilePath (file:///tmp/...) — ChatView.qml's
+    // stickerBubble listens for this to swap its ImageView source in once
+    // the download completes.
+    void stickerReady(const QString &stickerId, const QString &localPath);
     // msgId, localFilePath — for image messages downloaded for display
     // width/height: actual pixel dimensions of the image (0 if unknown) — used by
     // ChatView.qml to size the bubble to the real aspect ratio instead of a fixed square.
@@ -456,6 +473,7 @@ private slots:
     void onListenDone();
     void onPollMsgDone();
     void onAvatarDownloaded();
+    void onStickerDownloaded();
     void onKeepAliveTimer();
     void onKeepAliveDone();
 
@@ -718,6 +736,12 @@ private:
     QMap<QString, QString> m_avatarCache;
     QSet<QString> m_pendingAvatars; // Ngăn tải trùng lặp
     QMap<QString, QSet<QString> > m_pendingAvatarWaiters; // url -> set of threadIds đang chờ
+    // Cache sticker theo stickerId — không cần waiters map như avatar vì 1
+    // sticker chỉ có duy nhất 1 "chủ" đang chờ nó trong session này thường
+    // (không multi-thread cùng chờ 1 stickerId theo threadId), QML tự lọc
+    // đúng bubble qua stickerReady(stickerId,...).
+    QMap<qint64, QString> m_stickerCache;
+    QSet<qint64> m_pendingStickers;
 
     // Re-emit friendsReady sau khi avatar load xong
     sqlite3 *m_db;

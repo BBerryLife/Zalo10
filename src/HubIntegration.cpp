@@ -138,6 +138,29 @@ bool HubIntegration::init()
               << "assetPath=" << assetPath
               << "accountId=" << ACCOUNT_ID;
 
+    // Header UDS chính thức (unified_data_source.h,
+    // uds_account_data_set_icon()) ghi 81x81 là kích thước khuyến nghị,
+    // nhưng file 72x72 hiện tại (PreviewNoti/Read/UNRead.png) đã hiển thị
+    // đúng, cân đối trong Hub trước đây — GIỮ NGUYÊN 72x72, không resize.
+    // Đã thử đổi 81x81 và bị lệch/to hơn mong muốn trên thực tế thiết bị —
+    // không dùng hướng này. Nghi vấn về kích thước icon coi như bị loại;
+    // hướng xử lý còn lại là uds_account_removed() bên dưới.
+
+    // uds_account_removed() trước khi add lại: ép Hub xoá sạch bản ghi
+    // account cũ (icon path, v.v.) thay vì chỉ update. Lý do: quan sát
+    // thực tế — icon hiện đúng khi build lại qua Momentics (assetPath
+    // trùng cache cũ do __progname có suffix testDev_... cố định), nhưng
+    // mất icon khi đổi sang bản export (assetPath đổi, __progname khác) dù
+    // account_id giữ nguyên. Nghi vấn: uds_account_updated() không luôn
+    // buộc Hub re-resolve icon từ assetPath mới. Gọi remove trước xoá khả
+    // năng này. Bỏ qua lỗi nếu account chưa tồn tại (bình thường ở lần
+    // chạy đầu tiên/cài mới) — không phải điều kiện fail của init().
+    {
+        int removeRc = uds_account_removed(m_udsHandle, ACCOUNT_ID);
+        qDebug() << "[Hub] uds_account_removed (pre-add cleanup) rc=" << removeRc
+                  << "(non-zero is expected/harmless if account didn't exist yet)";
+    }
+
     uds_account_data_t *account = uds_account_data_create();
     uds_account_data_set_id(account, ACCOUNT_ID);
     uds_account_data_set_name(account, "Zalo10");
@@ -154,20 +177,12 @@ bool HubIntegration::init()
     // email thay vì dưới, không mong muốn). Trả lại IM như cũ.
     uds_account_data_set_type(account, UDS_ACCOUNT_TYPE_IM);
 
-    // Hub KHÔNG có API để hỏi "account này đã được add từ phiên trước
-    // chưa" — không có query API. uds_get_service_status() chỉ nói lên bản
-    // thân việc *đăng ký client* (uds_register_client()) là mới hay cũ,
-    // không đảm bảo account thật sự đã tồn tại phía Hub. Cách an toàn
-    // (theo kinh nghiệm thực chiến của cộng đồng dev BB10): thử theo đúng
-    // thứ tự ưu tiên dựa trên regStatus, và fallback sang thao tác còn lại
-    // nếu thao tác đầu tiên fail vì lý do khác hơn là do rớt kết nối.
-    if (regStatus == UDS_REGISTRATION_EXISTS) {
-        rc = uds_account_updated(m_udsHandle, account);
-        if (rc != UDS_SUCCESS) rc = uds_account_added(m_udsHandle, account);
-    } else {
-        rc = uds_account_added(m_udsHandle, account);
-        if (rc != UDS_SUCCESS) rc = uds_account_updated(m_udsHandle, account);
-    }
+    // Sau khi đã remove ở trên, account chắc chắn không còn tồn tại phía
+    // Hub tại thời điểm này — dùng uds_account_added() làm thao tác chính,
+    // fallback sang updated() chỉ để an toàn nếu remove ở trên thất bại vì
+    // lý do khác (mất kết nối, v.v.) và account cũ vẫn còn đó.
+    rc = uds_account_added(m_udsHandle, account);
+    if (rc != UDS_SUCCESS) rc = uds_account_updated(m_udsHandle, account);
     uds_account_data_destroy(account);
 
     if (rc != UDS_SUCCESS) {

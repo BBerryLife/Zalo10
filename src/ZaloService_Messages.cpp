@@ -172,10 +172,26 @@ void ZaloService::onFetchMsgDone()
                 mt = 3;
             else if (mtStr.contains("chat.recommended"))
                 mt = 4;
+            else if (mtStr.contains("chat.sticker"))
+                mt = 5;
         }
         QString rawContent = m["content"].toString();
         if (mt == 2) {
             rawContent = normalizePhotoContent(m, rawContent);
+        } else if (mt == 5) {
+            // Sticker: content = {"id":N,"catId":M,"type":7}. id ghép thẳng
+            // vào eid của https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid={id}
+            // — xác nhận bằng thực nghiệm, xem ghi chú đầy đủ ở
+            // ZaloService_WebSocket.cpp (nhánh mt==5 real-time).
+            QVariantMap sm = m["content"].toMap();
+            if (sm.isEmpty() && !rawContent.isEmpty() && rawContent.trimmed().startsWith("{"))
+                sm = jsonToMap(rawContent.toUtf8());
+            qint64 stickerId = sm["id"].toString().toLongLong();
+            if (stickerId == 0) stickerId = sm["id"].toLongLong();
+            rawContent = QString("{\"stickerId\":%1}").arg(stickerId);
+            // Eager download — same reasoning as the two branches in
+            // ZaloService_WebSocket.cpp (search "Eager download" there).
+            if (stickerId > 0) downloadSticker(QString::number(stickerId));
         } else if (mt == 4) {
             QVariantMap rm = m["content"].toMap();
             if (rm.isEmpty() && !rawContent.isEmpty() && rawContent.trimmed().startsWith("{"))

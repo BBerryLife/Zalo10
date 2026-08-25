@@ -422,6 +422,14 @@ void ApplicationUI::setDarkTheme(bool dark)
     settings.sync();
     Application::instance()->themeSupport()->setVisualStyle(
         dark ? VisualStyle::Dark : VisualStyle::Bright);
+    // ChatView đọc app.getDarkTheme() 1 lần lúc trang được tạo (property
+    // binding vào 1 Q_INVOKABLE, không phải Q_PROPERTY có NOTIFY, nên QML
+    // không tự re-evaluate) — nếu user đổi theme trong Settings trong khi
+    // 1 ChatView vẫn đang mở phía dưới, trang đó bị kẹt màu cũ cho tới khi
+    // rời/mở lại thread. Emit signal này để ChatView (đã có sẵn Connections
+    // { target: app } cho showRecalledMessagesChanged, cùng pattern) tự
+    // cập nhật isDark ngay, không cần thoát ra vào lại.
+    emit darkThemeChanged(dark);
 }
 
 bool ApplicationUI::getDarkTheme()

@@ -239,6 +239,41 @@ Page {
         rebuildFlushTimer.start();
     }
 
+    // Sticker counterpart of applyImageUpdate above — same model-patch-then-
+    // rebuild approach, applied to every row whose content references this
+    // stickerId (a sticker can appear more than once in the same thread,
+    // unlike a photo/video message which is inherently 1:1 with its msgId).
+    // stickerBubble binds ListItemData.stickerLocalPath as a plain property
+    // (same pattern as selfUidProxy near the top of this file) instead of
+    // calling zService itself or holding Connections in its own
+    // attachedObjects — calling zService directly from deep inside a nested
+    // delegate Container's Component.onCompleted was unreliable on device
+    // ("Can't find variable: zService", "Cannot assign to non-existent
+    // property onStickerReady"); doDownloadSticker() on msgList (this
+    // Component, much closer to the Page root) is the call site, and this
+    // function is what threads the async result back down to the row.
+    function applyStickerUpdate(stickerId, localPath) {
+        chatViewPage.flushPendingRebuild();
+        var size = msgModel.size();
+        if (size === 0) return;
+        var items = [];
+        var found = false;
+        var needle = '"stickerId":' + stickerId;
+        for (var j = 0; j < size; j++) {
+            var d = msgModel.value(j);
+            if ((d.msgType === 5 || d.msgType === "5") && (d.content || "").indexOf(needle) >= 0) {
+                d.stickerLocalPath = localPath;
+                found = true;
+            }
+            items.push(d);
+        }
+        if (!found) return;
+        msgModel.clear();
+        rebuildFlushTimer.pendingItems = items;
+        rebuildFlushTimer.pendingScroll = false;
+        rebuildFlushTimer.start();
+    }
+
     // Measures clockOffsetMs from the first outgoing message with both a cliMsgId
     // (device-clock ts) and a confirmed server ts. Sanity-bounded to avoid a bogus
     // offset from a malformed cliMsgId.
@@ -912,6 +947,18 @@ Page {
                 msgList.pendingVideoOpenMsgId = ""; // không mở, chỉ báo toast khi xong
                 zService.downloadVideoMessage(msgId, href, fileName);
             }
+            // Note: the sticker bubble (msgType=5) does NOT route its download
+            // trigger through msgList the way videoBubble's doDownloadVideo above
+            // does — that was tried first and hit "Can't find variable: zService" /
+            // "Cannot assign to non-existent property onStickerReady" from a
+            // Component.onCompleted / onVisibleChanged inside the nested delegate
+            // Container regardless of the indirection layer. The reliable fix ended
+            // up being eager: ZaloService_WebSocket.cpp / ZaloService_Messages.cpp
+            // call downloadSticker() themselves the moment they normalize a
+            // chat.sticker message's content (search "Eager download" there), so
+            // there's nothing left for QML to trigger — stickerBubble only reads
+            // ListItemData.stickerLocalPath once chatViewPage.applyStickerUpdate()
+            // patches it in.
             function doShare(content, isPhoto, localImage) {
                 if (isPhoto) {
                     errorToast.body = "Share isn't available for photos";
@@ -1522,6 +1569,7 @@ Page {
                                              && (ListItemData.msgType !== 2 && ListItemData.msgType !== "2")
                                              && (ListItemData.msgType !== 3 && ListItemData.msgType !== "3")
                                              && (ListItemData.msgType !== 4 && ListItemData.msgType !== "4")
+                                             && (ListItemData.msgType !== 5 && ListItemData.msgType !== "5")
                                              && !(typeof ListItemData.content === "string"
                                                   && ListItemData.content.length > 1
                                                   && ListItemData.content.charAt(0) === "{"
@@ -1550,6 +1598,7 @@ Page {
                                     id: photoBubble
                                     visible: !rowRoot.recalled
                                              && (ListItemData.msgType !== 3 && ListItemData.msgType !== "3")
+                                             && (ListItemData.msgType !== 5 && ListItemData.msgType !== "5")
                                              && ((ListItemData.msgType === 2 || ListItemData.msgType === "2")
                                                  || (typeof ListItemData.content === "string"
                                                      && ListItemData.content.length > 1
@@ -1907,6 +1956,74 @@ Page {
 
                                     // Informational only — no in-app calling is implemented, so this
                                     // bubble doesn't try to re-dial on tap.
+                                }
+
+                                // Sticker bubble (msgType === 5): plain image, no caption/background/
+                                // status row — Zalo (and every other chat app) renders stickers "bare"
+                                // rather than wrapped in a bubble frame, so this deliberately skips the
+                                // padding/background photoBubble uses. Content JSON shape:
+                                // {"stickerId":N} — normalized WS/history-side from chat.sticker's
+                                // {"id":N,"catId":M,"type":7}. See ZaloService_WebSocket.cpp (mt==5) for
+                                // how the eid->image URL was confirmed.
+                                Container {
+                                    id: stickerBubble
+                                    visible: !rowRoot.recalled
+                                             && (ListItemData.msgType === 5 || ListItemData.msgType === "5")
+                                    horizontalAlignment: HorizontalAlignment.Left
+                                    topMargin: 2; bottomMargin: 2
+                                    // preferredWidth/Height alone were only a hint — with the ImageView
+                                    // child below set to Fill inside a DockLayout, Cascades let the
+                                    // container grow past it to the full row width once a real image
+                                    // loaded (visible as a full-width blown-up bubble on device). maxWidth/
+                                    // maxHeight are hard caps and actually constrain it, same fix pattern
+                                    // as photoBubble's inner image Container above.
+                                    preferredWidth: ui.du(30)
+                                    preferredHeight: ui.du(30)
+                                    maxWidth: ui.du(30)
+                                    maxHeight: ui.du(30)
+                                    layout: DockLayout {}
+
+                                    function extractStickerId(content) {
+                                        var c = content || "";
+                                        var k = '"stickerId":';
+                                        var si = c.indexOf(k);
+                                        if (si < 0) return 0;
+                                        si += k.length;
+                                        var ei = si;
+                                        while (ei < c.length && c.charAt(ei) >= '0' && c.charAt(ei) <= '9') ei++;
+                                        var n = c.substring(si, ei);
+                                        return n.length > 0 ? parseInt(n, 10) : 0;
+                                    }
+                                    property int sStickerId: stickerBubble.extractStickerId(ListItemData.content)
+                                    // ListItemData.stickerLocalPath is a plain model field, patched by
+                                    // chatViewPage.applyStickerUpdate() once the async download finishes.
+                                    // This bubble only ever *reads* it via ordinary property binding (same
+                                    // pattern as selfUidProxy near the top of this file) — it never triggers
+                                    // the download itself. The download is kicked off eagerly on the C++
+                                    // side (ZaloService_WebSocket.cpp / ZaloService_Messages.cpp, wherever
+                                    // msgType=5 content first gets normalized) rather than from here: two
+                                    // different QML-side init signals (Component.onCompleted, then
+                                    // onVisibleChanged) were both tried and neither fired reliably for this
+                                    // nested delegate Container on device.
+                                    property string sLocalPath: ListItemData.stickerLocalPath || ""
+
+                                    ImageView {
+                                        visible: stickerBubble.sLocalPath !== ""
+                                        horizontalAlignment: HorizontalAlignment.Fill
+                                        verticalAlignment:   VerticalAlignment.Fill
+                                        scalingMethod: ScalingMethod.AspectFit
+                                        imageSource: stickerBubble.sLocalPath
+                                    }
+                                    Label {
+                                        visible: stickerBubble.sLocalPath === ""
+                                        text: "..."
+                                        horizontalAlignment: HorizontalAlignment.Center
+                                        verticalAlignment:   VerticalAlignment.Center
+                                        textStyle {
+                                            fontSize: FontSize.Small
+                                            color: rowRoot.isDark ? Color.create("#888888") : Color.Gray
+                                        }
+                                    }
                                 }
                             }
                         } // bubble content Container
@@ -3342,6 +3459,14 @@ Page {
             onShowRecalledMessagesChanged: {
                 chatViewPage.showRecalledMessages = show;
             }
+            // Cùng cơ chế như showRecalledMessagesChanged ở trên — nếu user
+            // bật/tắt dark mode trong Settings trong khi ChatView này vẫn
+            // đang mở, isDark (bind 1 lần từ app.getDarkTheme() lúc trang
+            // tạo — xem property ở đầu file) sẽ không tự đổi màu; signal
+            // này ép nó cập nhật ngay.
+            onDarkThemeChanged: {
+                chatViewPage.isDark = dark;
+            }
         },
 
         Connections {
@@ -3611,6 +3736,15 @@ Page {
                     pending.push({ msgId: msgId, localPath: localPath, imgWidth: width, imgHeight: height });
                     chatViewPage.pendingImageUpdates = pending;
                 }
+            }
+
+            onStickerReady: {
+                if (chatViewPage.pageVisible)
+                    chatViewPage.applyStickerUpdate(stickerId, localPath);
+                // No pending-queue fallback for the not-visible case (unlike
+                // onImageMsgReady above) — a sticker still on screen when the
+                // user navigates away will just re-request the download (now
+                // a fast local-file-exists hit) next time this thread opens.
             }
 
             onMessageRecalled: {
