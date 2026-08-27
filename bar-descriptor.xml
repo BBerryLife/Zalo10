@@ -101,6 +101,24 @@
          này có thể không được thực thi chặt — nhưng để chạy đúng trên thiết
          bị production/qua BlackBerry World trước đây thì cần xin cấp. -->
     <permission system="true">_sys_access_pim_unified</permission>
+    <!-- FIX LẦN 8 (CHƯA TEST) cho bug "single-tap không mở app" — hướng
+         khác hẳn 7 lần trước (không sửa code UDS, mà là quyền hạn khai
+         báo). Đọc lại AccountService.hpp (header Cascades thật,
+         bb/pim/account/) dòng ~36-41: "Read access to the Account's
+         domain is automatically granted when requesting permission to
+         another domain (access_pimdomain_messages or
+         access_pimdomain_contacts or access_pimdomain_calendars or
+         access_pimdomain_notebooks)". App hiện có calendars/contacts/
+         calllogs nhưng KHÔNG có access_pimdomain_messages — trong khi Hub
+         (sys.pim.messages) về bản chất xử lý mọi thứ liên quan "message
+         item" dưới domain Messages. Nghi ngờ: việc "mở 1 message item" khi
+         tap có thể được Hub coi là hành động thuộc domain Messages, và
+         thiếu quyền này khiến Hub route invoke request thất bại âm thầm
+         (không log gì, khớp đúng triệu chứng đã quan sát 7 lần) — trong
+         khi long-press vẫn hoạt động vì nó là 1 action riêng do app tự
+         đăng ký qua UDS (uds_register_item_context_action), không đi qua
+         permission domain Messages mặc định của Hub. -->
+    <permission>access_pimdomain_messages</permission>
     <permission>access_wifi_public</permission>
     <permission>access_shared</permission>
     <permission>access_pimdomain_calendars</permission>
@@ -121,7 +139,24 @@
     <!-- Invocation target for BlackBerry Hub notifications.
          When the user taps a Hub notification, BB10 invokes this target
          which wakes/brings the app to foreground and fires InvokeManager::invoked().
-         The data payload is "threadId|isGroup" set by ZaloService. -->
+         The data payload is "threadId|isGroup" set by ZaloService.
+
+         mime-type "plain/message": thêm filter riêng cho mime type CHÍNH
+         XÁC dùng trong mẫu code mẫu chính thức của unified_data_source.h
+         (uds_item_action_data_set_mime_type/uds_inbox_item_data_set_mime_type
+         dòng ví dụ đều dùng "plain/message", không phải "text/plain" như
+         Zalo10 đang dùng xuyên suốt) — nghi ngờ đây là mime type quy ước
+         RIÊNG của BlackBerry Hub để đánh dấu "đây là 1 tin nhắn/message
+         item mở được", KHÁC với "text/plain" là mime type chuẩn IANA
+         chung chung. "text/plain" pass validation lúc register (UDS không
+         validate mime type theo whitelist) nhưng có thể KHÔNG được Hub
+         coi là loại nội dung "message" hợp lệ khi tự soạn InvokeRequest
+         lúc single-tap — trong khi long-press vẫn hoạt động vì nó đi qua
+         action "bb.action.OPEN" tường minh do CHÍNH APP đăng ký sẵn
+         (uds_register_item_context_action), không phụ thuộc Hub tự suy
+         luận mime type. Giữ nguyên filter "text/plain" cũ (không xoá) để
+         không phá long-press đang hoạt động — chỉ THÊM filter mới song
+         song, mở rộng khả năng khớp. -->
     <invoke-target id="com.BerryLife.Zalo10.invoke">
         <invoke-target-type>application</invoke-target-type>
         <filter>
@@ -135,6 +170,14 @@
         <filter>
             <action>bb.action.VIEW</action>
             <mime-type>text/plain</mime-type>
+        </filter>
+        <filter>
+            <action>bb.action.OPEN</action>
+            <mime-type>plain/message</mime-type>
+        </filter>
+        <filter>
+            <action>bb.action.VIEW</action>
+            <mime-type>plain/message</mime-type>
         </filter>
     </invoke-target>
 

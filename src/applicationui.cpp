@@ -137,8 +137,17 @@ static QString escapeHtmlQt4(const QString &in)
 ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain")
 {
     m_pInvokeManager = new InvokeManager(this);
-    QObject::connect(m_pInvokeManager, SIGNAL(invoked(const bb::system::InvokeRequest&)),
-                     this,             SLOT(onInvoked(const bb::system::InvokeRequest&)));
+    // Debug tạm: xác nhận connect() thành công thật sự — trước đây không
+    // kiểm tra return value của connect này (khác connect() cho
+    // systemLanguageChanged() bên dưới, có Q_ASSERT(res)). Nếu short-tap
+    // trong Hub thật sự không tới onInvoked() dù long-press context action
+    // (đường invoke khác, không qua signal này) vẫn hoạt động, cần loại
+    // trừ khả năng connect() lỗi âm thầm ở đây trước khi tìm nguyên nhân
+    // phía Hub. Xoá dòng log này sau khi xác nhận xong.
+    bool invokeConnectOk = QObject::connect(
+        m_pInvokeManager, SIGNAL(invoked(const bb::system::InvokeRequest&)),
+        this,             SLOT(onInvoked(const bb::system::InvokeRequest&)));
+    qDebug() << "[App] InvokeManager::invoked connect() result:" << invokeConnectOk;
     m_pTranslator    = new QTranslator(this);
     m_pLocaleHandler = new LocaleHandler(this);
 
@@ -486,6 +495,12 @@ void ApplicationUI::onTermSignal(int fd)
 
 void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
 {
+    // Debug tạm: dòng log ĐẦU TIÊN tuyệt đối của hàm, trước mọi logic khác
+    // — để xác nhận 100% slot này CÓ được Qt gọi khi short-tap Hub item,
+    // tách bạch khỏi khả năng bị early-return/exception ở logic parse bên
+    // dưới. Xoá sau khi xác nhận xong.
+    qDebug() << "[App] onInvoked() ENTERED";
+
     // Called when app is opened from Hub notification.
     //
     // Có 2 nguồn invoke KHÁC NHAU tới cùng target này, và mỗi nguồn mang

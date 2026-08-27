@@ -20,28 +20,63 @@ static const char *HUB_ICON_FILE = "PreviewNoti.png";
 static const char *HUB_ICON_UNREAD_FILE = "PreviewNotiUNRead.png";
 static const char *HUB_ICON_READ_FILE   = "PreviewNotiRead.png";
 static const char *HUB_SERVICE_URL = "com.BerryLife.Zalo10.hub";
-// Phải khớp <invoke-target id> trong bar-descriptor.xml — dùng cho item
-// action "Open in Zalo10" (long-press context menu), route qua invoke
-// filter tường minh (bb.action.OPEN + mime-type text/plain) đã xác nhận
-// hoạt động đúng qua test thực tế trên máy.
+
+// ===== LỊCH SỬ ĐIỀU TRA BUG "SINGLE-TAP KHÔNG MỞ APP" — 3 lần test log
+// thật, xem đầy đủ trong /areas/zalo10.md nếu cần tra lại =====
+//
+// Bài học cốt lõi: "target" cho LONG-PRESS (item context action) và
+// "target_name" cho SINGLE-TAP (account) là 2 CƠ CHẾ HOÀN TOÀN KHÁC NHAU
+// của Invocation Framework:
+//
+//   - Long-press ("Open in Zalo10") đi qua uds_register_item_context_action()
+//     -> Hub soạn InvokeRequest có action="bb.action.OPEN" + mimeType,
+//     RỒI tìm <invoke-target> nào trong bar-descriptor.xml có <filter>
+//     khớp action+mimeType đó. Item action's "target" = HUB_INVOKE_TARGET
+//     ("com.BerryLife.Zalo10.invoke"), id của 1 <invoke-target> có filter
+//     khai báo sẵn. ĐÃ XÁC NHẬN hoạt động đúng qua CẢ 3 LẦN test log thật:
+//     "onInvoked() ENTERED", action: "bb.action.OPEN" target:
+//     "com.BerryLife.Zalo10.invoke" — long-press luôn mở đúng thread,
+//     không đổi qua các lần sửa khác nhau.
+//
+//   - Single-tap: 3 lần test, 2 giá trị target_name khác nhau
+//     (HUB_INVOKE_TARGET rồi HUB_APP_ID = "com.BerryLife.Zalo10", app ID
+//     gốc), CẢ 2 LẦN ĐỀU CHO KẾT QUẢ GIỐNG HỆT NHAU: short-tap hoàn toàn
+//     im lặng, không 1 dòng log nào (kể cả "onInvoked() ENTERED"), suốt
+//     nhiều lần tap liên tục trong log. Kết luận: target_name KHÔNG PHẢI
+//     biến số quyết định ở đây — đổi giá trị của nó không tạo khác biệt
+//     quan sát được nào cả. Giữ HUB_APP_ID cho target_name (đúng theo
+//     txtmpp source thật đã đối chiếu — xem git history) vì không có bằng
+//     chứng nó SAI, chỉ là chưa đủ để tap hoạt động.
+//
+//     Người dùng xác nhận: có ít nhất 1 app đối thủ khác (closed-source,
+//     không có access) làm được single-tap-to-open bình thường trên chính
+//     nền tảng BB10 này — LOẠI TRỪ hoàn toàn giả thuyết "giới hạn nền
+//     tảng, third-party app không hỗ trợ được single-tap". Chắc chắn có 1
+//     tổ hợp UDS config đúng nào đó chưa tìm ra, không phải giới hạn OS.
+//
+//     Giả thuyết đang thử (CHƯA XÁC NHẬN, lần thứ 4): mime type. Toàn bộ
+//     code trước đây dùng "text/plain" xuyên suốt (item, item action, bar-
+//     descriptor filter) — nhưng đọc lại kỹ đoạn code MẪU CHÍNH THỨC ngay
+//     trong unified_data_source.h (comment @code ở đầu file, ví dụ
+//     uds_item_action_data_set_mime_type/uds_inbox_item_data_set_mime_type)
+//     dùng "plain/message", KHÔNG PHẢI "text/plain". Nghi ngờ "plain/
+//     message" là mime type QUY ƯỚC RIÊNG của BlackBerry Hub để đánh dấu
+//     "đây là 1 tin nhắn/message item" — "text/plain" là mime type chuẩn
+//     IANA chung chung, pass validation lúc register (UDS không validate
+//     theo whitelist) nhưng có thể KHÔNG được Hub coi là loại nội dung
+//     "message" hợp lệ khi Hub TỰ soạn InvokeRequest lúc single-tap dựa
+//     theo mime_type của item — trong khi long-press vẫn hoạt động vì nó
+//     đi qua action "bb.action.OPEN" tường minh do CHÍNH APP đăng ký sẵn
+//     (không phụ thuộc Hub tự suy luận loại nội dung từ mime_type).
+//     Đã đổi: item's mime_type (cả 2 nơi: upsertThreadItem + markAsRead)
+//     sang HUB_MIME_TYPE_MESSAGE = "plain/message". Bar-descriptor.xml đã
+//     thêm filter mới cho "plain/message" song song (không xoá filter
+//     "text/plain" cũ, để không phá long-press). Item action's mime_type
+//     GIỮ NGUYÊN "text/plain" (không đổi — long-press đang hoạt động,
+//     không có lý do đổi phần đang chạy đúng).
 static const char *HUB_INVOKE_TARGET = "com.BerryLife.Zalo10.invoke";
-// Application ID thật (khớp <id> ở đầu bar-descriptor.xml) — dùng RIÊNG
-// cho uds_account_data_set_target_name() (cấp account, không phải cấp
-// item action). Truoc day dung nham HUB_INVOKE_TARGET (co hau to ".invoke")
-// cho ca 2 muc dich — sai khac quan trong: doi chieu source that cua
-// txtmpp (github.com/singpolyma/txtmpp, app BB10 open-source co Hub
-// integration hoat dong dung, ca long-press LAN single-tap), target_name
-// cua ho ("net.singpolyma.txtmpp") TRUNG KHOP 100% voi app ID that cua ho,
-// khong co hau to invoke-target rieng nao. Gia thuyet: Hub dung
-// target_name o cap account de tu dinh vi/khoi dong DUNG APP SO HUU
-// account do khi single-tap (khac co che voi long-press, di qua invoke
-// filter/action registry rieng) — mot invoke-target id con tu dat ten
-// (nhu ".invoke" truoc day) khong phai gia tri Hub mong doi o day, du
-// bar-descriptor.xml co khai bao dung filter cho no. Day la thay doi
-// chua-xac-nhan-100% (khong co doc chinh thuc noi ro), dua tren doi
-// chieu 1 app that duy nhat co san — neu single-tap van khong hoat dong
-// sau lan doi nay, gia thuyet nay coi nhu bi loai, can tim huong khac.
 static const char *HUB_APP_ID = "com.BerryLife.Zalo10";
+static const char *HUB_MIME_TYPE_MESSAGE = "plain/message";
 
 // Bit context state cho item — PHẢI khớp với context_mask của action "Open
 // in Zalo10" (uds_item_action_data_set_context_mask, xem init()). Đây chính
@@ -161,29 +196,47 @@ bool HubIntegration::init()
     // nhưng file 72x72 hiện tại (PreviewNoti/Read/UNRead.png) đã hiển thị
     // đúng, cân đối trong Hub trước đây — GIỮ NGUYÊN 72x72, không resize.
     // Đã thử đổi 81x81 và bị lệch/to hơn mong muốn trên thực tế thiết bị —
-    // không dùng hướng này. Nghi vấn về kích thước icon coi như bị loại;
-    // hướng xử lý còn lại là uds_account_removed() bên dưới.
+    // không dùng hướng này. Nghi vấn về kích thước icon coi như bị loại.
+    // (Trước đây "hướng xử lý còn lại" ở đây là uds_account_removed() mỗi
+    // lần khởi động — đã BỎ, xem giải thích ở khối FIX LẦN 9 ngay dưới.)
 
-    // uds_account_removed() trước khi add lại: ép Hub xoá sạch bản ghi
-    // account cũ (icon path, v.v.) thay vì chỉ update. Lý do: quan sát
-    // thực tế — icon hiện đúng khi build lại qua Momentics (assetPath
-    // trùng cache cũ do __progname có suffix testDev_... cố định), nhưng
-    // mất icon khi đổi sang bản export (assetPath đổi, __progname khác) dù
-    // account_id giữ nguyên. Nghi vấn: uds_account_updated() không luôn
-    // buộc Hub re-resolve icon từ assetPath mới. Gọi remove trước xoá khả
-    // năng này. Bỏ qua lỗi nếu account chưa tồn tại (bình thường ở lần
-    // chạy đầu tiên/cài mới) — không phải điều kiện fail của init().
-    {
-        int removeRc = uds_account_removed(m_udsHandle, ACCOUNT_ID);
-        qDebug() << "[Hub] uds_account_removed (pre-add cleanup) rc=" << removeRc
-                  << "(non-zero is expected/harmless if account didn't exist yet)";
-    }
+    // ===== FIX LẦN 9 (CHƯA TEST) — bỏ uds_account_removed() mỗi lần khởi
+    // động =====
+    // Đọc lại kỹ blog H.E.C. Geek (đối chiếu nguồn thực chiến duy nhất còn
+    // tồn tại về hub integration BB10), mục "Create/Update Operations":
+    // "the hub has no query API... The safest way to deal with this is to
+    // implement a pattern that will either add or update depending on the
+    // result of the corresponding operation... the typical pattern is to
+    // TRY UPDATING FIRST, and if that fails..., try adding instead."
+    //
+    // Code trước đây làm NGƯỢC hoàn toàn cho account: gọi
+    // uds_account_removed() ÉP XOÁ account MỖI LẦN app khởi động (để fix 1
+    // bug icon khác — xem lịch sử git), rồi luôn add lại từ đầu. Nghi ngờ
+    // mới: hành vi remove+add liên tục mỗi lần chạy có thể đang liên tục
+    // phá vỡ liên kết nội bộ mà Hub cần để route single-tap → invoke —
+    // trong khi category/item action đăng ký NGAY SAU đó vẫn "trông" đúng
+    // (API trả UDS_SUCCESS) vì UDS không validate sâu, đúng như blog cảnh
+    // báo ("these items got added in a way that they're not associated
+    // with any account... may still trigger invoke to open them [long-
+    // press vẫn qua được] but..." — có thể áp dụng tương tự cho link tap-
+    // to-open dù blog không nói thẳng trường hợp này). Đổi sang đúng
+    // pattern blog khuyến nghị: update trước, add chỉ khi update fail.
+    // Bỏ hẳn remove-before-add. Rủi ro đã biết: bug icon (mất icon khi
+    // build export do assetPath đổi) có thể quay lại — nếu vậy, xử lý
+    // riêng bằng cách khác (ví dụ so sánh assetPath cũ/mới) thay vì remove
+    // toàn bộ account mỗi lần.
 
     uds_account_data_t *account = uds_account_data_create();
     uds_account_data_set_id(account, ACCOUNT_ID);
     uds_account_data_set_name(account, "Zalo10");
     uds_account_data_set_description(account, "Zalo10 messages");
     uds_account_data_set_icon(account, HUB_ICON_FILE);
+    // Fix bug "single-tap không mở app" — lần sửa thứ 2, xem giải thích đầy
+    // đủ + bằng chứng thực nghiệm (đối chiếu source code thật của txtmpp,
+    // log runtime 2 lần test) ở khai báo HUB_APP_ID/HUB_INVOKE_TARGET đầu
+    // file. Khác với item action's target (dùng HUB_INVOKE_TARGET, id của
+    // 1 <invoke-target> có filter), target_name cấp account này phải là
+    // <id> app THẬT (HUB_APP_ID) — 2 cơ chế khác nhau, không dùng chung.
     uds_account_data_set_target_name(account, HUB_APP_ID);
     // false: account này không hỗ trợ tạo tin nhắn mới thẳng từ Hub (chưa
     // có handler cho action "bb.action.CREATE" phía app) — chỉ hiển thị +
@@ -195,13 +248,12 @@ bool HubIntegration::init()
     // email thay vì dưới, không mong muốn). Trả lại IM như cũ.
     uds_account_data_set_type(account, UDS_ACCOUNT_TYPE_IM);
 
-    // Sau khi đã remove ở trên, account chắc chắn không còn tồn tại phía
-    // Hub tại thời điểm này — dùng uds_account_added() làm thao tác chính,
-    // fallback sang updated() chỉ để an toàn nếu remove ở trên thất bại vì
-    // lý do khác (mất kết nối, v.v.) và account cũ vẫn còn đó.
-    rc = uds_account_added(m_udsHandle, account);
-    if (rc != UDS_SUCCESS) rc = uds_account_updated(m_udsHandle, account);
+    // Update trước, add chỉ khi update fail — đúng pattern blog khuyến
+    // nghị, KHÔNG remove trước nữa (xem giải thích đầy đủ ở trên).
+    rc = uds_account_updated(m_udsHandle, account);
+    if (rc != UDS_SUCCESS) rc = uds_account_added(m_udsHandle, account);
     uds_account_data_destroy(account);
+
 
     if (rc != UDS_SUCCESS) {
         qDebug() << "[Hub] account add/update failed, rc=" << rc;
@@ -211,25 +263,72 @@ bool HubIntegration::init()
     qDebug() << "[Hub] Zalo10 account registered in BlackBerry Hub, id=" << ACCOUNT_ID;
     m_ready = true;
 
+    // ===== FIX LẦN 7 CHO BUG "SINGLE-TAP KHÔNG MỞ APP" (CHƯA TEST) =====
+    // Phát hiện quan trọng sau 6 lần thử thất bại (đổi target_name, mime_type,
+    // placement — xem lịch sử đầy đủ ở khai báo HUB_MIME_TYPE_MESSAGE): đọc
+    // lại kỹ phần tổng quan quy trình khởi tạo UDS chính thức trong
+    // unified_data_source.h (đoạn mô tả "Synchronous mode" / "Asynchronous
+    // mode" ở đầu file) — thứ tự BẮT BUỘC là:
+    //   1. uds_init() -> 2. uds_register_client() -> 3. uds_account_added()
+    //   -> 4. uds_category_added() -> 5. uds_item_added()
+    // category_added() nằm GIỮA account và item — không phải bước tuỳ chọn.
+    // Code trước đây BỎ QUA HOÀN TOÀN bước này: mọi item chỉ gán
+    // uds_inbox_item_data_set_category_id(item, HUB_CATEGORY_ID=1) — tức
+    // GÁN 1 CON SỐ trỏ tới 1 category CHƯA TỪNG ĐƯỢC TẠO qua
+    // uds_category_added(). Nghi ngờ: Hub vẫn hiển thị được item vào danh
+    // sách (khoan dung khi render), nhưng vì category_id không trỏ tới 1
+    // category hợp lệ nào, Hub không có đủ metadata để coi item này là
+    // "actionable" khi tap — khớp đúng triệu chứng đã quan sát (Hub UI
+    // không phản ứng gì cả, không chỉ riêng app không mở). Long-press vẫn
+    // hoạt động vì nó dùng registry item-action cấp ACCOUNT (không phụ
+    // thuộc category) qua uds_register_item_context_action(), đây là 2 cơ
+    // chế Hub tra cứu khác nhau.
+    //
+    // Đăng ký category id=HUB_CATEGORY_ID cho account này TRƯỚC khi có bất
+    // kỳ item nào dùng category_id đó. Chạy 1 lần trong init(), giống hệt
+    // thứ tự account_added() bên trên.
+    {
+        uds_category_data_t *category = uds_category_data_create();
+        uds_category_data_set_id(category, HUB_CATEGORY_ID);
+        uds_category_data_set_account_id(category, ACCOUNT_ID);
+        uds_category_data_set_name(category, "Zalo10");
+        // parent_id: không có category cha (category gốc/duy nhất của
+        // account này) — không gọi set_parent_id, để mặc định.
+        int categoryRc = uds_category_added(m_udsHandle, category);
+        if (categoryRc != UDS_SUCCESS) categoryRc = uds_category_updated(m_udsHandle, category);
+        uds_category_data_destroy(category);
+        qDebug() << "[Hub] uds_category_added rc=" << categoryRc
+                  << "id=" << HUB_CATEGORY_ID;
+    }
+
     // Đăng ký "Open in Zalo10" — item context action, tái tạo đúng dòng
     // "Open in TBBX" thấy trong menu long-press của TBBX (ảnh so sánh).
     //
-    // ĐÃ XÁC NHẬN qua đọc trực tiếp unified_data_source.h (header Cascades
-    // thật, không phải suy đoán): "Inbox item actions appear in the context
-    // menu when a user presses and hold an inbox list item." — nghĩa là
-    // action này CHỈ điều khiển menu long-press, KHÔNG liên quan gì đến
-    // việc single-tap có mở app hay không. UDS_PLACEMENT_DEFAULT cũng chỉ
-    // quyết định vị trí action trong action bar/overflow khi xem account,
-    // không phải "default action khi tap 1 item" — nhầm lẫn trước đó ở
-    // đúng chỗ này đã được gỡ (xem lịch sử: từng nghi ngờ placement ảnh
-    // hưởng single-tap, giờ đã loại trừ).
+    // Nguyên nhân thật của vụ short-tap không mở được: XEM comment đầy đủ ở
+    // khai báo HUB_MIME_TYPE_MESSAGE đầu file — 4 lần test log thật, đã
+    // loại trừ target_name (2 giá trị khác nhau, kết quả giống hệt) và
+    // mime_type (đổi "text/plain" -> "plain/message", vẫn im lặng). Xác
+    // nhận thêm qua hỏi trực tiếp: khi short-tap, HUB UI không phản ứng
+    // GÌ CẢ (không phải chỉ app Zalo10 không mở — cả màn hình Hub cũng
+    // đứng yên tuyệt đối). Điều này gợi ý Hub không hề coi item này là
+    // "actionable" khi tap, tức là thiếu 1 cấu hình khiến Hub đăng ký
+    // item ở dạng "chỉ xem", không có action mặc định gắn liền.
     //
-    // Nguyên nhân thật của vụ short-tap không mở được: xem
-    // ApplicationUI::onInvoked() (applicationui.cpp) — mất payload
-    // threadId/isGroup khi Hub tự soạn InvokeRequest lúc user tap item
-    // (khác hẳn case app tự soạn InvokeRequest, ví dụ banner cũ). Action
-    // "Open in Zalo10" ở đây vẫn cần thiết — nó lấp đúng chỗ trống long-press
-    // menu (so với TBBX) — nhưng không phải fix cho vụ tap.
+    // Giả thuyết đang thử (lần 5, CHƯA XÁC NHẬN): UDS_PLACEMENT_DEFAULT
+    // (bên dưới, trước đây dùng) đọc kỹ lại doc mới thấy: "the action
+    // should be placed in its default location, which is TYPICALLY IN THE
+    // OVERFLOW MENU" — nghĩa đen chỉ là "vào menu overflow của context
+    // menu", KHÔNG liên quan gì đến việc đây có phải action mặc định khi
+    // tap hay không, dù tên gọi "DEFAULT" dễ gây hiểu lầm (lần trước đã
+    // hiểu lầm chính chỗ này, tưởng đã "loại trừ" placement nhưng thực ra
+    // chưa từng thử FIXED). UDS_PLACEMENT_FIXED mô tả: "the action
+    // placement is fixed (for example, a delete or archive action)" — tức
+    // dành cho hành động CÓ VỊ TRÍ ĐẶC BIỆT/CỐ ĐỊNH trong context menu
+    // (khác hẳn overflow chung chung), giống cách "Delete" luôn có vị trí
+    // riêng không lẫn vào menu tràn. Nghi ngờ: action "Open" (mở item)
+    // cũng thuộc nhóm hành động đặc biệt này — cần placement FIXED để Hub
+    // nhận diện nó là action CHÍNH của item (và do đó áp dụng khi tap),
+    // không phải 1 trong nhiều action chung chung nằm trong overflow.
     //
     // Đăng ký 1 lần ở cấp account (áp dụng cho MỌI item của account này),
     // không phải per-item.
@@ -252,7 +351,9 @@ bool HubIntegration::init()
     uds_item_action_data_set_title(openAction, "Open in Zalo10");
     uds_item_action_data_set_image_source(openAction, HUB_ICON_FILE);
     uds_item_action_data_set_mime_type(openAction, "text/plain");
-    uds_item_action_data_set_placement(openAction, UDS_PLACEMENT_DEFAULT);
+    // FIXED thay vì DEFAULT — xem giải thích đầy đủ ở comment trên. Thay
+    // đổi CHƯA TEST, giả thuyết lần 5 cho bug single-tap.
+    uds_item_action_data_set_placement(openAction, UDS_PLACEMENT_FIXED);
     // Read=0x01, Unread=0x02 (xem doc uds_item_action_data_set_context_mask)
     // — hiện action này bất kể item đang ở trạng thái đọc hay chưa đọc.
     uds_item_action_data_set_context_mask(openAction, HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD);
@@ -296,7 +397,11 @@ void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
     uds_inbox_item_data_set_icon(item, HUB_ICON_UNREAD_FILE);
-    uds_inbox_item_data_set_mime_type(item, "text/plain");
+    // "plain/message" (không phải "text/plain"): đúng mime type dùng trong
+    // mẫu code chính thức của unified_data_source.h cho inbox item — xem
+    // giải thích đầy đủ ở khai báo HUB_MIME_TYPE_MESSAGE đầu file. Đây là
+    // fix thử nghiệm CHƯA XÁC NHẬN cho bug "single-tap không mở app".
+    uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
     uds_inbox_item_data_set_category_id(item, HUB_CATEGORY_ID);
     uds_inbox_item_data_set_timestamp(item, timestampMs);
     uds_inbox_item_data_set_unread_count(item, unread);
@@ -382,7 +487,7 @@ void HubIntegration::markThreadRead(const QString &threadId)
     // timestamp về epoch "Thursday, January 1, 1970").
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
-    uds_inbox_item_data_set_mime_type(item, "text/plain");
+    uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
     uds_inbox_item_data_set_category_id(item, HUB_CATEGORY_ID);
     uds_inbox_item_data_set_timestamp(item, st.timestampMs);
     uds_inbox_item_data_set_total_count(item, 0);
