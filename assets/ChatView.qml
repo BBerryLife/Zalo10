@@ -162,7 +162,7 @@ Page {
                         id: chatSearchField
                         hintText: "Search in this chat..."
                         verticalAlignment: VerticalAlignment.Center
-                        textStyle { color: Color.White }
+                        textStyle { color: Color.create("#FFFFFF") }
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         onTextChanging: {
                             chatViewPage.searchText = text;
@@ -597,6 +597,15 @@ Page {
                     var photoUrl1 = chatViewPage.extractPhotoUrl(c.content || "");
                     if (photoUrl1.length > 0)
                         zService.downloadImageMessage(c.msgId, photoUrl1, chatViewPage.threadId);
+                }
+                var isLink = (c.msgType === 6 || c.msgType === "6");
+                if (isLink && !hasLocal && c.msgId) {
+                    // Same reasoning as the photo branch above — link thumbnail is a
+                    // remote https:// URL that Cascades' ImageView can't load directly,
+                    // so route it through the download-to-local-file pipeline too.
+                    var linkThumbUrl1 = chatViewPage.extractJsonField(c.content || "", "linkThumb");
+                    if (linkThumbUrl1.length > 0)
+                        zService.downloadImageMessage(c.msgId, linkThumbUrl1, chatViewPage.threadId);
                 }
             }
             chatViewPage.dbIsMineCache = newCache;
@@ -1409,7 +1418,7 @@ Page {
                                 ? Color.create("#fff3b0")
                                 : (rowRoot.isDark
                                     ? Color.create("#2a2a2a")
-                                    : Color.White)
+                                    : Color.create("#FFFFFF"))
 
                             Container {
                                 background: Color.Transparent
@@ -1570,6 +1579,7 @@ Page {
                                              && (ListItemData.msgType !== 3 && ListItemData.msgType !== "3")
                                              && (ListItemData.msgType !== 4 && ListItemData.msgType !== "4")
                                              && (ListItemData.msgType !== 5 && ListItemData.msgType !== "5")
+                                             && (ListItemData.msgType !== 6 && ListItemData.msgType !== "6")
                                              && !(typeof ListItemData.content === "string"
                                                   && ListItemData.content.length > 1
                                                   && ListItemData.content.charAt(0) === "{"
@@ -1662,7 +1672,7 @@ Page {
                                             verticalAlignment:   VerticalAlignment.Center
                                             textStyle {
                                                 fontSize: FontSize.Small
-                                                color: rowRoot.isDark ? Color.create("#888888") : Color.Gray
+                                                color: rowRoot.isDark ? Color.create("#888888") : Color.create("#808080")
                                             }
                                         }
                                     }
@@ -1958,6 +1968,125 @@ Page {
                                     // bubble doesn't try to re-dial on tap.
                                 }
 
+                                // Link-share bubble (msgType === 6): title/description/thumbnail
+                                // card for shared URLs — Zalo sends this via the same wire msgType
+                                // ("chat.recommended") as the call-log bubble above, disambiguated
+                                // server-side by "action" (see ZaloService_WebSocket.cpp / _Messages.cpp,
+                                // mt==6). Content JSON shape: {"linkTitle":..,"linkDesc":..,
+                                // "linkHref":..,"linkThumb":..}. Tapping opens linkHref in the system
+                                // browser via Qt.openUrlExternally (BB10 Cascades has no in-app
+                                // browser component available to this project).
+                                Container {
+                                    id: linkBubble
+                                    visible: !rowRoot.recalled
+                                             && (ListItemData.msgType === 6 || ListItemData.msgType === "6")
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    topMargin: 2; bottomMargin: 2
+                                    maxWidth: rowRoot.bubbleMaxW
+                                    background: rowRoot.isDark ? Color.create("#2a2a2a") : Color.create("#f2f2f2")
+                                    layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+
+                                    function extractJsonStringField(content, key) {
+                                        var c = content || "";
+                                        if (c.length === 0 || c.charCodeAt(0) !== 123) return "";
+                                        var k = '"' + key + '":"';
+                                        var si = c.indexOf(k);
+                                        if (si < 0) return "";
+                                        si += k.length;
+                                        var ei = si;
+                                        while (ei < c.length) {
+                                            var code = c.charCodeAt(ei);
+                                            if (code === 92) { ei += 2; continue; }
+                                            if (code === 34) break;
+                                            ei++;
+                                        }
+                                        return c.substring(si, ei);
+                                    }
+                                    // Label has no maxLines property in Cascades QML 1.0 (crashed the
+                                    // parser when used above) — cap length manually instead so long
+                                    // descriptions (e.g. GitHub repo blurbs) don't blow up bubble height.
+                                    function truncateDesc(s) {
+                                        if (s.length <= 140) return s;
+                                        return s.substring(0, 140) + "...";
+                                    }
+                                    property string lTitle: linkBubble.extractJsonStringField(ListItemData.content, "linkTitle")
+                                    property string lDesc:  linkBubble.truncateDesc(linkBubble.extractJsonStringField(ListItemData.content, "linkDesc"))
+                                    property string lHref:  linkBubble.extractJsonStringField(ListItemData.content, "linkHref")
+                                    property string lThumb: linkBubble.extractJsonStringField(ListItemData.content, "linkThumb")
+
+                                    // Cascades QML 1.0's ImageView can't load a remote https://
+                                    // URL directly ("Unsupported scheme (https) ... Image loading
+                                    // aborted" — confirmed on-device log). ListItemData.localImage
+                                    // is populated once chatViewPage.onNewMessage triggers
+                                    // zService.downloadImageMessage(msgId, linkThumb, ...) and the
+                                    // resulting imageMsgReady -> applyImageUpdate() round-trip
+                                    // lands (asynchronous — this is empty right after the message
+                                    // first arrives and fills in a moment later, same lifecycle
+                                    // as the photo bubble's localImage). Falling back to lThumb
+                                    // directly is deliberate-but-futile here: it will not load,
+                                    // consistent with how the plain-URL field is treated elsewhere
+                                    // in this file as a last-resort value rather than a guarantee.
+                                    ImageView {
+                                        visible: (ListItemData.localImage && ListItemData.localImage.length > 0)
+                                                 || linkBubble.lThumb.length > 0
+                                        imageSource: (ListItemData.localImage && ListItemData.localImage.length > 0)
+                                                     ? ListItemData.localImage
+                                                     : linkBubble.lThumb
+                                        scalingMethod: ScalingMethod.AspectFill
+                                        horizontalAlignment: HorizontalAlignment.Fill
+                                        preferredHeight: 220
+                                        minHeight: 0
+                                    }
+
+                                    Container {
+                                        topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
+                                        leftPadding: ui.du(1.0); rightPadding: ui.du(1.0)
+                                        layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+
+                                        Label {
+                                            text: linkBubble.lTitle.length > 0 ? linkBubble.lTitle : linkBubble.lHref
+                                            horizontalAlignment: HorizontalAlignment.Fill
+                                            multiline: true
+                                            textStyle {
+                                                base: SystemDefaults.TextStyles.BodyText
+                                                fontWeight: FontWeight.Bold
+                                                color: rowRoot.isDark ? Color.create("#eeeeee") : Color.create("#111111")
+                                            }
+                                        }
+                                        Label {
+                                            visible: linkBubble.lDesc.length > 0
+                                            text: linkBubble.lDesc
+                                            horizontalAlignment: HorizontalAlignment.Fill
+                                            multiline: true
+                                            textStyle {
+                                                fontSize: FontSize.Small
+                                                color: rowRoot.isDark ? Color.create("#aaaaaa") : Color.create("#666666")
+                                            }
+                                            topMargin: 4
+                                        }
+                                        Label {
+                                            visible: linkBubble.lHref.length > 0
+                                            text: linkBubble.lHref
+                                            horizontalAlignment: HorizontalAlignment.Fill
+                                            multiline: false
+                                            textStyle {
+                                                fontSize: FontSize.XSmall
+                                                color: Color.create("#4a90d9")
+                                            }
+                                            topMargin: 6
+                                        }
+                                    }
+
+                                    gestureHandlers: [
+                                        TapHandler {
+                                            onTapped: {
+                                                if (linkBubble.lHref.length > 0)
+                                                    Qt.openUrlExternally(linkBubble.lHref);
+                                            }
+                                        }
+                                    ]
+                                }
+
                                 // Sticker bubble (msgType === 5): plain image, no caption/background/
                                 // status row — Zalo (and every other chat app) renders stickers "bare"
                                 // rather than wrapped in a bubble frame, so this deliberately skips the
@@ -2021,7 +2150,7 @@ Page {
                                         verticalAlignment:   VerticalAlignment.Center
                                         textStyle {
                                             fontSize: FontSize.Small
-                                            color: rowRoot.isDark ? Color.create("#888888") : Color.Gray
+                                            color: rowRoot.isDark ? Color.create("#888888") : Color.create("#808080")
                                         }
                                     }
                                 }
@@ -2085,7 +2214,7 @@ Page {
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[0].icon);
                                     } } ]
                                     ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[0]) ? ListItemData.reactions[0].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[0]) ? ("+" + ListItemData.reactions[0].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[0]) ? ("+" + ListItemData.reactions[0].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 2/6
                                 Container {
@@ -2100,7 +2229,7 @@ Page {
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[1].icon);
                                     } } ]
                                     ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[1]) ? ListItemData.reactions[1].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[1]) ? ("+" + ListItemData.reactions[1].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[1]) ? ("+" + ListItemData.reactions[1].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 3/6
                                 Container {
@@ -2115,7 +2244,7 @@ Page {
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[2].icon);
                                     } } ]
                                     ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[2]) ? ListItemData.reactions[2].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[2]) ? ("+" + ListItemData.reactions[2].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[2]) ? ("+" + ListItemData.reactions[2].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 4/6
                                 Container {
@@ -2130,7 +2259,7 @@ Page {
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[3].icon);
                                     } } ]
                                     ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[3]) ? ListItemData.reactions[3].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[3]) ? ("+" + ListItemData.reactions[3].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[3]) ? ("+" + ListItemData.reactions[3].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 5/6
                                 Container {
@@ -2145,7 +2274,7 @@ Page {
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[4].icon);
                                     } } ]
                                     ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[4]) ? ListItemData.reactions[4].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[4]) ? ("+" + ListItemData.reactions[4].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[4]) ? ("+" + ListItemData.reactions[4].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 3 }
                                 }
                                 // Slot 6/6
                                 Container {
@@ -2159,7 +2288,7 @@ Page {
                                             rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[5].icon);
                                     } } ]
                                     ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[5]) ? ListItemData.reactions[5].asset : ""; preferredWidth: 22; preferredHeight: 22; scalingMethod: ScalingMethod.AspectFit }
-                                    Label { text: (ListItemData.reactions && ListItemData.reactions[5]) ? ("+" + ListItemData.reactions[5].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.White : Color.create("#444444") } leftMargin: 3 }
+                                    Label { text: (ListItemData.reactions && ListItemData.reactions[5]) ? ("+" + ListItemData.reactions[5].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 3 }
                                 }
                             }
 
@@ -2590,7 +2719,7 @@ Page {
 
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
-            background: chatViewPage.isDark ? Color.create("#272727") : Color.White
+            background: chatViewPage.isDark ? Color.create("#272727") : Color.create("#FFFFFF")
             topPadding:    ui.du(1.2)
             bottomPadding: ui.du(1.2)
             leftPadding:   ui.du(1.0)
@@ -2917,6 +3046,17 @@ Page {
         }
         if (content.indexOf("http") === 0) return content;
         return "";
+    }
+
+    // Generic single-key string extractor for our own flat JSON content shapes
+    // (e.g. link-share's {"linkTitle":..,"linkThumb":..}) — used at chatViewPage
+    // scope (onNewMessage) where linkBubble delegate's local
+    // extractJsonStringField() isn't reachable.
+    function extractJsonField(content, key) {
+        if (typeof content !== "string" || content.length === 0) return "";
+        var re = new RegExp("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
+        var m = content.match(re);
+        return (m && m[1]) ? m[1] : "";
     }
 
     // Photo caption is a "caption" key inside the photo's content JSON. Same
@@ -3692,6 +3832,50 @@ Page {
                             msgModel.replace(vPlaceholderIdx, msg);
                             handledInPlace = true;
                         }
+                    } else if (msg.msgType === 6 || msg.msgType === "6") {
+                        // Link-share bubble's counterpart to the photo/video dedup blocks
+                        // above. Root cause matching the video bug's comment: the plain-text
+                        // "local_..." placeholder created at send time (content = the raw
+                        // URL the user typed, msgType left unset — see the "sendText"
+                        // placeholder builder) never matches removeLocalPlaceholder()'s exact
+                        // content === content check against the WS echo's confirmed content
+                        // (server rewrites it to {"linkTitle":...,"linkHref":...} JSON, see
+                        // mt==6 handling in ZaloService_WebSocket.cpp). So the placeholder was
+                        // never removed and a duplicate row was appended — on screen this
+                        // could show either as two stacked bubbles or, when rebuildGroups()
+                        // grouped them together, only the last-appended (JSON) row visible.
+                        //
+                        // Fix: replace the newest plain-text "local_" placeholder in place
+                        // (same approach as the video/photo branches — match by proximity/
+                        // recency, not brittle string equality) instead of leaving both rows.
+
+                        // Early dedup — HTTP confirm and WS echo can both fire for the same msgId
+                        if (msg.msgId) {
+                            for (var ldi0 = 0; ldi0 < msgModel.size(); ldi0++) {
+                                var ldv0 = msgModel.value(ldi0);
+                                if (ldv0.msgId === msg.msgId && ldv0.msgId.indexOf("local_") !== 0) {
+                                    return;
+                                }
+                            }
+                        }
+
+                        var lPlaceholderIdx = -1;
+                        for (var lpi = msgModel.size() - 1; lpi >= 0; lpi--) {
+                            var lpitem = msgModel.value(lpi);
+                            // Plain-text placeholder only ("local_..." but not the photo/
+                            // video/file-specific prefixes, which have their own dedup above).
+                            if (lpitem.msgId && lpitem.msgId.indexOf("local_") === 0
+                                && lpitem.msgId.indexOf("local_img_") !== 0
+                                && lpitem.msgId.indexOf("local_video_") !== 0
+                                && lpitem.msgId.indexOf("local_file_") !== 0) {
+                                lPlaceholderIdx = lpi;
+                                break;
+                            }
+                        }
+                        if (lPlaceholderIdx >= 0) {
+                            msgModel.replace(lPlaceholderIdx, msg);
+                            handledInPlace = true;
+                        }
                     } else {
                         chatViewPage.removeLocalPlaceholder(msg.content);
                     }
@@ -3724,6 +3908,19 @@ Page {
                         var photoUrl3 = chatViewPage.extractPhotoUrl(msg.content || "");
                         if (photoUrl3.length > 0)
                             zService.downloadImageMessage(msg.msgId, photoUrl3, chatViewPage.threadId);
+                    }
+                } else if (msg.msgType === 6 || msg.msgType === "6") {
+                    // Link-share thumbnail: ImageView in Cascades QML 1.0 cannot load a
+                    // remote https:// URL directly ("Unsupported scheme (https) ... Image
+                    // loading aborted" — confirmed on-device), same limitation as the
+                    // photo/avatar paths. Reuse the existing downloadImageMessage() pipeline
+                    // (fetches to a local temp file, then emits imageMsgReady ->
+                    // applyImageUpdate() -> msg.localImage) instead of binding linkThumb
+                    // straight to ImageView.imageSource.
+                    if (!msg.localImage || msg.localImage.length === 0) {
+                        var linkThumbUrl3 = chatViewPage.extractJsonField(msg.content || "", "linkThumb");
+                        if (linkThumbUrl3.length > 0)
+                            zService.downloadImageMessage(msg.msgId, linkThumbUrl3, chatViewPage.threadId);
                     }
                 }
             }

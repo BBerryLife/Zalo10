@@ -902,8 +902,32 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // isCaller. Normalize into {"callResult","callKind","duration"}
                 // so QML has one flat shape to key off, same idea as the
                 // share.file normalization above.
+                // "chat.recommended" gộp CHUNG 2 loại bubble khác nhau, phân
+                // biệt bằng field "action" bên trong content (xác nhận qua
+                // log thực tế trên device, KHÔNG có trong zca-js — zca-js
+                // chỉ map msgType chuỗi -> số (getClientMessageType), không
+                // phân biệt action):
+                //   - action="recommened.calltime"/"recommened.misscall":
+                //     call-log bubble (params JSON có duration/calltype/isCaller)
+                //   - action="recommened.link": link-share bubble (content có
+                //     title/description/href/thumb — xem log 20:49:46, screenshot
+                //     bug gốc: bubble "Voice call" hiện SAI cho tin nhắn link vì
+                //     code cũ luôn coi mt=4 là call bất kể action là gì)
+                // Phải đọc "action" TRƯỚC khi set mt, không đợi tới block xử lý
+                // mt==4 mới rẽ nhánh, vì content parse ra QVariantMap chỉ có ở
+                // đây (m["content"]) — làm 2 lần thì tốn công, nên inline check
+                // action ngay tại bước classify.
                 else if (mtStr.contains("chat.recommended"))
-                    mt = 4;
+                {
+                    QVariantMap peekMap = m["content"].toMap();
+                    if (peekMap.isEmpty()) {
+                        QString peekStr = m["content"].toString();
+                        if (!peekStr.isEmpty() && peekStr.trimmed().startsWith("{"))
+                            peekMap = jsonToMap(peekStr.toUtf8());
+                    }
+                    QString peekAction = peekMap["action"].toString();
+                    mt = peekAction.contains("link") ? 6 : 4;
+                }
                 // Sticker (msgType wire = "chat.sticker"): content =
                 // {"id":18009,"catId":10130,"type":7}. Xác nhận bằng thực
                 // nghiệm (không phải suy luận): id trong content ghép thẳng
@@ -942,6 +966,28 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // needs to *read* ListItemData.stickerLocalPath once applyStickerUpdate()
                 // patches it in — no trigger logic left in QML at all.
                 if (stickerId > 0) downloadSticker(QString::number(stickerId));
+            }
+
+            if (mt == 6) {
+                QVariantMap lm = m["content"].toMap();
+                if (lm.isEmpty()) {
+                    QString lStr = m["content"].toString();
+                    if (!lStr.isEmpty() && lStr.trimmed().startsWith("{"))
+                        lm = jsonToMap(lStr.toUtf8());
+                }
+                QString lTitle = lm["title"].toString();
+                QString lDesc  = lm["description"].toString();
+                QString lHref  = lm["href"].toString();
+                QString lThumb = lm["thumb"].toString();
+                QString esc = lTitle; esc.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString descEsc = lDesc; descEsc.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString hrefEsc = lHref; hrefEsc.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString thumbEsc = lThumb; thumbEsc.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString newContent = QString("{\"linkTitle\":\"%1\",\"linkDesc\":\"%2\",\"linkHref\":\"%3\",\"linkThumb\":\"%4\"}")
+                                          .arg(esc).arg(descEsc).arg(hrefEsc).arg(thumbEsc);
+                m["content"] = newContent;
+                qDebug() << "[Zalo WS] chat.recommended LINK bubble: title=" << lTitle
+                         << "href=" << lHref.left(80);
             }
 
             if (mt == 4) {
@@ -1255,6 +1301,17 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 QString msgPreview;
                 if (mt == 2) {
                     msgPreview = "[Photo]";
+                } else if (mt == 3) {
+                    // share.file: content JSON = {"fileName":..,"href":..,"fileSize":..}
+                    QString cs = out["content"].toString();
+                    QString fn;
+                    int fi = cs.indexOf("\"fileName\":\"");
+                    if (fi >= 0) {
+                        fi += 12;
+                        int fe = cs.indexOf("\"", fi);
+                        if (fe > fi) fn = cs.mid(fi, fe - fi);
+                    }
+                    msgPreview = fn.isEmpty() ? "[File]" : ("[File] " + fn);
                 } else if (mt == 4) {
                     QString cs = out["content"].toString();
                     bool missed = cs.contains("\"callResult\":\"missed\"");
@@ -1263,6 +1320,17 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                                         : (video ? "Video call" : "Voice call");
                 } else if (mt == 5) {
                     msgPreview = "[Sticker]";
+                } else if (mt == 6) {
+                    // link-share: content JSON = {"linkTitle":..,"linkDesc":..,"linkHref":..,"linkThumb":..}
+                    QString cs = out["content"].toString();
+                    QString lt;
+                    int li = cs.indexOf("\"linkTitle\":\"");
+                    if (li >= 0) {
+                        li += 13;
+                        int le = cs.indexOf("\"", li);
+                        if (le > li) lt = cs.mid(li, le - li);
+                    }
+                    msgPreview = lt.isEmpty() ? "[Link]" : lt.left(80);
                 } else {
                     msgPreview = out["content"].toString().left(80);
                 }
@@ -1532,7 +1600,16 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 // (msgType vẫn=4 nhưng content không còn khớp {"callResult"
                 // ...} mà callBubble.extractJsonStringField parse nữa).
                 else if (mtStr.contains("chat.recommended"))
-                    mtH = 4;
+                {
+                    QVariantMap peekMapH = m["content"].toMap();
+                    if (peekMapH.isEmpty()) {
+                        QString peekStrH = m["content"].toString();
+                        if (!peekStrH.isEmpty() && peekStrH.trimmed().startsWith("{"))
+                            peekMapH = jsonToMap(peekStrH.toUtf8());
+                    }
+                    QString peekActionH = peekMapH["action"].toString();
+                    mtH = peekActionH.contains("link") ? 6 : 4;
+                }
                 // Sticker history counterpart (msgType wire = "chat.sticker")
                 // — cùng lý do các nhánh trên: thiếu ở đây thì content thô
                 // {"catId":...,"id":...,"type":...} ghi đè bản {"stickerId":N}
@@ -1578,6 +1655,25 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                 qDebug() << "[Zalo WS] old_messages: chat.sticker bubble id=" << stickerIdH;
                 // Eager download, same reasoning as the real-time (mt==5) branch above.
                 if (stickerIdH > 0) downloadSticker(QString::number(stickerIdH));
+            }
+
+            if (mtH == 6) {
+                QVariantMap lmH = m["content"].toMap();
+                if (lmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
+                    lmH = jsonToMap(rawContentH.toUtf8());
+                QString lTitleH = lmH["title"].toString();
+                QString lDescH  = lmH["description"].toString();
+                QString lHrefH  = lmH["href"].toString();
+                QString lThumbH = lmH["thumb"].toString();
+                QString escH = lTitleH; escH.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString descEscH = lDescH; descEscH.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString hrefEscH = lHrefH; hrefEscH.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString thumbEscH = lThumbH; thumbEscH.replace("\\", "\\\\").replace("\"", "\\\"");
+                rawContentH = QString("{\"linkTitle\":\"%1\",\"linkDesc\":\"%2\",\"linkHref\":\"%3\",\"linkThumb\":\"%4\"}")
+                                  .arg(escH).arg(descEscH).arg(hrefEscH).arg(thumbEscH);
+                out["msgType"] = 6;
+                qDebug() << "[Zalo WS] old_messages: chat.recommended LINK bubble title=" << lTitleH
+                         << "href=" << lHrefH.left(80);
             }
 
             if (mtH == 4) {

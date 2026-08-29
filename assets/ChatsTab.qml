@@ -583,6 +583,18 @@ NavigationPane {
             return video ? "Video call" : "Voice call";
         }
         if (mt === 5 || mt === "5") return "[Sticker]";
+        if (mt === 6 || mt === "6") {
+            // link-share: content JSON = {"linkTitle":..,"linkDesc":..,"linkHref":..,"linkThumb":..}
+            var lc = content || "";
+            var lt = "";
+            var li = lc.indexOf('"linkTitle":"');
+            if (li >= 0) {
+                li += 13;
+                var le = lc.indexOf('"', li);
+                if (le > li) lt = lc.substring(li, le);
+            }
+            return lt.length > 0 ? lt.substring(0, 60) : "[Link]";
+        }
         if (mt !== 3 && mt !== "3") return (content || "").substring(0, 60);
         var fname = chatsNav.extractFileName(content);
         var ext = fname.substring(fname.lastIndexOf('.') + 1).toLowerCase();

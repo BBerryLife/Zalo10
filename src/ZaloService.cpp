@@ -96,6 +96,43 @@ ZaloService::ZaloService(QObject *parent)
     // giống TBBX/BBM luôn hiện sẵn. init() tự no-op an toàn nếu UDS lỗi.
     m_hub->init();
 
+    // Bật mặc định Instant Preview = Allow cho app, KHÔNG bắt user tự vào
+    // Settings > Application Settings > Zalo10 tự bật tay.
+    //
+    // Vì sao cần: NotificationDialog::show() (sendBannerNotification() ở
+    // ZaloService_Messages.cpp) chỉ *trigger* hiệu ứng — banner/peek có thực
+    // sự hiện lên màn hình hay không do chính sách "preview" trong
+    // Notification Settings của app quyết định (xem
+    // bb::platform::NotificationDialog: "The notification settings determine
+    // whether and where the title/body is shown"). Với app có Hub account
+    // (Zalo10 luôn có, từ HubIntegration::init() ở trên), default preview
+    // policy của hệ thống không đảm bảo là Allow — nếu là Deny/PriorityOnly
+    // thì banner sẽ không hiện dù Hub item vẫn tạo bình thường.
+    //
+    // NotificationDefaultApplicationSettings::apply() CHỈ có tác dụng 1 lần
+    // duy nhất — "will only be applied if the default settings haven't been
+    // modified already" (xem NotificationDefaultApplicationSettings.hpp).
+    // Nghĩa là: nếu user đã tự tay đổi setting này trong Settings UI (dù
+    // trước hay sau lần gọi này), gọi lại apply() ở đây sẽ KHÔNG ghi đè lựa
+    // chọn của họ — đây là hành vi mong muốn, không phải bug. Gọi mỗi lần
+    // khởi động là an toàn và rẻ (no-op nếu đã set).
+    //
+    // Cùng lúc set luôn tonePath mặc định thay vì dùng "Essential" chung
+    // của hệ thống. setTonePath() yêu cầu "a file URI to a public asset or
+    // a shared asset on the device" (NotificationDefaultApplicationSettings.hpp)
+    // — present.m4a ở /usr/share/sounds/notification-tones/bbm/ là tone
+    // nằm trong kho âm thanh hệ thống dùng chung (chính là danh sách mà
+    // Settings > Notification Sound liệt kê cho user chọn), không phải
+    // asset sandbox riêng của app BBM, nên app khác trỏ file URI thẳng vào
+    // đây là hợp lệ.
+    {
+        bb::platform::NotificationDefaultApplicationSettings defaultSettings;
+        defaultSettings.setPreview(bb::platform::NotificationPriorityPolicy::Allow);
+        defaultSettings.setTonePath(QUrl("file:///usr/share/sounds/notification-tones/bbm/present.m4a"));
+        bb::platform::NotificationSettingsError::Type err = defaultSettings.apply();
+        qDebug() << "[Zalo] NotificationDefaultApplicationSettings preview=Allow, tonePath=present.m4a, apply() result:" << err;
+    }
+
     QString dbPath = QDir::homePath() + "/zalo_messages.db";
     if (sqlite3_open(dbPath.toUtf8().constData(), &m_db) == SQLITE_OK) {
         const char *sql =

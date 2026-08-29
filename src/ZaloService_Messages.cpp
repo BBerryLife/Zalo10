@@ -170,8 +170,18 @@ void ZaloService::onFetchMsgDone()
             QString mtStr = m["msgType"].toString().toLower();
             if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
                 mt = 3;
-            else if (mtStr.contains("chat.recommended"))
-                mt = 4;
+            else if (mtStr.contains("chat.recommended")) {
+                // Cùng lý do đã ghi ở ZaloService_WebSocket.cpp: "chat.recommended"
+                // gộp chung call-log và link-share, phân biệt bằng "action".
+                QVariantMap peekMap = m["content"].toMap();
+                if (peekMap.isEmpty()) {
+                    QString peekStr = m["content"].toString();
+                    if (!peekStr.isEmpty() && peekStr.trimmed().startsWith("{"))
+                        peekMap = jsonToMap(peekStr.toUtf8());
+                }
+                QString peekAction = peekMap["action"].toString();
+                mt = peekAction.contains("link") ? 6 : 4;
+            }
             else if (mtStr.contains("chat.sticker"))
                 mt = 5;
         }
@@ -192,6 +202,22 @@ void ZaloService::onFetchMsgDone()
             // Eager download — same reasoning as the two branches in
             // ZaloService_WebSocket.cpp (search "Eager download" there).
             if (stickerId > 0) downloadSticker(QString::number(stickerId));
+        } else if (mt == 6) {
+            // Link-share bubble — xem giải thích đầy đủ ở ZaloService_WebSocket.cpp
+            // (nhánh mt==6 real-time / mtH==6 history).
+            QVariantMap lm = m["content"].toMap();
+            if (lm.isEmpty() && !rawContent.isEmpty() && rawContent.trimmed().startsWith("{"))
+                lm = jsonToMap(rawContent.toUtf8());
+            QString lTitle = lm["title"].toString();
+            QString lDesc  = lm["description"].toString();
+            QString lHref  = lm["href"].toString();
+            QString lThumb = lm["thumb"].toString();
+            QString esc = lTitle; esc.replace("\\", "\\\\").replace("\"", "\\\"");
+            QString descEsc = lDesc; descEsc.replace("\\", "\\\\").replace("\"", "\\\"");
+            QString hrefEsc = lHref; hrefEsc.replace("\\", "\\\\").replace("\"", "\\\"");
+            QString thumbEsc = lThumb; thumbEsc.replace("\\", "\\\\").replace("\"", "\\\"");
+            rawContent = QString("{\"linkTitle\":\"%1\",\"linkDesc\":\"%2\",\"linkHref\":\"%3\",\"linkThumb\":\"%4\"}")
+                             .arg(esc).arg(descEsc).arg(hrefEsc).arg(thumbEsc);
         } else if (mt == 4) {
             QVariantMap rm = m["content"].toMap();
             if (rm.isEmpty() && !rawContent.isEmpty() && rawContent.trimmed().startsWith("{"))
