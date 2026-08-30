@@ -5,6 +5,8 @@
 #include <QDebug>
 #include <QByteArray>
 #include <QLatin1String>
+#include <QDir>
+#include <QStringList>
 
 // icon account (tab Zalo10 trong Hub) — icon "thương hiệu" chung, không đổi
 // theo trạng thái đọc/chưa đọc. Phải nằm trong thư mục asset truyền vào
@@ -118,18 +120,59 @@ HubIntegration::~HubIntegration()
 }
 
 // __progname: biến toàn cục chuẩn POSIX chứa basename của argv[0] (tên file
-// thực thi lúc runtime, ví dụ "Zalo10"). BB10 map "/apps/<progname>/public/..."
-// tới đúng thư mục asset public đã cài đặt của app hiện tại — đây là cách
-// lấy pAssetPath được khuyến nghị dựa trên kinh nghiệm thực chiến tích hợp
-// UDS trên BB10 (nguồn: "Tips for Hub Integration on BlackBerry 10", H.E.C.
-// Geek, 2014), thay vì tự dựng path qua QDir::currentPath() — cwd có thể
-// không đáng tin cậy tuỳ context process chạy (ví dụ nếu sau này tách ra 1
-// headless service riêng thay vì chạy trong process UI chính như hiện tại).
-// Đã xác nhận công thức này đúng qua chính log runtime thực tế (uds_register_client
-// OK ở đúng path này) VÀ đối chiếu 1 app BB10 thật khác có Hub integration
-// (txtmpp, github.com/singpolyma/txtmpp/blob/master/bbui/src/BlackberryHub.hs)
-// dùng chung 1 pattern "/apps/<id+hash>/public/<dest>/" y hệt.
+// thực thi lúc runtime). Ý TƯỞNG BAN ĐẦU (SAI, xem FIX LẦN 11 bên dưới):
+// BB10 map "/apps/<progname>/public/..." tới đúng thư mục asset public đã
+// cài đặt của app hiện tại — dựa theo "Tips for Hub Integration on
+// BlackBerry 10", H.E.C. Geek, 2014, và đối chiếu txtmpp
+// (github.com/singpolyma/txtmpp/blob/master/bbui/src/BlackberryHub.hs)
+// dùng pattern "/apps/<id+hash>/public/<dest>/". CÔNG THỨC ĐÚNG cho build
+// Debug (nơi __progname tình cờ gần giống phần đầu app-id thật, "Zalo10"),
+// nhưng SAI cho build Release: entry point Release trong bar-descriptor.xml
+// là "Zalo10.so" (Qnx/Cascades type), nên __progname trả về "Zalo10.so" —
+// khác hẳn app-id thật trên filesystem
+// ("com.BerryLife.Zalo10.testRel_Life_Zalo108ff545d2", xác nhận qua Target
+// File System Navigator thực tế trên thiết bị, 2026-08-30). Đây chính là
+// nguyên nhân gốc của bug "icon blank khi cài bản .bar" — không phải do
+// UDS/Hub cache gì cả (đã loại trừ ở Fix Lần 10: remove-before-add chạy
+// đúng, rc=0, nhưng icon vẫn blank vì bản thân assetPath TÍNH SAI, trỏ tới
+// 1 thư mục "/apps/Zalo10.so/public/hubicons/" không hề tồn tại, trong khi
+// file thật nằm ở "/apps/<app-id-that>/public/hubicons/").
 extern char *__progname;
+
+// ===== FIX LẦN 11 — LẤY APP-ID TỪ QDir::homePath() THAY VÌ __progname =====
+// QDir::homePath() trên BB10 trả về
+// "/accounts/1000/appdata/<app-id-that>/data" — đã XÁC NHẬN qua log thực tế
+// (dòng "[Zalo] SQLite DB opened") khớp ĐÚNG 100% với app-id thật thấy trên
+// Target File System Navigator, ở CẢ HAI build (Debug lẫn Release), không
+// như __progname chỉ đúng tình cờ ở Debug. ZaloService.cpp cũng đang dùng
+// QDir::homePath() cho DB path — cùng API, đã chứng minh đáng tin cậy qua
+// nhiều lần chạy thực tế trên thiết bị.
+//
+// Cách lấy: tách "/accounts/1000/appdata/<app-id>/data" theo dấu "/", lấy
+// phần tử ngay trước "data" (phần tử cuối cùng của homePath). Có fallback
+// về __progname (công thức cũ) nếu vì lý do gì đó homePath() không đúng
+// định dạng mong đợi (ví dụ đổi hệ điều hành/thay đổi convention BB10 sau
+// này) — không bao giờ để publicAssetPath() trả về chuỗi rỗng hay crash.
+static QString appIdFromHomePath()
+{
+    // homePath() dạng "/accounts/1000/appdata/<app-id>/data" — QDir tự
+    // chuẩn hoá dấu "/" nên split đơn giản theo "/" là đủ, không cần lo
+    // dấu "/" kép hay ký tự đặc biệt khác trên BB10.
+    QStringList parts = QDir::homePath().split(QLatin1Char('/'), QString::SkipEmptyParts);
+    // parts cuối cùng phải là "data" (theo đúng pattern quan sát được qua
+    // log), phần tử NGAY TRƯỚC đó là app-id cần lấy.
+    if (parts.size() >= 2 && parts.last() == QLatin1String("data")) {
+        QString appId = parts.at(parts.size() - 2);
+        qDebug() << "[Hub] appId tu homePath =" << appId << "(homePath=" << QDir::homePath() << ")";
+        return appId;
+    }
+    // Fallback: homePath() không đúng dạng mong đợi -> dùng __progname như
+    // công thức cũ, thà sai path còn hơn crash hoàn toàn (Hub integration
+    // là tính năng cộng thêm, không được phép làm app hỏng chức năng khác).
+    qDebug() << "[Hub] homePath khong dung dang mong doi (" << QDir::homePath()
+              << "), fallback ve __progname cho publicAssetPath().";
+    return QString::fromLatin1(__progname);
+}
 
 QString HubIntegration::publicAssetPath()
 {
@@ -139,13 +182,41 @@ QString HubIntegration::publicAssetPath()
     // vẻ chặn theo tiền tố tên chuỗi trùng với rule "assets" đã khai báo
     // (từng thử "assets-public" dù là thư mục top-level ngang hàng thật sự,
     // vẫn bị chặn) — xem comment dài trong bar-descriptor.xml.
-    return QString("/apps/%1/public/hubicons/").arg(QString::fromLatin1(__progname));
+    return QString("/apps/%1/public/hubicons/").arg(appIdFromHomePath());
 }
 
 QUrl HubIntegration::hubIconUrl()
 {
     return QUrl::fromLocalFile(publicAssetPath() + QLatin1String(HUB_ICON_FILE));
 }
+
+// ===== FIX LẦN 10 — BỎ CƠ CHẾ CACHE FILE ASSETPATH (SAI HƯỚNG), QUAY LẠI
+// REMOVE-BEFORE-ADD MỖI LẦN KHỞI ĐỘNG =====
+//
+// Fix Lần 9.5 (thử trước, đã revert): lưu assetPath vào file dưới
+// QDir::homePath() để so sánh giữa các lần init(), chỉ remove-before-add
+// khi phát hiện đổi. SAI HƯỚNG — đã xác nhận qua log thực tế 2 lần chạy
+// (Momentics run vs .bar install): QDir::homePath() bản thân nó CŨNG đổi
+// theo build, vì mỗi biến thể build (debug/testDev vs release/testRel) có
+// sandbox filesystem RIÊNG BIỆT trên BB10
+// ("/accounts/1000/appdata/<app-id-hash>/data/", app-id-hash chứa
+// "testDev_..." hay "testRel_..." tuỳ build — thấy rõ qua dòng log "SQLite
+// DB opened" của 2 lần chạy khác nhau). Nghĩa là file cache ghi ở build A
+// nằm trong sandbox A, build B đọc từ sandbox B hoàn toàn khác — không bao
+// giờ đọc được cache của build trước. Cơ chế so sánh vô nghĩa, đã loại bỏ.
+//
+// Về giả thuyết gốc của Fix Lần 9 (remove-before-add phá single-tap): test
+// thực tế trên thiết bị (2026-08-30) cho thấy single-tap KHÔNG hoạt động ở
+// CẢ HAI trường hợp — cả bản Fix Lần 9 (không remove, chỉ update-first) lẫn
+// khi chạy qua Momentics (nơi trước đây nghi ngờ remove liên tục là thủ
+// phạm). Tức là thiếu bằng chứng remove-before-add THỰC SỰ là nguyên nhân
+// gây bug single-tap — 2 bug (single-tap, icon blank khi đổi build) nhiều
+// khả năng ĐỘC LẬP với nhau, không phải cùng 1 nguyên nhân. Vì vậy quay lại
+// remove-before-add mỗi lần khởi động là an toàn để ưu tiên fix bug icon
+// (có bằng chứng rõ ràng, dễ tái hiện), không có rủi ro thêm cho single-tap
+// vì single-tap đang hỏng ở cả 2 cách. Nếu sau này single-tap được fix bằng
+// hướng khác (không liên quan uds_account_removed), quay lại kiểm tra xem
+// remove-before-add có ảnh hưởng gì không lúc đó.
 
 bool HubIntegration::init()
 {
@@ -198,10 +269,14 @@ bool HubIntegration::init()
     // Đã thử đổi 81x81 và bị lệch/to hơn mong muốn trên thực tế thiết bị —
     // không dùng hướng này. Nghi vấn về kích thước icon coi như bị loại.
     // (Trước đây "hướng xử lý còn lại" ở đây là uds_account_removed() mỗi
-    // lần khởi động — đã BỎ, xem giải thích ở khối FIX LẦN 9 ngay dưới.)
+    // lần khởi động — đã BỎ ở Fix Lần 9, RỒI THÊM LẠI ở Fix Lần 10 bên dưới
+    // sau khi Fix Lần 9 không giải quyết được gì và gây bug icon quay lại.
+    // Xem giải thích ở khối FIX LẦN 9 ngay dưới, và FIX LẦN 10 sau nó.)
 
-    // ===== FIX LẦN 9 (CHƯA TEST) — bỏ uds_account_removed() mỗi lần khởi
-    // động =====
+    // ===== FIX LẦN 9 (ĐÃ TEST — KHÔNG FIX ĐƯỢC SINGLE-TAP, GÂY BUG ICON
+    // QUAY LẠI, ĐÃ SUPERSEDE BỞI FIX LẦN 10 BÊN DƯỚI) =====
+    // Giữ lại đoạn comment gốc để tham khảo lý do/giả thuyết ban đầu —
+    // KHÔNG còn áp dụng, code thực thi đã đổi sang Fix Lần 10.
     // Đọc lại kỹ blog H.E.C. Geek (đối chiếu nguồn thực chiến duy nhất còn
     // tồn tại về hub integration BB10), mục "Create/Update Operations":
     // "the hub has no query API... The safest way to deal with this is to
@@ -226,6 +301,16 @@ bool HubIntegration::init()
     // riêng bằng cách khác (ví dụ so sánh assetPath cũ/mới) thay vì remove
     // toàn bộ account mỗi lần.
 
+    // FIX LẦN 10: remove-before-add mỗi lần khởi động, KHÔNG điều kiện — xem
+    // giải thích đầy đủ ở khối comment "FIX LẦN 10" phía trên hàm này (vì
+    // sao bỏ cơ chế cache-so-sánh của Fix Lần 9.5, và vì sao giả thuyết
+    // "remove phá single-tap" thiếu bằng chứng ở thời điểm này). Đảm bảo
+    // icon luôn được Hub re-resolve từ assetPath hiện tại của build đang
+    // chạy, bất kể build trước đó (nếu có) dùng __progname/sandbox nào.
+    int removeRc = uds_account_removed(m_udsHandle, ACCOUNT_ID);
+    qDebug() << "[Hub] uds_account_removed (pre-add cleanup, Fix Lan 10) rc=" << removeRc
+              << "(bo qua neu account chua tung ton tai / lan cai dat dau tien)";
+
     uds_account_data_t *account = uds_account_data_create();
     uds_account_data_set_id(account, ACCOUNT_ID);
     uds_account_data_set_name(account, "Zalo10");
@@ -248,15 +333,14 @@ bool HubIntegration::init()
     // email thay vì dưới, không mong muốn). Trả lại IM như cũ.
     uds_account_data_set_type(account, UDS_ACCOUNT_TYPE_IM);
 
-    // Update trước, add chỉ khi update fail — đúng pattern blog khuyến
-    // nghị, KHÔNG remove trước nữa (xem giải thích đầy đủ ở trên).
-    rc = uds_account_updated(m_udsHandle, account);
-    if (rc != UDS_SUCCESS) rc = uds_account_added(m_udsHandle, account);
+    // Vừa remove ở trên (Fix Lần 10) nên account chắc chắn không còn tồn
+    // tại -> add thẳng, không cần thử update trước nữa (update sẽ luôn fail
+    // ngay sau remove, gọi thêm chỉ tốn 1 lượt IPC không cần thiết).
+    rc = uds_account_added(m_udsHandle, account);
     uds_account_data_destroy(account);
 
-
     if (rc != UDS_SUCCESS) {
-        qDebug() << "[Hub] account add/update failed, rc=" << rc;
+        qDebug() << "[Hub] account add failed, rc=" << rc;
         return false;
     }
 
