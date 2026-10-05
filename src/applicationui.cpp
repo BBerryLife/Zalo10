@@ -1,4 +1,5 @@
 #include "applicationui.hpp"
+#include "ServiceHandoff.hpp"
 #include "ZaloService.hpp"
 #include "ZaloServiceUtils.hpp"
 #include "ActiveFrameCover.hpp"
@@ -10,6 +11,7 @@
 #include <bb/cascades/ThemeSupport>
 #include <bb/system/InvokeManager>
 #include <bb/system/InvokeRequest>
+#include <bb/system/InvokeTargetReply>
 #include <bb/system/InvokeQueryTargetsRequest>
 #include <bb/system/InvokeQueryTargetsReply>
 #include <bb/system/InvokeAction>
@@ -159,6 +161,14 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
 
     ZaloService *zService = new ZaloService(this);
     m_zService = zService;
+
+    // Bàn giao với service headless (service/README.md): ghi PID TRƯỚC khi
+    // QML gọi loadSession() để service biết UI đang sống và nhường WebSocket;
+    // invoke chỉ để service phản ứng ngay (pid file mới là nguồn sự thật).
+    ServiceHandoff::markUiAlive();
+    qDebug() << "[Handoff] UI alive, pid file:" << ServiceHandoff::pidFilePath()
+             << "isUiAlive=" << ServiceHandoff::isUiAlive();
+    pingHandoffService(ServiceHandoff::ACTION_UI_OPENED);
 
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
                      this, SLOT(onManualExit()));
@@ -475,6 +485,27 @@ void ApplicationUI::onSystemLanguageChanged()
         QCoreApplication::instance()->installTranslator(m_pTranslator);
 }
 
+void ApplicationUI::pingHandoffService(const char *action)
+{
+    qDebug() << "[Handoff] invoke service target" << ServiceHandoff::TARGET_SERVICE << "action" << action;
+    bb::system::InvokeTargetReply *reply = ServiceHandoff::pingService(m_pInvokeManager, action);
+    if (!reply) {
+        qDebug() << "[Handoff] pingService: no InvokeManager";
+        return;
+    }
+    connect(reply, SIGNAL(finished()), this, SLOT(onServicePingFinished()));
+}
+
+void ApplicationUI::onServicePingFinished()
+{
+    bb::system::InvokeTargetReply *reply = qobject_cast<bb::system::InvokeTargetReply *>(sender());
+    if (!reply) return;
+    // error() == 0 (NoError) nghĩa là Navigator đã nhận và chuyển lệnh tới service
+    // (kể cả khi phải khởi động nó). Khác 0: không tìm thấy target / không launch được.
+    qDebug() << "[Handoff] service invoke finished, error =" << (int)reply->error();
+    reply->deleteLater();
+}
+
 void ApplicationUI::onManualExit()
 {
     if (m_exitHandled) return; // manualExit() / aboutToQuit() / SIGTERM có thể trùng nhau
@@ -485,6 +516,10 @@ void ApplicationUI::onManualExit()
         m_zService->saveSession();
         m_zService->closeWebSocketGracefully();
     }
+    // Báo service nhận lại WebSocket (xoá pid file trước, rồi mới ping).
+    ServiceHandoff::markUiGone();
+    qDebug() << "[Handoff] UI closing, pid file removed, isUiAlive=" << ServiceHandoff::isUiAlive();
+    pingHandoffService(ServiceHandoff::ACTION_UI_CLOSED);
     bb::cascades::Application::instance()->quit();
 }
 

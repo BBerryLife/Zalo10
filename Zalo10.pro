@@ -37,6 +37,8 @@ INCLUDEPATH += src
 INCLUDEPATH += $$(QNX_TARGET)/usr/include/qt4/QtGui
 
 HEADERS += \
+    src/ZaloCookieJar.hpp \
+    src/ServiceHandoff.hpp \
     src/applicationui.hpp \
     src/ZaloService.hpp \
     src/ZaloServiceUtils.hpp \

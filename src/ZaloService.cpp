@@ -1,4 +1,5 @@
 #include "ZaloService.hpp"
+#include "ZaloCookieJar.hpp"
 #include "ZaloServiceUtils.hpp"
 #include "HubIntegration.hpp"
 #include <bb/platform/Notification>
@@ -77,12 +78,14 @@ ZaloService::ZaloService(QObject *parent)
       m_wsConsecutiveFailCount(0),
       m_wsSslCtx(0), m_wsSsl(0), m_wsUseSsl(false), m_wsTlsEstablished(false),
       m_wsConnected(false), m_wsHandshakeSent(false),
-      m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false),
+      m_userAgent(USER_AGENT), m_language("vi"), m_loggedIn(false), m_qrCancelled(false), m_isAutoRenew(false), m_renewRetry(0),
       m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),
       m_lastFetchFriendsTime(0), m_lastFetchConvoTime(0), m_db(0),
       m_updateReply(0), m_videoDownloadReply(0), m_contactPicker(0),
       m_hub(new HubIntegration(this))
 {
+    m_manager->setCookieJar(new ZaloCookieJar(m_manager));
+    m_realtimeSuspended = false;
     m_appForeground = true; // app vừa mở -> foreground; ApplicationUI cập nhật qua setAppForeground()
     m_qrExpireTimer->setSingleShot(true);
     m_wsReconnectTimer->setSingleShot(true);

@@ -1,5 +1,7 @@
 #include "ZaloService.hpp"
 #include "ZaloServiceUtils.hpp"
+#include "ZaloCookieJar.hpp"
+#include <QDateTime>
 #include <bb/platform/Notification>
 #include <bb/platform/NotificationDefaultApplicationSettings>
 #include <bb/system/InvokeRequest>
@@ -101,12 +103,28 @@ void ZaloService::parseCookiesFromReply(QNetworkReply *reply)
     typedef QPair<QByteArray, QByteArray> HeaderPair;
     foreach (const HeaderPair &hp, reply->rawHeaderPairs()) {
         if (hp.first.toLower() == "set-cookie") {
-            QString line = QString::fromUtf8(hp.second);
+          // Qt4 gộp nhiều Set-Cookie của 1 response thành 1 header, ngăn cách bằng '\n'.
+          // Trước đây chỉ cookie đầu tiên được đọc → thiếu cookie khi lưu.
+          foreach (const QString &line, QString::fromUtf8(hp.second).split('\n', QString::SkipEmptyParts)) {
             QString kv   = line.split(";").first().trimmed();
             int eq = kv.indexOf('=');
             if (eq > 0) {
-                m_cookies[kv.left(eq).trimmed()] = kv.mid(eq + 1).trimmed();
+                QString name = kv.left(eq).trimmed();
+                QString val  = kv.mid(eq + 1).trimmed();
+                // Server xoá cookie bằng Set-Cookie giá trị rỗng / "deleted" / Max-Age<=0.
+                // KHÔNG được ghi đè cookie tốt đang có bằng giá trị xoá này, nếu không
+                // saveSession() sẽ lưu cookie hỏng xuống QSettings → lần mở sau phải login lại.
+                QString low = line.toLower();
+                bool isDelete = val.isEmpty() || val.toLower() == "deleted"
+                             || low.contains("max-age=0") || low.contains("max-age=-");
+                if (isDelete && m_cookies.contains(name)) {
+                    qDebug() << "[Zalo] parseCookies: bo qua Set-Cookie xoa cookie" << name;
+                    continue;
+                }
+                if (isDelete) continue;
+                m_cookies[name] = val;
             }
+          }
         }
     }
 }
@@ -137,14 +155,28 @@ void ZaloService::saveSession()
     }
     QString cookieJson = mapToJson(cookieMap);
     s.setValue("cookies", cookieJson);
+
+    // Lưu toàn bộ cookie jar của QNetworkAccessManager (đủ domain/path/HttpOnly).
+    ZaloCookieJar *jar = static_cast<ZaloCookieJar*>(m_manager->cookieJar());
+    QStringList jarList;
+    if (jar) {
+        QDateTime now = QDateTime::currentDateTime();
+        foreach (const QNetworkCookie &c, jar->exportAll()) {
+            if (!c.isSessionCookie() && c.expirationDate() < now) continue;
+            jarList << QString::fromUtf8(c.toRawForm(QNetworkCookie::Full));
+        }
+    }
+    s.setValue("jarCookies", jarList);
     s.sync();
     qDebug() << "[Zalo] saveSession: saved" << m_cookies.size() << "cookies, uid=" << m_uid;
 }
 
 bool ZaloService::loadSession()
 {
+    qDebug() << "[Zalo] loadSession: begin";
     QSettings s("BerryLife", "Zalo10");
     QString uid = s.value("uid").toString();
+    qDebug() << "[Zalo] loadSession: settings opened, uid empty =" << uid.isEmpty();
     if (uid.isEmpty()) {
         qDebug() << "[Zalo] loadSession: no saved session";
         return false;
@@ -165,14 +197,27 @@ bool ZaloService::loadSession()
     m_zpwWsUrls           = s.value("zpwWsUrls").toStringList();
     m_mutedThreads        = QSet<QString>::fromList(s.value("mutedThreads").toStringList());
 
+    qDebug() << "[Zalo] loadSession: fields read, parsing cookies json, len =" << s.value("cookies").toString().size();
     QString cookieJson = s.value("cookies").toString();
     if (!cookieJson.isEmpty()) {
         QVariantMap cookieMap = jsonToMap(cookieJson.toUtf8());
+        qDebug() << "[Zalo] loadSession: cookies json parsed, entries =" << cookieMap.size();
         QMapIterator<QString, QVariant> it(cookieMap);
         while (it.hasNext()) {
             it.next();
             m_cookies[it.key()] = it.value().toString();
         }
+    }
+
+    // Khôi phục cookie jar để request sau khi mở lại app gửi đủ cookie như trước.
+    qDebug() << "[Zalo] loadSession: restoring cookie jar";
+    {
+        ZaloCookieJar *jar = static_cast<ZaloCookieJar*>(m_manager->cookieJar());
+        QList<QNetworkCookie> restored;
+        foreach (const QString &raw, s.value("jarCookies").toStringList())
+            restored += QNetworkCookie::parseCookies(raw.toUtf8());
+        if (jar && !restored.isEmpty()) jar->importAll(restored);
+        qDebug() << "[Zalo] loadSession: restored jar cookies" << restored.size();
     }
 
     if (m_uid.isEmpty() || m_secretKey.isEmpty() || m_chatServiceUrl.isEmpty()) {
@@ -192,6 +237,12 @@ bool ZaloService::loadSession()
     refreshSessionKey();
 
     return true;
+}
+
+void ZaloService::retryRefreshSessionKey()
+{
+    if (m_loggedIn) return;
+    refreshSessionKey();
 }
 
 // ─── refreshSessionKey ────────────────────────────────────────────────────
@@ -237,7 +288,16 @@ void ZaloService::onRefreshSessionKeyDone()
     if (reply->error() != QNetworkReply::NoError) {
         qDebug() << "[Zalo] refreshSessionKey network error:" << reply->errorString()
                  << "- session may be invalid, triggering re-login";
+        QNetworkReply::NetworkError nerr = reply->error();
         reply->deleteLater();
+        // Lỗi mạng tạm thời (mất kết nối/DNS/timeout, mã < 200): GIỮ NGUYÊN session đã lưu,
+        // thử lại sau 5s thay vì chuyển sang step7/step8 rồi bật màn hình đăng nhập QR.
+        if (int(nerr) < 200 && m_renewRetry < 12) {
+            ++m_renewRetry;
+            qDebug() << "[Zalo] refreshSessionKey: loi mang tam thoi, thu lai lan" << m_renewRetry;
+            QTimer::singleShot(5000, this, SLOT(retryRefreshSessionKey()));
+            return;
+        }
         // Do NOT fake loginSuccess here — cookies may be expired.
         // Fall through to step7 to attempt cookie renewal; if that also fails,
         // sessionExpired will be emitted and QR login sheet will open.
@@ -252,6 +312,11 @@ void ZaloService::onRefreshSessionKeyDone()
 
     qDebug() << "[Zalo] refreshSessionKey response (first200):" << raw.left(200);
 
+    bool refreshOk = false;
+    if (ZJson::nativeMode()) {
+        // Service headless: không dùng QtScript (segfault trong process headless).
+        refreshOk = applyRefreshSessionResponseNative(raw);
+    } else {
     // Parse outer để lấy error_code + encrypted data
     QScriptEngine outerEng;
     outerEng.globalObject().setProperty("__raw", QString::fromUtf8(raw));
@@ -268,7 +333,6 @@ void ZaloService::onRefreshSessionKeyDone()
         qDebug() << "[Zalo] refreshSessionKey decrypted (first100):" << decrypted.left(100);
     }
 
-    bool refreshOk = false;
     if (ec == 0 && !decrypted.isEmpty()) {
         QScriptEngine eng;
         eng.globalObject().setProperty("__dec", decrypted);
@@ -330,6 +394,8 @@ void ZaloService::onRefreshSessionKeyDone()
         }
     }
 
+    }
+
     if (!refreshOk) {
         qDebug() << "[Zalo] refreshSessionKey: secretKey expired - tự động renew qua step7/step8";
         m_secretKey.clear();
@@ -339,6 +405,7 @@ void ZaloService::onRefreshSessionKeyDone()
         return;
     }
 
+    m_renewRetry = 0;
     if (!m_loggedIn) {
         m_loggedIn = true;
         emit loggedInChanged();
@@ -352,6 +419,81 @@ void ZaloService::onRefreshSessionKeyDone()
     } else {
         emit sessionRefreshed();
     }
+}
+
+// Bản không QtScript của khối parse trong onRefreshSessionKeyDone(): parse outer JSON, giải mã
+// "data", parse inner JSON rồi cập nhật secretKey/URL dịch vụ/WS URL. Trả về true nếu refresh
+// thành công (đã saveSession()). Chỉ dùng khi ZJson::nativeMode() (service headless).
+bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
+{
+    QVariantMap outer = jsonToMap(raw);
+    int ec = outer.isEmpty() ? -1 : outer.value("error_code").toInt();
+    QString encData = outer.value("data").toString();
+
+    QString decrypted;
+    if (!encData.isEmpty() && !m_pendingEncryptKey.isEmpty()) {
+        decrypted = aesDecryptBase64_256(m_pendingEncryptKey, encData);
+        qDebug() << "[Zalo] refreshSessionKey(native) decrypted (first100):" << decrypted.left(100);
+    }
+    if (ec != 0 || decrypted.isEmpty()) return false;
+
+    QVariantMap tmp = jsonToMap(decrypted.toUtf8());
+    int innerEc = tmp.contains("error_code") ? tmp.value("error_code").toInt() : 0;
+    QVariantMap info = tmp;
+    QVariant dataV = tmp.value("data");
+    if (dataV.isValid() && !dataV.isNull())
+        info = (dataV.type() == QVariant::Map) ? dataV.toMap() : QVariantMap();
+
+    if (innerEc != 0) {
+        qDebug() << "[Zalo] refreshSessionKey(native): inner error_code=" << innerEc << "- session expired";
+        return false;
+    }
+    if (info.isEmpty()) return false;
+
+    QString newKey = info.value("zpw_enk").toString();
+    if (newKey.isEmpty()) return false;
+
+    m_secretKey   = newKey;
+    m_displayName = info.value("display_name").toString();
+    qDebug() << "[Zalo] refreshSessionKey(native): new secretKey, first20:" << m_secretKey.left(20);
+
+    QVariant svcV = info.value("zpw_service_map_v3");
+    if (svcV.type() == QVariant::Map) {
+        QVariantMap svc = svcV.toMap();
+        struct Pick { const char *key; QString *dst; };
+        Pick picks[] = {
+            { "chat",          &m_chatServiceUrl },
+            { "group",         &m_groupServiceUrl },
+            { "profile",       &m_profileServiceUrl },
+            { "group_poll",    &m_groupPollServiceUrl },
+            { "group_board",   &m_groupBoardServiceUrl },
+            { "friend",        &m_friendServiceUrl },
+            { "quick_message", &m_quickMessageServiceUrl },
+            { "reaction",      &m_reactionServiceUrl }
+        };
+        for (unsigned i = 0; i < sizeof(picks) / sizeof(picks[0]); ++i) {
+            QVariant a = svc.value(picks[i].key);
+            if (a.type() == QVariant::List) {
+                QVariantList lst = a.toList();
+                if (!lst.isEmpty()) *picks[i].dst = lst.at(0).toString();
+            }
+        }
+    }
+
+    QVariant wsV = info.value("zpw_ws");
+    if (wsV.type() == QVariant::List) {
+        QVariantList wsArr = wsV.toList();
+        m_zpwWsUrls.clear();
+        for (int i = 0; i < wsArr.size() && i < 10; ++i) {
+            QString wsUrl = wsArr.at(i).toString();
+            if (!wsUrl.isEmpty()) m_zpwWsUrls << wsUrl;
+        }
+        disconnectWebSocket();
+        connectWebSocket();
+    }
+
+    saveSession();
+    return true;
 }
 
 // ─── Keep-Alive (HTTP session ping) ────────────────────────────────────────

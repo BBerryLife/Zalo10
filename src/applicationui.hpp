@@ -22,7 +22,10 @@ public:
     explicit ApplicationUI();
     virtual ~ApplicationUI() {}
 
+    void pingHandoffService(const char *action);
+
 public slots:
+    void onServicePingFinished(); // log kết quả invoke tới service headless (xem ServiceHandoff.hpp)
     void invokeEmail(const QString &to, const QString &subject);
     void minimizeApp();
     Q_INVOKABLE void setDarkTheme(bool dark);

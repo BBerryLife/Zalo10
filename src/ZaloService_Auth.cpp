@@ -497,6 +497,15 @@ void ZaloService::onStep6Done()
 
 void ZaloService::step7_checkSession()
 {
+    // Service headless: bước renew cookie (Step7/Step8) còn dùng QtScript -> không chạy được
+    // trong process headless. Coi như phiên cần đăng nhập/renew bằng app: báo sessionExpired,
+    // ServiceController sẽ đứng yên cho tới khi người dùng mở app.
+    if (ZJson::nativeMode()) {
+        qDebug() << "[Zalo] step7_checkSession: skipped in headless service - session needs the app";
+        emit sessionExpired();
+        return;
+    }
+
     qDebug() << "[Zalo] Step7: checkSession cookies:" << m_cookies.keys();
     QNetworkRequest req = buildRequest(
         "https://id.zalo.me/account/checksession?continue=https%3A%2F%2Fchat.zalo.me%2Findex.html",
@@ -593,6 +602,13 @@ void ZaloService::onStep8Done()
     if (!reply) return;
     if (reply->error() != QNetworkReply::NoError) {
         qDebug() << "[Zalo Error] Step8 network error:" << reply->errorString();
+        if (m_isAutoRenew && int(reply->error()) < 200 && m_renewRetry < 12) {
+            // Mạng tạm thời lỗi: không coi là hết phiên, thử lại, giữ cookie đã lưu.
+            ++m_renewRetry;
+            reply->deleteLater();
+            QTimer::singleShot(5000, this, SLOT(retryRefreshSessionKey()));
+            return;
+        }
         if (m_isAutoRenew) emit sessionExpired();
         else               emit loginFailed(reply->errorString());
         reply->deleteLater();
@@ -756,6 +772,7 @@ void ZaloService::onStep9Done()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (reply) { parseCookiesFromReply(reply); reply->deleteLater(); }
+    m_renewRetry = 0;
     m_loggedIn = true;
     emit loggedInChanged();
     saveSession();

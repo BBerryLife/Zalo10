@@ -3,6 +3,7 @@
 	<name>Zalo10</name>
 	<comment></comment>
 	<projects>
+		<project>Zalo10Headless</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>

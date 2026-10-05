@@ -70,6 +70,10 @@ void ZaloService::sendWsPing()
 
 void ZaloService::connectWebSocket()
 {
+    if (m_realtimeSuspended) {
+        qDebug() << "[Zalo WS] connectWebSocket skipped (realtime suspended - UI/service handoff)";
+        return;
+    }
     if (m_zpwWsUrls.isEmpty()) {
         qDebug() << "[Zalo WS] No zpw_ws URLs, skip";
         return;
@@ -384,6 +388,38 @@ void ZaloService::disconnectWebSocket()
     m_wsHandshakeSent = false;
     m_wsCipherKey.clear();
     m_wsBuffer.clear();
+}
+
+// ─── Bàn giao UI <-> service headless ───────────────────────────────────────
+// suspendRealtime(): nhường WebSocket cho process kia. Đặt cờ TRƯỚC khi đóng
+// để connectWebSocket()/onWsReconnectTimer() không tự nối lại, và hạ
+// m_loggedIn để onWsDisconnected() thoát sớm (không hẹn reconnect).
+void ZaloService::suspendRealtime()
+{
+    m_realtimeSuspended = true;
+    if (m_wsReconnectTimer) m_wsReconnectTimer->stop();
+    if (m_listenTimer)      m_listenTimer->stop();
+    if (m_keepAliveTimer)   m_keepAliveTimer->stop();
+    closeWebSocketGracefully();
+    disconnectWebSocket();
+    if (m_loggedIn) {
+        m_loggedIn = false;
+        emit loggedInChanged();
+    }
+    qDebug() << "[Zalo WS] suspendRealtime: WS closed, session kept";
+}
+
+// resumeRealtime(): dùng chung cho lần khởi động đầu của service (chưa từng
+// suspend) lẫn lần nhận lại WS sau khi UI đóng — luôn đi qua loadSession()
+// để refreshSessionKey() lấy secretKey/WS URL mới rồi connectWebSocket().
+bool ZaloService::resumeRealtime()
+{
+    m_realtimeSuspended       = false;
+    m_wsConsecutiveFailCount  = 0;
+    m_wsAdvanceUrlOnReconnect = false;
+    m_renewRetry              = 0;
+    qDebug() << "[Zalo WS] resumeRealtime: reloading saved session";
+    return loadSession();
 }
 
 void ZaloService::onWsConnected()

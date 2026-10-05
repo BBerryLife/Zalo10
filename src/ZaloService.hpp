@@ -256,6 +256,14 @@ public:
     // background Hub item (notification_state=true) đã tự kêu rồi, bắn thêm
     // dialog sẽ thành 2 âm thanh cho 1 tin.
     void setAppForeground(bool foreground) { m_appForeground = foreground; }
+
+    // Bàn giao UI <-> service headless (xem service/README.md). Zalo chỉ cho
+    // 1 kết nối WebSocket / tài khoản nên tại 1 thời điểm chỉ 1 process
+    // (UI hoặc service) được giữ realtime. Process UI không bao giờ gọi các
+    // hàm này nên hành vi của app UI không đổi.
+    void suspendRealtime();   // đóng WS + dừng timer/reconnect, GIỮ NGUYÊN session đã lưu
+    bool resumeRealtime();    // bỏ cờ suspend rồi loadSession(); false nếu chưa có session
+    bool realtimeSuspended() const { return m_realtimeSuspended; }
     // Tra lại isGroup đã lưu khi item được đẩy lên Hub (upsertThreadItem)
     // cho threadId này — dùng ở ApplicationUI::onInvoked() vì payload JSON
     // Hub gửi khi tap item không có field isGroup/is_group nào (chỉ có
@@ -444,6 +452,7 @@ private slots:
     void onStep6Done();
     void onStep7Done();
     void onStep8Done();
+    void retryRefreshSessionKey();
     void onStep9Done();
 
     void onCookieStep1Done();
@@ -634,6 +643,7 @@ private:
     // từng caller (vd "cmd501", "cmd601").
     QVariantMap decodeWsEnvelope(const QVariantMap &outer, const QString &debugTag);
     QByteArray maskWsFrame(int opcode, const QByteArray &data); // client→server cần mask
+    bool applyRefreshSessionResponseNative(const QByteArray &raw); // bản không QtScript (service headless)
     int  wsNextReconnectDelayMs(); // tăng m_wsConsecutiveFailCount và trả về backoff (ms), cap 60s
     bool wsTlsHandshakeStep();     // dựng/tiếp tục TLS handshake bằng OpenSSL thô (thay QSslSocket)
     void wsPumpTlsOutput();        // rút ciphertext từ wbio, đẩy ra QTcpSocket thật
@@ -647,6 +657,7 @@ private:
     bool m_loggedIn;
     bool m_qrCancelled;
     bool m_isAutoRenew;
+    int  m_renewRetry;              // số lần retry refreshSessionKey khi lỗi mạng tạm thời
     bool m_isFetchingFriends;
     bool m_isFetchingConversations;  // true khi step7/step8 được gọi từ refreshSessionKey (không phải QR flow)
     bool m_loginEmitted;             // true sau khi loginSuccess đã emit lần đầu — ngăn emit lại từ refreshSessionKey
@@ -703,6 +714,7 @@ private:
     QString m_activeThreadId;
     bool    m_activeThreadIsGroup;
     bool    m_appForeground; // xem setAppForeground()
+    bool    m_realtimeSuspended; // xem suspendRealtime()/resumeRealtime()
     // Đăng ký Zalo10 thành 1 account/tab riêng trong BlackBerry Hub (kiểu
     // TBBX) thay vì rơi vào mục Notifications chung — xem HubIntegration.hpp
     // để biết lý do. Owned bởi ZaloService (parented), không cần tự delete.
