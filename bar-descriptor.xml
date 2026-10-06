@@ -58,6 +58,19 @@
             <mime-type>*</mime-type>
             <property var="uris" value="headless:" />
         </filter>
+        <!-- Account target của Hub = service này: Mark read / Mark unread /
+             Delete xử lý NỀN (không bật UI); OPEN/VIEW được service
+             chuyển tiếp sang UI.
+             Filter giống filter của <invoke-target> UI (mime + pim: uris). -->
+        <filter>
+            <action>bb.action.OPEN</action>
+            <action>bb.action.VIEW</action>
+            <action>bb.action.MARKREAD</action>
+            <action>bb.action.MARKUNREAD</action>
+            <action>bb.action.DELETE</action>
+            <mime-type>application/vnd.zalo10.hub.chat</mime-type>
+            <property var="uris" value="pim:application/vnd.zalo10.hub.chat" />
+        </filter>
     </invoke-target>
 
     <name>Zalo10</name>
@@ -105,18 +118,18 @@
     <asset path="splash600x1024.png">splash600x1024.png</asset>
     <asset path="assets">assets</asset>
     <!-- Icon dùng cho Hub (account tab + inbox item, xem HubIntegration.cpp)
-         nằm ở thư mục top-level "hubicons/" — KHÔNG đặt tên bắt đầu bằng
+         nằm ở thư mục top-level "res_hub/" — KHÔNG đặt tên bắt đầu bằng
          "assets" (đã thử "assets-public" ở gốc project, ngang hàng thật sự
          với "assets/", vẫn bị Momentics báo lỗi y hệt "Asset folder is
          packaged by another asset folder: assets-public" — validator này
          có vẻ so khớp theo TIỀN TỐ TÊN CHUỖI ("assets-public" bắt đầu bằng
          "assets") chứ không kiểm tra containment thật theo filesystem, nên
          dù 2 thư mục ngang hàng, tên gần giống vẫn bị coi là xung đột).
-         "hubicons" không dính dáng gì tới chữ "assets" nên né được hẳn kiểu
-         nhầm lẫn này. Icon filename giữ nguyên (PreviewNoti.png,
-         PreviewNotiRead.png, PreviewNotiUNRead.png) — HubIntegration.cpp
-         (publicAssetPath()) phải khớp: "/apps/<progname>/public/hubicons/". -->
-    <asset path="hubicons" public="true">hubicons</asset>
+         "res_hub" không dính dáng gì tới chữ "assets" nên né được hẳn kiểu
+         nhầm lẫn này. Icon filename giữ nguyên (ic_hub.png,
+         ic_hub_read.png, ic_hub_unread.png) — HubIntegration.cpp
+         (publicAssetPath()) phải khớp: "/apps/<progname>/public/res_hub/". -->
+    <asset path="res_hub" public="true">res_hub</asset>
     <asset path="translations" dest="qm">
         <include name="*.qm"/>
     </asset>
@@ -194,6 +207,10 @@
         <filter>
             <action>bb.action.OPEN</action>
             <action>bb.action.VIEW</action>
+            <!-- KHÔNG khai báo MARKREAD/MARKUNREAD/DELETE ở đây: các action item
+                 chỉ thuộc <invoke-target> service. Nếu UI cũng khai báo, invoke
+                 không chỉ định target (vd nút Delete của Hub) có thể rơi vào UI
+                 và làm app bật lên. -->
             <mime-type>application/vnd.zalo10.hub.chat</mime-type>
             <property var="uris" value="pim:application/vnd.zalo10.hub.chat"/>
         </filter>

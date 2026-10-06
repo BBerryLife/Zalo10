@@ -269,6 +269,10 @@ public:
     // Hub gửi khi tap item không có field isGroup/is_group nào (chỉ có
     // "attributes.sourceId"). Xem HubIntegration::isGroupThread().
     Q_INVOKABLE bool isGroupHubThread(const QString &threadId) const;
+    // Xử lý action item do Hub gửi (long-press / select more): mark read,
+    // mark unread, delete. true nếu action được nhận diện.
+    // Delete chỉ gỡ item khỏi tab Zalo10 của Hub, KHÔNG xoá hội thoại Zalo.
+    bool handleHubAction(const QString &action, const QString &threadId);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
     // Returns, for every thread that has at least one locally-stored message,
@@ -363,6 +367,9 @@ signals:
     // Bắn khi 1 thread được đánh dấu đã đọc (mở chat từ danh sách HOẶC từ Hub)
     // để các tab Chats/Groups đổi pellet vàng -> xám.
     void threadRead(const QString &threadId);
+    // Bắn khi user chọn "Mark Unread" trên item Hub -> tab Chats/Groups bật
+    // lại pellet vàng.
+    void threadMarkedUnread(const QString &threadId);
     // Bắn khi 1 tin nhắn đã lưu DB (qua HTTP send-confirm, chưa có ts thật
     // của server) được sửa ts đúng sau khi WS echo mang ts server về.
     // Nếu tin đang hiện trong ChatView, QML nên patch ts tại chỗ và group lại.

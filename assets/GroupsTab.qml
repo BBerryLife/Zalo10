@@ -617,6 +617,24 @@ NavigationPane {
                     }
                 }
 
+                // "Mark Unread" từ Hub -> pellet xám trở lại vàng
+                onThreadMarkedUnread: {
+                    for (var i = 0; i < groupModel.size(); i++) {
+                        var d = groupModel.value(i);
+                        if (d.threadId === threadId) {
+                            if (!d.hasUnread) { d.hasUnread = true; groupModel.replace(i, d); }
+                            break;
+                        }
+                    }
+                    for (var j = 0; j < searchModel.size(); j++) {
+                        var sd = searchModel.value(j);
+                        if (sd.threadId === threadId) {
+                            if (!sd.hasUnread) { sd.hasUnread = true; searchModel.replace(j, sd); }
+                            break;
+                        }
+                    }
+                }
+
                 onClearHistoryDone: {
                     if (!success) return;
                     for (var i = 0; i < groupModel.size(); i++) {

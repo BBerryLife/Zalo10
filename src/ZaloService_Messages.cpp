@@ -2465,6 +2465,25 @@ bool ZaloService::isGroupHubThread(const QString &threadId) const
     return m_hub->isGroupThread(threadId);
 }
 
+bool ZaloService::handleHubAction(const QString &action, const QString &threadId)
+{
+    if (!m_hub || threadId.isEmpty() || !HubIntegration::isItemAction(action)) return false;
+
+    if (action == QLatin1String(HubIntegration::ACTION_MARK_READ)) {
+        m_hub->markThreadRead(threadId);
+        setThreadUnread(threadId, false);
+        emit threadRead(threadId);
+    } else if (action == QLatin1String(HubIntegration::ACTION_MARK_UNREAD)) {
+        m_hub->markThreadUnread(threadId);
+        setThreadUnread(threadId, true);
+        emit threadMarkedUnread(threadId);
+    } else if (action == QLatin1String(HubIntegration::ACTION_DELETE)) {
+        m_hub->removeThreadItem(threadId);
+    }
+    qDebug() << "[Zalo] handleHubAction:" << action << "thread=" << threadId;
+    return true;
+}
+
 QStringList ZaloService::unreadThreadIds() const
 {
     QSettings s("BerryLife", "Zalo10");

@@ -7,20 +7,27 @@
 #include <QLatin1String>
 #include <QDir>
 #include <QStringList>
+#include <QSettings>
 
 // icon account (tab Zalo10 trong Hub) — icon "thương hiệu" chung, không đổi
 // theo trạng thái đọc/chưa đọc. Phải nằm trong thư mục asset truyền vào
 // uds_register_client() (xem publicAssetPath()/init()). File nằm tại
-// assets/public/PreviewNoti.png trong source tree, khai báo public="true"
+// assets/public/ic_hub.png trong source tree, khai báo public="true"
 // riêng trong bar-descriptor.xml — xem comment dài ở đó giải thích vì sao
 // thư mục này phải TÁCH RIÊNG khỏi assets/ chung, không được lồng.
-static const char *HUB_ICON_FILE = "PreviewNoti.png";
+static const char *HUB_ICON_FILE = "ic_hub.png";
 // icon riêng cho từng inbox item, đổi theo trạng thái đọc/chưa đọc — cả 2
 // đều phải khai báo public="true" trong bar-descriptor.xml giống
-// PreviewNoti.png ở trên, nếu không Hub cũng không đọc được (im lặng dùng
+// ic_hub.png ở trên, nếu không Hub cũng không đọc được (im lặng dùng
 // icon rỗng/mặc định, không báo lỗi).
-static const char *HUB_ICON_UNREAD_FILE = "PreviewNotiUNRead.png";
-static const char *HUB_ICON_READ_FILE   = "PreviewNotiRead.png";
+static const char *HUB_ICON_UNREAD_FILE = "ic_hub_unread.png";
+static const char *HUB_ICON_READ_FILE   = "ic_hub_read.png";
+// Icon của các item context action (long-press menu). Cùng thư mục res_hub/.
+static const char *HUB_ICON_MARK_OPENED_FILE   = "ic_mark_opened.png";
+static const char *HUB_ICON_MARK_UNOPENED_FILE = "ic_mark_unopened.png";
+// Mark read / Mark unread xử lý ở HEADLESS SERVICE (không bật
+// UI lên foreground). "Open in Zalo10" vẫn trỏ vào HUB_INVOKE_TARGET (UI).
+static const char *HUB_SERVICE_TARGET = "com.BerryLife.Zalo10.service";
 static const char *HUB_SERVICE_URL = "com.BerryLife.Zalo10.hub";
 
 // ===== SHORT-TAP MỞ ITEM TRONG HUB (đã sửa, theo BBCord/Beeper10) =====
@@ -53,6 +60,49 @@ static const char *HUB_MIME_TYPE_MESSAGE = "application/vnd.zalo10.hub.chat";
 // duy nhất bị thiếu so với mẫu chuẩn.
 static const unsigned int HUB_CONTEXT_STATE_READ   = 0x01;
 static const unsigned int HUB_CONTEXT_STATE_UNREAD = 0x02;
+// Mỗi item mang đúng 1 bit READ hoặc UNREAD. Action chỉ hiện khi context_mask
+// của nó trùng ít nhất 1 bit với context_state của item.
+//   Mark read : mask UNREAD     Mark unread : mask READ
+
+// Tên action Hub gửi tới invoke-target cho các lệnh item. Phải khớp
+// <action> trong bar-descriptor.xml.
+const char *HubIntegration::ACTION_OPEN        = "bb.action.OPEN";
+const char *HubIntegration::ACTION_MARK_READ   = "bb.action.MARKREAD";
+const char *HubIntegration::ACTION_MARK_UNREAD = "bb.action.MARKUNREAD";
+const char *HubIntegration::ACTION_DELETE      = "bb.action.DELETE";
+
+bool HubIntegration::isItemAction(const QString &action)
+{
+    return action == QLatin1String(ACTION_MARK_READ)
+        || action == QLatin1String(ACTION_MARK_UNREAD)
+        || action == QLatin1String(ACTION_DELETE);
+}
+
+unsigned int HubIntegration::contextStateFor(bool unread)
+{
+    return unread ? HUB_CONTEXT_STATE_UNREAD : HUB_CONTEXT_STATE_READ;
+}
+
+// Đăng ký 1 item context action (menu long-press / select more).
+static int registerItemAction(void *udsHandle, long long accountId, const char *action,
+                              const char *target, const char *icon,
+                              const char *title, unsigned int contextMask,
+                              uds_placement_type_t placement)
+{
+    uds_item_action_data_t *a = uds_item_action_data_create();
+    uds_item_action_data_set_action(a, action);
+    uds_item_action_data_set_target(a, target);
+    uds_item_action_data_set_type(a, "service");
+    uds_item_action_data_set_title(a, title);
+    uds_item_action_data_set_image_source(a, icon);
+    uds_item_action_data_set_mime_type(a, HUB_MIME_TYPE_MESSAGE);
+    uds_item_action_data_set_placement(a, placement);
+    uds_item_action_data_set_context_mask(a, contextMask);
+    int rc = uds_register_item_context_action(static_cast<uds_context_t>(udsHandle), accountId, a);
+    uds_item_action_data_destroy(a);
+    qDebug() << "[Hub] register item action" << action << title << "rc=" << rc;
+    return rc;
+}
 
 // category_id: field DUY NHẤT còn thiếu so với code mẫu chính thức trong
 // unified_data_source.h (dòng ví dụ "uds_inbox_item_data_set_category_id(
@@ -94,8 +144,8 @@ HubIntegration::~HubIntegration()
 // nguyên nhân gốc của bug "icon blank khi cài bản .bar" — không phải do
 // UDS/Hub cache gì cả (đã loại trừ ở Fix Lần 10: remove-before-add chạy
 // đúng, rc=0, nhưng icon vẫn blank vì bản thân assetPath TÍNH SAI, trỏ tới
-// 1 thư mục "/apps/Zalo10.so/public/hubicons/" không hề tồn tại, trong khi
-// file thật nằm ở "/apps/<app-id-that>/public/hubicons/").
+// 1 thư mục "/apps/Zalo10.so/public/res_hub/" không hề tồn tại, trong khi
+// file thật nằm ở "/apps/<app-id-that>/public/res_hub/").
 extern char *__progname;
 
 // ===== FIX LẦN 11 — LẤY APP-ID TỪ QDir::homePath() THAY VÌ __progname =====
@@ -135,13 +185,13 @@ static QString appIdFromHomePath()
 
 QString HubIntegration::publicAssetPath()
 {
-    // "hubicons" phải khớp CHÍNH XÁC với dest trong bar-descriptor.xml:
-    // <asset path="hubicons" public="true">hubicons</asset>
+    // "res_hub" phải khớp CHÍNH XÁC với dest trong bar-descriptor.xml:
+    // <asset path="res_hub" public="true">res_hub</asset>
     // Tên KHÔNG được bắt đầu bằng chữ "assets" — Momentics (NDK 10.3.1) có
     // vẻ chặn theo tiền tố tên chuỗi trùng với rule "assets" đã khai báo
     // (từng thử "assets-public" dù là thư mục top-level ngang hàng thật sự,
     // vẫn bị chặn) — xem comment dài trong bar-descriptor.xml.
-    return QString("/apps/%1/public/hubicons/").arg(appIdFromHomePath());
+    return QString("/apps/%1/public/res_hub/").arg(appIdFromHomePath());
 }
 
 QUrl HubIntegration::hubIconUrl()
@@ -223,7 +273,7 @@ bool HubIntegration::init()
 
     // Header UDS chính thức (unified_data_source.h,
     // uds_account_data_set_icon()) ghi 81x81 là kích thước khuyến nghị,
-    // nhưng file 72x72 hiện tại (PreviewNoti/Read/UNRead.png) đã hiển thị
+    // nhưng file 72x72 hiện tại (ic_hub*.png) đã hiển thị
     // đúng, cân đối trong Hub trước đây — GIỮ NGUYÊN 72x72, không resize.
     // Đã thử đổi 81x81 và bị lệch/to hơn mong muốn trên thực tế thiết bị —
     // không dùng hướng này. Nghi vấn về kích thước icon coi như bị loại.
@@ -276,7 +326,10 @@ bool HubIntegration::init()
     uds_account_data_set_description(account, "Zalo10 messages");
     uds_account_data_set_icon(account, HUB_ICON_FILE);
     // target_name = id của <invoke-target> (HUB_INVOKE_TARGET), giống BBCord.
-    uds_account_data_set_target_name(account, HUB_INVOKE_TARGET);
+    // Đổi sang SERVICE: các nút tích hợp sẵn của Hub (Delete thùng rác, select
+    // more -> Mark read/unread) luôn invoke target của account; trỏ vào UI
+    // thì app bị bật lên. Service nhận rồi tự chuyển tiếp OPEN/VIEW sang UI.
+    uds_account_data_set_target_name(account, HUB_SERVICE_TARGET);
     // false: account này không hỗ trợ tạo tin nhắn mới thẳng từ Hub (chưa
     // có handler cho action "bb.action.CREATE" phía app) — chỉ hiển thị +
     // mở tới thread có sẵn qua sendHubNotification()'s InvokeRequest.
@@ -363,6 +416,19 @@ bool HubIntegration::init()
         qDebug() << "[Hub] uds_register_item_context_action (Open in Zalo10) OK";
     }
 
+    // Mark read / Mark unread — hiện trong menu
+    // long-press cùng chỗ với "Open in Zalo10" và là các action mà "select
+    // more" của Hub cũng dùng. Thiếu đăng ký này thì Hub không có gì để
+    // invoke khi user chọn các lệnh đó (trước đây nút có nhưng không tác dụng).
+    registerItemAction(m_udsHandle, ACCOUNT_ID, ACTION_MARK_READ, HUB_SERVICE_TARGET,
+                       HUB_ICON_MARK_OPENED_FILE, "Mark Read",
+                       HUB_CONTEXT_STATE_UNREAD, UDS_PLACEMENT_DEFAULT);
+    registerItemAction(m_udsHandle, ACCOUNT_ID, ACTION_MARK_UNREAD, HUB_SERVICE_TARGET,
+                       HUB_ICON_MARK_UNOPENED_FILE, "Mark Unread",
+                       HUB_CONTEXT_STATE_READ, UDS_PLACEMENT_DEFAULT);
+    // KHÔNG đăng ký "Delete": Hub đã có nút Delete (thùng rác) riêng. Nếu Hub
+    // invoke bb.action.DELETE tới target thì handleHubAction() vẫn xử lý.
+
     return true;
 }
 
@@ -373,6 +439,13 @@ void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
     if (threadId.isEmpty()) return;
     if (!init()) return; // init() tự no-op nếu đã ready; false nghĩa là Hub không khả dụng
 
+    // Nạp state bền (nếu process này chưa từng thấy thread) để cộng dồn unread
+    // qua restart / giữa UI và service.
+    // Đọc lại từ đĩa (bỏ bản trong RAM): service và UI là 2 process, action
+    // Mark read/unread có thể vừa được service xử lý.
+    m_threadItemState.remove(threadId);
+    m_unreadCounts.remove(threadId);
+    ensureState(threadId);
     int unread = m_unreadCounts.value(threadId, 0) + 1;
     m_unreadCounts[threadId] = unread;
 
@@ -398,7 +471,7 @@ void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
     // item — tap không phản ứng gì cả, kể cả nháy/highlight. Item luôn còn
     // ít nhất 1 tin chưa đọc tại thời điểm gọi hàm này (unread vừa +1 ở
     // trên), nên context_state luôn là Unread ở đây.
-    uds_inbox_item_data_set_context_state(item, HUB_CONTEXT_STATE_UNREAD);
+    uds_inbox_item_data_set_context_state(item, contextStateFor(true));
     // true: từ giờ item này là NGUỒN DUY NHẤT chịu trách nhiệm cả dòng hiển
     // thị trong Hub lẫn hiệu ứng cảnh báo (banner/sound/lock-screen instant
     // preview) — sendHubNotification() (ZaloService_Messages.cpp) đã BỎ
@@ -433,7 +506,10 @@ void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
         st.preview = preview;
         st.timestampMs = timestampMs;
         st.isGroup = isGroup;
+        st.unread = unread;
+        st.total  = unread;
         m_threadItemState[threadId] = st;
+        saveState(threadId);
     }
     uds_inbox_item_data_destroy(item);
 
@@ -446,17 +522,93 @@ void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
 void HubIntegration::markThreadRead(const QString &threadId)
 {
     if (threadId.isEmpty() || !m_ready) return;
-    if (m_unreadCounts.value(threadId, 0) == 0) return; // đã 0 sẵn (hoặc chưa từng add), tránh gọi IPC thừa
-    if (!m_threadItemState.contains(threadId)) {
-        // Chưa từng có state đầy đủ nào được lưu cho thread này (item chưa
-        // từng qua upsertThreadItem() thành công) — không có gì để tái tạo
-        // đầy đủ, bỏ qua thay vì gửi 1 update thiếu field (sẽ tạo ra đúng
-        // bug đã gặp: Hub hiện item với tên/mô tả rỗng, timestamp epoch).
-        return;
-    }
+    if (!ensureState(threadId)) return; // chưa từng có item cho thread này
+    if (m_threadItemState[threadId].unread == 0 && m_unreadCounts.value(threadId, 0) == 0)
+        return; // đã đọc sẵn, tránh gọi IPC thừa
 
     m_unreadCounts[threadId] = 0;
+    m_threadItemState[threadId].unread = 0;
+    saveState(threadId);
+
+    // Không fallback add: nếu item không còn phía Hub thì không có gì để
+    // đánh dấu đọc. publishState() gửi lại ĐẦY ĐỦ field (uds_item_updated()
+    // thay thế cả record), chỉ đổi icon/unread/context_state.
+    if (!publishState(threadId, false /* notify */, false /* allowAdd */)) {
+        qDebug() << "[Hub] markThreadRead: item chưa tồn tại hoặc update lỗi cho thread" << threadId;
+    }
+}
+
+void HubIntegration::markThreadUnread(const QString &threadId)
+{
+    if (threadId.isEmpty()) return;
+    if (!ensureState(threadId)) {
+        qDebug() << "[Hub] markThreadUnread: không có state cho thread" << threadId;
+        return;
+    }
+    if (m_threadItemState[threadId].unread < 1) m_threadItemState[threadId].unread = 1;
+    if (m_threadItemState[threadId].total  < 1) m_threadItemState[threadId].total  = 1;
+    m_unreadCounts[threadId] = m_threadItemState[threadId].unread;
+    saveState(threadId);
+    // Cập nhật TẠI CHỖ (giống Mark Read, chỉ đổi icon/unread/context_state).
+    // Hub tự phát âm báo khi item update làm total_count TĂNG (coi như có tin
+    // mới), bất kể notification_state=false: trước đây Mark Read đặt total=0
+    // nên Mark Unread (0 -> 1) kêu present.m4a. Giờ total_count giữ nguyên >=1
+    // (xem publishState) nên chỉ unread_count đổi 0 <-> 1, giống đánh dấu
+    // đọc/chưa đọc của mail. Gỡ+add lại từng thử: hết kêu nhưng item hiện như
+    // tin mới nên bỏ.
+    publishState(threadId, false /* notify: không phát âm */, true);
+}
+
+bool HubIntegration::ensureState(const QString &threadId)
+{
+    if (m_threadItemState.contains(threadId)) return true;
+    QSettings s("BerryLife", "Zalo10");
+    s.sync(); // lấy thay đổi do process kia (UI <-> service) vừa ghi
+    s.beginGroup("hubItems");
+    s.beginGroup(threadId);
+    if (!s.contains("title")) return false;
+    ThreadItemState st;
+    st.title       = s.value("title").toString();
+    st.preview     = s.value("preview").toString();
+    st.timestampMs = s.value("ts").toLongLong();
+    st.isGroup     = s.value("group", false).toBool();
+    st.unread      = s.value("unread", 0).toInt();
+    st.total       = s.value("total", qMax(st.unread, 1)).toInt();
+    m_threadItemState[threadId] = st;
+    if (!m_unreadCounts.contains(threadId)) m_unreadCounts[threadId] = st.unread;
+    return true;
+}
+
+void HubIntegration::saveState(const QString &threadId)
+{
+    if (!m_threadItemState.contains(threadId)) return;
     const ThreadItemState &st = m_threadItemState[threadId];
+    QSettings s("BerryLife", "Zalo10");
+    s.beginGroup("hubItems");
+    s.beginGroup(threadId);
+    s.setValue("title", st.title);
+    s.setValue("preview", st.preview);
+    s.setValue("ts", st.timestampMs);
+    s.setValue("group", st.isGroup);
+    s.setValue("unread", st.unread);
+    s.setValue("total", st.total);
+}
+
+void HubIntegration::forgetState(const QString &threadId)
+{
+    QSettings s("BerryLife", "Zalo10");
+    s.beginGroup("hubItems");
+    s.remove(threadId);
+    m_knownThreadIds.remove(threadId);
+    m_unreadCounts.remove(threadId);
+    m_threadItemState.remove(threadId);
+}
+
+bool HubIntegration::publishState(const QString &threadId, bool notify, bool allowAdd)
+{
+    if (!init()) return false;
+    if (!ensureState(threadId)) return false;
+    const ThreadItemState st = m_threadItemState[threadId];
 
     QByteArray threadIdUtf8 = threadId.toUtf8();
     QByteArray titleUtf8    = st.title.toUtf8();
@@ -465,60 +617,50 @@ void HubIntegration::markThreadRead(const QString &threadId)
     uds_inbox_item_data_t *item = uds_inbox_item_data_create();
     uds_inbox_item_data_set_account_id(item, ACCOUNT_ID);
     uds_inbox_item_data_set_source_id(item, const_cast<char*>(threadIdUtf8.constData()));
-    // QUAN TRỌNG: uds_item_updated() THAY THẾ TOÀN BỘ record, không patch
-    // từng field — phải gửi lại ĐẦY ĐỦ name/description/timestamp/mime_type/
-    // total_count y hệt lần upsertThreadItem() gần nhất, chỉ đổi đúng phần
-    // muốn thay đổi thật sự (icon: Read thay vì Unread; unread_count: 0;
-    // notification_state: false). Thiếu bất kỳ field nào ở đây = Hub hiện
-    // item với field đó bị reset rỗng/0 (đã tận mắt thấy: tên rỗng,
-    // timestamp về epoch "Thursday, January 1, 1970").
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
+    uds_inbox_item_data_set_icon(item, st.unread > 0 ? HUB_ICON_UNREAD_FILE : HUB_ICON_READ_FILE);
     uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
     uds_inbox_item_data_set_category_id(item, HUB_CATEGORY_ID);
     uds_inbox_item_data_set_timestamp(item, st.timestampMs);
-    uds_inbox_item_data_set_total_count(item, 0);
-    uds_inbox_item_data_set_icon(item, HUB_ICON_READ_FILE);
-    uds_inbox_item_data_set_unread_count(item, 0);
-    // Đổi Unread -> Read (xem giải thích đầy đủ ở khai báo HUB_CONTEXT_STATE_*
-    // đầu file) — nếu không đổi, item vẫn giữ context_state=Unread cũ từ lần
-    // upsertThreadItem() gần nhất dù unread_count đã về 0 (uds_item_updated()
-    // thay thế toàn bộ record, field nào không set lại sẽ mất, không phải
-    // "giữ nguyên giá trị cũ").
-    uds_inbox_item_data_set_context_state(item, HUB_CONTEXT_STATE_READ);
-    uds_inbox_item_data_set_notification_state(item, false); // chỉ đổi badge, không muốn trigger lại effects
+    uds_inbox_item_data_set_unread_count(item, st.unread);
+    // total_count không về 0 khi đọc: đổi unread 0<->1 mà total không tăng.
+    uds_inbox_item_data_set_total_count(item, qMax(st.total, qMax(st.unread, 1)));
+    uds_inbox_item_data_set_context_state(item, contextStateFor(st.unread > 0));
+    uds_inbox_item_data_set_notification_state(item, notify);
 
     int rc = uds_item_updated(m_udsHandle, item);
+    if (rc != UDS_SUCCESS && allowAdd) rc = uds_item_added(m_udsHandle, item);
     uds_inbox_item_data_destroy(item);
 
-    if (rc != UDS_SUCCESS) {
-        // Không fallback sang add() ở đây: nếu update fail nghĩa là item
-        // chưa từng tồn tại phía Hub (user "đọc" 1 thread chưa từng có
-        // notification nào gửi lên Hub) — không có gì để mark-read cả,
-        // đây không phải lỗi thật sự cần log ồn.
-        qDebug() << "[Hub] markThreadRead: item chưa tồn tại hoặc update lỗi cho thread"
-                  << threadId << "rc=" << rc;
-    }
+    if (rc == UDS_SUCCESS) m_knownThreadIds.insert(threadId);
+    return rc == UDS_SUCCESS;
 }
 
 void HubIntegration::removeThreadItem(const QString &threadId)
 {
-    if (threadId.isEmpty() || !m_ready) return;
+    if (threadId.isEmpty()) return;
 
-    QByteArray threadIdUtf8 = threadId.toUtf8();
-    int rc = uds_item_removed(m_udsHandle, ACCOUNT_ID, const_cast<char*>(threadIdUtf8.constData()));
-    if (rc != UDS_SUCCESS) {
-        qDebug() << "[Hub] removeThreadItem failed for thread" << threadId << "rc=" << rc;
-        return;
+    if (m_ready) {
+        QByteArray threadIdUtf8 = threadId.toUtf8();
+        int rc = uds_item_removed(m_udsHandle, ACCOUNT_ID, const_cast<char*>(threadIdUtf8.constData()));
+        if (rc != UDS_SUCCESS) {
+            // Item có thể đã mất phía Hub (account bị tạo lại lúc khởi động) —
+            // vẫn phải xoá state bền để không bị dựng lại ngoài ý muốn.
+            qDebug() << "[Hub] removeThreadItem: uds_item_removed rc=" << rc << "thread" << threadId;
+        }
     }
-    m_knownThreadIds.remove(threadId);
-    m_unreadCounts.remove(threadId);
-    m_threadItemState.remove(threadId);
+    forgetState(threadId);
 }
 
 bool HubIntegration::isGroupThread(const QString &threadId) const
 {
     QMap<QString, ThreadItemState>::const_iterator it = m_threadItemState.find(threadId);
-    if (it == m_threadItemState.end()) return false; // chưa từng có state -> mặc định DM
+    if (it == m_threadItemState.end()) {
+        // Process này chưa thấy thread (vd UI vừa được Hub mở sau khi service
+        // tạo item) -> đọc state bền.
+        QSettings s("BerryLife", "Zalo10");
+        return s.value(QString("hubItems/%1/group").arg(threadId), false).toBool();
+    }
     return it.value().isGroup;
 }

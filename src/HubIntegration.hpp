@@ -31,7 +31,7 @@
  * HubIntegration làm đúng việc đó cho Zalo10:
  *   - uds_init() + uds_register_client(): mở kết nối tới Hub, đăng ký app.
  *   - uds_account_added(): tạo 1 tab "Zalo10" riêng trong Hub, icon lấy từ
- *     PreviewNoti.png (assets/public/PreviewNoti.png).
+ *     ic_hub.png (assets/public/ic_hub.png).
  *   - uds_item_added()/uds_item_updated(): mỗi thread (DM hoặc group) là 1
  *     inbox item, source_id = threadId, gộp tin nhắn mới vào cùng 1 dòng
  *     (update timestamp/preview/unread_count) thay vì tạo dòng mới mỗi tin
@@ -39,7 +39,7 @@
  *
  * Một khi account đã tồn tại, gọi lại bb::platform::Notification::notify()
  * (vẫn ở sendHubNotification/ZaloService_Messages.cpp, không đổi) kèm
- * setIconUrl(PreviewNoti.png) sẽ tự động có instant preview trên lock
+ * setIconUrl(ic_hub.png) sẽ tự động có instant preview trên lock
  * screen — đó là hành vi mặc định của Hub khi app có account, không phải
  * API riêng phải gọi thêm.
  *
@@ -93,6 +93,21 @@ public:
     // thành công trong phiên hiện tại.
     bool isGroupThread(const QString &threadId) const;
 
+    // ===== Hub item actions (long-press menu + "select more") =====
+    // Tên action Hub gửi tới <invoke-target> khi user chọn Mark read / Mark
+    // unread / Delete trên 1 item (long-press hoặc select
+    // more). Phải khớp <action> trong bar-descriptor.xml và các
+    // uds_register_item_context_action() trong init().
+    static const char *ACTION_OPEN;
+    static const char *ACTION_MARK_READ;
+    static const char *ACTION_MARK_UNREAD;
+    static const char *ACTION_DELETE;
+
+    // Đánh dấu chưa đọc: unread_count=1, icon Unread, KHÔNG phát âm/banner.
+    void markThreadUnread(const QString &threadId);
+    // true nếu action thuộc nhóm hành động item của Hub (không phải Open).
+    static bool isItemAction(const QString &action);
+
     // Đường dẫn tuyệt đối tới thư mục asset PUBLIC đã cài đặt của app trên
     // máy ("/apps/<progname>/public/assets/images/"), dùng làm pAssetPath
     // cho uds_register_client() bên trong class này, và cũng cần dùng lại
@@ -102,7 +117,7 @@ public:
     // __progname thay vì QDir::currentPath() (khuyến nghị chính thức từ
     // kinh nghiệm thực chiến UDS trên BB10, xem comment trong .cpp).
     static QString publicAssetPath();
-    // Tiện ích: full file:// URI của PreviewNoti.png trong thư mục trên,
+    // Tiện ích: full file:// URI của ic_hub.png trong thư mục trên,
     // đúng định dạng bb::platform::Notification::setIconUrl() yêu cầu
     // ("file URI to a public asset", không phải "asset:///").
     static QUrl hubIconUrl();
@@ -123,12 +138,27 @@ private:
         QString preview;
         qint64  timestampMs;
         bool    isGroup; // lưu lại cho isGroupThread() — xem khai báo trên
+        int     unread;  // unread_count hiện tại, lưu bền để service/UI dùng chung
+        int     total;   // total_count (>=1 khi item còn tồn tại), KHÔNG giảm về 0 khi Mark Read
+        ThreadItemState() : timestampMs(0), isGroup(false), unread(0), total(0) {}
     };
     // threadId -> state đầy đủ gần nhất đã gửi cho item đó, để
     // markThreadRead() (và bất kỳ update một-phần nào khác sau này) có thể
     // tái tạo lại toàn bộ record thay vì vô tình xoá mất name/description/
     // timestamp cũ.
     QMap<QString, ThreadItemState> m_threadItemState;
+
+    // State item được lưu bền trong QSettings("BerryLife","Zalo10") nhóm
+    // "hubItems" vì UI và headless service là 2 process riêng, mỗi bên có
+    // HubIntegration riêng; action từ Hub có thể tới process không phải
+    // process đã tạo item. Trả về false nếu chưa từng có state cho thread.
+    bool ensureState(const QString &threadId);
+    void saveState(const QString &threadId);
+    void forgetState(const QString &threadId);
+    // Dựng lại TOÀN BỘ record item từ state rồi gửi uds_item_updated()
+    // (hoặc added nếu allowAdd và update thất bại).
+    bool publishState(const QString &threadId, bool notify, bool allowAdd);
+    static unsigned int contextStateFor(bool unread);
 
     void *m_udsHandle;      // uds_context_t thật, xem HubIntegration.cpp
     bool  m_ready;          // true nếu init() + account_added() thành công

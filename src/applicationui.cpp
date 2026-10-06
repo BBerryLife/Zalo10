@@ -641,6 +641,13 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
         return;
     }
 
+    // Mark read / Mark unread / Delete từ menu long-press hoặc
+    // "select more" của Hub: xử lý tại chỗ, KHÔNG mở thread. Trước đây mọi
+    // action đều rơi xuống openThreadRequested nên các lệnh này không có tác dụng.
+    if (m_zService && m_zService->handleHubAction(request.action(), threadId)) {
+        return;
+    }
+
     emit openThreadRequested(threadId, isGroup);
 }
 
