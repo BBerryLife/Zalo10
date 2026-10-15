@@ -8,6 +8,7 @@
 #include <bb/system/InvokeManager>
 
 #include <QSettings>
+#include <QTimer>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QUrl>
@@ -38,6 +39,9 @@
 // Sending and receiving chat content: text messages, photos, files,
 // recall handling, and the foreground polling fallback used when the
 // WebSocket connection isn't available.
+
+// Nghỉ giữa 2 nhóm khi đồng bộ lịch sử nhóm (ZaloService_Sync.cpp)
+static const int GROUP_SYNC_NEXT_DELAY_MS = 250;
 
 void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
 {
@@ -82,13 +86,29 @@ void ZaloService::onFetchMsgDone()
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
     QString tid    = reply->property("threadId").toString();
+    // Request do đồng bộ lịch sử nhóm lúc khởi động (ZaloService_Sync.cpp) tạo ra:
+    // lưu SQLite nhưng không đụng vào cursor poll DM / m_seenMsgIds, không tải sticker,
+    // chỉ báo UI nếu đó là thread đang mở, rồi nối tiếp nhóm kế trong hàng đợi.
+    bool syncGroup = reply->property("syncGroup").toBool();
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
     qDebug() << "[Zalo] fetchMessages raw (first200):" << raw.left(200);
+    if (syncGroup && (raw.contains("429 Too Many Requests") || raw.contains("<html"))) {
+        // Thường là 404 từ nginx: server không còn phục vụ /api/group/history. Dừng cả
+        // lượt, đừng gửi tiếp 1 request lỗi cho mỗi nhóm.
+        qDebug() << "[Zalo Sync] group history unavailable (HTML/404/429 response), stopping group sync";
+        m_sync.groupQueue.clear();
+        QTimer::singleShot(0, this, SLOT(onSyncGroupNext()));
+        return;
+    }
     QVariantMap root = jsonToMap(raw);
     if (root["error_code"].toInt() != 0) {
         qDebug() << "[Zalo Error] fetchMessages error:" << root["error_message"].toString();
+        if (syncGroup) {
+            QTimer::singleShot(GROUP_SYNC_NEXT_DELAY_MS, this, SLOT(onSyncGroupNext()));
+            return;
+        }
         emit messagesReady(tid, QVariantList());
         return;
     }
@@ -205,7 +225,7 @@ void ZaloService::onFetchMsgDone()
             rawContent = QString("{\"stickerId\":%1}").arg(stickerId);
             // Eager download — same reasoning as the two branches in
             // ZaloService_WebSocket.cpp (search "Eager download" there).
-            if (stickerId > 0) downloadSticker(QString::number(stickerId));
+            if (stickerId > 0 && !syncGroup) downloadSticker(QString::number(stickerId));
         } else if (mt == 6) {
             // Link-share bubble — xem giải thích đầy đủ ở ZaloService_WebSocket.cpp
             // (nhánh mt==6 real-time / mtH==6 history).
@@ -270,23 +290,36 @@ void ZaloService::onFetchMsgDone()
             if (num > maxMsgNum) { maxMsgNum = num; newestMsgId = msgId; }
         }
     }
-    if (!newestMsgId.isEmpty())
+    if (!newestMsgId.isEmpty() && !syncGroup)
         m_lastPollMsgId = newestMsgId;
 
-    m_seenMsgIds.clear();
-    for (int i = 0; i < msgs.size(); ++i) {
-        QVariantMap mm = msgs[i].toMap();
-        if (mm["isMine"].toBool()) {
-            QString mid = mm["msgId"].toString();
-            if (!mid.isEmpty()) m_seenMsgIds.insert(mid);
+    if (!syncGroup) {
+        m_seenMsgIds.clear();
+        for (int i = 0; i < msgs.size(); ++i) {
+            QVariantMap mm = msgs[i].toMap();
+            if (mm["isMine"].toBool()) {
+                QString mid = mm["msgId"].toString();
+                if (!mid.isEmpty()) m_seenMsgIds.insert(mid);
+            }
         }
     }
 
     qDebug() << "[Zalo] fetchMessages found" << msgs.size() << "msgs, lastPollMsgId=" << m_lastPollMsgId;
 
     // Lưu vào SQLite persistent
+    bool syncTx = (syncGroup && m_db && sqlite3_exec(m_db, "BEGIN", 0, 0, 0) == SQLITE_OK);
     for (int i = 0; i < msgs.size(); ++i)
         dbSaveMessage(msgs[i].toMap(), tid);
+    if (syncTx) sqlite3_exec(m_db, "COMMIT", 0, 0, 0);
+
+    if (syncGroup) {
+        m_sync.groupMsgs += msgs.size();
+        qDebug() << "[Zalo Sync] group" << tid << "msgs=" << msgs.size();
+        if (tid == m_activeThreadId)
+            emit messagesReady(tid, msgs);
+        QTimer::singleShot(GROUP_SYNC_NEXT_DELAY_MS, this, SLOT(onSyncGroupNext()));
+        return;
+    }
 
     emit messagesReady(tid, msgs);
 }
@@ -431,7 +464,7 @@ void ZaloService::onFetchPhotoDetailDone()
     QVariantMap outer = jsonToMap(raw);
     if (outer["error_code"].toInt() != 0) {
         qDebug() << "[Zalo] fetchPhotoViaHttp[" << idx << "] API error msgId=" << msgId
-                 << outer["error_message"].toString() << "→ trying next endpoint";
+                 << outer["error_message"].toString() << "-> trying next endpoint";
         fetchPhotoViaHttpAtIndex(msgId, threadId, idx + 1);
         return;
     }
@@ -474,7 +507,7 @@ void ZaloService::onFetchPhotoDetailDone()
         downloadImageMessage(msgId, photoUrl, threadId);
     } else {
         qDebug() << "[Zalo] fetchPhotoViaHttp[" << idx << "] no HTTP URL yet msgId=" << msgId
-                 << "resp=" << dataJson.left(150) << "→ trying next endpoint";
+                 << "resp=" << dataJson.left(150) << "-> trying next endpoint";
         fetchPhotoViaHttpAtIndex(msgId, threadId, idx + 1);
     }
 }
@@ -1836,7 +1869,7 @@ void ZaloService::onSendVideoMsgDone()
         // "local_video_.../local_file_..." placeholder gets cleaned up (see
         // onMessageSent in ChatView.qml) and the person can see it failed
         // and retry, rather than being falsely told it went through.
-        qDebug() << "[Zalo]" << (isFile ? "sendFile" : "sendVideo") << ": no real msgId in send-msg response — "
+        qDebug() << "[Zalo]" << (isFile ? "sendFile" : "sendVideo") << ": no real msgId in send-msg response - "
                     "server likely did not create the message (see decrypted "
                     "data above); reporting failure instead of a false success";
         emit messageSent(false, tid);
@@ -2107,7 +2140,7 @@ void ZaloService::downloadImageMessage(const QString &msgId, const QString &url,
                         }
                         qimg.save(tmpPath, "PNG");
                         qDebug() << "[Zalo] decoded Zalo thumb" << W << "x" << H
-                                 << "→ PNG msgId=" << msgId << tmpPath;
+                                 << "-> PNG msgId=" << msgId << tmpPath;
                     } else {
                         // Decode thất bại hoàn toàn — ghi tạm PNG xanh
                         // 240×240 để bubble hiện gì đó trong lúc chờ fetch

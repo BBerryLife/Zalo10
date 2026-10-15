@@ -92,6 +92,16 @@ void ZaloService::markMessageDeletedForMe(const QString &threadId, const QString
     emit messageDeletedLocally(threadId, msgId);
 }
 
+void ZaloService::hideLocalMessage(const QString &threadId, const QString &msgId)
+{
+    markMessageDeletedForMe(threadId, msgId);   // DELETE row (nếu có) + tombstone + messageDeletedLocally
+}
+
+bool ZaloService::isLocallyHidden(const QString &msgId) const
+{
+    return isMessageDeletedForMe(msgId);
+}
+
 bool ZaloService::isMessageDeletedForMe(const QString &msgId) const
 {
     if (!m_db || msgId.isEmpty()) return false;
@@ -233,19 +243,41 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     sqlite3_finalize(stmt);
 }
 
+// Bản cũ lấy 200 tin ĐẦU TIÊN (ORDER BY ts ASC LIMIT 200) — sai khi thread có
+// nhiều hơn 200 tin (đặc biệt sau khi đồng bộ lịch sử), vì sẽ hiện tin cũ nhất.
+// Giờ lấy 200 tin MỚI NHẤT, xếp tăng dần. ChatView dùng dbLoadMessagesPage().
 QVariantList ZaloService::dbLoadMessages(const QString &threadId)
+{
+    return dbLoadMessagesPage(threadId, QString(), 200);
+}
+
+// Trả tối đa `limit` tin có ts <= beforeTs (beforeTs rỗng/"0" = không giới hạn
+// trên, tức trang mới nhất), xếp tăng dần theo ts. Dùng "<=" thay vì "<" để
+// không bỏ sót tin trùng ts ở ranh giới trang; phía QML dedup theo msgId.
+QVariantList ZaloService::dbLoadMessagesPage(const QString &threadId, const QString &beforeTs, int limit)
 {
     QVariantList result;
     if (!m_db || threadId.isEmpty()) return result;
+    if (limit < 1) limit = 1;
+    qint64 before = beforeTs.toLongLong();
+    // Chuẩn hóa ts giây -> ms như phía QML (ts < 1e12 là giây)
+    if (before > 0 && before < 1000000000000LL) before *= 1000;
 
-    const char *sql =
+    const char *sqlPaged =
+        "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,recalledOriginalContent,cliMsgId,"
+        "quoteMsgId,quoteContent,quoteSenderName,quoteMsgType,quoteOwnerId FROM ("
         "SELECT msgId,content,senderId,dName,ts,isMine,isGroup,msgType,localImage,imgWidth,imgHeight,recalledOriginalContent,cliMsgId,"
         "quoteMsgId,quoteContent,quoteSenderName,quoteMsgType,quoteOwnerId "
-        "FROM messages WHERE threadId=? "
-        "ORDER BY CAST(ts AS INTEGER) ASC LIMIT 200;";
+        "FROM messages WHERE threadId=? AND (?=0 OR (CASE WHEN CAST(ts AS INTEGER) < 1000000000000 "
+        "THEN CAST(ts AS INTEGER) * 1000 ELSE CAST(ts AS INTEGER) END) <= ?) "
+        "ORDER BY CAST(ts AS INTEGER) DESC, msgId DESC LIMIT ?"
+        ") ORDER BY CAST(ts AS INTEGER) ASC, msgId ASC;";
     sqlite3_stmt *stmt = 0;
-    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return result;
+    if (sqlite3_prepare_v2(m_db, sqlPaged, -1, &stmt, 0) != SQLITE_OK) return result;
     sqlite3_bind_text(stmt, 1, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, before);
+    sqlite3_bind_int64(stmt, 3, before);
+    sqlite3_bind_int(stmt, 4, limit);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         QVariantMap m;
         m["msgId"]      = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
@@ -342,7 +374,7 @@ bool ZaloService::dbAdvanceMessageStates(const QString &threadId, int state,
         }
     }
     if (!found) {
-        qDebug() << "[Zalo] dbAdvanceMessageStates: msgId" << msgId << "không phải tin đi của mình / không có trong DB, bỏ qua";
+        qDebug() << "[Zalo] dbAdvanceMessageStates: msgId" << msgId << "is not one of my outgoing messages / not in DB, skipping";
         return false;
     }
 

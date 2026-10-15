@@ -699,6 +699,7 @@ void ZaloService::onStep8Done()
     m_fileServiceUrl.clear();
     m_quickMessageServiceUrl.clear();
     m_reactionServiceUrl.clear();
+    m_conversationServiceUrl.clear();
 
     QScriptValue svcMap = info.property("zpw_service_map_v3");
     if (svcMap.isObject()) {
@@ -711,6 +712,7 @@ void ZaloService::onStep8Done()
         QScriptValue fileArr   = svcMap.property("file");
         QScriptValue qmArr     = svcMap.property("quick_message");
         QScriptValue reactArr  = svcMap.property("reaction");
+        QScriptValue convArr   = svcMap.property("conversation");
 
         if (chatArr.isArray())   m_chatServiceUrl      = chatArr.property(0).toString();
         if (groupArr.isArray())  m_groupServiceUrl     = groupArr.property(0).toString();
@@ -721,6 +723,7 @@ void ZaloService::onStep8Done()
         if (fileArr.isArray())   m_fileServiceUrl      = fileArr.property(0).toString();
         if (qmArr.isArray())     m_quickMessageServiceUrl = qmArr.property(0).toString();
         if (reactArr.isArray())  m_reactionServiceUrl  = reactArr.property(0).toString();
+        if (convArr.isArray())   m_conversationServiceUrl = convArr.property(0).toString();
     }
 
     // Extract WebSocket URLs

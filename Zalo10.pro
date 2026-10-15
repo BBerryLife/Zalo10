@@ -24,6 +24,7 @@ LIBS += -lunifieddatasourcec
 LIBS += -lbbcascadespickers
 LIBS += -lQtNetwork -lQtScript -lQtGui
 LIBS += -lssl -lcrypto
+LIBS += -lsocket   # PhoneSyncCore::httpsGet dùng socket POSIX trực tiếp
 LIBS += -lsqlite3
 
 # libwebpdecoder (vendored, decode-only build cho QNX armv7le/gcc4.6.3 —
@@ -34,11 +35,15 @@ LIBS += -L$$PWD/src/third_party/webp/lib -lwebpdecoder
 INCLUDEPATH += $$PWD/src/third_party/webp/include
 
 INCLUDEPATH += src
+
+# src/third_party/xz: XZ Embedded (vendored, 0BSD) — giải nén file đồng bộ tin nhắn từ điện thoại.
+# Biên dịch được ở chế độ C mặc định của qcc; KHÔNG thêm -std=gnu99 (qcc báo "unknown option").
 INCLUDEPATH += $$(QNX_TARGET)/usr/include/qt4/QtGui
 
 HEADERS += \
     src/ZaloCookieJar.hpp \
     src/ServiceHandoff.hpp \
+    src/PhoneSyncCore.hpp \
     src/applicationui.hpp \
     src/ZaloService.hpp \
     src/ZaloServiceUtils.hpp \
@@ -57,6 +62,13 @@ SOURCES += \
     src/ZaloService_Crypto.cpp \
     src/ZaloService_Network.cpp \
     src/ZaloService_Db.cpp \
+    src/ZaloService_Sync.cpp \
+    src/ZaloService_PhoneSync.cpp \
+    src/PhoneSyncCore.cpp \
+    src/third_party/xz/xz_crc32.c \
+    src/third_party/xz/xz_crc64.c \
+    src/third_party/xz/xz_dec_stream.c \
+    src/third_party/xz/xz_dec_lzma2.c \
     src/ActiveFrameCover.cpp \
     src/HubIntegration.cpp
 

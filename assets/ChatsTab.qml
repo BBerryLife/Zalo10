@@ -380,73 +380,19 @@ NavigationPane {
                 target: zService
 
                 onFriendsReady: {
-                    chatsLoading.visible = false;
-                    friendModel.clear();
-                    // Server's friends list has no last-message field, so pull it from
-                    // local history and merge in before building the model
-                    var lastMsgs = zService.getThreadLastMessages();
-                    // Persisted unread threads (yellow pellet survives app restarts)
-                    var unreadIds = zService.unreadThreadIds();
-                    var unreadMap = {};
-                    for (var u = 0; u < unreadIds.length; u++) unreadMap[unreadIds[u]] = true;
-                    // Build a fresh array instead of mutating `friends` in place —
-                    // it's a QVariantList from a C++ signal and writes back to it
-                    // silently no-op on this runtime
-                    var outArr = [];
-                    for (var i = 0; i < friends.length; i++) {
-                        var f = friends[i];
-                        var out = {};
-                        for (var key in f) out[key] = f[key];
-                        out.localAvatar    = "";
-                        out.hasUnread      = false;
-                        out.lastMsgIsMine  = false;
-                        out.lastSenderName = "";
-                        out.lastMessage    = f.lastMessage || f.lastMsg || "";
-                        out.sortTs         = 0;
-                        var tid = out.threadId || out.uid || "";
-                        var lm = lastMsgs[tid];
-                        if (lm) {
-                            var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
-                            var mt = lm.msgType;
-                            var snippet;
-                            if (mt === 99 || mt === "99") {
-                                snippet = isMine ? "You recalled a message" : "This message was recalled";
-                            } else if (mt === 2 || mt === "2") {
-                                snippet = "[Photo]";
-                            } else {
-                                snippet = chatsNav.msgSnippet(mt, lm.content);
-                            }
-                            out.lastMessage    = snippet;
-                            out.lastMsgIsMine  = isMine;
-                            out.lastSenderName = lm.dName || "";
-                            out.lastTime       = lm.ts || "";
-                        }
-                        // Yellow only for a thread that has a message and was never opened since
-                        out.hasUnread = (unreadMap[tid] === true) && (out.lastMessage.length > 0)
-                                        && !out.lastMsgIsMine;
-                        if (out.lastTime && out.lastTime !== "") {
-                            var ts = parseInt(out.lastTime);
-                            if (!isNaN(ts)) {
-                                // Keep the raw timestamp for sorting since lastTime gets
-                                // overwritten with a formatted string below
-                                out.sortTs = ts;
-                                out.lastTime = chatsNav.formatTime(ts);
-                            }
-                        }
-                        outArr.push(out);
-                    }
-                    // Server returns threads in a fixed order, not by recency — re-sort
-                    // so the most recently active conversation stays on top
-                    outArr.sort(function(a, b) { return (b.sortTs || 0) - (a.sortTs || 0); });
-                    for (var j = 0; j < outArr.length; j++) {
-                        var ff = outArr[j];
-                        friendModel.append(ff);
-                        var furl = ff.avatar || "";
-                        var ftid = ff.threadId || ff.uid || "";
-                        if (furl.length > 0 && ftid.length > 0)
-                            zService.downloadAvatar(ftid, furl);
-                    }
-                    chatsEmpty.visible = (outArr.length === 0);
+                    chatsNav.lastFriends = friends;
+                    chatsNav.buildFriends(friends, false);
+                }
+
+                // Sau khi đồng bộ lịch sử từ cloud xong, hoặc khi danh sách hội thoại
+                // ghim về: dựng lại preview + thứ tự từ SQLite (giữ avatar đã tải)
+                onHistorySynced: {
+                    if (chatsNav.lastFriends && chatsNav.lastFriends.length > 0)
+                        chatsNav.buildFriends(chatsNav.lastFriends, true);
+                }
+                onPinnedChanged: {
+                    if (chatsNav.lastFriends && chatsNav.lastFriends.length > 0)
+                        chatsNav.buildFriends(chatsNav.lastFriends, true);
                 }
 
                 onAvatarReady: {
@@ -500,7 +446,8 @@ NavigationPane {
                             // Update the displayed time as new messages come in
                             if (message.ts) d.lastTime = chatsNav.formatTime(message.ts);
                             friendModel.removeAt(i);
-                            friendModel.insert(0, d);
+                            // pinned stay on top (newest activity first among them); the rest go right below
+                            friendModel.insert(d.isPinned ? 0 : chatsNav.firstUnpinnedIndex(), d);
                             return;
                         }
                     }
@@ -563,6 +510,112 @@ NavigationPane {
 
     property string selfName: ""
     signal onUnreadMessage()
+
+    property variant lastFriends: []
+
+    // Dựng danh sách chat từ friends + lịch sử local (preview, thứ tự, ghim).
+    // Dùng chung cho onFriendsReady và các lần làm mới sau khi đồng bộ từ cloud.
+    function buildFriends(friends, restoreAvatars) {
+        chatsLoading.visible = false;
+        // Rebuild (after sync/pin refresh) keeps already-downloaded avatars instead of
+        // re-downloading every one: snapshot threadId -> localAvatar before clearing.
+        var avatarByTid = {};
+        if (restoreAvatars) {
+            for (var a = 0; a < friendModel.size(); a++) {
+                var ad = friendModel.value(a);
+                var atid = ad.threadId || ad.uid || "";
+                if (atid.length > 0 && ad.localAvatar) avatarByTid[atid] = ad.localAvatar;
+            }
+        }
+        // Pinned conversations (server-side pin list) float to the top, same row UI
+        var pinnedIds = zService.pinnedThreadIds();
+        var pinMap = {};
+        for (var pn = 0; pn < pinnedIds.length; pn++) pinMap[pinnedIds[pn]] = true;
+        friendModel.clear();
+        // Server's friends list has no last-message field, so pull it from
+        // local history and merge in before building the model
+        var lastMsgs = zService.getThreadLastMessages();
+        // Persisted unread threads (yellow pellet survives app restarts)
+        var unreadIds = zService.unreadThreadIds();
+        var unreadMap = {};
+        for (var u = 0; u < unreadIds.length; u++) unreadMap[unreadIds[u]] = true;
+        // Build a fresh array instead of mutating `friends` in place —
+        // it's a QVariantList from a C++ signal and writes back to it
+        // silently no-op on this runtime
+        var outArr = [];
+        for (var i = 0; i < friends.length; i++) {
+            var f = friends[i];
+            var out = {};
+            for (var key in f) out[key] = f[key];
+            out.localAvatar    = "";
+            out.isPinned       = false;
+            out.hasUnread      = false;
+            out.lastMsgIsMine  = false;
+            out.lastSenderName = "";
+            out.lastMessage    = f.lastMessage || f.lastMsg || "";
+            out.sortTs         = 0;
+            var tid = out.threadId || out.uid || "";
+            out.isPinned = (pinMap[tid] === true);
+            if (restoreAvatars && avatarByTid[tid]) out.localAvatar = avatarByTid[tid];
+            var lm = lastMsgs[tid];
+            if (lm) {
+                var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
+                var mt = lm.msgType;
+                var snippet;
+                if (mt === 99 || mt === "99") {
+                    snippet = isMine ? "You recalled a message" : "This message was recalled";
+                } else if (mt === 2 || mt === "2") {
+                    snippet = "[Photo]";
+                } else {
+                    snippet = chatsNav.msgSnippet(mt, lm.content);
+                }
+                out.lastMessage    = snippet;
+                out.lastMsgIsMine  = isMine;
+                out.lastSenderName = lm.dName || "";
+                out.lastTime       = lm.ts || "";
+            }
+            // Yellow only for a thread that has a message and was never opened since
+            out.hasUnread = (unreadMap[tid] === true) && (out.lastMessage.length > 0)
+                            && !out.lastMsgIsMine;
+            if (out.lastTime && out.lastTime !== "") {
+                var ts = parseInt(out.lastTime);
+                if (!isNaN(ts)) {
+                    // Keep the raw timestamp for sorting since lastTime gets
+                    // overwritten with a formatted string below
+                    out.sortTs = ts;
+                    out.lastTime = chatsNav.formatTime(ts);
+                }
+            }
+            outArr.push(out);
+        }
+        // Server returns threads in a fixed order, not by recency — re-sort
+        // so the most recently active conversation stays on top
+        outArr.sort(function(a, b) {
+            var pa = a.isPinned ? 1 : 0, pb = b.isPinned ? 1 : 0;
+            if (pa !== pb) return pb - pa;
+            return (b.sortTs || 0) - (a.sortTs || 0);
+        });
+        for (var j = 0; j < outArr.length; j++) {
+            var ff = outArr[j];
+            friendModel.append(ff);
+            var furl = ff.avatar || "";
+            var ftid = ff.threadId || ff.uid || "";
+            if (furl.length > 0 && ftid.length > 0 && !(restoreAvatars && ff.localAvatar))
+                zService.downloadAvatar(ftid, furl);
+        }
+        chatsEmpty.visible = (outArr.length === 0);
+
+    }
+
+    // Index of the first non-pinned row. Pinned rows are always kept at the top of the list,
+    // so a conversation that just received a message goes right below them, not above.
+    function firstUnpinnedIndex() {
+        var n = 0;
+        for (var k = 0; k < friendModel.size(); k++) {
+            if (friendModel.value(k).isPinned) n++; else break;
+        }
+        return n;
+    }
 
     function filterList() {
         var q = chatsNav.searchText.toLowerCase().trim();

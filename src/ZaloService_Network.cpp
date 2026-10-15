@@ -144,6 +144,7 @@ void ZaloService::saveSession()
     s.setValue("friendUrl",  m_friendServiceUrl);
     s.setValue("fileUrl",    m_fileServiceUrl);
     s.setValue("quickMsgUrl", m_quickMessageServiceUrl);
+    s.setValue("conversationUrl", m_conversationServiceUrl);
     s.setValue("zpwWsUrls",  m_zpwWsUrls);
     s.setValue("mutedThreads", QStringList(m_mutedThreads.toList()));
 
@@ -194,6 +195,7 @@ bool ZaloService::loadSession()
     m_friendServiceUrl    = s.value("friendUrl").toString();
     m_fileServiceUrl      = s.value("fileUrl").toString();
     m_quickMessageServiceUrl = s.value("quickMsgUrl").toString();
+    m_conversationServiceUrl = s.value("conversationUrl").toString();
     m_zpwWsUrls           = s.value("zpwWsUrls").toStringList();
     m_mutedThreads        = QSet<QString>::fromList(s.value("mutedThreads").toStringList());
 
@@ -366,6 +368,7 @@ void ZaloService::onRefreshSessionKeyDone()
                     QScriptValue f = svcMap.property("friend");
                     QScriptValue qm= svcMap.property("quick_message");
                     QScriptValue rc= svcMap.property("reaction");
+                    QScriptValue cv= svcMap.property("conversation");
                     if (c.isArray())  m_chatServiceUrl      = c.property(0).toString();
                     if (g.isArray())  m_groupServiceUrl     = g.property(0).toString();
                     if (p.isArray())  m_profileServiceUrl   = p.property(0).toString();
@@ -374,6 +377,7 @@ void ZaloService::onRefreshSessionKeyDone()
                     if (f.isArray())  m_friendServiceUrl    = f.property(0).toString();
                     if (qm.isArray()) m_quickMessageServiceUrl = qm.property(0).toString();
                     if (rc.isArray()) m_reactionServiceUrl  = rc.property(0).toString();
+                    if (cv.isArray()) m_conversationServiceUrl = cv.property(0).toString();
                 }
 
                 // Update WS URLs
@@ -397,7 +401,7 @@ void ZaloService::onRefreshSessionKeyDone()
     }
 
     if (!refreshOk) {
-        qDebug() << "[Zalo] refreshSessionKey: secretKey expired - tự động renew qua step7/step8";
+        qDebug() << "[Zalo] refreshSessionKey: secretKey expired - renewing automatically via step7/step8";
         m_secretKey.clear();
         disconnectWebSocket();
         m_isAutoRenew = true;  // đánh dấu: step7/step8 này là auto-renew, KHÔNG hiện QR nếu thất bại
@@ -469,7 +473,8 @@ bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
             { "group_board",   &m_groupBoardServiceUrl },
             { "friend",        &m_friendServiceUrl },
             { "quick_message", &m_quickMessageServiceUrl },
-            { "reaction",      &m_reactionServiceUrl }
+            { "reaction",      &m_reactionServiceUrl },
+            { "conversation",  &m_conversationServiceUrl }
         };
         for (unsigned i = 0; i < sizeof(picks) / sizeof(picks[0]); ++i) {
             QVariant a = svc.value(picks[i].key);

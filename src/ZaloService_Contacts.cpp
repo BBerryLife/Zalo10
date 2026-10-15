@@ -276,6 +276,10 @@ void ZaloService::onGroupDetailsDone()
     if (!threads.isEmpty())
         emit conversationsReady(threads);
     m_isFetchingConversations = false;
+    // Có danh sách nhóm rồi -> đồng bộ lịch sử nhóm (bỏ qua nếu pha DM đang chạy:
+    // finishDmSync() sẽ gọi lại; hoặc nếu đã chạy trong lần khởi động này).
+    if (!threads.isEmpty())
+        startGroupSync();
 }
 
 // Sticker (msgType=5): tải ảnh từ CDN public zalo-api.zadn.vn/api/emoticon/

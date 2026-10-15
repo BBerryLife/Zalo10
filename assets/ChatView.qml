@@ -68,6 +68,17 @@ Page {
     // delegate highlights the matching row yellow, jumpHighlightTimer clears it after a few seconds
     property string jumpHighlightMsgId: ""
 
+    // ── Windowed history ────────────────────────────────────────────────
+    // Only a bounded slice of the thread lives in msgModel: one ListView holding a
+    // whole long history is what made the page lag / crash on BB10. The newest
+    // historyPageSize rows load on open; scrolling to the top pulls another page
+    // from SQLite (see requestOlderMessages) until historyMaxRows is reached.
+    property int  historyPageSize: 30
+    property int  historyMaxRows:  240
+    property bool loadingOlder:  false   // drives the "Loading older messages" strip
+    property bool hasMoreOlder:  true    // false once SQLite has nothing older / cap reached
+    property bool olderArmed:    false   // set a moment after open so the initial scroll-to-end can't trigger a load
+
     // Device clock can drift hours from the server clock. Outgoing messages start as
     // "local_" placeholders timestamped by the device, then get swapped for the server-
     // timestamped row once confirmed — mixing the two in rebuildGroups()'s 5-minute
@@ -550,7 +561,8 @@ Page {
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
             if (it.boardType !== "poll") continue;
-            if (it.closed === true || rem[String(it.id)]) {
+            if (it.closed === true || rem[String(it.id)] || zService.isLocallyHidden("poll_" + it.id)) {
+                // closed / removed on the board / hidden by "Delete for me only"
                 if (chatViewPage.removePollRow(it.id)) structural = true;
             } else {
                 if (chatViewPage.upsertPollRow(it)) structural = true;
@@ -563,6 +575,7 @@ Page {
     // at the bottom of msgModel with fresh option data, so a voted poll jumps to
     // the bottom like a new message. detail is only needed to seed a brand-new row.
     function bumpPollToBottom(pollId, updatedOptions, detail) {
+        if (zService.isLocallyHidden("poll_" + pollId)) return;   // user deleted this card for themselves
         chatViewPage.flushPendingRebuild();
         var idx = chatViewPage.findPollRowIndex(pollId);
         var row;
@@ -645,6 +658,7 @@ Page {
         rebuildFlushTimer.stop();
         rebuildFlushTimer.pendingItems = null;
         rebuildFlushTimer.pendingScroll = false;
+        rebuildFlushTimer.pendingAnchor = -1;
 
         msgModel.clear();
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
@@ -654,7 +668,12 @@ Page {
         msgList.reactionsByMsg = zService.dbLoadThreadReactions(chatViewPage.threadId) || {};
 
         chatViewPage.msgStates = zService.getThreadMessageStates(chatViewPage.threadId) || {};
-        var cached = zService.dbLoadMessages(chatViewPage.threadId);
+        chatViewPage.loadingOlder = false;
+        chatViewPage.olderArmed   = false;
+        olderArmTimer.restart();
+        var cached = zService.dbLoadMessagesPage(chatViewPage.threadId, "", chatViewPage.historyPageSize);
+        // A full page means there is probably more behind it; fewer means that's everything we have
+        chatViewPage.hasMoreOlder = !!(cached && cached.length >= chatViewPage.historyPageSize);
         if (cached && cached.length > 0) {
             var newCache = {};
             for (var i = 0; i < cached.length; i++) {
@@ -697,6 +716,10 @@ Page {
         chatViewPage.pageVisible = false;
         chatViewPage.pendingImageUpdates = [];
         msgModel.clear();
+        chatViewPage.loadingOlder = false;
+        chatViewPage.hasMoreOlder = true;
+        chatViewPage.olderArmed   = false;
+        olderLoadTimer.stop();
         chatViewPage.dbIsMineCache = {};
         chatViewPage.msgStates = {};
         chatViewPage.removedBoardIds = {};
@@ -731,6 +754,36 @@ Page {
                 }
             }
             onMoreRequested: { groupBoardUnderDevDialog.show(); }
+        }
+
+        // "Loading older messages" strip. Sits right under the pinboard bar, or directly
+        // under the header when there is no pinboard (PinboardBar collapses itself when empty).
+        Container {
+            id: olderStrip
+            visible: chatViewPage.loadingOlder
+            horizontalAlignment: HorizontalAlignment.Fill
+            background: chatViewPage.isDark ? Color.create("#262626") : Color.create("#c4c4c4")
+            topPadding: ui.du(0.8)
+            bottomPadding: ui.du(0.8)
+
+            Container {
+                horizontalAlignment: HorizontalAlignment.Center
+                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
+                ActivityIndicator {
+                    verticalAlignment: VerticalAlignment.Center
+                    preferredWidth: ui.du(3.5)
+                    preferredHeight: ui.du(3.5)
+                    running: olderStrip.visible
+                }
+                Label {
+                    verticalAlignment: VerticalAlignment.Center
+                    leftMargin: ui.du(1)
+                    text: "Loading older messages..."
+                    textStyle.fontSize: FontSize.XSmall
+                    textStyle.color: chatViewPage.isDark ? Color.create("#b0b0b0") : Color.create("#555555")
+                }
+            }
         }
 
         ListView {
@@ -809,6 +862,9 @@ Page {
                     id: rebuildFlushTimer
                     property variant pendingItems: null
                     property bool    pendingScroll: false
+                    // Index (in the re-appended list) of the row that was first before a
+                    // "load older" prepend — scrolled back to so the view doesn't jump
+                    property int     pendingAnchor: -1
                     interval: 0
                     repeat: false
                     onTriggered: {
@@ -820,6 +876,37 @@ Page {
                             msgList.scrollToPosition(ScrollPosition.End, ScrollAnimation.Smooth);
                             rebuildFlushTimer.pendingScroll = false;
                         }
+                        if (rebuildFlushTimer.pendingAnchor >= 0) {
+                            msgList.scrollToItem([rebuildFlushTimer.pendingAnchor], ScrollAnimation.None);
+                            rebuildFlushTimer.pendingAnchor = -1;
+                            chatViewPage.loadingOlder = false;
+                        }
+                    }
+                },
+                // Short pause between "reached the top" and the SQLite read + relayout, so the
+                // "Loading older messages" strip actually paints before the UI thread gets busy
+                Timer {
+                    id: olderLoadTimer
+                    interval: 150
+                    repeat: false
+                    onTriggered: chatViewPage.doLoadOlderMessages()
+                },
+                // Ignore scroll-to-top events during the initial scroll-to-end after opening
+                Timer {
+                    id: olderArmTimer
+                    interval: 1500
+                    repeat: false
+                    onTriggered: chatViewPage.olderArmed = true
+                },
+                ListScrollStateHandler {
+                    id: msgScrollState
+                    onAtBeginningChanged: {
+                        if (atBeginning) chatViewPage.requestOlderMessages();
+                    }
+                    // Start loading a little BEFORE the very top so it is usually ready by then
+                    onFirstVisibleItemChanged: {
+                        if (firstVisibleItem && firstVisibleItem.length > 0 && firstVisibleItem[0] <= 2)
+                            chatViewPage.requestOlderMessages();
                     }
                 }
             ]
@@ -1069,6 +1156,14 @@ Page {
             }
             function doCreateEvent(msgId)  { createEventUnderDevDialog.show(); }
             function doDeleteForMe(msgId, cliMsgId, senderId) {
+                // Poll cards are synthetic rows ("poll_<id>") built from the group board — the
+                // server has no message to delete. Hide it locally and remember that, otherwise
+                // the next board fetch (every time the chat is opened) puts the card back.
+                if ((msgId || "").indexOf("poll_") === 0) {
+                    zService.hideLocalMessage(chatViewPage.threadId, msgId);
+                    chatViewPage.applyLocalDelete(msgId);
+                    return;
+                }
                 zService.deleteMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId, senderId, true);
             }
             function doDeleteMsg(msgId)    { console.log("[bubble] Delete " + msgId); }
@@ -3502,6 +3597,7 @@ Container {
                 rebuildFlushTimer.pendingItems = null;
             }
             rebuildFlushTimer.pendingScroll = false;
+            rebuildFlushTimer.pendingAnchor = -1;
         }
     }
 
@@ -3530,7 +3626,110 @@ Container {
         zService.sendFile(chatViewPage.threadId, path, chatViewPage.isGroup);
     }
 
-    function rebuildGroups(scrollAfter) {
+    // ── Windowed history helpers ────────────────────────────────────────
+    // ts may be seconds or milliseconds depending on where the row came from
+    function msgTsMs(ts) {
+        var n = (ts || 0) * 1;
+        if (n > 0 && n < 1e12) n *= 1000;
+        return n;
+    }
+
+    // Oldest server-confirmed message currently in msgModel. Skips local echo
+    // placeholders and inline poll cards: their ts is not a message timestamp.
+    function windowOldestRow() {
+        var size = msgModel.size();
+        for (var i = 0; i < size; i++) {
+            var v = msgModel.value(i);
+            var id = v.msgId || "";
+            if (id.length === 0 || id.indexOf("local_") === 0 || id.indexOf("poll_") === 0) continue;
+            return v;
+        }
+        return null;
+    }
+
+    // Called when the list reaches (or nears) the top. Shows the strip and defers the
+    // actual SQLite read + relayout to olderLoadTimer so the strip can paint first.
+    function requestOlderMessages() {
+        if (!chatViewPage.initialized || !chatViewPage.olderArmed) return;
+        if (chatViewPage.loadingOlder || !chatViewPage.hasMoreOlder) return;
+        if (msgModel.size() === 0) return;
+        if (msgModel.size() >= chatViewPage.historyMaxRows) {
+            chatViewPage.hasMoreOlder = false;   // window is full — stop here instead of growing without bound
+            return;
+        }
+        chatViewPage.loadingOlder = true;
+        olderLoadTimer.restart();
+    }
+
+    function doLoadOlderMessages() {
+        if (!chatViewPage.initialized) { chatViewPage.loadingOlder = false; return; }
+        // Must run before reading/replacing msgModel — see flushPendingRebuild()
+        chatViewPage.flushPendingRebuild();
+
+        var oldest = chatViewPage.windowOldestRow();
+        var room = chatViewPage.historyMaxRows - msgModel.size();
+        var want = Math.min(chatViewPage.historyPageSize, room);
+        if (!oldest || want <= 0) {
+            chatViewPage.loadingOlder = false;
+            chatViewPage.hasMoreOlder = false;
+            return;
+        }
+
+        // want + 1: the query is "ts <= oldest.ts", so the boundary row itself comes back too
+        var page = zService.dbLoadMessagesPage(chatViewPage.threadId, String(oldest.ts), want + 1);
+        var existing = chatViewPage.buildExistingIds();
+        var cache = chatViewPage.dbIsMineCache;
+        var fresh = [];
+        for (var i = 0; i < page.length; i++) {
+            var c = page[i];
+            if (!c.msgId || existing[c.msgId]) continue;
+            c.selfName = chatViewPage.selfName || "Me";
+            c.isMine = (c.isMine === "true" || c.isMine === 1 || c.isMine === true);
+            cache[c.msgId] = c.isMine;
+            c.reactions = msgList.summarizePills(c.msgId);
+            fresh.push(c);
+
+            // Same lazy image handling as the initial load in startChat()
+            var isPhoto = (c.msgType === 2 || c.msgType === "2");
+            var hasLocal = (c.localImage && c.localImage.length > 0);
+            if (isPhoto && !hasLocal) {
+                var photoUrl = chatViewPage.extractPhotoUrl(c.content || "");
+                if (photoUrl.length > 0)
+                    zService.downloadImageMessage(c.msgId, photoUrl, chatViewPage.threadId);
+            }
+            var isLink = (c.msgType === 6 || c.msgType === "6");
+            if (isLink && !hasLocal) {
+                var linkThumbUrl = chatViewPage.extractJsonField(c.content || "", "linkThumb");
+                if (linkThumbUrl.length > 0)
+                    zService.downloadImageMessage(c.msgId, linkThumbUrl, chatViewPage.threadId);
+            }
+        }
+        chatViewPage.dbIsMineCache = cache;
+
+        chatViewPage.hasMoreOlder = (page.length >= want + 1) && (fresh.length > 0)
+                                    && (msgModel.size() + fresh.length < chatViewPage.historyMaxRows);
+        if (fresh.length === 0) {
+            chatViewPage.loadingOlder = false;
+            return;
+        }
+
+        // Row indices shift on a prepend, so any search highlight positions are stale
+        if (chatViewPage.searchVisible) {
+            chatViewPage.searchMatches = [];
+            chatViewPage.searchMatchPos = -1;
+        }
+
+        // Prepend + re-group + restore scroll position (the strip is hidden again by
+        // rebuildFlushTimer once the anchor scroll has been applied)
+        chatViewPage.rebuildGroups(false, fresh);
+        if (!rebuildFlushTimer.running && !rebuildFlushTimer.pendingItems)
+            chatViewPage.loadingOlder = false;
+    }
+
+    // prependItems (optional): rows older than everything currently in msgModel, to be
+    // placed in front of it — used by doLoadOlderMessages(). They go through the same
+    // grouping pass and the same clear()+deferred-append path as any other rebuild.
+    function rebuildGroups(scrollAfter, prependItems) {
         // Data-loss race fix: if rebuildGroups() deferred an update onto
         // rebuildFlushTimer and a second message arrives before that timer fires,
         // the second call's pendingItems would overwrite the first's — silently
@@ -3541,7 +3740,8 @@ Container {
         // before doing anything else, closing the race window.
         chatViewPage.flushPendingRebuild();
 
-        var size = msgModel.size();
+        var prependCount = (prependItems && prependItems.length) ? prependItems.length : 0;
+        var size = msgModel.size() + prependCount;
         if (size === 0) return;
 
         var items = [];
@@ -3552,7 +3752,13 @@ Container {
         // makes the before/after comparison actually work.
         var prevGrouped = [];
         var prevBubblePos = [];
-        for (var i = 0; i < size; i++) {
+        for (var pp = 0; pp < prependCount; pp++) {
+            items.push(prependItems[pp]);
+            prevGrouped.push(undefined);
+            prevBubblePos.push(undefined);
+        }
+        var curSize = size - prependCount;
+        for (var i = 0; i < curSize; i++) {
             var v = msgModel.value(i);
             items.push(v);
             prevGrouped.push(v.grouped);
@@ -3676,6 +3882,9 @@ Container {
             }
         }
         if (undefPrev > 1) anyLayoutChanged = true;
+        // Prepending changes the model's size, so the cheap in-place replace() path
+        // below can't be used — always go through clear() + deferred re-append.
+        if (prependCount > 0) anyLayoutChanged = true;
         // Diagnostic: logs anyLayoutChanged plus each row's prev vs new grouped/
         // bubblePos, to confirm which path actually runs. Safe to remove.
         {
@@ -3717,6 +3926,7 @@ Container {
             msgModel.clear();
             rebuildFlushTimer.pendingItems = items;
             rebuildFlushTimer.pendingScroll = !!scrollAfter;
+            rebuildFlushTimer.pendingAnchor = (prependCount > 0) ? prependCount : -1;
             rebuildFlushTimer.start();
             return;
         } else {
@@ -4193,8 +4403,28 @@ Container {
                 var existing = chatViewPage.buildExistingIds();
                 var added = false;
 
-                for (var j = 0; j < messages.length; j++) {
-                    var msg = messages[j];
+                // Windowed history: a cloud fetch can return far more than the window holds.
+                // Anything older than the oldest loaded row belongs to an older page (it is
+                // already in SQLite — dbSaveMessage ran before this signal) and must not be
+                // appended after newer rows.
+                var winOldest = chatViewPage.windowOldestRow();
+                var oldestMs = winOldest ? chatViewPage.msgTsMs(winOldest.ts) : 0;
+                var candidates = [];
+                for (var j0 = 0; j0 < messages.length; j0++) {
+                    var m0 = messages[j0];
+                    if (existing[m0.msgId]) continue;
+                    if (oldestMs > 0 && chatViewPage.msgTsMs(m0.ts) < oldestMs) continue;
+                    candidates.push(m0);
+                }
+                // Empty window (thread with no local history yet): keep only the newest page
+                if (oldestMs === 0 && candidates.length > chatViewPage.historyPageSize) {
+                    candidates.sort(function(a, b) { return chatViewPage.msgTsMs(a.ts) - chatViewPage.msgTsMs(b.ts); });
+                    candidates = candidates.slice(candidates.length - chatViewPage.historyPageSize);
+                    chatViewPage.hasMoreOlder = true;
+                }
+
+                for (var j = 0; j < candidates.length; j++) {
+                    var msg = candidates[j];
                     if (existing[msg.msgId]) continue;
 
                     if (chatViewPage.normMine(msg.isMine)) {

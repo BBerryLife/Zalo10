@@ -32,6 +32,8 @@ namespace bb { namespace cascades { namespace pickers { class ContactPicker; } }
 
 class HubIntegration;
 
+struct PhoneSyncRuntime;   // định nghĩa trong ZaloService_PhoneSync.cpp
+
 class ZaloService : public QObject
 {
     Q_OBJECT
@@ -275,6 +277,28 @@ public:
     bool handleHubAction(const QString &action, const QString &threadId);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
+    // Phân trang cho ChatView: trả tối đa `limit` tin NGAY TRƯỚC `beforeTs`
+    // (beforeTs rỗng/"0" = lấy trang mới nhất), đã xếp tăng dần theo ts để
+    // append/prepend thẳng vào model. Cùng shape row với dbLoadMessages().
+    Q_INVOKABLE QVariantList dbLoadMessagesPage(const QString &threadId, const QString &beforeTs, int limit);
+    // Hội thoại đã ghim trên server (api/pinconvers/list). QML dùng để đẩy lên
+    // đầu danh sách Chats/Groups; cả dạng gốc lẫn dạng đã bỏ tiền tố u/g đều có
+    // trong list nên so khớp thẳng với threadId được.
+    Q_INVOKABLE QStringList pinnedThreadIds() const;
+    // "Xóa chỉ ở tôi" cho dòng không có tin nhắn thật trên server (vd thẻ poll
+    // "poll_<id>" dựng từ bảng board của nhóm): chỉ ghi tombstone local, không gọi
+    // server. isLocallyHidden() để QML bỏ qua dòng đó khi board được tải lại.
+    Q_INVOKABLE void hideLocalMessage(const QString &threadId, const QString &msgId);
+    Q_INVOKABLE bool isLocallyHidden(const QString &msgId) const;
+    Q_INVOKABLE void fetchPinConversations();
+    // Đồng bộ lịch sử từ cloud lúc khởi động — xem ZaloService_Sync.cpp.
+    Q_INVOKABLE void startHistorySync();
+    Q_INVOKABLE bool isHistorySyncing() const { return m_sync.active || m_sync.groupActive; }
+    // Đồng bộ tin nhắn từ điện thoại (xem ZaloService_PhoneSync.cpp). Điện thoại sẽ hiện hộp thoại
+    // xin xác nhận; tiến trình báo qua phoneSyncProgress, kết quả qua phoneSyncFinished.
+    Q_INVOKABLE void startPhoneSync();
+    Q_INVOKABLE void cancelPhoneSync();
+    Q_INVOKABLE bool isPhoneSyncing() const;
     // Returns, for every thread that has at least one locally-stored message,
     // the most recent one: {threadId: {content, dName, isMine, msgType,
     // recalledOriginalContent, ts}}. Used by ChatsTab.qml/GroupsTab.qml right
@@ -333,6 +357,12 @@ signals:
     void qrExpired();
     void conversationsReady(const QVariantList &threads); // groups
     void friendsReady(const QVariantList &friends);       // 1-1 friends
+    void pinnedChanged();                                 // fetchPinConversations() xong
+    // Bắn khi 1 pha đồng bộ lịch sử (DM hoặc nhóm) kết thúc — QML dựng lại
+    // preview + thứ tự danh sách từ SQLite. messages = tổng số tin đã lưu.
+    void historySynced(int messages);
+    void phoneSyncProgress(int percent, const QString &text);        // percent 0..100
+    void phoneSyncFinished(bool ok, const QString &message);
     void invitesReady(const QVariantList &invites);       // friend requests
     // Bắn khi fetchGroupBoard() xong — items là list phẳng, mỗi item tag
     // sẵn "boardType" ("note"/"pin"/"poll") để QML tự lọc vào 4 tab.
@@ -446,6 +476,20 @@ signals:
     void contactPickError(const QString &threadId, const QString &reason);
 
 private slots:
+    void onPinConversationsDone();
+    void onPhoneSyncRsaDone();
+    void onPhoneSyncPullDone();
+    void onPhoneSyncDownloadDone();
+    void onPhoneSyncRawDone();
+    void onPhoneSyncRetryDownload();
+    void onPhoneSyncDownloadProgress(qint64 got, qint64 total);
+    void onPhoneSyncDecodeDone();
+    void onPhoneSyncTick();
+    void onPhoneSyncTimeout();
+    void onSyncStartDeferred();
+    void onSyncWatchdog();
+    void onSyncNextPage();
+    void onSyncGroupNext();
     void onStep1Done();
     void onUpdateDownloadProgress(qint64 received, qint64 total);
     void onUpdateDownloadFinished();
@@ -736,6 +780,49 @@ private:
     QMap<QString, QString> m_memberNames;
     QSet<QString> m_seenMsgIds; // Tất cả msgId đã emit — dedup chắc chắn
     QString m_pending510Toid; // Thread đang chờ WS cmd=510 response (chỉ 1 tại 1 thời điểm)
+
+    // ── Đồng bộ lịch sử lúc khởi động (ZaloService_Sync.cpp) ────────────
+    struct HistorySyncState {
+        HistorySyncState()
+            : active(false), awaiting(false), pages(0), totalMsgs(0), retries(0),
+              groupActive(false), groupRan(false), groupDone(0), groupMsgs(0),
+              lastStartMs(0), watchdog(0) {}
+        bool    active;       // pha DM (cmd=510 toàn cục) đang chạy
+        bool    awaiting;     // đã gửi 1 trang, chờ response
+        int     pages;
+        int     totalMsgs;
+        int     retries;
+        QString cursor;       // lastId của trang kế (msgId lớn nhất đã thấy)
+        QSet<QString> threads;
+        bool    groupActive;  // pha nhóm (HTTP group/history từng nhóm) đang chạy
+        bool    groupRan;     // pha nhóm đã chạy xong trong lần khởi động này
+        int     groupDone;
+        int     groupMsgs;
+        QStringList groupQueue;
+        qint64  lastStartMs;
+        QTimer *watchdog;
+    };
+    HistorySyncState m_sync;
+
+    // ── Đồng bộ tin nhắn từ điện thoại ──
+    struct PsHandle { PsHandle() : p(0) {} PhoneSyncRuntime *p; };
+    PsHandle m_psh;
+    void handlePhoneSyncEvent(const QString &act, const QVariantMap &data);   // gọi từ WS cmd=601 (act_type "syncmsgmb")
+    void phoneSyncBeginDownload(const QVariantMap &d);
+    void phoneSyncStartDownload();     // một lần thử tải (thử lại với kiểu header/URL khác nếu cần)
+    void phoneSyncDownloadSucceeded(const QByteArray &data);
+    void phoneSyncDownloadFailed(int http);   // thử đường TLS thuần, rồi thử lại theo vòng, cuối cùng báo lỗi
+    void phoneSyncFail(const QString &msg);
+    QSet<QString> m_pinnedIds;
+    void processOldDmBatch(const QVariantList &rawMsgs, const QString &emitThread, bool bulk);
+    void handleSyncPage(const QVariantList &rawMsgs);
+    void sendSyncPage();
+    void finishDmSync(const QString &why);
+    void startGroupSync();
+    void fetchGroupHistorySync(const QString &groupId);
+    void finishGroupSync();
+    bool dbMessageExists(const QString &msgId) const;
+    QString m_conversationServiceUrl; // zpwServiceMap.conversation[0]
     QMap<QString, QString> m_pendingPhotoMsgIds; // msgId -> threadId, waiting for photo URL via WS cmd=510
     // clientId (cliMsgId) -> {"localPath","fileSize","fileName"} cho ảnh vừa gửi.
     // Set trong sendPhoto() trước khi upload, để khi WS echo cmd=501 về (thường

@@ -234,7 +234,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/blank.png) \
-        $$quote($$BASEDIR/assets/images/ChatsTab/desktop.ini) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/default_group.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/edit.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/action_icon_search.png) \
@@ -843,6 +843,7 @@ config_pri_source_group1 {
     SOURCES += \
         $$quote($$BASEDIR/src/ActiveFrameCover.cpp) \
         $$quote($$BASEDIR/src/HubIntegration.cpp) \
+        $$quote($$BASEDIR/src/PhoneSyncCore.cpp) \
         $$quote($$BASEDIR/src/ZaloService.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Auth.cpp) \
         $$quote($$BASEDIR/src/ZaloService_ContactPicker.cpp) \
@@ -851,20 +852,32 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/ZaloService_Db.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Messages.cpp) \
         $$quote($$BASEDIR/src/ZaloService_Network.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_PhoneSync.cpp) \
+        $$quote($$BASEDIR/src/ZaloService_Sync.cpp) \
         $$quote($$BASEDIR/src/ZaloService_WebSocket.cpp) \
         $$quote($$BASEDIR/src/applicationui.cpp) \
-        $$quote($$BASEDIR/src/main.cpp)
+        $$quote($$BASEDIR/src/main.cpp) \
+        $$quote($$BASEDIR/src/third_party/xz/xz_crc32.c) \
+        $$quote($$BASEDIR/src/third_party/xz/xz_crc64.c) \
+        $$quote($$BASEDIR/src/third_party/xz/xz_dec_lzma2.c) \
+        $$quote($$BASEDIR/src/third_party/xz/xz_dec_stream.c)
 
     HEADERS += \
         $$quote($$BASEDIR/src/ActiveFrameCover.hpp) \
         $$quote($$BASEDIR/src/HubIntegration.hpp) \
+        $$quote($$BASEDIR/src/PhoneSyncCore.hpp) \
         $$quote($$BASEDIR/src/ServiceHandoff.hpp) \
         $$quote($$BASEDIR/src/ZaloCookieJar.hpp) \
         $$quote($$BASEDIR/src/ZaloService.hpp) \
         $$quote($$BASEDIR/src/ZaloServiceUtils.hpp) \
         $$quote($$BASEDIR/src/applicationui.hpp) \
         $$quote($$BASEDIR/src/third_party/webp/include/webp/decode.h) \
-        $$quote($$BASEDIR/src/third_party/webp/include/webp/types.h)
+        $$quote($$BASEDIR/src/third_party/webp/include/webp/types.h) \
+        $$quote($$BASEDIR/src/third_party/xz/xz.h) \
+        $$quote($$BASEDIR/src/third_party/xz/xz_config.h) \
+        $$quote($$BASEDIR/src/third_party/xz/xz_lzma2.h) \
+        $$quote($$BASEDIR/src/third_party/xz/xz_private.h) \
+        $$quote($$BASEDIR/src/third_party/xz/xz_stream.h)
 }
 
 CONFIG += precompile_header
@@ -903,6 +916,11 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../src/third_party/webp/lib/*.cc) \
         $$quote($$BASEDIR/../src/third_party/webp/lib/*.cpp) \
         $$quote($$BASEDIR/../src/third_party/webp/lib/*.cxx) \
+        $$quote($$BASEDIR/../src/third_party/xz/*.c) \
+        $$quote($$BASEDIR/../src/third_party/xz/*.c++) \
+        $$quote($$BASEDIR/../src/third_party/xz/*.cc) \
+        $$quote($$BASEDIR/../src/third_party/xz/*.cpp) \
+        $$quote($$BASEDIR/../src/third_party/xz/*.cxx) \
         $$quote($$BASEDIR/../assets/*.qml) \
         $$quote($$BASEDIR/../assets/*.js) \
         $$quote($$BASEDIR/../assets/*.qs) \

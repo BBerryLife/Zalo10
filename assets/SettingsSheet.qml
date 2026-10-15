@@ -188,6 +188,22 @@ Sheet {
                 }
 
                 Button {
+                    text: "Sync Messages from Phone"
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topMargin: 20
+                    onClicked: { phoneSyncConfirm.show() }
+                }
+
+                Label {
+                    text: "Brings older messages from the Zalo app on your phone into Zalo10. Your phone will ask you to confirm. "
+                        + "Conversations are matched using messages Zalo10 has already received, so run it again after a few days of use to bring in more. "
+                        + "Only text messages are imported (photos, stickers and files are not)."
+                    multiline: true
+                    textStyle.color: Color.Gray
+                    topMargin: 6
+                }
+
+                Button {
                     text: "Clear Cache"
                     horizontalAlignment: HorizontalAlignment.Fill
                     topMargin: 20
@@ -275,6 +291,53 @@ Sheet {
                         id: importDoneToast
                         button.label: "OK"
                         button.enabled: true
+                    },
+
+                    // --- Sync Messages from Phone flow ---------------------------------------
+                    // confirm -> zService.startPhoneSync() -> phone asks the user to accept ->
+                    // progress dialog (percent + status from the service) -> result toast.
+                    SystemDialog {
+                        id: phoneSyncConfirm
+                        title: "Sync Messages from Phone"
+                        body: "Your phone's Zalo app will ask you to confirm. Keep Zalo10 open until the sync finishes."
+                        confirmButton.label: "Start"
+                        cancelButton.label: "Cancel"
+                        onFinished: {
+                            if (result !== SystemUiResult.ConfirmButtonSelection) return;
+                            phoneSyncProgressDialog.progress = 0;
+                            phoneSyncProgressDialog.statusMessage = "Starting…";
+                            phoneSyncProgressDialog.show();
+                            zService.startPhoneSync();
+                        }
+                    },
+                    SystemProgressDialog {
+                        id: phoneSyncProgressDialog
+                        title: "Syncing from phone"
+                        progress: 0
+                        state: SystemUiProgressState.Active
+                        confirmButton.label: "Hide"
+                        cancelButton.label: "Stop"
+                        onFinished: {
+                            // Only an explicit "Stop" cancels; our own cancel() after completion gives a different result
+                            if (result === SystemUiResult.CancelButtonSelection) zService.cancelPhoneSync();
+                        }
+                    },
+                    SystemToast {
+                        id: phoneSyncDoneToast
+                        button.label: "OK"
+                        button.enabled: true
+                    },
+                    Connections {
+                        target: zService
+                        onPhoneSyncProgress: {
+                            phoneSyncProgressDialog.progress = percent;
+                            phoneSyncProgressDialog.statusMessage = text;
+                        }
+                        onPhoneSyncFinished: {
+                            phoneSyncProgressDialog.cancel();
+                            phoneSyncDoneToast.body = message;
+                            phoneSyncDoneToast.show();
+                        }
                     },
 
                     // --- Clear Cache flow -----------------------------------------------------

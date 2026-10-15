@@ -166,7 +166,7 @@ bool ZaloService::wsTlsHandshakeStep()
         // đàm phán xuống bản cũ hơn.
         const SSL_METHOD *method = TLSv1_2_client_method();
         if (!method) {
-            qDebug() << "[Zalo WS TLS] TLSv1_2_client_method() null — bản OpenSSL link cùng app quá cũ, không có API này";
+            qDebug() << "[Zalo WS TLS] TLSv1_2_client_method() is null - the OpenSSL linked with this app is too old for this API";
             disconnectWebSocket();
             m_wsAdvanceUrlOnReconnect = true;
             if (!m_wsReconnectTimer->isActive())
@@ -244,7 +244,7 @@ bool ZaloService::wsTlsHandshakeStep()
     wsPumpTlsOutput();
 
     if (ret == 1) {
-        qDebug() << "[Zalo WS TLS] TLS handshake OK, phiên bản:" << SSL_get_version(m_wsSsl)
+        qDebug() << "[Zalo WS TLS] TLS handshake OK, version:" << SSL_get_version(m_wsSsl)
                   << "cipher:" << SSL_get_cipher(m_wsSsl);
         m_wsTlsEstablished = true;
         onWsEncrypted(); // gửi HTTP Upgrade — giữ nguyên logic cũ
@@ -771,6 +771,10 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             sendWsRequest(510, 1, req510);
             qDebug() << "[Zalo WS] WS ready, auto-fetch DM toid=" << m_pending510Toid;
         }
+        // Mỗi lần mở app: lấy danh sách hội thoại ghim + đồng bộ lịch sử từ cloud
+        // ở nền (ZaloService_Sync.cpp). Hoãn 1.5s để không tranh với request của chat đang mở.
+        fetchPinConversations();
+        QTimer::singleShot(1500, this, SLOT(onSyncStartDeferred()));
         return;
     }
 
@@ -1509,6 +1513,29 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
         qDebug() << "[Zalo WS] old_messages DM count:" << rawMsgs.size()
                  << "d.keys=" << d.keys() << "activeThread:" << m_activeThreadId;
 
+        // Đồng bộ lịch sử lúc khởi động (ZaloService_Sync.cpp): response này là 1
+        // trang của luồng DM toàn cục, không thuộc riêng thread nào. Nếu cùng lúc
+        // user mở 1 chat và fetchMessages() cũng đang chờ response, chỉ coi đây là
+        // response của chat đó khi batch thực sự chứa tin của thread đó.
+        if (m_sync.awaiting) {
+            bool forSync = true;
+            if (!m_pending510Toid.isEmpty()) {
+                for (int si = 0; si < rawMsgs.size(); ++si) {
+                    QVariantMap sm = rawMsgs[si].toMap();
+                    QString sFrom = sm["uidFrom"].toString();
+                    QString sTo   = sm["idTo"].toString();
+                    if (sFrom == "0") sFrom = m_uid;
+                    if (sTo   == "0") sTo   = m_uid;
+                    if (sFrom == m_pending510Toid || sTo == m_pending510Toid) { forSync = false; break; }
+                }
+            }
+            if (forSync) {
+                handleSyncPage(rawMsgs);
+                return;
+            }
+        }
+
+
         // ── Xác định emitThread ────────────────────────────────────────────
         // Dùng m_pending510Toid (thread đã gửi request) thay vì queue FIFO
         // để tránh lệch pha khi user switch tab nhanh
@@ -1551,360 +1578,7 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
             }
         }
 
-        QVariantList msgs;
-        qint64 maxMsgNum = -1;
-        QString newestMsgId;
-
-        for (int i = 0; i < rawMsgs.size(); ++i) {
-            QVariantMap m = rawMsgs[i].toMap();
-            QString msgId      = m["msgId"].toString();
-            QString rawUidFrom = m["uidFrom"].toString();
-
-            // cmd=510 dùng chung 1 lastId toàn cục, nên 1 response có thể
-            // mang tin nhắn từ nhiều thread cùng lúc — chỉ giữ tin thuộc emitThread.
-            {
-                QString vFrom = rawUidFrom;
-                QString vTo   = m["idTo"].toString();
-                if (vFrom == "0") vFrom = m_uid;
-                if (vTo   == "0") vTo   = m_uid;
-                bool belongsHere = (vFrom == emitThread || vTo == emitThread
-                                    || (vFrom == m_uid && vTo == emitThread)
-                                    || (vTo == m_uid && vFrom == emitThread));
-                if (!belongsHere) {
-                    qDebug() << "[Zalo WS] old_messages: skip msg" << msgId
-                             << "belongs to other thread (from=" << vFrom << "to=" << vTo << ")";
-                    continue;
-                }
-            }
-            bool isMine = (rawUidFrom == "0" || rawUidFrom == m_uid);
-            QString uidFrom = (rawUidFrom == "0") ? m_uid : rawUidFrom;
-
-            // Bỏ qua tin nhắn user đã xóa cứng qua "xóa cho tôi" ở phiên/lần
-            // trước. Vòng lặp removeAt() bên dưới (xử lý chat.delete) chỉ bắt
-            // được trường hợp event thông báo xóa nằm cùng batch history này
-            // — nhưng khi thread đóng rồi mở lại, server vẫn replay tin nhắn
-            // gốc mỗi lần resync mà không nhất thiết kèm event thông báo đó.
-            // dbSaveMessage() đã từ chối lưu msgId bị tombstone, nhưng không
-            // ngăn được nó lọt vào list `msgs` trả cho UI qua messagesReady —
-            // nên vẫn có thể thoáng hiện trên màn hình dù đúng ra đã bị xóa
-            // khỏi DB. Bỏ qua ở đây luôn.
-            if (isMessageDeletedForMe(msgId)) {
-                qDebug() << "[Zalo WS] old_messages: skip msg" << msgId << "(tombstoned, deleted-for-me)";
-                continue;
-            }
-
-            // group.poll notices are not messages (the poll card shows the poll)
-            if (isGroupPollNotice(m)) continue;
-
-            // chat.undo = thông báo thu hồi, không phải tin nhắn thật. Patch tin
-            // gốc nếu nó nằm trước đó trong cùng batch history, lưu recall vào
-            // SQLite dù thế nào, và bỏ qua không thêm event này thành bubble riêng.
-            QString recalledIdH = extractRecalledMsgId(m);
-            if (!recalledIdH.isEmpty()) {
-                markMessageRecalled(emitThread, recalledIdH);
-                for (int pj = 0; pj < msgs.size(); ++pj) {
-                    QVariantMap pm = msgs[pj].toMap();
-                    if (pm["msgId"].toString() == recalledIdH) {
-                        pm["content"] = QString();
-                        pm["msgType"] = 99;
-                        msgs[pj] = pm;
-                        break;
-                    }
-                }
-                continue;
-            }
-
-            // chat.delete = thông báo "xóa cho tôi", cùng guard self-only như
-            // real-time path ở trên. Nếu batch history này cũng chứa tin nhắn
-            // gốc, bỏ hẳn nó khỏi batch để không bị hồi sinh lần mở thread kế.
-            QString delMsgIdH, deleterUidH;
-            if (extractDeleteInfo(m, delMsgIdH, deleterUidH)) {
-                if (deleterUidH == m_uid) {
-                    markMessageDeletedForMe(emitThread, delMsgIdH);
-                    for (int pj = 0; pj < msgs.size(); ++pj) {
-                        if (msgs[pj].toMap()["msgId"].toString() == delMsgIdH) {
-                            msgs.removeAt(pj);
-                            break;
-                        }
-                    }
-                }
-                continue;
-            }
-
-            // chat.reaction — xử lý giống real-time path ở trên, thêm bỏ event
-            // thô khỏi batch history này để không bị hồi sinh thành bubble
-            // riêng lẻ lần mở thread kế.
-            QString reactMsgIdH, reactUidH, reactIconH;
-            if (extractReactionInfo(m, reactMsgIdH, reactUidH, reactIconH)) {
-                if (reactIconH.isEmpty()) dbRemoveReaction(reactMsgIdH, reactUidH);
-                else                      dbSaveReaction(emitThread, reactMsgIdH, reactUidH, reactIconH);
-                emit reactionUpdated(emitThread, reactMsgIdH, reactUidH, reactIconH);
-                for (int pj = 0; pj < msgs.size(); ++pj) {
-                    if (msgs[pj].toMap()["msgId"].toString() == reactMsgIdH) {
-                        msgs.removeAt(pj);
-                        break;
-                    }
-                }
-                continue;
-            }
-
-            QVariantMap out;
-            out["msgId"]    = msgId;
-            out["senderId"] = uidFrom;
-            out["dName"]    = m["dName"].toString();
-            out["ts"]       = m["ts"].toString();
-            out["isGroup"]  = false;
-            out["isMine"]   = isMine;
-            out["msgType"]  = m["msgType"].toInt();
-
-            int mtH = m["msgType"].toInt();
-            if (mtH == 0) {
-                mtH = m["type"].toInt();
-                if (mtH == 0) mtH = m["mt"].toInt();
-            }
-            // Cùng trường hợp msgType kiểu chuỗi như trên ("chat.photo" thay vì số).
-            if (mtH == 0) {
-                QString mtStr = m["msgType"].toString().toLower();
-                if (mtStr.isEmpty()) mtStr = m["msgtype"].toString().toLower();
-                if (mtStr.contains("photo") || mtStr.contains("image") || mtStr == "2")
-                    mtH = 2;
-                // FIX: nhánh real-time (line ~896) đã nhận diện "share.file" ->
-                // mt=3, nhưng nhánh old_messages/history (cmd=510 poll) này thì
-                // chưa từng có — nên khi cùng 1 tin nhắn video bị poll lại lần 2
-                // (rất hay xảy ra, "DM incremental poll cmd=510" định kỳ), nó
-                // rơi thẳng vào nhánh "nested content obj -> mt=2" bên dưới,
-                // ghi đè msgType=2 + content sai dạng lên bản ghi DB đúng đã lưu
-                // từ lần nhận real-time trước đó -> video hiển thị sai vĩnh
-                // viễn kể cả sau khi khởi động lại app (vì DB đã bị hỏng thật,
-                // không phải chỉ là dòng trùng tạm trong bộ nhớ).
-                else if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
-                    mtH = 3;
-                // Call log bubble history counterpart — cùng lý do đã ghi ở
-                // real-time path (cmd=501/521, ~dòng 900): thiếu nhánh này ở
-                // "old_messages" (cmd=510 poll) khiến content thô ("action":
-                // "recommened.misscall", chưa chuẩn hóa) ghi đè lên bản ghi
-                // DB đúng (đã chuẩn hóa) mỗi lần WS poll lại history, làm
-                // callBubble ở ChatView.qml "biến mất" khi mở lại thread
-                // (msgType vẫn=4 nhưng content không còn khớp {"callResult"
-                // ...} mà callBubble.extractJsonStringField parse nữa).
-                else if (mtStr.contains("chat.recommended"))
-                {
-                    QVariantMap peekMapH = m["content"].toMap();
-                    if (peekMapH.isEmpty()) {
-                        QString peekStrH = m["content"].toString();
-                        if (!peekStrH.isEmpty() && peekStrH.trimmed().startsWith("{"))
-                            peekMapH = jsonToMap(peekStrH.toUtf8());
-                    }
-                    QString peekActionH = peekMapH["action"].toString();
-                    mtH = peekActionH.contains("link") ? 6 : 4;
-                }
-                // Sticker history counterpart (msgType wire = "chat.sticker")
-                // — cùng lý do các nhánh trên: thiếu ở đây thì content thô
-                // {"catId":...,"id":...,"type":...} ghi đè bản {"stickerId":N}
-                // đã chuẩn hóa mỗi lần cmd=510 poll lại history.
-                else if (mtStr.contains("chat.sticker"))
-                    mtH = 5;
-            }
-
-            // Re-serialize nested content object lại thành JSON, cùng lý do như trên.
-            QString rawContentH = m["content"].toString();
-            if (rawContentH.isEmpty()) {
-                QVariantMap cm = m["content"].toMap();
-                if (!cm.isEmpty()) {
-                    rawContentH = "{";
-                    QStringList cmKeys = cm.keys();
-                    for (int k = 0; k < cmKeys.size(); ++k) {
-                        if (k > 0) rawContentH += ",";
-                        QString v = cm[cmKeys[k]].toString();
-                        v.replace("\\", "\\\\").replace("\"", "\\\"");
-                        rawContentH += "\"" + cmKeys[k] + "\":\"" + v + "\"";
-                    }
-                    rawContentH += "}";
-                    qDebug() << "[Zalo WS] old_messages: content was nested obj, serialized:"
-                             << rawContentH.left(200);
-                    if (mtH == 0) mtH = 2; // nested content obj → photo message
-                }
-            }
-            // FIX: video/file (mt==3) counterpart to the photo normalization
-            // right below — was missing entirely, so old_messages left
-            // rawContentH as the raw {"title":...,"href":...,"params":"{...}"}
-            // shape instead of the {"fileName":...,"href":...,"fileSize":...}
-            // shape ChatView.qml's videoBubble parser expects. Same field
-            // extraction as the real-time path (see share.file handling above
-            // in this file's cmd=501/521 branch).
-            if (mtH == 5) {
-                QVariantMap smH = m["content"].toMap();
-                if (smH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
-                    smH = jsonToMap(rawContentH.toUtf8());
-                qint64 stickerIdH = smH["id"].toString().toLongLong();
-                if (stickerIdH == 0) stickerIdH = smH["id"].toLongLong();
-                rawContentH = QString("{\"stickerId\":%1}").arg(stickerIdH);
-                out["msgType"] = 5;
-                qDebug() << "[Zalo WS] old_messages: chat.sticker bubble id=" << stickerIdH;
-                // Eager download, same reasoning as the real-time (mt==5) branch above.
-                if (stickerIdH > 0) downloadSticker(QString::number(stickerIdH));
-            }
-
-            if (mtH == 6) {
-                QVariantMap lmH = m["content"].toMap();
-                if (lmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
-                    lmH = jsonToMap(rawContentH.toUtf8());
-                QString lTitleH = lmH["title"].toString();
-                QString lDescH  = lmH["description"].toString();
-                QString lHrefH  = lmH["href"].toString();
-                QString lThumbH = lmH["thumb"].toString();
-                QString escH = lTitleH; escH.replace("\\", "\\\\").replace("\"", "\\\"");
-                QString descEscH = lDescH; descEscH.replace("\\", "\\\\").replace("\"", "\\\"");
-                QString hrefEscH = lHrefH; hrefEscH.replace("\\", "\\\\").replace("\"", "\\\"");
-                QString thumbEscH = lThumbH; thumbEscH.replace("\\", "\\\\").replace("\"", "\\\"");
-                rawContentH = QString("{\"linkTitle\":\"%1\",\"linkDesc\":\"%2\",\"linkHref\":\"%3\",\"linkThumb\":\"%4\"}")
-                                  .arg(escH).arg(descEscH).arg(hrefEscH).arg(thumbEscH);
-                out["msgType"] = 6;
-                qDebug() << "[Zalo WS] old_messages: chat.recommended LINK bubble title=" << lTitleH
-                         << "href=" << lHrefH.left(80);
-            }
-
-            if (mtH == 4) {
-                QVariantMap rmH = m["content"].toMap();
-                if (rmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
-                    rmH = jsonToMap(rawContentH.toUtf8());
-                QString actionH = rmH["action"].toString();
-                QVariant paramsVH2 = rmH["params"];
-                QVariantMap paramsMapH2 = (paramsVH2.type() == QVariant::String)
-                    ? jsonToMap(paramsVH2.toString().toUtf8())
-                    : paramsVH2.toMap();
-                QString callResultH = actionH.contains("misscall") ? "missed" : "ended";
-                QString callKindH   = (paramsMapH2["calltype"].toInt() == 1) ? "video" : "voice";
-                qint64  durationH   = paramsMapH2["duration"].toString().toLongLong();
-                rawContentH = QString("{\"callResult\":\"%1\",\"callKind\":\"%2\",\"duration\":%3}")
-                                  .arg(callResultH).arg(callKindH).arg(durationH);
-                out["msgType"] = 4;
-                qDebug() << "[Zalo WS] old_messages: chat.recommended call bubble result=" << callResultH
-                         << "kind=" << callKindH << "duration=" << durationH;
-            }
-
-            if (mtH == 3) {
-                QVariantMap fmH = m["content"].toMap();
-                if (fmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
-                    fmH = jsonToMap(rawContentH.toUtf8());
-                QString fTitleH = fmH["title"].toString();
-                QString fHrefH  = fmH["href"].toString();
-                qint64  fSizeH  = 0;
-                QVariant paramsVH = fmH["params"];
-                QVariantMap paramsMapH = (paramsVH.type() == QVariant::String)
-                    ? jsonToMap(paramsVH.toString().toUtf8())
-                    : paramsVH.toMap();
-                if (!paramsMapH.isEmpty())
-                    fSizeH = paramsMapH["fileSize"].toString().toLongLong();
-                if (!fHrefH.isEmpty()) {
-                    QString fTitleEscH = fTitleH;
-                    fTitleEscH.replace("\\", "\\\\").replace("\"", "\\\"");
-                    rawContentH = QString("{\"fileName\":\"%1\",\"href\":\"%2\"")
-                                      .arg(fTitleEscH).arg(fHrefH);
-                    if (fSizeH > 0) rawContentH += QString(",\"fileSize\":%1").arg(fSizeH);
-                    rawContentH += "}";
-                    qDebug() << "[Zalo WS] old_messages: share.file detected fileName=" << fTitleH
-                             << "href=" << fHrefH.left(80) << "size=" << fSizeH;
-                }
-            }
-            // Normalize photo: also handles paramsExt/previewThumb (msgType may be 0)
-            if (mtH == 2 || rawContentH.isEmpty()) {
-                QString normalized = normalizePhotoContent(m, rawContentH);
-                if (normalized != rawContentH && !normalized.isEmpty()) {
-                    rawContentH = normalized;
-                    mtH = 2;
-                    out["msgType"] = 2;
-                }
-            }
-
-            // Check if photo has no real HTTP URL — fetch full-res via WS cmd=510
-            if ((mtH == 2 || out["msgType"].toInt() == 2) && !msgId.isEmpty()) {
-                QString checkUrl;
-                if (!rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(rawContentH.toUtf8());
-                    checkUrl = cm["normalUrl"].toString();
-                    if (checkUrl.isEmpty()) checkUrl = cm["hdUrl"].toString();
-                    if (checkUrl.isEmpty()) checkUrl = cm["thumbUrl"].toString();
-                }
-                if (!checkUrl.isEmpty() && !checkUrl.startsWith("http")) {
-                    if (!m_pendingPhotoMsgIds.contains(msgId)) {
-                        qDebug() << "[Zalo WS] old_messages photo protobuf thumb, decoding msgId=" << msgId;
-                        // Decode thumbnail for immediate preview
-                        downloadImageMessage(msgId, checkUrl, emitThread);
-                        // Fetch full-res via WS cmd=510 history
-                        fetchPhotoViaWs510(msgId, emitThread);
-                        fetchPhotoViaHttp(msgId, emitThread);
-                    }
-                }
-            }
-            // FIX: same root cause as the real-time WS path above — keep
-            // out["msgType"] in sync with the locally-resolved mtH regardless
-            // of which branch above did (or didn't) touch it.
-            out["msgType"] = mtH;
-            out["content"] = rawContentH;
-            msgs.append(out);
-
-            if (!msgId.isEmpty()) {
-                qint64 num = msgId.toLongLong();
-                if (num > maxMsgNum) { maxMsgNum = num; newestMsgId = msgId; }
-                if (isMine) m_seenMsgIds.insert(msgId);
-            }
-        }
-
-        if (!newestMsgId.isEmpty()) m_lastPollMsgId = newestMsgId;
-
-        // Check if any returned messages are pending photo fetches
-        // If ALL messages in this batch are photo-pending, this was a fetchPhotoViaWs510 call —
-        // extract real URLs and emit imageMsgReady instead of messagesReady.
-        QList<QVariantMap> photoUpdates;
-        for (int i = 0; i < msgs.size(); ++i) {
-            QVariantMap mm = msgs[i].toMap();
-            QString mid = mm["msgId"].toString();
-            if (m_pendingPhotoMsgIds.contains(mid)) {
-                QString threadForPhoto = m_pendingPhotoMsgIds.take(mid);
-                QString content = mm["content"].toString();
-                QString photoUrl;
-                if (!content.isEmpty() && content.trimmed().startsWith("{")) {
-                    QVariantMap cm = jsonToMap(content.toUtf8());
-                    photoUrl = cm["normalUrl"].toString();
-                    if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
-                    if (photoUrl.isEmpty()) photoUrl = cm["thumbUrl"].toString();
-                }
-                if (!photoUrl.isEmpty() && photoUrl.startsWith("http")) {
-                    qDebug() << "[Zalo WS] photo fetch resolved msgId=" << mid << "url=" << photoUrl.left(80);
-                    // Update DB with real URLs
-                    if (m_db) {
-                        const char *sql = "UPDATE messages SET content=?, msgType=2 WHERE msgId=?";
-                        sqlite3_stmt *stmt = 0;
-                        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
-                            sqlite3_bind_text(stmt, 1, content.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                            sqlite3_bind_text(stmt, 2, mid.toUtf8().constData(),     -1, SQLITE_TRANSIENT);
-                            sqlite3_step(stmt);
-                            sqlite3_finalize(stmt);
-                        }
-                    }
-                    downloadImageMessage(mid, photoUrl, threadForPhoto);
-                } else {
-                    qDebug() << "[Zalo WS] photo fetch: no HTTP URL for msgId=" << mid << "content=" << content.left(80);
-                    // DUMP TOÀN BỘ RAW: in mọi field của message map để chẩn
-                    // đoán field nào mang URL CDN thật trong bản build sau.
-                    qDebug() << "[Zalo WS] photo msg KEYS=" << mm.keys();
-                    QStringList dumpKeys = mm.keys();
-                    for (int dk = 0; dk < dumpKeys.size(); ++dk) {
-                        QString val = mm[dumpKeys[dk]].toString();
-                        if (!val.isEmpty())
-                            qDebug() << "[Zalo WS] photo msg" << dumpKeys[dk] << "=" << val.left(120);
-                    }
-                }
-            }
-        }
-
-        for (int i = 0; i < msgs.size(); ++i)
-            dbSaveMessage(msgs[i].toMap(), emitThread);
-        if (!newestMsgId.isEmpty())
-            m_threadLastMsgId[emitThread] = newestMsgId;
-
-        emit messagesReady(emitThread, msgs);
+        processOldDmBatch(rawMsgs, emitThread, false);
     }
 
     // cmd=601 subCmd=0: group_event — hoạt động pin/note/poll board từ BẤT
@@ -1950,6 +1624,16 @@ void ZaloService::handleWsMessage(int /*opcode*/, const QByteArray &payload)
                          << "fileUrl=" << fileUrl.left(80);
                 if (!fileId.isEmpty() && !fileUrl.isEmpty())
                     handleFileUploadDone(fileId, fileUrl);
+                continue;
+            }
+
+            // Đồng bộ tin nhắn từ điện thoại: user_confirm -> syncmsg_info -> (transfer_error)
+            if (actType == "syncmsgmb") {
+                QVariant smV = content["data"];
+                QVariantMap smData = (smV.type() == QVariant::String)
+                    ? jsonToMap(smV.toString().toUtf8())
+                    : smV.toMap();
+                handlePhoneSyncEvent(content["act"].toString(), smData);
                 continue;
             }
 
@@ -2272,3 +1956,374 @@ int ZaloService::wsNextReconnectDelayMs()
     return delay;
 }
 
+
+// Xử lý 1 batch tin nhắn DM của cmd=510 cho đúng 1 thread (emitThread):
+// chuẩn hóa nội dung, lưu SQLite, rồi báo UI. Tách ra từ handler cmd=510 để
+// dùng chung cho 2 đường: (1) response của fetchMessages() theo từng thread
+// (bulk=false), (2) đồng bộ lịch sử lúc khởi động (bulk=true, xem
+// ZaloService_Sync.cpp) — ở chế độ bulk không tải ảnh/không đụng vào
+// cursor poll theo thread, và chỉ emit messagesReady cho thread đang mở.
+void ZaloService::processOldDmBatch(const QVariantList &rawMsgs, const QString &emitThread, bool bulk)
+{
+        QVariantList msgs;
+        qint64 maxMsgNum = -1;
+        QString newestMsgId;
+
+        for (int i = 0; i < rawMsgs.size(); ++i) {
+            QVariantMap m = rawMsgs[i].toMap();
+            QString msgId      = m["msgId"].toString();
+            QString rawUidFrom = m["uidFrom"].toString();
+
+            // cmd=510 dùng chung 1 lastId toàn cục, nên 1 response có thể
+            // mang tin nhắn từ nhiều thread cùng lúc — chỉ giữ tin thuộc emitThread.
+            {
+                QString vFrom = rawUidFrom;
+                QString vTo   = m["idTo"].toString();
+                if (vFrom == "0") vFrom = m_uid;
+                if (vTo   == "0") vTo   = m_uid;
+                bool belongsHere = (vFrom == emitThread || vTo == emitThread
+                                    || (vFrom == m_uid && vTo == emitThread)
+                                    || (vTo == m_uid && vFrom == emitThread));
+                if (!belongsHere) {
+                    qDebug() << "[Zalo WS] old_messages: skip msg" << msgId
+                             << "belongs to other thread (from=" << vFrom << "to=" << vTo << ")";
+                    continue;
+                }
+            }
+            bool isMine = (rawUidFrom == "0" || rawUidFrom == m_uid);
+            QString uidFrom = (rawUidFrom == "0") ? m_uid : rawUidFrom;
+
+            // Bỏ qua tin nhắn user đã xóa cứng qua "xóa cho tôi" ở phiên/lần
+            // trước. Vòng lặp removeAt() bên dưới (xử lý chat.delete) chỉ bắt
+            // được trường hợp event thông báo xóa nằm cùng batch history này
+            // — nhưng khi thread đóng rồi mở lại, server vẫn replay tin nhắn
+            // gốc mỗi lần resync mà không nhất thiết kèm event thông báo đó.
+            // dbSaveMessage() đã từ chối lưu msgId bị tombstone, nhưng không
+            // ngăn được nó lọt vào list `msgs` trả cho UI qua messagesReady —
+            // nên vẫn có thể thoáng hiện trên màn hình dù đúng ra đã bị xóa
+            // khỏi DB. Bỏ qua ở đây luôn.
+            if (isMessageDeletedForMe(msgId)) {
+                qDebug() << "[Zalo WS] old_messages: skip msg" << msgId << "(tombstoned, deleted-for-me)";
+                continue;
+            }
+
+            // group.poll notices are not messages (the poll card shows the poll)
+            if (isGroupPollNotice(m)) continue;
+
+            // chat.undo = thông báo thu hồi, không phải tin nhắn thật. Patch tin
+            // gốc nếu nó nằm trước đó trong cùng batch history, lưu recall vào
+            // SQLite dù thế nào, và bỏ qua không thêm event này thành bubble riêng.
+            QString recalledIdH = extractRecalledMsgId(m);
+            if (!recalledIdH.isEmpty()) {
+                markMessageRecalled(emitThread, recalledIdH);
+                for (int pj = 0; pj < msgs.size(); ++pj) {
+                    QVariantMap pm = msgs[pj].toMap();
+                    if (pm["msgId"].toString() == recalledIdH) {
+                        pm["content"] = QString();
+                        pm["msgType"] = 99;
+                        msgs[pj] = pm;
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            // chat.delete = thông báo "xóa cho tôi", cùng guard self-only như
+            // real-time path ở trên. Nếu batch history này cũng chứa tin nhắn
+            // gốc, bỏ hẳn nó khỏi batch để không bị hồi sinh lần mở thread kế.
+            QString delMsgIdH, deleterUidH;
+            if (extractDeleteInfo(m, delMsgIdH, deleterUidH)) {
+                if (deleterUidH == m_uid) {
+                    markMessageDeletedForMe(emitThread, delMsgIdH);
+                    for (int pj = 0; pj < msgs.size(); ++pj) {
+                        if (msgs[pj].toMap()["msgId"].toString() == delMsgIdH) {
+                            msgs.removeAt(pj);
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // chat.reaction — xử lý giống real-time path ở trên, thêm bỏ event
+            // thô khỏi batch history này để không bị hồi sinh thành bubble
+            // riêng lẻ lần mở thread kế.
+            QString reactMsgIdH, reactUidH, reactIconH;
+            if (extractReactionInfo(m, reactMsgIdH, reactUidH, reactIconH)) {
+                if (reactIconH.isEmpty()) dbRemoveReaction(reactMsgIdH, reactUidH);
+                else                      dbSaveReaction(emitThread, reactMsgIdH, reactUidH, reactIconH);
+                emit reactionUpdated(emitThread, reactMsgIdH, reactUidH, reactIconH);
+                for (int pj = 0; pj < msgs.size(); ++pj) {
+                    if (msgs[pj].toMap()["msgId"].toString() == reactMsgIdH) {
+                        msgs.removeAt(pj);
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            QVariantMap out;
+            out["msgId"]    = msgId;
+            out["senderId"] = uidFrom;
+            out["dName"]    = m["dName"].toString();
+            out["ts"]       = m["ts"].toString();
+            out["isGroup"]  = false;
+            out["isMine"]   = isMine;
+            out["msgType"]  = m["msgType"].toInt();
+
+            int mtH = m["msgType"].toInt();
+            if (mtH == 0) {
+                mtH = m["type"].toInt();
+                if (mtH == 0) mtH = m["mt"].toInt();
+            }
+            // Cùng trường hợp msgType kiểu chuỗi như trên ("chat.photo" thay vì số).
+            if (mtH == 0) {
+                QString mtStr = m["msgType"].toString().toLower();
+                if (mtStr.isEmpty()) mtStr = m["msgtype"].toString().toLower();
+                if (mtStr.contains("photo") || mtStr.contains("image") || mtStr == "2")
+                    mtH = 2;
+                // FIX: nhánh real-time (line ~896) đã nhận diện "share.file" ->
+                // mt=3, nhưng nhánh old_messages/history (cmd=510 poll) này thì
+                // chưa từng có — nên khi cùng 1 tin nhắn video bị poll lại lần 2
+                // (rất hay xảy ra, "DM incremental poll cmd=510" định kỳ), nó
+                // rơi thẳng vào nhánh "nested content obj -> mt=2" bên dưới,
+                // ghi đè msgType=2 + content sai dạng lên bản ghi DB đúng đã lưu
+                // từ lần nhận real-time trước đó -> video hiển thị sai vĩnh
+                // viễn kể cả sau khi khởi động lại app (vì DB đã bị hỏng thật,
+                // không phải chỉ là dòng trùng tạm trong bộ nhớ).
+                else if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
+                    mtH = 3;
+                // Call log bubble history counterpart — cùng lý do đã ghi ở
+                // real-time path (cmd=501/521, ~dòng 900): thiếu nhánh này ở
+                // "old_messages" (cmd=510 poll) khiến content thô ("action":
+                // "recommened.misscall", chưa chuẩn hóa) ghi đè lên bản ghi
+                // DB đúng (đã chuẩn hóa) mỗi lần WS poll lại history, làm
+                // callBubble ở ChatView.qml "biến mất" khi mở lại thread
+                // (msgType vẫn=4 nhưng content không còn khớp {"callResult"
+                // ...} mà callBubble.extractJsonStringField parse nữa).
+                else if (mtStr.contains("chat.recommended"))
+                {
+                    QVariantMap peekMapH = m["content"].toMap();
+                    if (peekMapH.isEmpty()) {
+                        QString peekStrH = m["content"].toString();
+                        if (!peekStrH.isEmpty() && peekStrH.trimmed().startsWith("{"))
+                            peekMapH = jsonToMap(peekStrH.toUtf8());
+                    }
+                    QString peekActionH = peekMapH["action"].toString();
+                    mtH = peekActionH.contains("link") ? 6 : 4;
+                }
+                // Sticker history counterpart (msgType wire = "chat.sticker")
+                // — cùng lý do các nhánh trên: thiếu ở đây thì content thô
+                // {"catId":...,"id":...,"type":...} ghi đè bản {"stickerId":N}
+                // đã chuẩn hóa mỗi lần cmd=510 poll lại history.
+                else if (mtStr.contains("chat.sticker"))
+                    mtH = 5;
+            }
+
+            // Re-serialize nested content object lại thành JSON, cùng lý do như trên.
+            QString rawContentH = m["content"].toString();
+            if (rawContentH.isEmpty()) {
+                QVariantMap cm = m["content"].toMap();
+                if (!cm.isEmpty()) {
+                    rawContentH = "{";
+                    QStringList cmKeys = cm.keys();
+                    for (int k = 0; k < cmKeys.size(); ++k) {
+                        if (k > 0) rawContentH += ",";
+                        QString v = cm[cmKeys[k]].toString();
+                        v.replace("\\", "\\\\").replace("\"", "\\\"");
+                        rawContentH += "\"" + cmKeys[k] + "\":\"" + v + "\"";
+                    }
+                    rawContentH += "}";
+                    qDebug() << "[Zalo WS] old_messages: content was nested obj, serialized:"
+                             << rawContentH.left(200);
+                    if (mtH == 0) mtH = 2; // nested content obj → photo message
+                }
+            }
+            // FIX: video/file (mt==3) counterpart to the photo normalization
+            // right below — was missing entirely, so old_messages left
+            // rawContentH as the raw {"title":...,"href":...,"params":"{...}"}
+            // shape instead of the {"fileName":...,"href":...,"fileSize":...}
+            // shape ChatView.qml's videoBubble parser expects. Same field
+            // extraction as the real-time path (see share.file handling above
+            // in this file's cmd=501/521 branch).
+            if (mtH == 5) {
+                QVariantMap smH = m["content"].toMap();
+                if (smH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
+                    smH = jsonToMap(rawContentH.toUtf8());
+                qint64 stickerIdH = smH["id"].toString().toLongLong();
+                if (stickerIdH == 0) stickerIdH = smH["id"].toLongLong();
+                rawContentH = QString("{\"stickerId\":%1}").arg(stickerIdH);
+                out["msgType"] = 5;
+                qDebug() << "[Zalo WS] old_messages: chat.sticker bubble id=" << stickerIdH;
+                // Eager download, same reasoning as the real-time (mt==5) branch above.
+                if (stickerIdH > 0) downloadSticker(QString::number(stickerIdH));
+            }
+
+            if (mtH == 6) {
+                QVariantMap lmH = m["content"].toMap();
+                if (lmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
+                    lmH = jsonToMap(rawContentH.toUtf8());
+                QString lTitleH = lmH["title"].toString();
+                QString lDescH  = lmH["description"].toString();
+                QString lHrefH  = lmH["href"].toString();
+                QString lThumbH = lmH["thumb"].toString();
+                QString escH = lTitleH; escH.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString descEscH = lDescH; descEscH.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString hrefEscH = lHrefH; hrefEscH.replace("\\", "\\\\").replace("\"", "\\\"");
+                QString thumbEscH = lThumbH; thumbEscH.replace("\\", "\\\\").replace("\"", "\\\"");
+                rawContentH = QString("{\"linkTitle\":\"%1\",\"linkDesc\":\"%2\",\"linkHref\":\"%3\",\"linkThumb\":\"%4\"}")
+                                  .arg(escH).arg(descEscH).arg(hrefEscH).arg(thumbEscH);
+                out["msgType"] = 6;
+                qDebug() << "[Zalo WS] old_messages: chat.recommended LINK bubble title=" << lTitleH
+                         << "href=" << lHrefH.left(80);
+            }
+
+            if (mtH == 4) {
+                QVariantMap rmH = m["content"].toMap();
+                if (rmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
+                    rmH = jsonToMap(rawContentH.toUtf8());
+                QString actionH = rmH["action"].toString();
+                QVariant paramsVH2 = rmH["params"];
+                QVariantMap paramsMapH2 = (paramsVH2.type() == QVariant::String)
+                    ? jsonToMap(paramsVH2.toString().toUtf8())
+                    : paramsVH2.toMap();
+                QString callResultH = actionH.contains("misscall") ? "missed" : "ended";
+                QString callKindH   = (paramsMapH2["calltype"].toInt() == 1) ? "video" : "voice";
+                qint64  durationH   = paramsMapH2["duration"].toString().toLongLong();
+                rawContentH = QString("{\"callResult\":\"%1\",\"callKind\":\"%2\",\"duration\":%3}")
+                                  .arg(callResultH).arg(callKindH).arg(durationH);
+                out["msgType"] = 4;
+                qDebug() << "[Zalo WS] old_messages: chat.recommended call bubble result=" << callResultH
+                         << "kind=" << callKindH << "duration=" << durationH;
+            }
+
+            if (mtH == 3) {
+                QVariantMap fmH = m["content"].toMap();
+                if (fmH.isEmpty() && !rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{"))
+                    fmH = jsonToMap(rawContentH.toUtf8());
+                QString fTitleH = fmH["title"].toString();
+                QString fHrefH  = fmH["href"].toString();
+                qint64  fSizeH  = 0;
+                QVariant paramsVH = fmH["params"];
+                QVariantMap paramsMapH = (paramsVH.type() == QVariant::String)
+                    ? jsonToMap(paramsVH.toString().toUtf8())
+                    : paramsVH.toMap();
+                if (!paramsMapH.isEmpty())
+                    fSizeH = paramsMapH["fileSize"].toString().toLongLong();
+                if (!fHrefH.isEmpty()) {
+                    QString fTitleEscH = fTitleH;
+                    fTitleEscH.replace("\\", "\\\\").replace("\"", "\\\"");
+                    rawContentH = QString("{\"fileName\":\"%1\",\"href\":\"%2\"")
+                                      .arg(fTitleEscH).arg(fHrefH);
+                    if (fSizeH > 0) rawContentH += QString(",\"fileSize\":%1").arg(fSizeH);
+                    rawContentH += "}";
+                    qDebug() << "[Zalo WS] old_messages: share.file detected fileName=" << fTitleH
+                             << "href=" << fHrefH.left(80) << "size=" << fSizeH;
+                }
+            }
+            // Normalize photo: also handles paramsExt/previewThumb (msgType may be 0)
+            if (mtH == 2 || rawContentH.isEmpty()) {
+                QString normalized = normalizePhotoContent(m, rawContentH);
+                if (normalized != rawContentH && !normalized.isEmpty()) {
+                    rawContentH = normalized;
+                    mtH = 2;
+                    out["msgType"] = 2;
+                }
+            }
+
+            // Check if photo has no real HTTP URL — fetch full-res via WS cmd=510
+            if (!bulk && (mtH == 2 || out["msgType"].toInt() == 2) && !msgId.isEmpty()) {
+                QString checkUrl;
+                if (!rawContentH.isEmpty() && rawContentH.trimmed().startsWith("{")) {
+                    QVariantMap cm = jsonToMap(rawContentH.toUtf8());
+                    checkUrl = cm["normalUrl"].toString();
+                    if (checkUrl.isEmpty()) checkUrl = cm["hdUrl"].toString();
+                    if (checkUrl.isEmpty()) checkUrl = cm["thumbUrl"].toString();
+                }
+                if (!checkUrl.isEmpty() && !checkUrl.startsWith("http")) {
+                    if (!m_pendingPhotoMsgIds.contains(msgId)) {
+                        qDebug() << "[Zalo WS] old_messages photo protobuf thumb, decoding msgId=" << msgId;
+                        // Decode thumbnail for immediate preview
+                        downloadImageMessage(msgId, checkUrl, emitThread);
+                        // Fetch full-res via WS cmd=510 history
+                        fetchPhotoViaWs510(msgId, emitThread);
+                        fetchPhotoViaHttp(msgId, emitThread);
+                    }
+                }
+            }
+            // FIX: same root cause as the real-time WS path above — keep
+            // out["msgType"] in sync with the locally-resolved mtH regardless
+            // of which branch above did (or didn't) touch it.
+            out["msgType"] = mtH;
+            out["content"] = rawContentH;
+            msgs.append(out);
+
+            if (!msgId.isEmpty()) {
+                qint64 num = msgId.toLongLong();
+                if (num > maxMsgNum) { maxMsgNum = num; newestMsgId = msgId; }
+                if (isMine) m_seenMsgIds.insert(msgId);
+            }
+        }
+
+        // Bulk sync walks the whole history, so only ever move the incremental-poll
+        // cursor forward — never let an older page drag it back.
+        if (!newestMsgId.isEmpty()
+            && (!bulk || newestMsgId.toLongLong() > m_lastPollMsgId.toLongLong()))
+            m_lastPollMsgId = newestMsgId;
+
+        // Check if any returned messages are pending photo fetches
+        // If ALL messages in this batch are photo-pending, this was a fetchPhotoViaWs510 call —
+        // extract real URLs and emit imageMsgReady instead of messagesReady.
+        QList<QVariantMap> photoUpdates;
+        for (int i = 0; i < msgs.size(); ++i) {
+            QVariantMap mm = msgs[i].toMap();
+            QString mid = mm["msgId"].toString();
+            if (m_pendingPhotoMsgIds.contains(mid)) {
+                QString threadForPhoto = m_pendingPhotoMsgIds.take(mid);
+                QString content = mm["content"].toString();
+                QString photoUrl;
+                if (!content.isEmpty() && content.trimmed().startsWith("{")) {
+                    QVariantMap cm = jsonToMap(content.toUtf8());
+                    photoUrl = cm["normalUrl"].toString();
+                    if (photoUrl.isEmpty()) photoUrl = cm["hdUrl"].toString();
+                    if (photoUrl.isEmpty()) photoUrl = cm["thumbUrl"].toString();
+                }
+                if (!photoUrl.isEmpty() && photoUrl.startsWith("http")) {
+                    qDebug() << "[Zalo WS] photo fetch resolved msgId=" << mid << "url=" << photoUrl.left(80);
+                    // Update DB with real URLs
+                    if (m_db) {
+                        const char *sql = "UPDATE messages SET content=?, msgType=2 WHERE msgId=?";
+                        sqlite3_stmt *stmt = 0;
+                        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) == SQLITE_OK) {
+                            sqlite3_bind_text(stmt, 1, content.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                            sqlite3_bind_text(stmt, 2, mid.toUtf8().constData(),     -1, SQLITE_TRANSIENT);
+                            sqlite3_step(stmt);
+                            sqlite3_finalize(stmt);
+                        }
+                    }
+                    downloadImageMessage(mid, photoUrl, threadForPhoto);
+                } else {
+                    qDebug() << "[Zalo WS] photo fetch: no HTTP URL for msgId=" << mid << "content=" << content.left(80);
+                    // DUMP TOÀN BỘ RAW: in mọi field của message map để chẩn
+                    // đoán field nào mang URL CDN thật trong bản build sau.
+                    qDebug() << "[Zalo WS] photo msg KEYS=" << mm.keys();
+                    QStringList dumpKeys = mm.keys();
+                    for (int dk = 0; dk < dumpKeys.size(); ++dk) {
+                        QString val = mm[dumpKeys[dk]].toString();
+                        if (!val.isEmpty())
+                            qDebug() << "[Zalo WS] photo msg" << dumpKeys[dk] << "=" << val.left(120);
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < msgs.size(); ++i)
+            dbSaveMessage(msgs[i].toMap(), emitThread);
+        if (!newestMsgId.isEmpty() && !bulk)
+            m_threadLastMsgId[emitThread] = newestMsgId;
+
+        // Bulk sync fills threads the user is not looking at: only the open thread
+        // needs the UI signal (the DB already has everything).
+        if (!bulk || emitThread == m_activeThreadId)
+            emit messagesReady(emitThread, msgs);
+}

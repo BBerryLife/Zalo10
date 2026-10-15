@@ -36,6 +36,101 @@ NavigationPane {
         }
     ]
 
+    property variant lastThreads: []
+
+    // Dựng danh sách nhóm từ threads + lịch sử local (preview, thứ tự, ghim).
+    // Dùng chung cho onConversationsReady và các lần làm mới sau khi đồng bộ.
+    function buildGroups(threads, restoreAvatars) {
+        groupsLoading.visible = false;
+        // Rebuild (after sync/pin refresh) keeps already-downloaded avatars
+        var avatarByTid = {};
+        if (restoreAvatars) {
+            for (var a = 0; a < groupModel.size(); a++) {
+                var ad = groupModel.value(a);
+                if (ad.threadId && ad.localAvatar) avatarByTid[ad.threadId] = ad.localAvatar;
+            }
+        }
+        // Pinned conversations (server-side pin list) float to the top, same row UI
+        var pinnedIds = zService.pinnedThreadIds();
+        var pinMap = {};
+        for (var pn = 0; pn < pinnedIds.length; pn++) pinMap[pinnedIds[pn]] = true;
+        groupModel.clear();
+        var arr = [];
+        // Restore last messages from local history — the server's group list
+        // doesn't include one, so without this every group shows
+        // "No messages yet" until a new message arrives
+        var lastMsgs = zService.getThreadLastMessages();
+        // Persisted unread threads (yellow pellet survives app restarts)
+        var unreadIds = zService.unreadThreadIds();
+        var unreadMap = {};
+        for (var u = 0; u < unreadIds.length; u++) unreadMap[unreadIds[u]] = true;
+        for (var i = 0; i < threads.length; i++) {
+            if (!threads[i].isGroup) continue;
+            // Copy: writes into the list handed over by a C++ signal (or kept in a
+            // property) can silently no-op on this runtime
+            var g = {};
+            for (var gk in threads[i]) g[gk] = threads[i][gk];
+            g.localAvatar    = (restoreAvatars && avatarByTid[g.threadId || ""]) ? avatarByTid[g.threadId] : "";
+            g.isPinned       = (pinMap[g.threadId || ""] === true);
+            g.lastMsgIsMine  = false;
+            g.lastSenderName = "";
+            g.sortTs         = 0;
+            var lm = lastMsgs[g.threadId || ""];
+            if (lm) {
+                var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
+                var mt = lm.msgType;
+                var snippet;
+                if (mt === 99 || mt === "99") {
+                    snippet = isMine ? "You recalled a message" : "This message was recalled";
+                } else if (mt === 2 || mt === "2") {
+                    snippet = "[Photo]";
+                } else {
+                    snippet = groupsNav.msgSnippet(mt, lm.content);
+                }
+                g.lastMessage    = snippet;
+                g.lastMsgIsMine  = isMine;
+                g.lastSenderName = lm.dName || "";
+                g.lastTime       = lm.ts || "";
+            }
+            g.hasUnread = (unreadMap[g.threadId || ""] === true)
+                          && (g.lastMessage || "").length > 0 && !g.lastMsgIsMine;
+            if (g.lastTime && g.lastTime !== "") {
+                var ts = parseInt(g.lastTime);
+                if (!isNaN(ts)) {
+                    g.sortTs = ts;
+                    g.lastTime = groupsNav.formatTime(ts);
+                }
+            }
+            arr.push(g);
+        }
+        // Server's thread order isn't sorted by recency, so sort here to keep
+        // the most recently active group on top
+        arr.sort(function(a, b) {
+            var pa = a.isPinned ? 1 : 0, pb = b.isPinned ? 1 : 0;
+            if (pa !== pb) return pb - pa;
+            return (b.sortTs || 0) - (a.sortTs || 0);
+        });
+        for (var j = 0; j < arr.length; j++) {
+            var gg = arr[j];
+            groupModel.append(gg);
+            var gurl = gg.avatar || "";
+            var gtid = gg.threadId || "";
+            if (gurl.length > 0 && gtid.length > 0 && !(restoreAvatars && gg.localAvatar))
+                zService.downloadAvatar(gtid, gurl);
+        }
+        groupsNav.allGroups = arr;
+    }
+
+    // Index of the first non-pinned row. Pinned rows are always kept at the top of the list,
+    // so a conversation that just received a message goes right below them, not above.
+    function firstUnpinnedIndex() {
+        var n = 0;
+        for (var k = 0; k < groupModel.size(); k++) {
+            if (groupModel.value(k).isPinned) n++; else break;
+        }
+        return n;
+    }
+
     function filterList() {
         var q = groupsNav.searchText.toLowerCase().trim();
         searchModel.clear();
@@ -483,64 +578,18 @@ NavigationPane {
                 target: zService
 
                 onConversationsReady: {
-                    groupsLoading.visible = false;
-                    groupModel.clear();
-                    var arr = [];
-                    // Restore last messages from local history — the server's group list
-                    // doesn't include one, so without this every group shows
-                    // "No messages yet" until a new message arrives
-                    var lastMsgs = zService.getThreadLastMessages();
-                    // Persisted unread threads (yellow pellet survives app restarts)
-                    var unreadIds = zService.unreadThreadIds();
-                    var unreadMap = {};
-                    for (var u = 0; u < unreadIds.length; u++) unreadMap[unreadIds[u]] = true;
-                    for (var i = 0; i < threads.length; i++) {
-                        if (!threads[i].isGroup) continue;
-                        var g = threads[i];
-                        g.localAvatar    = "";
-                        g.lastMsgIsMine  = false;
-                        g.lastSenderName = "";
-                        g.sortTs         = 0;
-                        var lm = lastMsgs[g.threadId || ""];
-                        if (lm) {
-                            var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
-                            var mt = lm.msgType;
-                            var snippet;
-                            if (mt === 99 || mt === "99") {
-                                snippet = isMine ? "You recalled a message" : "This message was recalled";
-                            } else if (mt === 2 || mt === "2") {
-                                snippet = "[Photo]";
-                            } else {
-                                snippet = groupsNav.msgSnippet(mt, lm.content);
-                            }
-                            g.lastMessage    = snippet;
-                            g.lastMsgIsMine  = isMine;
-                            g.lastSenderName = lm.dName || "";
-                            g.lastTime       = lm.ts || "";
-                        }
-                        g.hasUnread = (unreadMap[g.threadId || ""] === true)
-                                      && (g.lastMessage || "").length > 0 && !g.lastMsgIsMine;
-                        if (g.lastTime && g.lastTime !== "") {
-                            var ts = parseInt(g.lastTime);
-                            if (!isNaN(ts)) {
-                                g.sortTs = ts;
-                                g.lastTime = groupsNav.formatTime(ts);
-                            }
-                        }
-                        arr.push(g);
-                    }
-                    // Server's thread order isn't sorted by recency, so sort here to keep
-                    // the most recently active group on top
-                    arr.sort(function(a, b) { return (b.sortTs || 0) - (a.sortTs || 0); });
-                    for (var j = 0; j < arr.length; j++) {
-                        var gg = arr[j];
-                        groupModel.append(gg);
-                        var gurl = gg.avatar || "";
-                        var gtid = gg.threadId || "";
-                        if (gurl.length > 0 && gtid.length > 0)
-                            zService.downloadAvatar(gtid, gurl);
-                    }
-                    groupsNav.allGroups = arr;
+                    groupsNav.lastThreads = threads;
+                    groupsNav.buildGroups(threads, false);
+                }
+
+                // Đồng bộ lịch sử xong / danh sách ghim về -> dựng lại preview + thứ tự
+                onHistorySynced: {
+                    if (groupsNav.lastThreads && groupsNav.lastThreads.length > 0)
+                        groupsNav.buildGroups(groupsNav.lastThreads, true);
+                }
+                onPinnedChanged: {
+                    if (groupsNav.lastThreads && groupsNav.lastThreads.length > 0)
+                        groupsNav.buildGroups(groupsNav.lastThreads, true);
                 }
 
                 onAvatarReady: {
@@ -592,7 +641,8 @@ NavigationPane {
                                 // Update the displayed time, otherwise it never advances
                                 if (message.ts) d.lastTime = groupsNav.formatTime(message.ts);
                                 groupModel.removeAt(i);
-                                groupModel.insert(0, d);
+                                // pinned stay on top (newest activity first among them); the rest go right below
+                                groupModel.insert(d.isPinned ? 0 : groupsNav.firstUnpinnedIndex(), d);
                                 break;
                             }
                         }
