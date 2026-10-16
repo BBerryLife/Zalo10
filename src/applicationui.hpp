@@ -32,6 +32,9 @@ public slots:
     Q_INVOKABLE bool getDarkTheme();
     Q_INVOKABLE void setShowRecalledMessages(bool show);
     Q_INVOKABLE bool getShowRecalledMessages();
+    Q_INVOKABLE bool getTosAccepted();
+    Q_INVOKABLE void setTosAccepted(bool accepted);
+    Q_INVOKABLE void quitApp();
     Q_INVOKABLE QString appVersion();
     Q_INVOKABLE QString exportLog();
 

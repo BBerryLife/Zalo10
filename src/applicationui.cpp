@@ -413,6 +413,24 @@ bool ApplicationUI::getShowRecalledMessages()
     return settings.value("showRecalledMessages", false).toBool();
 }
 
+bool ApplicationUI::getTosAccepted()
+{
+    QSettings settings("BerryLife", "Zalo10");
+    return settings.value("tosAccepted", false).toBool();
+}
+
+void ApplicationUI::setTosAccepted(bool accepted)
+{
+    QSettings settings("BerryLife", "Zalo10");
+    settings.setValue("tosAccepted", accepted);
+    settings.sync();
+}
+
+void ApplicationUI::quitApp()
+{
+    onManualExit();
+}
+
 void ApplicationUI::onSystemLanguageChanged()
 {
     QCoreApplication::instance()->removeTranslator(m_pTranslator);

@@ -422,7 +422,7 @@ QVariantMap ZaloService::getThreadLastMessages() const
 
     const char *sql =
         "SELECT threadId, content, dName, isMine, msgType, recalledOriginalContent, "
-        "MAX(CAST(ts AS INTEGER)) AS maxTs "
+        "MAX(CAST(ts AS INTEGER)) AS maxTs, msgId "
         "FROM messages GROUP BY threadId;";
     sqlite3_stmt *stmt = 0;
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return result;
@@ -436,6 +436,18 @@ QVariantMap ZaloService::getThreadLastMessages() const
         m["msgType"]                 = sqlite3_column_int(stmt, 4);
         m["recalledOriginalContent"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 5));
         m["ts"]                      = QString::number((qint64)sqlite3_column_int64(stmt, 6));
+        QString lastMsgId = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 7));
+        m["msgId"] = lastMsgId;
+        int state = 1;
+        if (m["isMine"].toBool() && !lastMsgId.isEmpty()) {
+            sqlite3_stmt *st = 0;
+            if (sqlite3_prepare_v2(m_db, "SELECT state FROM message_states WHERE msgId=?;", -1, &st, 0) == SQLITE_OK) {
+                sqlite3_bind_text(st, 1, lastMsgId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                if (sqlite3_step(st) == SQLITE_ROW) state = sqlite3_column_int(st, 0);
+                sqlite3_finalize(st);
+            }
+        }
+        m["state"] = state;
         result[threadId] = m;
     }
     sqlite3_finalize(stmt);

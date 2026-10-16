@@ -126,7 +126,6 @@ Page {
                     text: profilePage.contactName
                     textStyle {
                         base: SystemDefaults.TextStyles.BigText
-                        fontWeight: FontWeight.Bold
                         textAlign: TextAlign.Center
                     }
                     horizontalAlignment: HorizontalAlignment.Center

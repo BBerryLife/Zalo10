@@ -63,10 +63,18 @@ TabbedPane {
         return mon + " " + date.getDate();
     }
     
-    onCreationCompleted: {
-        aboutSheet.zService = zService;
+    function startLogin() {
         if (!zService.loadSession()) {
             loginSheet.open();
+        }
+    }
+
+    onCreationCompleted: {
+        aboutSheet.zService = zService;
+        if (app.getTosAccepted()) {
+            startLogin();
+        } else {
+            tosTimer.start();
         }
     }
     
@@ -166,6 +174,29 @@ TabbedPane {
                     ? "Added event to today's calendar"
                     : ("Cannot create event: " + error);
                 eventResultDialog.show();
+            }
+        },
+
+        Timer {
+            id: tosTimer
+            interval: 600
+            repeat: false
+            onTriggered: { tosDialog.show(); }
+        },
+
+        SystemDialog {
+            id: tosDialog
+            title: "Terms of Service"
+            body: "Informal Disclaimer:\nZalo10 is an independent, non-profit personal project. It has no official affiliation or connection with Zalo (VNG).\n\nAccount Risks:\nUsing a third-party application based on an emulation library may violate Zalo's terms of service. Please consider using a secondary account. The author takes no responsibility if your Zalo account is suspended or banned.\n\nData Policy:\nThe application runs directly on your device and serves strictly as a display interface. It does not store or forward your personal data or login credentials to any third party.\n\nMaintenance and Issues:\nThe application is provided \"As-Is\". Features and functionality may be interrupted at any time if Zalo updates or changes their system."
+            confirmButton.label: "OK"
+            cancelButton.label: "Cancel"
+            onFinished: {
+                if (value === SystemUiResult.ConfirmButtonSelection) {
+                    app.setTosAccepted(true);
+                    root.startLogin();
+                } else {
+                    app.quitApp();
+                }
             }
         },
 

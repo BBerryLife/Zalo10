@@ -64,6 +64,8 @@ NavigationPane {
             g.localAvatar    = (restoreAvatars && avatarByTid[g.threadId || ""]) ? avatarByTid[g.threadId] : "";
             g.isPinned       = (pinMap[g.threadId || ""] === true);
             g.lastMsgIsMine  = false;
+            g.lastMsgId      = "";
+            g.lastMsgState   = 0;
             g.lastSenderName = "";
             g.sortTs         = 0;
             var lm = lastMsgs[g.threadId || ""];
@@ -80,6 +82,8 @@ NavigationPane {
                 }
                 g.lastMessage    = snippet;
                 g.lastMsgIsMine  = isMine;
+                g.lastMsgId      = lm.msgId || "";
+                g.lastMsgState   = isMine ? (lm.state || 1) : 0;
                 g.lastSenderName = lm.dName || "";
                 g.lastTime       = lm.ts || "";
             }
@@ -344,6 +348,8 @@ NavigationPane {
                         CustomListItem {
                             id: groupRow
                             dividerVisible: true
+                            property int outState: ListItemData.lastMsgIsMine === true
+                                ? (ListItemData.lastMsgState || 1) : -1
                             Container {
                                 layout: DockLayout {}
                                 preferredHeight: ui.du(12.0)
@@ -391,18 +397,64 @@ NavigationPane {
                                         layout: DockLayout {}
                                         horizontalAlignment: HorizontalAlignment.Fill
 
-                                        ImageView {
+                                        Container {
                                             visible: ((ListItemData.lastMessage || "").length > 0)
-                                            imageSource: ListItemData.hasUnread
-                                                         ? "asset:///images/ChatView/bubble/message_states/yellow_pellet.png"
-                                                         : "asset:///images/ChatView/bubble/message_states/grey_pellet.png"
+                                            layout: DockLayout {}
                                             preferredWidth:  ui.du(4.4)
                                             preferredHeight: ui.du(4.4)
                                             minWidth:        ui.du(4.4)
                                             minHeight:       ui.du(4.4)
                                             verticalAlignment: VerticalAlignment.Center
                                             horizontalAlignment: HorizontalAlignment.Left
-                                            scalingMethod: ScalingMethod.AspectFit
+                                            ImageView {
+                                                visible: groupRow.outState === -1 && ListItemData.hasUnread === true
+                                                imageSource: "asset:///images/ChatView/bubble/message_states/yellow_pellet.png"
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment: VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFit
+                                            }
+                                            ImageView {
+                                                visible: groupRow.outState === -1 && ListItemData.hasUnread !== true
+                                                imageSource: "asset:///images/ChatView/bubble/message_states/grey_pellet.png"
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment: VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFit
+                                            }
+                                            ImageView {
+                                                visible: groupRow.outState === 0
+                                                imageSource: "asset:///images/ChatView/bubble/message_states/sending.png"
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment: VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFit
+                                            }
+                                            ImageView {
+                                                visible: groupRow.outState === 1
+                                                imageSource: "asset:///images/ChatView/bubble/message_states/sent.png"
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment: VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFit
+                                            }
+                                            ImageView {
+                                                visible: groupRow.outState === 2
+                                                imageSource: "asset:///images/ChatView/bubble/message_states/delivered.png"
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment: VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFit
+                                            }
+                                            ImageView {
+                                                visible: groupRow.outState === 3
+                                                imageSource: "asset:///images/ChatView/bubble/message_states/read.png"
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment: VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFit
+                                            }
+                                            ImageView {
+                                                visible: groupRow.outState === 4
+                                                imageSource: "asset:///images/ChatView/bubble/message_states/failed.png"
+                                                horizontalAlignment: HorizontalAlignment.Fill
+                                                verticalAlignment: VerticalAlignment.Fill
+                                                scalingMethod: ScalingMethod.AspectFit
+                                            }
                                         }
                                         Container {
                                             horizontalAlignment: HorizontalAlignment.Fill
@@ -592,6 +644,8 @@ NavigationPane {
                             if (d.threadId === tid) {
                                 d.lastMessage    = snippet;
                                 d.lastMsgIsMine  = isMine;
+                                d.lastMsgId      = message.msgId || "";
+                                d.lastMsgState   = isMine ? 1 : 0;
                                 d.lastSenderName = message.dName || "";
                                 d.hasUnread      = !isMine && !zService.isActiveThread(tid);
                                 zService.setThreadUnread(tid, d.hasUnread);
@@ -638,6 +692,45 @@ NavigationPane {
                     }
                 }
 
+                onMessageStatesChanged: {
+                    var states = zService.getThreadMessageStates(threadId) || {};
+                    for (var i = 0; i < groupModel.size(); i++) {
+                        var d = groupModel.value(i);
+                        if (d.threadId === threadId) {
+                            if (d.lastMsgIsMine === true && d.lastMsgId) {
+                                var st = states[d.lastMsgId] || 1;
+                                if (st !== d.lastMsgState) { d.lastMsgState = st; groupModel.replace(i, d); }
+                            }
+                            break;
+                        }
+                    }
+                    for (var j = 0; j < searchModel.size(); j++) {
+                        var sd = searchModel.value(j);
+                        if (sd.threadId === threadId) {
+                            if (sd.lastMsgIsMine === true && sd.lastMsgId) {
+                                var sst = states[sd.lastMsgId] || 1;
+                                if (sst !== sd.lastMsgState) { sd.lastMsgState = sst; searchModel.replace(j, sd); }
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                onMessageSent: {
+                    if (success) return;
+                    for (var i = 0; i < groupModel.size(); i++) {
+                        var d = groupModel.value(i);
+                        if (d.threadId === threadId) {
+                            d.lastMessage   = "Message not sent";
+                            d.lastMsgIsMine = true;
+                            d.lastMsgId     = "";
+                            d.lastMsgState  = 4;
+                            groupModel.replace(i, d);
+                            break;
+                        }
+                    }
+                }
+
                 onClearHistoryDone: {
                     if (!success) return;
                     for (var i = 0; i < groupModel.size(); i++) {
@@ -645,6 +738,8 @@ NavigationPane {
                         if (d.threadId === threadId) {
                             d.lastMessage    = "";
                             d.lastMsgIsMine  = false;
+                            d.lastMsgId      = "";
+                            d.lastMsgState   = 0;
                             d.lastSenderName = "";
                             d.hasUnread      = false;
                             zService.setThreadUnread(threadId, false);
