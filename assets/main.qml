@@ -153,8 +153,6 @@ TabbedPane {
         Connections {
             target: app
             onOpenThreadRequested: {
-                // Fired from C++ ApplicationUI::onInvoked when a Hub notification is tapped
-                console.log("openThreadRequested: threadId=" + threadId + " isGroup=" + isGroup);
                 if (isGroup) {
                     root.activeTab = groupsTab;
                     groupsTabContent.openThread(threadId, isGroup);
@@ -163,8 +161,6 @@ TabbedPane {
                     chatsTabContent.openThread(threadId, isGroup);
                 }
             }
-            // Handled once at the root instead of per-ChatView, since app/ApplicationUI
-            // is shared across all tabs (avoids missed or duplicate result dialogs)
             onEventCreated: {
                 eventResultDialog.body = success
                     ? "Added event to today's calendar"

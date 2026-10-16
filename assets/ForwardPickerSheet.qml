@@ -2,13 +2,6 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// "Forward" flow for a chat bubble, in two steps:
-//   1) A native SystemDialog offering Groups / Chat / Cancel
-//   2) A checklist Sheet of every group (or every 1-1 chat) with a Send/Cancel bar,
-//      built from ListView + ArrayDataModel; selection toggling lives in the
-//      ListView's onTriggered, not the delegate (see rowRoot in ChatView.qml for why)
-// Reuses the same zService.fetchConversations()/fetchFriends() calls GroupsTab.qml
-// and ChatsTab.qml already use for their lists
 Sheet {
     id: forwardSheet
 
@@ -37,9 +30,7 @@ Sheet {
     }
 
     function toggleSelected(id) {
-        console.log("[Zalo QML] ForwardPickerSheet.toggleSelected called with id=\"" + id + "\"");
         if (!id || id.length === 0) {
-            console.log("[Zalo QML] ForwardPickerSheet.toggleSelected: EMPTY id, returning early (Send will NOT be enabled)");
             return;
         }
         var arr = forwardSheet.selectedIds.slice();
@@ -48,7 +39,6 @@ Sheet {
         else arr.push(id);
         forwardSheet.selectedIds = arr;
         sendAction.enabled = arr.length > 0;
-        console.log("[Zalo QML] ForwardPickerSheet.toggleSelected: selectedIds.length=" + arr.length + " sendAction.enabled=" + sendAction.enabled);
     }
 
     function doSend() {
@@ -57,7 +47,6 @@ Sheet {
                                  forwardSheet.pendingOrigMsgId, forwardSheet.pendingOrigTs);
         forwardSheet.close();
     }
-
 
     attachedObjects: [
         SystemDialog {
@@ -79,8 +68,6 @@ Sheet {
                     forwardSheet.loadTargets();
                     forwardSheet.open();
                 }
-                // The extra button reports as ButtonSelection; Cancel/TimeOut/anything
-                // else just closes the dialog
             }
         },
         Connections {
@@ -158,11 +145,8 @@ Sheet {
                                 }
                                 CheckBox {
                                     checked: ListItemData.checked === true
-                                    // enabled must stay true or Cascades greys the checkbox out
-                                    //
-                                    // PassThrough so a tap directly on the checkbox still reaches
-                                    // the ListItem's onTriggered below — otherwise the checkbox
-                                    // flips visually but selection never updates and Send stays disabled
+                                    // enabled must stay true or Cascades greys out the checkbox. PassThrough lets taps reach the
+                                    // ListItem's onTriggered; otherwise the checkbox flips but the selection never updates.
                                     touchPropagationMode: TouchPropagationMode.PassThrough
                                 }
                             }
@@ -170,15 +154,12 @@ Sheet {
                     }
                 ]
 
-                // Toggling selection lives here in the ListView, not the delegate body
-                // dataModel.replace() takes a plain int index for a flat ArrayDataModel
                 onTriggered: {
                     var idx = indexPath[0];
                     var item = dataModel.value(idx);
-                    if (!item) { console.log("[Zalo QML] ForwardPickerSheet onTriggered: no item at idx=" + idx); return; }
+                    if (!item) return;
                     item.checked = !item.checked;
                     pickModel.replace(idx, item);
-                    console.log("[Zalo QML] ForwardPickerSheet onTriggered: idx=" + idx + " name=\"" + item.name + "\" threadId=\"" + item.threadId + "\" checked=" + item.checked);
                     forwardSheet.toggleSelected(item.threadId || "");
                 }
             }

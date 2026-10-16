@@ -32,9 +32,6 @@
 #include <zlib.h>
 #include <string.h>
 
-// Login flows: QR login, cookie-based login, and the legacy multi-step
-// (step1..step9) HTML/JS login fallback used when QR isn't available.
-
 void ZaloService::startQRLogin()
 {
     m_qrCancelled  = false;
@@ -51,9 +48,8 @@ void ZaloService::startQRLogin()
     m_uid.clear();
     m_displayName.clear();
     m_secretKey.clear();
-    m_userAgent = generateRandomUserAgent();   // UA ngẫu nhiên mỗi lần đăng nhập mới
-    m_imei = generateIMEI();                   // IMEI dựa trên UA mới → unique per login
-    qDebug() << "[Zalo] startQRLogin IMEI:" << m_imei << "UA:" << m_userAgent;
+    m_userAgent = generateRandomUserAgent();
+    m_imei = generateIMEI();
     step1_loadLoginPage();
 }
 
@@ -91,10 +87,8 @@ void ZaloService::loginWithCookie(const QString &zpsid, const QString &zpwSek, c
     else m_userAgent = USER_AGENT;
 
     m_imei = imei.trimmed().isEmpty() ? generateIMEI() : imei.trimmed();
-    qDebug() << "[Zalo] loginWithCookie IMEI:" << m_imei << "UA:" << m_userAgent;
 
     if (!token.trimmed().isEmpty()) {
-        qDebug() << "[Zalo] Co Token ngoai. Se dung lam secretKey sau cookieStep1.";
         m_externalToken = token.trimmed();
     } else {
         m_externalToken.clear();
@@ -105,7 +99,6 @@ void ZaloService::loginWithCookie(const QString &zpsid, const QString &zpwSek, c
 
 void ZaloService::cookieStep1_getZaloLoginInfo()
 {
-    qDebug() << "[Zalo] cookieStep1";
     QVariantMap data;
     data["computer_name"] = QString("Web");
     data["imei"]          = m_imei;
@@ -128,8 +121,6 @@ void ZaloService::cookieStep1_getZaloLoginInfo()
     params["signkey"] = buildSignKey("getlogininfo", paramsForSign);
     params["imei"]    = m_imei;
 
-    qDebug() << "[Zalo] cookieStep1 signkey:" << params["signkey"].toString();
-
     QString urlStr = buildRawUrl("https://wpa.chat.zalo.me/api/login/getLoginInfo", params);
     QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
     req.setRawHeader("zpw_ver",  QByteArray::number(API_VERSION));
@@ -151,13 +142,9 @@ void ZaloService::onCookieStep1Done()
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    qDebug() << "[Zalo] cookieStep1 raw response:" << raw.left(400);
-    qDebug() << "[Zalo] cookieStep1 pendingEncryptKey:" << m_pendingEncryptKey;
-    qDebug() << "[Zalo] cookieStep1 cookies:" << m_cookies;
-
     QVariantMap root = jsonToMap(raw);
     int errCode = root["error_code"].toInt();
-    qDebug() << "[Zalo] cookieStep1 error_code:" << errCode << "msg:" << root["error_message"].toString();
+    qWarning() << "[Auth] cookie login failed, error_code=" << errCode << root["error_message"].toString();
 
     QVariantMap info;
     QVariant dataVariant = root["data"];
@@ -165,7 +152,6 @@ void ZaloService::onCookieStep1Done()
         info = dataVariant.toMap();
     } else {
         QString encData = dataVariant.toString();
-        qDebug() << "[Zalo] cookieStep1 encData (first60):" << encData.left(60);
         if (errCode != 0) {
             emit loginFailed(QString("Cookie loi %1 - %2").arg(errCode).arg(root["error_message"].toString()));
             return;
@@ -175,7 +161,6 @@ void ZaloService::onCookieStep1Done()
             return;
         }
         QString decrypted = aesDecryptBase64_256(m_pendingEncryptKey, encData);
-        qDebug() << "[Zalo] cookieStep1 decrypted (first100):" << decrypted.left(100);
         QVariantMap root2 = jsonToMap(decrypted.toUtf8());
         info = root2["data"].toMap();
         if (info.isEmpty()) info = root2;
@@ -186,7 +171,6 @@ void ZaloService::onCookieStep1Done()
     m_displayName = info["display_name"].toString();
 
     if (!m_externalToken.isEmpty()) {
-        qDebug() << "[Zalo] Ghi de secretKey bang externalToken.";
         m_secretKey = m_externalToken;
         m_externalToken.clear();
     }
@@ -256,7 +240,6 @@ QByteArray ZaloService::buildFormBody(const QList<QPair<QString,QString> > &fiel
 
 void ZaloService::step1_loadLoginPage()
 {
-    qDebug() << "[Zalo] Step1: Load Login Page";
     QNetworkReply *reply = m_manager->get(buildRequest("https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F", "https://chat.zalo.me/"));
     connect(reply, SIGNAL(finished()), this, SLOT(onStep1Done()));
 }
@@ -288,13 +271,11 @@ void ZaloService::onStep1Done()
     }
     if (m_loginVersion.isEmpty()) m_loginVersion = "5.6.1";
 
-    qDebug() << "[Zalo] Login Version:" << m_loginVersion;
     step2_getLoginInfo();
 }
 
 void ZaloService::step2_getLoginInfo()
 {
-    qDebug() << "[Zalo] Step2: getLoginInfo";
     QNetworkRequest req = buildRequest("https://id.zalo.me/account/logininfo", "https://id.zalo.me/account?continue=https%3A%2F%2Fzalo.me%2Fpc");
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
@@ -313,7 +294,6 @@ void ZaloService::onStep2Done()
 
 void ZaloService::step3_verifyClient()
 {
-    qDebug() << "[Zalo] Step3: verifyClient";
     QNetworkRequest req = buildRequest("https://id.zalo.me/account/verify-client", "https://id.zalo.me/account?continue=https%3A%2F%2Fzalo.me%2Fpc");
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
@@ -332,7 +312,6 @@ void ZaloService::onStep3Done()
 
 void ZaloService::step4_generateQR()
 {
-    qDebug() << "[Zalo] Step4: generateQR";
     QNetworkRequest req = buildRequest("https://id.zalo.me/account/authen/qr/generate", "https://id.zalo.me/account?continue=https%3A%2F%2Fzalo.me%2Fpc");
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
@@ -359,9 +338,6 @@ void ZaloService::onStep4Done()
     QVariantMap data = root["data"].toMap();
     m_qrCode = data["code"].toString();
 
-    qDebug() << "[Zalo] Step4: QR code =" << m_qrCode.left(30) << "...";
-    qDebug() << "[Zalo] Step4: image field =" << data["image"].toString().left(60);
-
     if (m_qrCode.isEmpty()) {
         emit loginFailed("Khong nhan duoc ma QR tu Zalo. Thu lai.");
         return;
@@ -383,7 +359,6 @@ void ZaloService::onStep4Done()
     } else {
         QString encoded = QString::fromUtf8(QUrl::toPercentEncoding(m_qrCode));
         QString qrApiUrl = "https://quickchart.io/qr?text=" + encoded + "&size=300&margin=2";
-        qDebug() << "[Zalo] Step4: Fetching QR image from quickchart.io...";
         QNetworkRequest qrReq = buildRequest(qrApiUrl, "");
         QNetworkReply *qrReply = m_manager->get(qrReq);
         connect(qrReply, SIGNAL(finished()), this, SLOT(onQRImageFetched()));
@@ -398,7 +373,7 @@ void ZaloService::onQRImageFetched()
     if (!reply) return;
 
     if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "[Zalo] onQRImageFetched: network error:" << reply->errorString();
+        qWarning() << "[Auth] onQRImageFetched: network error:" << reply->errorString();
         emit qrCodeReady("", m_qrCode);
         reply->deleteLater();
         return;
@@ -408,7 +383,6 @@ void ZaloService::onQRImageFetched()
     reply->deleteLater();
 
     if (imgData.isEmpty()) {
-        qDebug() << "[Zalo] onQRImageFetched: empty response";
         emit qrCodeReady("", m_qrCode);
         return;
     }
@@ -418,10 +392,9 @@ void ZaloService::onQRImageFetched()
     if (imgFile.open(QIODevice::WriteOnly)) {
         imgFile.write(imgData);
         imgFile.close();
-        qDebug() << "[Zalo] onQRImageFetched: saved QR image to" << tempPath;
         emit qrCodeReady("file://" + tempPath, m_qrCode);
     } else {
-        qDebug() << "[Zalo] onQRImageFetched: cannot write file";
+        qWarning() << "[Auth] onQRImageFetched: cannot write file";
         emit qrCodeReady("", m_qrCode);
     }
 }
@@ -429,7 +402,6 @@ void ZaloService::onQRImageFetched()
 void ZaloService::step5_waitingScan()
 {
     if (m_qrCancelled) return;
-    qDebug() << "[Zalo] Step5: waitingScan";
     QNetworkRequest req = buildRequest("https://id.zalo.me/account/authen/qr/waiting-scan", "https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F");
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
@@ -465,7 +437,6 @@ void ZaloService::onStep5Done()
 void ZaloService::step6_waitingConfirm()
 {
     if (m_qrCancelled) return;
-    qDebug() << "[Zalo] Step6: waitingConfirm";
     QNetworkRequest req = buildRequest("https://id.zalo.me/account/authen/qr/waiting-confirm", "https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F");
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
@@ -484,8 +455,6 @@ void ZaloService::onStep6Done()
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    qDebug() << "[Zalo] Step6 Response:" << raw;
-
     QVariantMap root = jsonToMap(raw);
     int errorCode    = root["error_code"].toInt();
 
@@ -497,16 +466,12 @@ void ZaloService::onStep6Done()
 
 void ZaloService::step7_checkSession()
 {
-    // Service headless: bước renew cookie (Step7/Step8) còn dùng QtScript -> không chạy được
-    // trong process headless. Coi như phiên cần đăng nhập/renew bằng app: báo sessionExpired,
-    // ServiceController sẽ đứng yên cho tới khi người dùng mở app.
     if (ZJson::nativeMode()) {
-        qDebug() << "[Zalo] step7_checkSession: skipped in headless service - session needs the app";
+        qDebug() << "[Auth] session check skipped (headless service)";
         emit sessionExpired();
         return;
     }
 
-    qDebug() << "[Zalo] Step7: checkSession cookies:" << m_cookies.keys();
     QNetworkRequest req = buildRequest(
         "https://id.zalo.me/account/checksession?continue=https%3A%2F%2Fchat.zalo.me%2Findex.html",
         "https://id.zalo.me/account?continue=https%3A%2F%2Fchat.zalo.me%2F");
@@ -531,14 +496,12 @@ void ZaloService::onStep7Done()
         if (redirectUrl.isRelative()) {
             redirectUrl = reply->url().resolved(redirectUrl);
         }
-        qDebug() << "[Zalo] Step7 Dang Redirect de hung Cookie:" << redirectUrl.toString();
 
         QString redirStr = redirectUrl.toString();
         QString redirReferer = redirStr.contains("jr.zaloapp.com") ? "https://id.zalo.me/"
                              : redirStr.contains("jr.chat.zalo.me") ? "https://jr.zaloapp.com/"
                              : "https://id.zalo.me/";
         QNetworkRequest redirReq = buildRequest(redirStr, redirReferer);
-        // Với cross-domain redirect (jr.*), set sec-fetch-site = cross-site
         if (!redirStr.contains("id.zalo.me") && !redirStr.contains("chat.zalo.me")) {
             redirReq.setRawHeader("sec-fetch-site", "cross-site");
             redirReq.setRawHeader("sec-fetch-dest", "document");
@@ -557,7 +520,6 @@ void ZaloService::onStep7Done()
 
 void ZaloService::step8_getZaloLoginInfo()
 {
-    qDebug() << "[Zalo] Step8: getZaloLoginInfo";
     QVariantMap data;
     data["computer_name"] = QString("Web");
     data["imei"]          = m_imei;
@@ -580,14 +542,7 @@ void ZaloService::step8_getZaloLoginInfo()
     params["signkey"] = buildSignKey("getlogininfo", paramsForSign);
     params["imei"]    = m_imei;
 
-    qDebug() << "[Zalo] step8 signkey:" << params["signkey"].toString();
-    qDebug() << "[Zalo] step8 zcid:" << params["zcid"].toString().left(20);
-    qDebug() << "[Zalo] step8 zcid_ext:" << params["zcid_ext"].toString();
-    qDebug() << "[Zalo] step8 enc_ver:" << params["enc_ver"].toString();
-    qDebug() << "[Zalo] step8 params(enc):" << params["params"].toString().left(40);
-
     QString urlStr = buildRawUrl("https://wpa.chat.zalo.me/api/login/getLoginInfo", params);
-    qDebug() << "[Zalo] step8 URL:" << urlStr.left(300);
     QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
     req.setRawHeader("zpw_ver",  QByteArray::number(API_VERSION));
     req.setRawHeader("zpw_type", QByteArray::number(API_TYPE));
@@ -601,9 +556,9 @@ void ZaloService::onStep8Done()
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
     if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "[Zalo Error] Step8 network error:" << reply->errorString();
+        qWarning() << "[Auth] login network error:" << reply->errorString()
+                   << "host=" << reply->url().host() << "code=" << (int)reply->error();
         if (m_isAutoRenew && int(reply->error()) < 200 && m_renewRetry < 12) {
-            // Mạng tạm thời lỗi: không coi là hết phiên, thử lại, giữ cookie đã lưu.
             ++m_renewRetry;
             reply->deleteLater();
             QTimer::singleShot(5000, this, SLOT(retryRefreshSessionKey()));
@@ -619,38 +574,30 @@ void ZaloService::onStep8Done()
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    qDebug() << "[Zalo] Step8 raw response:" << raw.left(300);
-    qDebug() << "[Zalo] Step8 cookies count:" << m_cookies.size();
-
     QScriptEngine outerEng;
     outerEng.globalObject().setProperty("__raw", QString::fromUtf8(raw));
     outerEng.evaluate("var __o = null; try { __o = JSON.parse(__raw); } catch(e) { __o = null; }");
     QScriptValue outerObj = outerEng.globalObject().property("__o");
 
     if (!outerObj.isValid() || outerObj.isNull()) {
-        qDebug() << "[Zalo Error] Step8: outer JSON parse failed";
+        qWarning() << "[Auth] login: invalid response";
         if (m_isAutoRenew) emit sessionExpired();
         else               emit loginFailed("Step8 parse failed");
         return;
     }
 
     int errCode8 = outerObj.property("error_code").toInt32();
-    qDebug() << "[Zalo] Step8 error_code:" << errCode8
-             << "msg:" << outerObj.property("error_message").toString();
+    qWarning() << "[Auth] login error_code=" << errCode8 << outerObj.property("error_message").toString();
 
-    // Decrypt data field
     QString encData = outerObj.property("data").toString();
-    qDebug() << "[Zalo] Step8 encrypted data (first60):" << encData.left(60);
-    qDebug() << "[Zalo] Step8 pendingEncryptKey:" << m_pendingEncryptKey;
 
     QString decrypted;
     if (!encData.isEmpty() && !m_pendingEncryptKey.isEmpty()) {
         decrypted = aesDecryptBase64_256(m_pendingEncryptKey, encData);
-        qDebug() << "[Zalo] Step8 decrypted (first100):" << decrypted.left(100);
     }
 
     if (decrypted.isEmpty()) {
-        qDebug() << "[Zalo Error] Step8: decrypt returned empty";
+        qWarning() << "[Auth] login: empty decrypted response";
         if (m_isAutoRenew) emit sessionExpired();
         else               emit loginFailed("Step8 decrypt failed");
         return;
@@ -667,7 +614,7 @@ void ZaloService::onStep8Done()
 
     QScriptValue info = eng.globalObject().property("__info");
     if (!info.isValid() || info.isNull() || info.isUndefined() || !info.isObject()) {
-        qDebug() << "[Zalo Error] Step8: info object invalid";
+        qWarning() << "[Auth] login: invalid session info";
         if (m_isAutoRenew) emit sessionExpired();
         else               emit loginFailed("Step8: invalid info object");
         return;
@@ -677,19 +624,13 @@ void ZaloService::onStep8Done()
     m_uid         = info.property("uid").toString();
     m_displayName = info.property("display_name").toString();
 
-    qDebug() << "[Zalo] secretKey (first20):" << m_secretKey.left(20);
-    qDebug() << "[Zalo] info keys check - zpw_enk empty?:" << m_secretKey.isEmpty()
-             << "uid empty?:" << m_uid.isEmpty();
-    qDebug() << "[Zalo] uid:" << m_uid << "name:" << m_displayName;
-
     if (m_secretKey.isEmpty() || m_uid.isEmpty()) {
-        qDebug() << "[Zalo Error] Step8: missing zpw_enk or uid";
+        qWarning() << "[Auth] login: missing session key or uid";
         if (m_isAutoRenew) emit sessionExpired();
         else               emit loginFailed("Step8: missing key/uid");
         return;
     }
 
-    // Extract service URLs từ zpw_service_map_v3 — dùng .property() chain
     m_chatServiceUrl.clear();
     m_groupServiceUrl.clear();
     m_profileServiceUrl.clear();
@@ -726,11 +667,9 @@ void ZaloService::onStep8Done()
         if (convArr.isArray())   m_conversationServiceUrl = convArr.property(0).toString();
     }
 
-    // Extract WebSocket URLs
     m_zpwWsUrls.clear();
-    // Xóa luôn m_wsUrls và index xoay vòng: connectWebSocket() chỉ re-seed
-    // m_wsUrls từ m_zpwWsUrls khi m_wsUrls rỗng, nên nếu không xóa ở đây,
-    // login mới sẽ vẫn giữ nguyên index host mà session TRƯỚC đã dùng dở.
+    // Also reset m_wsUrls and the rotation index: connectWebSocket() only re-seeds when
+    // m_wsUrls is empty, so a new login would reuse the previous session's host index.
     m_wsUrls.clear();
     m_wsUrlIndex = 0;
     QScriptValue wsArr = info.property("zpw_ws");
@@ -743,22 +682,11 @@ void ZaloService::onStep8Done()
         }
     }
 
-    qDebug() << "[Zalo] chat:"        << m_chatServiceUrl;
-    qDebug() << "[Zalo] group:"       << m_groupServiceUrl;
-    qDebug() << "[Zalo] profile:"     << m_profileServiceUrl;
-    qDebug() << "[Zalo] group_poll:"  << m_groupPollServiceUrl;
-    qDebug() << "[Zalo] group_board:" << m_groupBoardServiceUrl;
-    qDebug() << "[Zalo] friend:"      << m_friendServiceUrl;
-    qDebug() << "[Zalo] file:"        << m_fileServiceUrl;
-    qDebug() << "[Zalo] zpw_ws count:" << m_zpwWsUrls.size()
-             << (m_zpwWsUrls.isEmpty() ? QString() : m_zpwWsUrls[0]);
-
     step9_getServerInfo();
 }
 
 void ZaloService::step9_getServerInfo()
 {
-    qDebug() << "[Zalo] Step9: getServerInfo";
     QVariantMap params;
     params["imei"]           = m_imei;
     params["type"]           = QString::number(API_TYPE);
@@ -790,18 +718,7 @@ void ZaloService::onStep9Done()
     connectWebSocket();
 }
 
-// ─── WebSocket RFC 6455 over QSslSocket ───────────────────────────────────
-// BB10 NDK 10.3 dùng Qt4 — không có QtWebSockets.
-// Implement thủ công: TLS handshake → HTTP Upgrade → binary framing.
-// Zalo WS protocol: header 4 bytes [version(1B) cmd(2B LE) subCmd(1B)] + payload
-// Source: zca-js listen.js getHeader() + sendWs()
-//   cmd=1   subCmd=1: server→client cipherKey (AES-GCM key)
-//   cmd=2   subCmd=1: client→server PING (keepalive)
-//   cmd=501 subCmd=0: user message  (msgs[], encrypt=AES-GCM)
-//   cmd=521 subCmd=0: group message (groupMsgs[], encrypt=AES-GCM)
-//   cmd=510 subCmd=1: request/response old DM messages
-//   cmd=511 subCmd=1: request/response old Group messages
+// WebSocket (RFC 6455) over QSslSocket, hand-rolled because Qt4 has no QtWebSockets.
+// Frame: [version(1B) cmd(2B LE) subCmd(1B)] + payload (see zca-js listen.js).
+// cmd 1: cipherKey (AES-GCM), 2: ping, 501/521: user/group msgs, 510/511: old DM/group msgs.
 
-// ─── WS helpers ──────────────────────────────────────────────────────────────
-// Gửi WS binary frame theo format zca-js sendWs():
-//   [version(1B), cmd_lo(1B), cmd_hi(1B), subCmd(1B), JSON data...]

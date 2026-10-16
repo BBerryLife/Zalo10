@@ -1,15 +1,11 @@
 import bb.cascades 1.4
 import QtQuick 1.0
 
-// Lists every app registered for bb.action.SHARE, in the order
-// app.queryShareTargets() returns them
 Sheet {
     id: sharePickerSheetRoot
 
     property variant targets: []
-    property string pendingShareText: ""   // set by ChatView before opening
-    // Set instead of pendingShareText when sharing a photo message that has a
-    // local cached copy, so the target app gets the actual image, not a URL
+    property string pendingShareText: ""
     property bool   pendingShareIsImage: false
     property string pendingShareImagePath: ""
 

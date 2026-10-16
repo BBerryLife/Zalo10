@@ -1,27 +1,13 @@
 import bb.cascades 1.4
 import QtQuick 1.0
 
-// Strip of pinned group-board items shown under the chat header, above the message list
-// Two states: collapsed (most recent item + "+N" to expand) and expanded
-// (header + up to 3 rows, same 3-item cap Zalo's own client uses)
-//
-// Fed from chatViewPage.boardItems (same data GroupBoardSheet.qml gets from
-// zService's groupBoardReady signal). Shows the 3 newest items of any type —
-// there's no "explicitly pinned" flag available yet, so this is the closest match
-//
-// Read-only: no "unpin" API exists yet, so this only supports navigation
-// (jump to message / view poll / view note). Actual pin/unpin happens in
-// the full Group Board sheet.
 Container {
     id: pinboardBar
 
-    property variant items: []      // raw chatViewPage.boardItems
+    property variant items: []
     property bool    isDark: false
     property bool    expanded: false
 
-    // Newest-first, capped at 3. Recomputed on every change since QML variant
-    // properties aren't deep-watched, so ChatView.qml assigns a fresh array
-    // each time instead of mutating in place
     property variant topItems: []
 
     function recomputeTopItems() {
@@ -33,10 +19,8 @@ Container {
     onItemsChanged: recomputeTopItems()
     Component.onCompleted: recomputeTopItems()
 
-    // ChatView decides what "open" means per boardType (jump to message /
-    // open GroupBoard filtered to poll / show note content)
     signal itemTapped(string boardType, string itemId, string title, string creatorId)
-    signal moreRequested()   // "..." tapped — ChatView opens the full Group Board
+    signal moreRequested()
 
     visible: pinboardBar.topItems.length > 0
     horizontalAlignment: HorizontalAlignment.Fill
@@ -48,18 +32,15 @@ Container {
         if (boardType === "note") return "Note";
         return "Message";
     }
-    // fetchGroupBoard() already formats titles appropriately per type — reused as-is
     function previewText(it) { return (it && it.title) ? it.title : ""; }
     function itemAt(idx) { return (pinboardBar.topItems.length > idx) ? pinboardBar.topItems[idx] : null; }
 
-    // ---- Collapsed row -----------------------------------------------
     Container {
         id: collapsedRow
         visible: !pinboardBar.expanded
         horizontalAlignment: HorizontalAlignment.Fill
         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
         topPadding: ui.du(0.6); bottomPadding: ui.du(0.6)
-        // rightPadding (not the Button's rightMargin, which was ignored) keeps "+N" off the edge
         leftPadding: ui.du(2.0); rightPadding: ui.du(1.8)
 
         gestureHandlers: [
@@ -67,9 +48,6 @@ Container {
                 onTapped: {
                     var it = pinboardBar.itemAt(0);
                     if (it) {
-                    // Pins pass the chat message's msgId (for ChatView.jumpToMessage());
-                    // notes/polls pass their own board-item id instead. Falls back to
-                    // it.id if msgId isn't set.
                     var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
                     pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
                 }
@@ -77,7 +55,6 @@ Container {
             }
         ]
 
-        // Accent bar in front of the pinned text (Telegram/Unigram style) — collapsed state only
         Container {
             verticalAlignment: VerticalAlignment.Fill
             preferredWidth: ui.du(0.4); minWidth: ui.du(0.4); maxWidth: ui.du(0.4)
@@ -92,8 +69,6 @@ Container {
             rightMargin: ui.du(0.8)
 
             Container {
-                // Fixed-height slot: the stacked Labels carried ~30px of extra vertical space each,
-                // so the preview sat far below its title. The slot sets the line pitch explicitly.
                 horizontalAlignment: HorizontalAlignment.Fill
                 preferredHeight: ui.du(3.2); minHeight: ui.du(3.2); maxHeight: ui.du(3.2)
                 layout: DockLayout {}
@@ -104,8 +79,6 @@ Container {
                 }
             }
             Container {
-                // Fixed-height slot: the stacked Labels carried ~30px of extra vertical space each,
-                // so the preview sat far below its title. The slot sets the line pitch explicitly.
                 horizontalAlignment: HorizontalAlignment.Fill
                 preferredHeight: ui.du(3.2); minHeight: ui.du(3.2); maxHeight: ui.du(3.2)
                 layout: DockLayout {}
@@ -128,7 +101,6 @@ Container {
         }
     }
 
-    // ---- Expanded panel -------------------------------------------------
     Container {
         id: expandedPanel
         visible: pinboardBar.expanded
@@ -156,8 +128,7 @@ Container {
             }
         }
 
-        // Three fixed row slots — same hardcoded-index pattern as GroupBoardSheet.qml's
-        // poll options, since Cascades Containers can't use a Repeater
+        // Three fixed row slots: Cascades Containers have no Repeater.
         Container {
             visible: pinboardBar.topItems.length > 0
             horizontalAlignment: HorizontalAlignment.Fill
@@ -167,9 +138,6 @@ Container {
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(0);
                 if (it) {
-                    // Pins pass the chat message's msgId (for ChatView.jumpToMessage());
-                    // notes/polls pass their own board-item id instead. Falls back to
-                    // it.id if msgId isn't set.
                     var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
                     pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
                 }
@@ -179,8 +147,6 @@ Container {
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
                 verticalAlignment: VerticalAlignment.Center
                 Container {
-                    // Fixed-height slot: the stacked Labels carried ~30px of extra vertical space each,
-                    // so the preview sat far below its title. The slot sets the line pitch explicitly.
                     horizontalAlignment: HorizontalAlignment.Fill
                     preferredHeight: ui.du(3.2); minHeight: ui.du(3.2); maxHeight: ui.du(3.2)
                     layout: DockLayout {}
@@ -191,8 +157,6 @@ Container {
                     }
                 }
                 Container {
-                    // Fixed-height slot: the stacked Labels carried ~30px of extra vertical space each,
-                    // so the preview sat far below its title. The slot sets the line pitch explicitly.
                     horizontalAlignment: HorizontalAlignment.Fill
                     preferredHeight: ui.du(3.2); minHeight: ui.du(3.2); maxHeight: ui.du(3.2)
                     layout: DockLayout {}
@@ -221,9 +185,6 @@ Container {
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(1);
                 if (it) {
-                    // Pins pass the chat message's msgId (for ChatView.jumpToMessage());
-                    // notes/polls pass their own board-item id instead. Falls back to
-                    // it.id if msgId isn't set.
                     var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
                     pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
                 }
@@ -233,8 +194,6 @@ Container {
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
                 verticalAlignment: VerticalAlignment.Center
                 Container {
-                    // Fixed-height slot: the stacked Labels carried ~30px of extra vertical space each,
-                    // so the preview sat far below its title. The slot sets the line pitch explicitly.
                     horizontalAlignment: HorizontalAlignment.Fill
                     preferredHeight: ui.du(3.2); minHeight: ui.du(3.2); maxHeight: ui.du(3.2)
                     layout: DockLayout {}
@@ -245,8 +204,6 @@ Container {
                     }
                 }
                 Container {
-                    // Fixed-height slot: the stacked Labels carried ~30px of extra vertical space each,
-                    // so the preview sat far below its title. The slot sets the line pitch explicitly.
                     horizontalAlignment: HorizontalAlignment.Fill
                     preferredHeight: ui.du(3.2); minHeight: ui.du(3.2); maxHeight: ui.du(3.2)
                     layout: DockLayout {}
@@ -275,9 +232,6 @@ Container {
             gestureHandlers: [ TapHandler { onTapped: {
                 var it = pinboardBar.itemAt(2);
                 if (it) {
-                    // Pins pass the chat message's msgId (for ChatView.jumpToMessage());
-                    // notes/polls pass their own board-item id instead. Falls back to
-                    // it.id if msgId isn't set.
                     var jumpId = (it.boardType === "pin" && it.msgId) ? it.msgId : (it.id || "");
                     pinboardBar.itemTapped(it.boardType || "", jumpId, it.title || "", it.creatorId || "");
                 }
@@ -287,8 +241,6 @@ Container {
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
                 verticalAlignment: VerticalAlignment.Center
                 Container {
-                    // Fixed-height slot: the stacked Labels carried ~30px of extra vertical space each,
-                    // so the preview sat far below its title. The slot sets the line pitch explicitly.
                     horizontalAlignment: HorizontalAlignment.Fill
                     preferredHeight: ui.du(3.2); minHeight: ui.du(3.2); maxHeight: ui.du(3.2)
                     layout: DockLayout {}
@@ -299,8 +251,6 @@ Container {
                     }
                 }
                 Container {
-                    // Fixed-height slot: the stacked Labels carried ~30px of extra vertical space each,
-                    // so the preview sat far below its title. The slot sets the line pitch explicitly.
                     horizontalAlignment: HorizontalAlignment.Fill
                     preferredHeight: ui.du(3.2); minHeight: ui.du(3.2); maxHeight: ui.du(3.2)
                     layout: DockLayout {}

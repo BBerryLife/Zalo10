@@ -2,7 +2,6 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// "Create note" dialog opened from GroupBoardSheet.qml's action bar
 Sheet {
     id: createNoteSheetRoot
 

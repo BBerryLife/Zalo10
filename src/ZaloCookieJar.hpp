@@ -5,9 +5,6 @@
 #include <QNetworkCookie>
 #include <QList>
 
-// Cookie jar mở public allCookies()/setAllCookies() để lưu/khôi phục
-// xuống QSettings. Mặc định jar chỉ nằm trong RAM → mở lại app là mất hết
-// cookie (kể cả cookie HttpOnly/domain-specific mà m_cookies không bắt đủ).
 class ZaloCookieJar : public QNetworkCookieJar
 {
 public:

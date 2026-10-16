@@ -1,4 +1,5 @@
 #include "applicationui.hpp"
+#include "LogSanitizer.hpp"
 
 #include <bb/cascades/Application>
 #include <bb/cascades/ThemeSupport>
@@ -20,18 +21,15 @@
 
 using namespace bb::cascades;
 
-// SIGTERM handler (self-pipe trick).
-// manualExit() của Cascades không bắn khi Navigator kill app qua signal
-// POSIX (vd khi user vuốt đóng card), nên phải tự bắt SIGTERM ở đây.
-// Signal handler không an toàn để chạy code Qt trực tiếp, nên chỉ write()
-// 1 byte vào pipe, còn QSocketNotifier sẽ đọc và gọi cleanup thật sau.
+// SIGTERM via self-pipe: manualExit() doesn't fire when Navigator kills the app (card swipe).
+// The handler only write()s a byte; QSocketNotifier runs the real cleanup.
 static int g_zalo10TermFd[2] = { -1, -1 };
 
 static void zalo10TermSignalHandler(int)
 {
     char a = 1;
     ssize_t ignored = ::write(g_zalo10TermFd[1], &a, sizeof(a));
-    (void)ignored; // không có gì để làm nếu write() lỗi trong signal handler
+    (void)ignored;
 }
 
 static bool installZalo10TermHandler()
@@ -43,14 +41,12 @@ static bool installZalo10TermHandler()
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
     if (::sigaction(SIGTERM, &sa, 0) != 0) return false;
-    ::sigaction(SIGINT, &sa, 0); // phòng trường hợp debug bằng Ctrl+C qua IDE
+    ::sigaction(SIGINT, &sa, 0);
 
     return true;
 }
 
-// Runtime log file used by ApplicationUI::exportLog() (Settings -> Export Log).
-// Kept on disk across app restarts (capped) so a crash log from the previous
-// session is still exportable after relaunch.
+// Runtime log kept on disk (capped) so a previous session's crash log can still be exported.
 static QFile *g_zalo10LogFile = 0;
 
 static void zalo10MessageHandler(QtMsgType type, const char *msg)
@@ -67,6 +63,10 @@ static void zalo10MessageHandler(QtMsgType type, const char *msg)
         g_zalo10LogFile->write(header.toUtf8());
     }
 
+    QString text = QString::fromUtf8(msg);
+    if (type != QtFatalMsg && LogSanitizer::isNoise(text)) return;
+    text = LogSanitizer::sanitize(text);
+
     const char *levelStr = "DEBUG";
     if (type == QtWarningMsg)  levelStr = "WARN";
     if (type == QtCriticalMsg) levelStr = "ERROR";
@@ -75,7 +75,7 @@ static void zalo10MessageHandler(QtMsgType type, const char *msg)
     QString line = QString("[%1] [%2] %3\n")
                    .arg(QDateTime::currentDateTime().toString("HH:mm:ss.zzz"))
                    .arg(levelStr)
-                   .arg(QString::fromUtf8(msg));
+                   .arg(text);
 
     if (g_zalo10LogFile->isOpen()) {
         g_zalo10LogFile->write(line.toUtf8());
@@ -91,11 +91,7 @@ Q_DECL_EXPORT int main(int argc, char **argv)
     qInstallMsgHandler(zalo10MessageHandler);
     installZalo10TermHandler();
 
-    // Log bản OpenSSL thực sự được loader nạp (không phải bản lúc compile),
-    // để xác nhận app đang dùng bản OpenSSL tự bundle chứ không phải bản cũ
-    // mặc định của BB10 NDK. TLS 1.2 chỉ có từ OpenSSL 1.0.1 trở lên.
-    qDebug() << "[Zalo] Runtime OpenSSL:" << SSLeay_version(SSLEAY_VERSION)
-             << "| SDK header version:" << OPENSSL_VERSION_TEXT;
+    qDebug() << "[App] OpenSSL:" << SSLeay_version(SSLEAY_VERSION);
 
     Application app(argc, argv);
 

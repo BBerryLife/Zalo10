@@ -34,9 +34,6 @@
 #include <zlib.h>
 #include <string.h>
 
-// Low-level HTTP request building, cookie handling, and persisted-session
-// (save/load/refresh) management.
-
 QString ZaloService::buildRawUrl(const QString &base, const QVariantMap &params)
 {
     QString safeBase = base.trimmed().isEmpty() ? "https://wpa.chat.zalo.me" : base;
@@ -103,22 +100,18 @@ void ZaloService::parseCookiesFromReply(QNetworkReply *reply)
     typedef QPair<QByteArray, QByteArray> HeaderPair;
     foreach (const HeaderPair &hp, reply->rawHeaderPairs()) {
         if (hp.first.toLower() == "set-cookie") {
-          // Qt4 gộp nhiều Set-Cookie của 1 response thành 1 header, ngăn cách bằng '\n'.
-          // Trước đây chỉ cookie đầu tiên được đọc → thiếu cookie khi lưu.
           foreach (const QString &line, QString::fromUtf8(hp.second).split('\n', QString::SkipEmptyParts)) {
             QString kv   = line.split(";").first().trimmed();
             int eq = kv.indexOf('=');
             if (eq > 0) {
                 QString name = kv.left(eq).trimmed();
                 QString val  = kv.mid(eq + 1).trimmed();
-                // Server xoá cookie bằng Set-Cookie giá trị rỗng / "deleted" / Max-Age<=0.
-                // KHÔNG được ghi đè cookie tốt đang có bằng giá trị xoá này, nếu không
-                // saveSession() sẽ lưu cookie hỏng xuống QSettings → lần mở sau phải login lại.
+                // Servers delete cookies via Set-Cookie with an empty/"deleted" value or Max-Age<=0. Never
+                // overwrite a good cookie with it, or saveSession() stores a broken cookie and forces a re-login.
                 QString low = line.toLower();
                 bool isDelete = val.isEmpty() || val.toLower() == "deleted"
                              || low.contains("max-age=0") || low.contains("max-age=-");
                 if (isDelete && m_cookies.contains(name)) {
-                    qDebug() << "[Zalo] parseCookies: bo qua Set-Cookie xoa cookie" << name;
                     continue;
                 }
                 if (isDelete) continue;
@@ -157,7 +150,6 @@ void ZaloService::saveSession()
     QString cookieJson = mapToJson(cookieMap);
     s.setValue("cookies", cookieJson);
 
-    // Lưu toàn bộ cookie jar của QNetworkAccessManager (đủ domain/path/HttpOnly).
     ZaloCookieJar *jar = static_cast<ZaloCookieJar*>(m_manager->cookieJar());
     QStringList jarList;
     if (jar) {
@@ -169,17 +161,15 @@ void ZaloService::saveSession()
     }
     s.setValue("jarCookies", jarList);
     s.sync();
-    qDebug() << "[Zalo] saveSession: saved" << m_cookies.size() << "cookies, uid=" << m_uid;
+    qDebug() << "[Net] session saved";
 }
 
 bool ZaloService::loadSession()
 {
-    qDebug() << "[Zalo] loadSession: begin";
     QSettings s("BerryLife", "Zalo10");
     QString uid = s.value("uid").toString();
-    qDebug() << "[Zalo] loadSession: settings opened, uid empty =" << uid.isEmpty();
     if (uid.isEmpty()) {
-        qDebug() << "[Zalo] loadSession: no saved session";
+        qDebug() << "[Net] loadSession: no saved session";
         return false;
     }
 
@@ -199,11 +189,9 @@ bool ZaloService::loadSession()
     m_zpwWsUrls           = s.value("zpwWsUrls").toStringList();
     m_mutedThreads        = QSet<QString>::fromList(s.value("mutedThreads").toStringList());
 
-    qDebug() << "[Zalo] loadSession: fields read, parsing cookies json, len =" << s.value("cookies").toString().size();
     QString cookieJson = s.value("cookies").toString();
     if (!cookieJson.isEmpty()) {
         QVariantMap cookieMap = jsonToMap(cookieJson.toUtf8());
-        qDebug() << "[Zalo] loadSession: cookies json parsed, entries =" << cookieMap.size();
         QMapIterator<QString, QVariant> it(cookieMap);
         while (it.hasNext()) {
             it.next();
@@ -211,31 +199,26 @@ bool ZaloService::loadSession()
         }
     }
 
-    // Khôi phục cookie jar để request sau khi mở lại app gửi đủ cookie như trước.
-    qDebug() << "[Zalo] loadSession: restoring cookie jar";
     {
         ZaloCookieJar *jar = static_cast<ZaloCookieJar*>(m_manager->cookieJar());
         QList<QNetworkCookie> restored;
         foreach (const QString &raw, s.value("jarCookies").toStringList())
             restored += QNetworkCookie::parseCookies(raw.toUtf8());
         if (jar && !restored.isEmpty()) jar->importAll(restored);
-        qDebug() << "[Zalo] loadSession: restored jar cookies" << restored.size();
     }
 
     if (m_uid.isEmpty() || m_secretKey.isEmpty() || m_chatServiceUrl.isEmpty()) {
-        qDebug() << "[Zalo] loadSession: incomplete session data";
+        qDebug() << "[Net] loadSession: incomplete session data";
         return false;
     }
 
-    qDebug() << "[Zalo] loadSession: restored session uid=" << m_uid
-             << "cookies=" << m_cookies.size();
+    qDebug() << "[Net] session restored";
 
     if (m_loggedIn) {
         m_loggedIn = false;
         emit loggedInChanged();
     }
 
-    qDebug() << "[Zalo] loadSession: cookies restored, refreshing secretKey...";
     refreshSessionKey();
 
     return true;
@@ -247,10 +230,8 @@ void ZaloService::retryRefreshSessionKey()
     refreshSessionKey();
 }
 
-// ─── refreshSessionKey ────────────────────────────────────────────────────
 void ZaloService::refreshSessionKey()
 {
-    qDebug() << "[Zalo] refreshSessionKey: calling getLoginInfo with saved cookies";
     QVariantMap data;
     data["computer_name"] = QString("Web");
     data["imei"]          = m_imei;
@@ -288,21 +269,18 @@ void ZaloService::onRefreshSessionKeyDone()
     if (!reply) return;
 
     if (reply->error() != QNetworkReply::NoError) {
-        qDebug() << "[Zalo] refreshSessionKey network error:" << reply->errorString()
+        qWarning() << "[Net] refreshSessionKey network error:" << reply->errorString()
                  << "- session may be invalid, triggering re-login";
         QNetworkReply::NetworkError nerr = reply->error();
         reply->deleteLater();
-        // Lỗi mạng tạm thời (mất kết nối/DNS/timeout, mã < 200): GIỮ NGUYÊN session đã lưu,
-        // thử lại sau 5s thay vì chuyển sang step7/step8 rồi bật màn hình đăng nhập QR.
+        // Transient network error (code < 200): keep the saved session and retry in 5s instead of
+        // falling into step7/step8 and showing the QR login.
         if (int(nerr) < 200 && m_renewRetry < 12) {
             ++m_renewRetry;
-            qDebug() << "[Zalo] refreshSessionKey: loi mang tam thoi, thu lai lan" << m_renewRetry;
+            qDebug() << "[Net] session refresh: transient network error, retry" << m_renewRetry;
             QTimer::singleShot(5000, this, SLOT(retryRefreshSessionKey()));
             return;
         }
-        // Do NOT fake loginSuccess here — cookies may be expired.
-        // Fall through to step7 to attempt cookie renewal; if that also fails,
-        // sessionExpired will be emitted and QR login sheet will open.
         m_isAutoRenew = true;
         step7_checkSession();
         return;
@@ -312,14 +290,11 @@ void ZaloService::onRefreshSessionKeyDone()
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    qDebug() << "[Zalo] refreshSessionKey response (first200):" << raw.left(200);
-
     bool refreshOk = false;
     if (ZJson::nativeMode()) {
-        // Service headless: không dùng QtScript (segfault trong process headless).
+        // Headless service: no QtScript (it segfaults in the headless process).
         refreshOk = applyRefreshSessionResponseNative(raw);
     } else {
-    // Parse outer để lấy error_code + encrypted data
     QScriptEngine outerEng;
     outerEng.globalObject().setProperty("__raw", QString::fromUtf8(raw));
     outerEng.evaluate("var __o=null;try{__o=JSON.parse(__raw);}catch(e){__o=null;}");
@@ -328,11 +303,9 @@ void ZaloService::onRefreshSessionKeyDone()
     int ec = outerObj.isObject() ? outerObj.property("error_code").toInt32() : -1;
     QString encData = outerObj.isObject() ? outerObj.property("data").toString() : QString();
 
-    // Decrypt
     QString decrypted;
     if (!encData.isEmpty() && !m_pendingEncryptKey.isEmpty()) {
         decrypted = aesDecryptBase64_256(m_pendingEncryptKey, encData);
-        qDebug() << "[Zalo] refreshSessionKey decrypted (first100):" << decrypted.left(100);
     }
 
     if (ec == 0 && !decrypted.isEmpty()) {
@@ -348,16 +321,14 @@ void ZaloService::onRefreshSessionKeyDone()
         int innerEc = eng.globalObject().property("__innerEc").toInt32();
 
         if (innerEc != 0) {
-            qDebug() << "[Zalo] refreshSessionKey: inner error_code=" << innerEc << "- session expired";
+            qWarning() << "[Net] refreshSessionKey: inner error_code=" << innerEc << "- session expired";
         } else if (info.isObject() && !info.isNull()) {
             QString newKey = info.property("zpw_enk").toString();
             if (!newKey.isEmpty()) {
                 m_secretKey   = newKey;
                 m_displayName = info.property("display_name").toString();
-                qDebug() << "[Zalo] refreshSessionKey: new secretKey, first20:" << m_secretKey.left(20);
                 refreshOk = true;
 
-                // Update service URLs
                 QScriptValue svcMap = info.property("zpw_service_map_v3");
                 if (svcMap.isObject()) {
                     QScriptValue c = svcMap.property("chat");
@@ -380,7 +351,6 @@ void ZaloService::onRefreshSessionKeyDone()
                     if (cv.isArray()) m_conversationServiceUrl = cv.property(0).toString();
                 }
 
-                // Update WS URLs
                 QScriptValue wsArr = info.property("zpw_ws");
                 if (wsArr.isArray()) {
                     m_zpwWsUrls.clear();
@@ -401,10 +371,10 @@ void ZaloService::onRefreshSessionKeyDone()
     }
 
     if (!refreshOk) {
-        qDebug() << "[Zalo] refreshSessionKey: secretKey expired - renewing automatically via step7/step8";
+        qDebug() << "[Net] session key expired, renewing";
         m_secretKey.clear();
         disconnectWebSocket();
-        m_isAutoRenew = true;  // đánh dấu: step7/step8 này là auto-renew, KHÔNG hiện QR nếu thất bại
+        m_isAutoRenew = true;
         step7_checkSession();
         return;
     }
@@ -416,7 +386,6 @@ void ZaloService::onRefreshSessionKeyDone()
         m_listenTimer->start(8000);
         m_keepAliveTimer->start(KEEPALIVE_INTERVAL_MS);
     }
-    // Chỉ emit loginSuccess lần đầu; các lần refresh dùng sessionRefreshed
     if (!m_loginEmitted) {
         m_loginEmitted = true;
         emit loginSuccess(m_uid, m_displayName);
@@ -425,9 +394,6 @@ void ZaloService::onRefreshSessionKeyDone()
     }
 }
 
-// Bản không QtScript của khối parse trong onRefreshSessionKeyDone(): parse outer JSON, giải mã
-// "data", parse inner JSON rồi cập nhật secretKey/URL dịch vụ/WS URL. Trả về true nếu refresh
-// thành công (đã saveSession()). Chỉ dùng khi ZJson::nativeMode() (service headless).
 bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
 {
     QVariantMap outer = jsonToMap(raw);
@@ -437,7 +403,6 @@ bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
     QString decrypted;
     if (!encData.isEmpty() && !m_pendingEncryptKey.isEmpty()) {
         decrypted = aesDecryptBase64_256(m_pendingEncryptKey, encData);
-        qDebug() << "[Zalo] refreshSessionKey(native) decrypted (first100):" << decrypted.left(100);
     }
     if (ec != 0 || decrypted.isEmpty()) return false;
 
@@ -449,7 +414,7 @@ bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
         info = (dataV.type() == QVariant::Map) ? dataV.toMap() : QVariantMap();
 
     if (innerEc != 0) {
-        qDebug() << "[Zalo] refreshSessionKey(native): inner error_code=" << innerEc << "- session expired";
+        qWarning() << "[Net] refreshSessionKey(native): inner error_code=" << innerEc << "- session expired";
         return false;
     }
     if (info.isEmpty()) return false;
@@ -459,7 +424,6 @@ bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
 
     m_secretKey   = newKey;
     m_displayName = info.value("display_name").toString();
-    qDebug() << "[Zalo] refreshSessionKey(native): new secretKey, first20:" << m_secretKey.left(20);
 
     QVariant svcV = info.value("zpw_service_map_v3");
     if (svcV.type() == QVariant::Map) {
@@ -501,14 +465,6 @@ bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
     return true;
 }
 
-// ─── Keep-Alive (HTTP session ping) ────────────────────────────────────────
-// Gọi định kỳ endpoint "/keepalive" của chat-service để gia hạn session
-// phía server (cookie zpsid/zpw_sek), tách biệt với WS-level ping (cmd=2/1)
-// ở ZaloService_WebSocket.cpp — cái đó chỉ giữ socket khỏi timeout.
-//
-// Chạy mỗi KEEPALIVE_INTERVAL_MS (2 phút) khi app còn sống. Không đảm bảo
-// cookie sống vĩnh viễn khi app bị đóng hẳn, nhưng ping liên tục giúp giữ
-// session lâu hơn so với để TTL tự hết hạn.
 void ZaloService::onKeepAliveTimer()
 {
     sendKeepAlive();
@@ -517,7 +473,6 @@ void ZaloService::onKeepAliveTimer()
 void ZaloService::sendKeepAlive()
 {
     if (!m_loggedIn || m_secretKey.isEmpty() || m_chatServiceUrl.isEmpty()) {
-        qDebug() << "[Zalo] sendKeepAlive: skipped (not logged in or missing secretKey/chatUrl)";
         return;
     }
 
@@ -530,7 +485,6 @@ void ZaloService::sendKeepAlive()
                    + "&zpw_type=" + QString::number(API_TYPE)
                    + "&params=" + QUrl::toPercentEncoding(encParams);
 
-    qDebug() << "[Zalo] sendKeepAlive GET" << urlStr.left(100);
     QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
     connect(reply, SIGNAL(finished()), this, SLOT(onKeepAliveDone()));
 }
@@ -540,11 +494,8 @@ void ZaloService::onKeepAliveDone()
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
 
-    // QUAN TRỌNG: gia hạn session thực chất nằm ở chỗ Zalo trả Set-Cookie
-    // mới (hết hạn xa hơn) trong chính response /keepalive, không phải do
-    // server tự nhớ theo uid/imei. Nếu không đọc + lưu lại Set-Cookie này,
-    // request vẫn "thành công" (error_code=0) nhưng cookie cũ trong
-    // QSettings vẫn y nguyên, hết hạn đúng giờ cũ.
+    // Session renewal comes from the new Set-Cookie in the /keepalive response. If it isn't read and
+    // saved, the request still succeeds (error_code=0) but the stored cookies expire on schedule.
     int cookiesBefore = m_cookies.size();
     parseCookiesFromReply(reply);
     int cookiesAfter = m_cookies.size();
@@ -555,38 +506,16 @@ void ZaloService::onKeepAliveDone()
     QVariantMap root = jsonToMap(raw);
     int ec = root["error_code"].toInt();
     if (ec == 0) {
-        qDebug() << "[Zalo] keepAlive OK, cookies" << cookiesBefore << "->" << cookiesAfter;
-        saveSession(); // Lưu cookie (đã gia hạn, nếu có) xuống QSettings NGAY —
-                        // không chờ tới lần saveSession() kế tiếp, để app bị
-                        // đóng/kill đột ngột ngay sau đó vẫn giữ được session mới nhất.
+        saveSession();
     } else {
-        qDebug() << "[Zalo] keepAlive error_code=" << ec
+        qWarning() << "[Net] keepAlive error_code=" << ec
                  << "msg=" << root["error_message"].toString();
-        // Không tự emit sessionExpired ở đây: keepAlive lỗi có thể chỉ là lỗi
-        // mạng/HTTP tạm thời. Việc phát hiện session chết "chuẩn" (ec=600) đã
-        // được xử lý sẵn ở fetchConversations/fetchFriends — cứ để các API đó
-        // làm nguồn sự thật, keepAlive chỉ là best-effort gia hạn.
     }
 }
 
-// and notifies QML so the already-displayed bubble can update in place instead
-// of a stray "chat.undo" JSON blob appearing as its own message.
-//
-// The original text is preserved in recalledOriginalContent regardless of the
-// current "Show Recalled Messages" setting, so toggling the setting later (or
-// re-fetching the thread) can still recover it instead of it being gone forever.
-//
-// QUAN TRỌNG: phải idempotent. Server có thể gửi lại cùng event "chat.undo"
-// (vd mở lại thread, resync từ checkpoint cũ) khiến cả tin gốc và recall
-// đều replay lại. Lúc đó `content` có thể đã rỗng (đã recall) hoặc vừa được
-// khôi phục tạm — nên chỉ copy `content` vào recalledOriginalContent lần
-// đầu (khi nó còn rỗng), không đụng vào nếu đã có giá trị.
-
-// ── In-app update downloader ──────────────────────────────────────────────
-// Called from AboutSheet.qml after the user confirms they want to update.
-// Downloads `url` to /accounts/1000/shared/downloads/<filename>, emitting
-// updateDownloadProgress(0-100), then updateDownloadFinished(localPath) or
-// updateDownloadFailed(errorMsg).
+// Idempotent: the server may replay chat.undo (reopened thread, resync), so content is copied
+// into recalledOriginalContent only the first time (while still empty). The original text is
+// kept regardless of the "Show Recalled Messages" setting.
 
 void ZaloService::downloadUpdate(const QString &url, const QString &filename)
 {
@@ -602,10 +531,8 @@ void ZaloService::downloadUpdate(const QString &url, const QString &filename)
     QNetworkRequest req = QNetworkRequest(QUrl(url));
     req.setRawHeader("User-Agent", m_userAgent.toUtf8());
 
-    // File update host trên cùng CDN với version manifest, cần TLS1.2+.
-    // BB10's OpenSSL/Qt4 mặc định fail handshake — cùng nguyên nhân với
-    // manifest fetch của AboutSheet.qml, fix giống buildManifestRequest():
-    // ép AnyProtocol để OpenSSL tự thương lượng bản cao nhất 2 bên hỗ trợ.
+    // The update host is on the same CDN as the version manifest and needs TLS 1.2+: force
+    // AnyProtocol (same fix as buildManifestRequest() / AboutSheet.qml).
     QSslConfiguration sslConf = req.sslConfiguration();
     sslConf.setPeerVerifyMode(QSslSocket::VerifyNone);
     sslConf.setProtocol(QSsl::AnyProtocol);
@@ -624,11 +551,9 @@ void ZaloService::downloadUpdate(const QString &url, const QString &filename)
 void ZaloService::cancelUpdateDownload()
 {
     if (!m_updateReply) return;
-    m_updateReply->abort(); // trigger finished() -> onUpdateDownloadFinished() với lỗi, emit updateDownloadFailed()
+    m_updateReply->abort();
 }
 
-// Giống cách sniff extension của ApplicationUI's copy/share fix — đủ dùng
-// cho các format Zalo hay gửi.
 static QString photoExtensionFor(const QString &path)
 {
     QString lower = path.toLower();
@@ -644,50 +569,35 @@ QString ZaloService::downloadPhotoToGallery(const QString &localImagePath, const
     if (src.startsWith("file://")) src = src.mid(7);
 
     if (src.isEmpty() || !QFile::exists(src)) {
-        qDebug() << "[Zalo] downloadPhotoToGallery: source missing" << src;
         return QString();
     }
 
     QString destDir = "/accounts/1000/shared/downloads/zalo10/photos";
     QDir dir;
     if (!dir.exists(destDir) && !dir.mkpath(destDir)) {
-        qDebug() << "[Zalo] downloadPhotoToGallery: mkpath failed" << destDir;
+        qWarning() << "[Net] downloadPhotoToGallery: mkpath failed" << destDir;
         return QString();
     }
 
-    // Đặt tên Zalo10_<msgId><ext> để lưu lại cùng ảnh sẽ ghi đè gọn gàng
-    // thay vì chồng "(1)"/"(2)", và để truy ngược về tin nhắn gốc nếu cần.
     QString ext  = photoExtensionFor(src);
     QString name = msgId.isEmpty()
                  ? (QString("Zalo10_%1%2").arg(QDateTime::currentMSecsSinceEpoch()).arg(ext))
                  : (QString("Zalo10_%1%2").arg(msgId).arg(ext));
     QString destPath = destDir + "/" + name;
 
-    // QFile::copy() fail nếu đích đã tồn tại — xóa file cũ trước để
-    // tải lại cùng ảnh chỉ đơn giản là ghi đè.
     if (QFile::exists(destPath))
         QFile::remove(destPath);
 
     if (!QFile::copy(src, destPath)) {
-        qDebug() << "[Zalo] downloadPhotoToGallery: copy failed" << src << "->" << destPath;
+        qWarning() << "[Net] downloadPhotoToGallery: copy failed" << src << "->" << destPath;
         return QString();
     }
 
-    qDebug() << "[Zalo] downloadPhotoToGallery: saved" << destPath;
     return destPath;
 }
 
-// ─── Download video/file message (msgType=3) ─────────────────────────────
-// Tap bubble ("Tap to play") hoặc long-press "Download": tải file từ href
-// CDN về "/accounts/1000/shared/downloads/zalo10/videos/<tên gốc>" — cùng
-// thư mục chia sẻ với ảnh (downloadPhotoToGallery ở trên), thay vì /tmp
-// trước đây (mất khi thoát app, không thấy trong File Manager/gallery).
-// Giữ nguyên TÊN FILE GỐC (khác downloadPhotoToGallery đổi tên
-// Zalo10_<msgId> cho ảnh) — video mở trong BB10 Media Player hiển thị tên
-// file, đổi tên khiến người dùng không nhận ra video của mình
-// ("na'vi s1mple.mp4" hiện thành "Zalo10_8131303682015.mp4"). Idempotent —
-// nếu file cùng tên đã tồn tại (tải trước đó rồi) thì bắn
-// videoDownloadFinished() luôn, không tải lại.
+// Downloads keep the ORIGINAL file name (Media Player shows it), unlike photos
+// (Zalo10_<msgId>). Idempotent: an existing file emits videoDownloadFinished() immediately.
 static QString videoExtensionFor(const QString &fileName)
 {
     QString ext = fileName.section('.', -1).toLower();
@@ -695,9 +605,8 @@ static QString videoExtensionFor(const QString &fileName)
     return "." + ext;
 }
 
-// Bỏ ký tự không hợp lệ trên filesystem BB10 (QNX) khỏi tên file gốc —
-// server không đảm bảo fileName sạch, và '/' đặc biệt nguy hiểm vì sẽ bị
-// hiểu thành thư mục con.
+// Strip characters invalid on the BB10 filesystem: the server's fileName isn't sanitized and
+// '/' would become a subdirectory.
 static QString sanitizeFileName(const QString &name)
 {
     QString s = name;
@@ -706,13 +615,7 @@ static QString sanitizeFileName(const QString &name)
     return s;
 }
 
-// Thư mục tải về theo loại file, theo yêu cầu — video vẫn giữ nguyên
-// "videos" (không nằm trong yêu cầu đổi), các loại còn lại route theo
-// nhóm: documents / music / voice / misc. Phần mở rộng lạ (không khớp
-// danh sách nào ở dưới, kể cả các loại tài liệu cũ như doc/docx/txt/pdf/
-// xls/xlsx/ppt/pptx) rơi về "documents" — an toàn hơn "misc" vì đa số
-// file người dùng gửi qua chat là tài liệu, và nhất quán với các định
-// dạng tài liệu đã liệt kê rõ trong yêu cầu.
+// Unknown extensions fall back to "documents" (most files sent in chat are documents).
 static QString destDirFor(const QString &fileName)
 {
     QString ext = fileName.section('.', -1).toLower();
@@ -737,7 +640,7 @@ void ZaloService::downloadVideoMessage(const QString &msgId, const QString &url,
     QString destDir = destDirFor(fileName.isEmpty() ? url : fileName);
     QDir dir;
     if (!dir.exists(destDir) && !dir.mkpath(destDir)) {
-        qDebug() << "[Zalo] downloadVideoMessage: mkpath failed" << destDir;
+        qWarning() << "[Net] downloadVideoMessage: mkpath failed" << destDir;
         emit videoDownloadFailed(msgId, "Cannot create " + destDir);
         return;
     }
@@ -746,15 +649,12 @@ void ZaloService::downloadVideoMessage(const QString &msgId, const QString &url,
     QString cleanName = sanitizeFileName(fileName);
     QString destPath;
     if (cleanName.isEmpty()) {
-        // Không có tên gốc dùng được (rỗng, hoặc chỉ toàn ký tự bị lọc) —
-        // dùng lại msgId để tránh file tên rỗng/trùng nhau.
         destPath = destDir + "/Zalo10_" + msgId + ext;
     } else {
         destPath = destDir + "/" + cleanName;
     }
 
     if (QFile::exists(destPath)) {
-        qDebug() << "[Zalo] downloadVideoMessage: already cached" << destPath;
         emit videoDownloadFinished(msgId, destPath);
         return;
     }
@@ -775,7 +675,6 @@ void ZaloService::downloadVideoMessage(const QString &msgId, const QString &url,
     connect(m_videoDownloadReply, SIGNAL(finished()),
             this, SLOT(onVideoDownloadFinished()));
 
-    qDebug() << "[Zalo] downloadVideoMessage: fetching" << url.left(100) << "-> " << destPath;
 }
 
 void ZaloService::onVideoDownloadProgress(qint64 received, qint64 total)
@@ -795,7 +694,7 @@ void ZaloService::onVideoDownloadFinished()
         QString err = m_videoDownloadReply->errorString();
         m_videoDownloadReply->deleteLater();
         m_videoDownloadReply = 0;
-        qDebug() << "[Zalo] downloadVideoMessage: failed" << err;
+        qWarning() << "[Net] downloadVideoMessage: failed" << err;
         emit videoDownloadFailed(msgId, err);
         return;
     }
@@ -812,18 +711,14 @@ void ZaloService::onVideoDownloadFinished()
     f.write(data);
     f.close();
 
-    qDebug() << "[Zalo] downloadVideoMessage: saved" << dest;
     emit videoDownloadProgress(msgId, 100);
     emit videoDownloadFinished(msgId, dest);
 }
 
-// sslErrors() chỉ bắn cho lỗi phát hiện SAU khi handshake xong (cert lạ/
-// self-signed). SslHandshakeFailedError thường không tới đây, nhưng giữ
-// lại phòng hờ — giống ApplicationUI::onManifestSslErrors().
 void ZaloService::onUpdateSslErrors(const QList<QSslError> &errors)
 {
     for (int i = 0; i < errors.size(); ++i)
-        qDebug() << "[Zalo] update download SSL error:" << errors.at(i).errorString();
+        qWarning() << "[Net] update download SSL error:" << errors.at(i).errorString();
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (reply) reply->ignoreSslErrors();
 }

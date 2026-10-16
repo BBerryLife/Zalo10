@@ -865,9 +865,12 @@ config_pri_source_group1 {
     HEADERS += \
         $$quote($$BASEDIR/src/ActiveFrameCover.hpp) \
         $$quote($$BASEDIR/src/HubIntegration.hpp) \
+        $$quote($$BASEDIR/src/LogSanitizer.hpp) \
         $$quote($$BASEDIR/src/PhoneSyncCore.hpp) \
+        $$quote($$BASEDIR/src/RawHttpsThread.hpp) \
         $$quote($$BASEDIR/src/ServiceHandoff.hpp) \
         $$quote($$BASEDIR/src/ZaloCookieJar.hpp) \
+        $$quote($$BASEDIR/src/ZaloNetworkManager.hpp) \
         $$quote($$BASEDIR/src/ZaloService.hpp) \
         $$quote($$BASEDIR/src/ZaloServiceUtils.hpp) \
         $$quote($$BASEDIR/src/applicationui.hpp) \

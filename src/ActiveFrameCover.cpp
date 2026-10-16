@@ -19,7 +19,6 @@ ActiveFrameCover::ActiveFrameCover()
     int w = px.width(), h = px.height();
     if (w > h) { int t = w; w = h; h = t; }
 
-    // Pick image path based on screen resolution
     QString imgPath;
     if (w >= 1440)
         imgPath = "asset:///images/ActiveFrame/activeframe_zl10_big.png";
@@ -27,8 +26,6 @@ ActiveFrameCover::ActiveFrameCover()
         imgPath = "asset:///images/ActiveFrame/activeframe_zl10_big.png";
     else
         imgPath = "asset:///images/ActiveFrame/activeframe_zl10_medium.png";
-
-    qDebug() << "[ActiveFrame] screen" << w << "x" << h << "-> img:" << imgPath;
 
     Container *root = Container::create()
         .layout(new DockLayout())

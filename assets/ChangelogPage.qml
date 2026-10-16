@@ -1,11 +1,8 @@
 import bb.cascades 1.4
 import QtQuick 1.0
 
-// Pushed into aboutNav from AboutSheet.qml when the user taps "Change List"
-// Rows are set via setRows() right after creation
-//
-// Uses ListView + ArrayDataModel (same as ChatsTab/GroupsTab/InvitesTab) instead of a
-// WebView, since the WebView couldn't reliably report its own content height on device
+// Pushed into aboutNav from AboutSheet; rows are set via setRows(). Uses a ListView instead of
+// a WebView, which couldn't report its content height.
 Page {
     id: changelogPage
 

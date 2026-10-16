@@ -32,9 +32,6 @@
 #include <zlib.h>
 #include <string.h>
 
-// Lưu trữ local dùng SQLite: cache tin nhắn, preset quick-message, và các
-// tiện ích export/import/clear cache dữ liệu.
-
 void ZaloService::markMessageRecalled(const QString &threadId, const QString &msgId)
 {
     if (msgId.isEmpty()) return;
@@ -51,18 +48,9 @@ void ZaloService::markMessageRecalled(const QString &threadId, const QString &ms
             sqlite3_finalize(stmt);
         }
     }
-    qDebug() << "[Zalo] message recalled msgId=" << msgId << "thread=" << threadId;
     emit messageRecalled(threadId, msgId);
 }
 
-// "Xóa cho tôi" (chat.delete), khác với markMessageRecalled's "chat.undo"
-// (thu hồi). Hai cái này không được dùng chung logic:
-//   - Thu hồi: tin nhắn mất ở CẢ 2 phía, hiện placeholder thay thế — nên
-//     là UPDATE + tag.
-//   - Xóa cho tôi: tin nhắn chỉ biến mất ở màn hình của MÌNH, không có
-//     placeholder, phía kia không bị ảnh hưởng gì — nên là DELETE cứng.
-// Caller (xử lý chat.delete ở ZaloService_WebSocket.cpp) chỉ nên gọi hàm
-// này khi chính mình là người thực hiện xóa.
 void ZaloService::markMessageDeletedForMe(const QString &threadId, const QString &msgId)
 {
     if (msgId.isEmpty()) return;
@@ -74,10 +62,6 @@ void ZaloService::markMessageDeletedForMe(const QString &threadId, const QString
             sqlite3_step(stmt);
             sqlite3_finalize(stmt);
         }
-        // Tombstone msgId này để không bị dbSaveMessage() vô tình insert lại
-        // sau này (vd lần resync cmd=510 tiếp theo khi mở lại thread). Nếu
-        // không có bước này, "xóa cho tôi" chỉ xóa được row local, còn
-        // server vẫn trả tin đó về ở lần resync kế, khiến nó hiện lại.
         const char *sqlTomb = "INSERT OR REPLACE INTO deleted_messages (msgId, threadId, deletedAt) VALUES (?, ?, ?)";
         sqlite3_stmt *stmtTomb = 0;
         if (sqlite3_prepare_v2(m_db, sqlTomb, -1, &stmtTomb, 0) == SQLITE_OK) {
@@ -88,13 +72,12 @@ void ZaloService::markMessageDeletedForMe(const QString &threadId, const QString
             sqlite3_finalize(stmtTomb);
         }
     }
-    qDebug() << "[Zalo] message deleted-for-me msgId=" << msgId << "thread=" << threadId << "(tombstoned)";
     emit messageDeletedLocally(threadId, msgId);
 }
 
 void ZaloService::hideLocalMessage(const QString &threadId, const QString &msgId)
 {
-    markMessageDeletedForMe(threadId, msgId);   // DELETE row (nếu có) + tombstone + messageDeletedLocally
+    markMessageDeletedForMe(threadId, msgId);
 }
 
 bool ZaloService::isLocallyHidden(const QString &msgId) const
@@ -122,14 +105,11 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     QString msgId = msg["msgId"].toString();
     if (msgId.isEmpty()) return;
 
-    // Không bao giờ hồi sinh tin nhắn user đã xóa cứng qua "xóa cho tôi":
-    // server vẫn trả nó về ở mỗi lần resync, nên phải check tombstone trước.
+    // Never resurrect "delete for me" messages: the server returns them on every resync.
     if (isMessageDeletedForMe(msgId)) {
-        qDebug() << "[Zalo] dbSaveMessage: skipping tombstoned (deleted-for-me) msgId=" << msgId;
         return;
     }
 
-    // Skip messages older than the last clear timestamp for this thread
     const char *sqlCheck = "SELECT clearedAt FROM cleared_threads WHERE threadId=?";
     sqlite3_stmt *chk = 0;
     if (sqlite3_prepare_v2(m_db, sqlCheck, -1, &chk, 0) == SQLITE_OK) {
@@ -138,24 +118,15 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
             qint64 clearedAt = QString::fromUtf8((const char*)sqlite3_column_text(chk, 0)).toLongLong();
             qint64 msgTs     = msg["ts"].toString().toLongLong();
             sqlite3_finalize(chk);
-            if (msgTs <= clearedAt) return; // message predates or equals clear time
+            if (msgTs <= clearedAt) return;
         } else {
             sqlite3_finalize(chk);
         }
     }
 
-    // UPDATE-then-INSERT (thay vì INSERT OR REPLACE) để re-save tin nhắn
-    // đã có (vd re-fetch/re-sync) không xóa mất recalledOriginalContent —
-    // INSERT OR REPLACE xóa rồi tạo lại row, reset mọi cột không nằm trong
-    // VALUES. Cũng tránh dùng "ON CONFLICT ... DO UPDATE" (SQLite 3.24+) vì
-    // bản SQLite bundle cũ trên BB10 có thể không hỗ trợ.
-    //
-    // localImage/imgWidth/imgHeight dùng CASE WHEN để giữ giá trị DB cũ khi
-    // map của caller không có chúng (rỗng/0): hầu hết chỗ gọi dbSaveMessage()
-    // build map từ payload WS thô, không có các field này — chúng được set
-    // riêng và bất đồng bộ bởi downloadImageMessage()/onImageMsgDownloaded().
-    // Không có guard này, re-save cùng msgId (vd resync cmd=510 patch tin
-    // thành "recalled" rồi save lại) sẽ vô tình xóa path cache ảnh đã tải.
+    // UPDATE-then-INSERT, not INSERT OR REPLACE: a re-save must keep recalledOriginalContent,
+    // and localImage/imgWidth/imgHeight keep their old values when the caller's map lacks them.
+    // No ON CONFLICT DO UPDATE: the bundled SQLite is too old.
     const char *sqlUpdate =
         "UPDATE messages SET threadId=?,content=?,senderId=?,dName=?,ts=?,"
         "isMine=?,isGroup=?,msgType=?,"
@@ -243,24 +214,19 @@ void ZaloService::dbSaveMessage(const QVariantMap &msg, const QString &threadId)
     sqlite3_finalize(stmt);
 }
 
-// Bản cũ lấy 200 tin ĐẦU TIÊN (ORDER BY ts ASC LIMIT 200) — sai khi thread có
-// nhiều hơn 200 tin (đặc biệt sau khi đồng bộ lịch sử), vì sẽ hiện tin cũ nhất.
-// Giờ lấy 200 tin MỚI NHẤT, xếp tăng dần. ChatView dùng dbLoadMessagesPage().
 QVariantList ZaloService::dbLoadMessages(const QString &threadId)
 {
     return dbLoadMessagesPage(threadId, QString(), 200);
 }
 
-// Trả tối đa `limit` tin có ts <= beforeTs (beforeTs rỗng/"0" = không giới hạn
-// trên, tức trang mới nhất), xếp tăng dần theo ts. Dùng "<=" thay vì "<" để
-// không bỏ sót tin trùng ts ở ranh giới trang; phía QML dedup theo msgId.
+// Uses <= beforeTs so messages sharing a timestamp at a page boundary are not lost;
+// QML dedups by msgId.
 QVariantList ZaloService::dbLoadMessagesPage(const QString &threadId, const QString &beforeTs, int limit)
 {
     QVariantList result;
     if (!m_db || threadId.isEmpty()) return result;
     if (limit < 1) limit = 1;
     qint64 before = beforeTs.toLongLong();
-    // Chuẩn hóa ts giây -> ms như phía QML (ts < 1e12 là giây)
     if (before > 0 && before < 1000000000000LL) before *= 1000;
 
     const char *sqlPaged =
@@ -301,12 +267,9 @@ QVariantList ZaloService::dbLoadMessagesPage(const QString &threadId, const QStr
         result.append(m);
     }
     sqlite3_finalize(stmt);
-    qDebug() << "[Zalo] dbLoadMessages" << threadId << "rows:" << result.size();
     return result;
 }
 
-// Load hết reaction cho toàn bộ tin nhắn trong 1 thread, trong 1 query
-// duy nhất — {msgId: {uid: {icon, ts}}} — thay vì 1 query/tin nhắn.
 QVariantMap ZaloService::dbLoadThreadReactions(const QString &threadId)
 {
     QVariantMap byMsg;
@@ -325,7 +288,7 @@ QVariantMap ZaloService::dbLoadThreadReactions(const QString &threadId)
         QVariantMap forMsg = byMsg.value(msgId).toMap();
         QVariantMap rec;
         rec["icon"] = icon;
-        rec["ts"]   = (double)ts; // QML Date.now()-style millis, kept as a plain number
+        rec["ts"]   = (double)ts;
         forMsg[uid] = rec;
         byMsg[msgId] = forMsg;
     }
@@ -353,9 +316,7 @@ bool ZaloService::dbAdvanceMessageStates(const QString &threadId, int state,
 {
     if (!m_db || threadId.isEmpty() || (msgId.isEmpty() && altMsgId.isEmpty())) return false;
 
-    // Tìm tin mà sự kiện nhắc tới. Phải là tin CỦA MÌNH: sự kiện "seen" cũng có
-    // thể là mình đã đọc tin của người kia trên thiết bị khác — không được tính
-    // thành "người kia đã đọc tin của mình". Không tìm thấy thì bỏ qua cho an toàn.
+    // Only our own messages: a "seen" event may be us reading the other side on another device.
     qint64 upToTs = -1;
     bool   found  = false;
     {
@@ -374,12 +335,9 @@ bool ZaloService::dbAdvanceMessageStates(const QString &threadId, int state,
         }
     }
     if (!found) {
-        qDebug() << "[Zalo] dbAdvanceMessageStates: msgId" << msgId << "is not one of my outgoing messages / not in DB, skipping";
         return false;
     }
 
-    // Chỉ ghi row cho tin chưa đạt `state` (NOT EXISTS / state < ?) -> nhờ vậy
-    // sqlite3_changes() phản ánh đúng việc có gì thay đổi thật không.
     const char *sql =
         "INSERT OR REPLACE INTO message_states (msgId,threadId,state) "
         "SELECT m.msgId, m.threadId, ? FROM messages m "
@@ -394,13 +352,9 @@ bool ZaloService::dbAdvanceMessageStates(const QString &threadId, int state,
     sqlite3_step(stmt);
     int changed = sqlite3_changes(m_db);
     sqlite3_finalize(stmt);
-    qDebug() << "[Zalo] dbAdvanceMessageStates thread=" << threadId << "state=" << state
-             << "upToTs=" << upToTs << "rows=" << changed;
     return changed > 0;
 }
 
-// Thêm/thay reaction của (uid,msgId). Dùng cho cả action optimistic của
-// mình (reactMessage()) lẫn reaction đến từ WS (handler cmd 501/521).
 void ZaloService::dbSaveReaction(const QString &threadId, const QString &msgId, const QString &uid, const QString &icon)
 {
     if (!m_db || msgId.isEmpty() || uid.isEmpty() || icon.isEmpty()) return;
@@ -417,7 +371,6 @@ void ZaloService::dbSaveReaction(const QString &threadId, const QString &msgId, 
     sqlite3_finalize(stmt);
 }
 
-// Removes (uid,msgId)'s reaction entirely (un-react).
 void ZaloService::dbRemoveReaction(const QString &msgId, const QString &uid)
 {
     if (!m_db || msgId.isEmpty() || uid.isEmpty()) return;
@@ -430,9 +383,6 @@ void ZaloService::dbRemoveReaction(const QString &msgId, const QString &uid)
     sqlite3_finalize(stmt);
 }
 
-// Toàn bộ row mọi thread, cũ nhất trước — dùng cho exportData(). Khác
-// dbLoadMessages() (theo thread, giới hạn 200 row cho hiển thị), không
-// LIMIT vì export cần là bản backup đầy đủ.
 QVariantList ZaloService::dbLoadAllMessages() const
 {
     QVariantList result;
@@ -462,21 +412,9 @@ QVariantList ZaloService::dbLoadAllMessages() const
         result.append(m);
     }
     sqlite3_finalize(stmt);
-    qDebug() << "[Zalo] dbLoadAllMessages rows:" << result.size();
     return result;
 }
 
-// Tin nhắn mới nhất đã lưu local của mỗi thread, dùng để khôi phục preview
-// "last message" trên chat list khi mở app (API friends/conversations của
-// server không kèm field last-message, nên không có bước này thì
-// ChatsTab.qml/GroupsTab.qml sẽ hiện "chưa có tin nhắn" mỗi lần restart dù
-// đầy đủ lịch sử đã có trong SQLite).
-//
-// Dựa vào hành vi bare-column của SQLite: khi query có đúng 1 aggregate
-// MIN()/MAX() cùng GROUP BY, các cột không aggregate sẽ lấy từ đúng row
-// tạo ra giá trị MIN/MAX đó — nên 1 lượt query cho luôn content/dName/
-// isMine/msgType của row có ts lớn nhất mỗi threadId. Không cần window
-// function hay subquery tương quan, để tương thích bản SQLite cũ trên BB10.
 QVariantMap ZaloService::getThreadLastMessages() const
 {
     QVariantMap result;
@@ -501,29 +439,15 @@ QVariantMap ZaloService::getThreadLastMessages() const
         result[threadId] = m;
     }
     sqlite3_finalize(stmt);
-    qDebug() << "[Zalo] getThreadLastMessages: found last message for" << result.size() << "threads";
     return result;
 }
 
-// Prefix filename Zalo10 ghi vào "/tmp" cho ảnh cache (xem comment
-// clearCache() vì sao dùng literal "/tmp" thay vì QDir::tempPath()).
-// Gom về 1 chỗ để exportData() và clearCache() thống nhất định nghĩa
-// file cache là gì.
 QStringList ZaloService::cacheFilePatterns() const
 {
     QStringList pats;
     pats << "avatar_" << "msgthumb_" << "msgimg_" << "zalo_img_" << "qr.png";
     return pats;
 }
-
-// ---------------------------------------------------------------------------
-// Persistent avatar cache (avatar_meta table)
-// ---------------------------------------------------------------------------
-// threadId -> (urlHash, localPath). Đây là cách avatar cache sống qua được
-// restart app và logout/login: m_avatarCache (RAM) được build lại từ bảng
-// này lúc khởi động, và mỗi lần downloadAvatar() gọi đều check bảng này
-// trước khi gọi network. Chỉ clearCache() mới xóa bảng này, nên avatar của
-// 1 người chỉ tải lại khi thực sự đổi, dù app restart bao nhiêu lần.
 
 bool ZaloService::avatarMetaLookup(const QString &threadId, QString &urlHashOut, QString &localPathOut) const
 {
@@ -545,8 +469,7 @@ bool ZaloService::avatarMetaLookup(const QString &threadId, QString &urlHashOut,
 void ZaloService::avatarMetaUpsert(const QString &threadId, const QString &urlHash, const QString &localPath)
 {
     if (!m_db || threadId.isEmpty()) return;
-    // UPDATE-then-INSERT, cùng pattern với dbSaveMessage(), tránh dùng
-    // "ON CONFLICT ... DO UPDATE" (SQLite bundle cũ trên BB10 có thể không hỗ trợ).
+    // UPDATE-then-INSERT like dbSaveMessage() (old bundled SQLite lacks ON CONFLICT DO UPDATE).
     const char *sqlUpdate = "UPDATE avatar_meta SET urlHash=?, localPath=?, updatedAt=? WHERE threadId=?";
     sqlite3_stmt *upd = 0;
     bool updated = false;
@@ -574,11 +497,6 @@ void ZaloService::avatarMetaUpsert(const QString &threadId, const QString &urlHa
     }
 }
 
-// Chạy 1 lần trong constructor của ZaloService. Duyệt hết avatar_meta,
-// log số avatar cache còn valid trên đĩa vs số bị stale (file bị xóa, vd
-// do "Clear Cache" hoặc OS dọn tmp). Quyết định dùng lại avatar thật sự
-// nằm ở downloadAvatar() qua avatarMetaLookup() + QFile::exists() mỗi lần
-// gọi, nên không cần preload hết row vào m_avatarCache ở đây.
 void ZaloService::loadAvatarCacheFromDb()
 {
     if (!m_db) return;
@@ -594,14 +512,7 @@ void ZaloService::loadAvatarCacheFromDb()
         else stale++;
     }
     sqlite3_finalize(stmt);
-    qDebug() << "[Zalo] loadAvatarCacheFromDb:" << warmed << "cached avatars still on disk,"
-             << stale << "stale entries (will be re-fetched on demand)";
 }
-
-// ---------------------------------------------------------------------------
-// Quick Messages ("/command" canned replies). Global list, not tied to any
-// one conversation — same SQLite DB used for message history (m_db).
-// ---------------------------------------------------------------------------
 
 QVariantList ZaloService::getQuickMessages() const
 {
@@ -636,7 +547,6 @@ int ZaloService::addQuickMessage(const QString &name, const QString &content)
     sqlite3_bind_text(stmt, 3, QString::number(QDateTime::currentMSecsSinceEpoch()).toUtf8().constData(), -1, SQLITE_TRANSIENT);
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
-    // SQLITE_CONSTRAINT nghĩa là idx_qm_name từ chối tên trùng (không phân biệt hoa/thường).
     if (rc != SQLITE_DONE) return -1;
     return (int)sqlite3_last_insert_rowid(m_db);
 }
@@ -655,7 +565,7 @@ bool ZaloService::updateQuickMessage(int id, const QString &name, const QString 
     sqlite3_bind_int (stmt, 3, id);
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) return false; // trùng tên với row khác
+    if (rc != SQLITE_DONE) return false;
     return sqlite3_changes(m_db) > 0;
 }
 
@@ -673,18 +583,6 @@ bool ZaloService::deleteQuickMessage(int id)
     return changed;
 }
 
-// ---------------------------------------------------------------------------
-// Data export / import / cache management (Settings → mục "Data")
-// ---------------------------------------------------------------------------
-//
-// File output của exportData(), dưới <destDir>/zalo10/:
-//   zalo10_data_<timestamp>.json            — luôn được ghi
-//   zalo10_data_<timestamp>_images/         — chỉ khi includeImages=true,
-//                                              và chỉ nếu còn ít nhất 1 ảnh
-//                                              tồn tại
-//
-// Log debug đi vào thư mục "log" riêng — <destDir>/zalo10/log/ — tách khỏi
-// data export để user gửi log báo lỗi không vô tình gửi kèm cả lịch sử tin nhắn.
 QVariantMap ZaloService::exportData(const QString &destDir)
 {
     QVariantMap out;
@@ -701,10 +599,6 @@ QVariantMap ZaloService::exportData(const QString &destDir)
     QString baseName = "zalo10_data_" + stamp;
     QString jsonPath = zaloDir + "/" + baseName + ".json";
 
-    // Export chỉ có text: không copy file ảnh. Ảnh nằm ở cache tmp, sẽ mất
-    // ngay khi app update/reinstall, nên bundle theo cũng vô nghĩa. Tin
-    // nhắn có ảnh giữ nguyên text (nếu có), thêm tag "[Photo]" để đọc vẫn
-    // tự nhiên; bỏ hẳn localImage/imgWidth/imgHeight.
     QVariantList rawMessages = dbLoadAllMessages();
     QVariantList messages;
     messages.reserve(rawMessages.size());
@@ -736,9 +630,6 @@ QVariantMap ZaloService::exportData(const QString &destDir)
     }
     jf.write(json);
     jf.close();
-
-    qDebug() << "[Zalo] exportData: wrote" << messages.size() << "messages,"
-              << quickMsgs.size() << "quick messages ->" << jsonPath;
 
     out["success"]     = true;
     out["path"]         = jsonPath;
@@ -777,7 +668,6 @@ QVariantMap ZaloService::importData(const QString &jsonFilePath)
         return out;
     }
 
-    // msgId đã có sẵn — bỏ qua trùng ("data cũ luôn thắng").
     QSet<QString> existingIds;
     {
         const char *sql = "SELECT msgId FROM messages;";
@@ -798,9 +688,6 @@ QVariantMap ZaloService::importData(const QString &jsonFilePath)
         if (msgId.isEmpty() || threadId.isEmpty()) { skipped++; continue; }
         if (existingIds.contains(msgId)) { skipped++; continue; }
 
-        // exportData() không bundle file ảnh (chỉ export text), nên row
-        // import không có localImage; tin nhắn có ảnh sẽ tới đây dạng text
-        // thường kết thúc bằng "[Photo]".
         const char *sql =
             "INSERT INTO messages "
             "(msgId,threadId,content,senderId,dName,ts,isMine,isGroup,msgType,"
@@ -834,7 +721,6 @@ QVariantMap ZaloService::importData(const QString &jsonFilePath)
         }
     }
 
-    // Quick messages: match by name (case-insensitive), same "existing wins" rule.
     int qmImported = 0, qmSkipped = 0;
     QVariantList quickMsgs = root.value("quickMessages").toList();
     QSet<QString> existingNames;
@@ -859,9 +745,6 @@ QVariantMap ZaloService::importData(const QString &jsonFilePath)
         else qmSkipped++;
     }
 
-    qDebug() << "[Zalo] importData:" << imported << "messages imported," << skipped << "skipped,"
-              << qmImported << "quick messages imported," << qmSkipped << "skipped";
-
     out["success"] = true;
     out["importedMessages"] = imported;
     out["skippedMessages"] = skipped;
@@ -872,13 +755,9 @@ QVariantMap ZaloService::importData(const QString &jsonFilePath)
 
 int ZaloService::clearCache()
 {
-    // 1. Xóa hết file ảnh cache app ghi vào "/tmp/".
-    //    LƯU Ý: quét literal "/tmp", không phải QDir::tempPath() — trên máy
-    //    BB10 này 2 cái khác nhau (QDir::tempPath() là scratch dir bị xóa
-    //    mỗi lần restart app; "/tmp" mới là chỗ persistent mọi nơi ghi cache
-    //    trong app thực sự dùng). Sau khi xóa, localImage path lưu trong
-    //    bảng messages sẽ trỏ tới file không còn tồn tại — đây là chủ ý
-    //    (exportData() đã check QFile::exists() trước khi bundle ảnh).
+    // Scan the literal "/tmp", not QDir::tempPath(): on BB10 tempPath() is a scratch dir wiped on
+    // restart while "/tmp" holds the real image cache. Stale localImage paths are intentional
+    // (exportData() checks QFile::exists()).
     QDir tmp("/tmp");
     QStringList patterns = cacheFilePatterns();
     int deleted = 0;
@@ -892,17 +771,12 @@ int ZaloService::clearCache()
         if (match && tmp.remove(fname)) deleted++;
     }
 
-    // Xóa luôn map/set avatar cache trong RAM để app không tiếp tục trả về
-    // file:// path vừa bị xóa.
     m_avatarCache.clear();
     m_pendingAvatars.clear();
     m_pendingAvatarWaiters.clear();
 
-    // 2. Xóa sạch lịch sử tin nhắn local. cleared_threads và quick_messages
-    //    giữ nguyên, đây là settings/preferences của user, không phải cache.
-    //    avatar_meta THÌ bị xóa — vì file avatar của nó vừa bị xóa ở bước
-    //    trên, giữ lại row cũ sẽ khiến downloadAvatar() tưởng nhầm file
-    //    (đã mất) vẫn còn khớp với avatar URL hiện tại.
+    // Keep cleared_threads and quick_messages (user settings). avatar_meta is cleared because
+    // its avatar files were just deleted.
     if (m_db) {
         sqlite3_exec(m_db, "DELETE FROM messages;", 0, 0, 0);
         sqlite3_exec(m_db, "DELETE FROM message_states;", 0, 0, 0);
@@ -910,7 +784,6 @@ int ZaloService::clearCache()
         sqlite3_exec(m_db, "VACUUM;", 0, 0, 0);
     }
 
-    qDebug() << "[Zalo] clearCache: deleted" << deleted << "cache files, wiped message history";
     return deleted;
 }
 

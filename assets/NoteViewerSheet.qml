@@ -2,8 +2,6 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// Read-only note viewer, opened from GroupBoardSheet.qml's "View note" link
-// Edit/delete not implemented yet, so this is display-only for now
 Sheet {
     id: noteViewerRoot
 

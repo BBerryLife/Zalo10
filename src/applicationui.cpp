@@ -42,19 +42,14 @@
 #include <QSslError>
 #include <QList>
 
-#include <unistd.h> // ::read() trong onTermSignal()
+#include <unistd.h>
 
 using namespace bb::cascades;
 using namespace bb::system;
 
-// JSON manifest dùng chung cho checkForUpdate() và fetchChangelog(). Release
-// bản mới chỉ cần sửa file này trên web, không cần rebuild app. Format:
-// { "latestVersion": "1.2.0", "downloadUrl": "...", "changelog": [...] }
 static const char *VERSION_MANIFEST_URL =
     "https://raw.githubusercontent.com/BBerryLife/BBerryLife.github.io/main/Data/Zalo10-version.json";
 
-// Compares dot-separated version strings numerically (so "1.10.0" > "1.9.0").
-// Returns true if "a" is strictly newer than "b".
 static bool isVersionNewer(const QString &a, const QString &b)
 {
     QStringList pa = a.split('.');
@@ -68,8 +63,6 @@ static bool isVersionNewer(const QString &a, const QString &b)
     return false;
 }
 
-// Cheap extension-based MIME sniff — good enough for the handful of formats
-// Zalo actually sends (jpg/png/gif/webp), no need to pull in a magic-byte lib.
 static QString mimeTypeForImagePath(const QString &path)
 {
     QString lower = path.toLower();
@@ -77,16 +70,9 @@ static QString mimeTypeForImagePath(const QString &path)
     if (lower.endsWith(".gif"))                     return "image/gif";
     if (lower.endsWith(".webp"))                     return "image/webp";
     if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-    return "image/jpeg"; // sensible default — this is what onImageMsgDownloaded transcodes most photos to
+    return "image/jpeg";
 }
 
-// MIME type by extension for openLocalFile()'s bb.action.OPEN — covers both
-// video (Zalo10's original use of this function) and document/misc/audio
-// attachments (doc/docx, ppt/pptx, xls/xlsx, txt, pdf, epub, apk, cer,
-// zip/rar/7z, vcf, mp3/flac, m4a, bar) added alongside file-attachment
-// support, so bb.action.OPEN routes each to the right handler app instead of
-// always guessing video/mp4. Falls back to video/mp4 for anything unmatched
-// since video was (until now) the only type this function ever received.
 static QString mimeTypeForVideoPath(const QString &path)
 {
     QString lower = path.toLower();
@@ -111,11 +97,10 @@ static QString mimeTypeForVideoPath(const QString &path)
     if (lower.endsWith(".mp3"))  return "audio/mpeg";
     if (lower.endsWith(".flac")) return "audio/flac";
     if (lower.endsWith(".m4a"))  return "audio/mp4";
-    if (lower.endsWith(".bar"))  return "application/octet-stream"; // BB10 app package, no standard MIME
+    if (lower.endsWith(".bar"))  return "application/octet-stream";
     return "video/mp4";
 }
 
-// Strips a "file://" prefix if present, leaving a bare filesystem path.
 static QString toLocalFilePath(const QString &pathOrUri)
 {
     if (pathOrUri.startsWith("file://"))
@@ -123,9 +108,7 @@ static QString toLocalFilePath(const QString &pathOrUri)
     return pathOrUri;
 }
 
-// Qt4 has no QString::toHtmlEscaped() (that's Qt5+) — do it by hand.
-// Order matters: '&' must be replaced first or it'd double-escape the
-// entities just inserted for the other characters.
+// Qt4 has no toHtmlEscaped(); '&' must be replaced first to avoid double escaping.
 static QString escapeHtmlQt4(const QString &in)
 {
     QString out = in;
@@ -139,17 +122,9 @@ static QString escapeHtmlQt4(const QString &in)
 ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain")
 {
     m_pInvokeManager = new InvokeManager(this);
-    // Debug tạm: xác nhận connect() thành công thật sự — trước đây không
-    // kiểm tra return value của connect này (khác connect() cho
-    // systemLanguageChanged() bên dưới, có Q_ASSERT(res)). Nếu short-tap
-    // trong Hub thật sự không tới onInvoked() dù long-press context action
-    // (đường invoke khác, không qua signal này) vẫn hoạt động, cần loại
-    // trừ khả năng connect() lỗi âm thầm ở đây trước khi tìm nguyên nhân
-    // phía Hub. Xoá dòng log này sau khi xác nhận xong.
     bool invokeConnectOk = QObject::connect(
         m_pInvokeManager, SIGNAL(invoked(const bb::system::InvokeRequest&)),
         this,             SLOT(onInvoked(const bb::system::InvokeRequest&)));
-    qDebug() << "[App] InvokeManager::invoked connect() result:" << invokeConnectOk;
     m_pTranslator    = new QTranslator(this);
     m_pLocaleHandler = new LocaleHandler(this);
 
@@ -162,12 +137,7 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     ZaloService *zService = new ZaloService(this);
     m_zService = zService;
 
-    // Bàn giao với service headless (service/README.md): ghi PID TRƯỚC khi
-    // QML gọi loadSession() để service biết UI đang sống và nhường WebSocket;
-    // invoke chỉ để service phản ứng ngay (pid file mới là nguồn sự thật).
     ServiceHandoff::markUiAlive();
-    qDebug() << "[Handoff] UI alive, pid file:" << ServiceHandoff::pidFilePath()
-             << "isUiAlive=" << ServiceHandoff::isUiAlive();
     pingHandoffService(ServiceHandoff::ACTION_UI_OPENED);
 
     QObject::connect(Application::instance(), SIGNAL(manualExit()),
@@ -178,8 +148,7 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
                      this, SLOT(onAppNotFullscreen()));
     QObject::connect(Application::instance(), SIGNAL(invisible()),
                      this, SLOT(onAppNotFullscreen()));
-    // Lưới an toàn thứ 2: manualExit() của Cascades không bắn khi vuốt đóng
-    // app, nên bắt thêm aboutToQuit() (signal Qt core chuẩn) cho chắc.
+    // manualExit() doesn't fire when the app is swiped closed, so also hook aboutToQuit().
     QObject::connect(QCoreApplication::instance(), SIGNAL(aboutToQuit()),
                      this, SLOT(onManualExit()));
 
@@ -196,11 +165,8 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
 
-    // Set Active Frame cover using C++ class (no QML needed).
-    // ActiveFrameCover selects the correct image based on DisplayInfo internally.
     ActiveFrameCover *cover = new ActiveFrameCover();
     Application::instance()->setCover(cover);
-    qDebug() << "[App] ActiveFrameCover set";
 }
 
 void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
@@ -213,11 +179,6 @@ void ApplicationUI::invokeEmail(const QString &to, const QString &subject)
     m_pInvokeManager->invoke(req);
 }
 
-// Tạo event thật trong calendar mặc định của máy qua CalendarService:
-// lấy defaultCalendarFolder() để không phải hardcode account/folder id,
-// build CalendarEvent rồi gọi createEvent(). Luôn là HÔM NAY — start/end
-// tự tính từ giờ hiện tại, không nhận qua tham số. durationMinutes mặc
-// định 30 phút nếu không truyền hoặc <= 0.
 void ApplicationUI::createTodayEvent(const QString &subject, const QString &body, int durationMinutes)
 {
     using namespace bb::pim::calendar;
@@ -226,7 +187,7 @@ void ApplicationUI::createTodayEvent(const QString &subject, const QString &body
     Result::Type folderResult = Result::Success;
     QPair<AccountId, FolderId> defFolder = calSvc.defaultCalendarFolder(&folderResult);
     if (folderResult != Result::Success) {
-        qDebug() << "[App] createTodayEvent: defaultCalendarFolder() failed, result=" << folderResult;
+        qWarning() << "[App] createTodayEvent: defaultCalendarFolder() failed, result=" << folderResult;
         emit eventCreated(false, "Could not retrieve the device's default calendar");
         return;
     }
@@ -245,9 +206,6 @@ void ApplicationUI::createTodayEvent(const QString &subject, const QString &body
 
     Result::Type createResult = calSvc.createEvent(ev);
     bool ok = (createResult == Result::Success);
-    qDebug() << "[App] createTodayEvent: subject=" << subject << "start=" << start
-              << "accountId=" << defFolder.first << "folderId=" << defFolder.second
-              << "result=" << createResult << "ok=" << ok;
     emit eventCreated(ok, ok ? QString() : QString("Error creating event, error code: %1").arg((int)createResult));
 }
 
@@ -258,21 +216,17 @@ void ApplicationUI::copyToClipboard(const QString &text)
     clipboard.insert("text/plain", text.toUtf8());
 }
 
-// Fix cho bug "copy ảnh chỉ copy được link": đọc thẳng bytes ảnh từ file
-// cache local đã tải sẵn, rồi bỏ vào clipboard dưới MIME type image/*
-// thay vì copy JSON text như trước.
 bool ApplicationUI::copyImageToClipboard(const QString &localPath)
 {
     QString path = toLocalFilePath(localPath);
     QFile file(path);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
-        qDebug() << "[App] copyImageToClipboard: cannot open" << path;
+        qWarning() << "[App] copyImageToClipboard: cannot open" << path;
         return false;
     }
     QByteArray bytes = file.readAll();
     file.close();
     if (bytes.isEmpty()) {
-        qDebug() << "[App] copyImageToClipboard: empty file" << path;
         return false;
     }
 
@@ -280,13 +234,9 @@ bool ApplicationUI::copyImageToClipboard(const QString &localPath)
     bb::system::Clipboard clipboard;
     clipboard.clear();
     clipboard.insert(mime, bytes);
-    qDebug() << "[App] copyImageToClipboard: copied" << bytes.size() << "bytes as" << mime << "from" << path;
     return true;
 }
 
-// Query app đăng ký bb.action.SHARE, sắp theo thứ tự ưu tiên: BBM contact
-// -> BBM group -> BBM channel -> Text -> Email -> Meeting -> Bluetooth/NFC
-// -> Remember -> app native khác -> app bên thứ ba.
 void ApplicationUI::queryShareTargets(const QString &text)
 {
     Q_UNUSED(text);
@@ -298,8 +248,6 @@ void ApplicationUI::queryShareTargets(const QString &text)
     connect(reply, SIGNAL(finished()), this, SLOT(onQueryTargetsFinished()));
 }
 
-// Giống queryShareTargets() nhưng query theo image/* thay vì text/plain,
-// để các app chỉ đăng ký nhận ảnh cũng hiện ra trong picker.
 void ApplicationUI::queryShareTargetsForImage(const QString &localPath)
 {
     m_pendingShareMimeType = mimeTypeForImagePath(toLocalFilePath(localPath));
@@ -394,14 +342,12 @@ void ApplicationUI::invokeShareTarget(const QString &target, const QString &acti
     m_pInvokeManager->invoke(req);
 }
 
-// Giống invokeShareTarget() nhưng gửi bytes ảnh thật (đọc từ cache local)
-// dưới MIME type image/*, thay vì text JSON như trước.
 void ApplicationUI::invokeShareTargetForImage(const QString &target, const QString &action, const QString &localPath)
 {
     QString path = toLocalFilePath(localPath);
     QFile file(path);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
-        qDebug() << "[App] invokeShareTargetForImage: cannot open" << path;
+        qWarning() << "[App] invokeShareTargetForImage: cannot open" << path;
         return;
     }
     QByteArray bytes = file.readAll();
@@ -419,20 +365,15 @@ void ApplicationUI::openLocalFile(const QString &localPath)
 {
     QString path = toLocalFilePath(localPath);
     if (!QFile::exists(path)) {
-        qDebug() << "[App] openLocalFile: file does not exist" << path;
         return;
     }
 
-    // setUri() (not setData()) — video files can be hundreds of MB, so hand
-    // the target app a file:// reference to read from disk itself rather
-    // than loading the whole thing into this process' memory.
     InvokeRequest req;
     req.setTarget("");
     req.setAction("bb.action.OPEN");
     req.setMimeType(mimeTypeForVideoPath(path));
     req.setUri("file://" + path);
     m_pInvokeManager->invoke(req);
-    qDebug() << "[App] openLocalFile: invoked bb.action.OPEN for" << path;
 }
 
 void ApplicationUI::minimizeApp()
@@ -447,13 +388,8 @@ void ApplicationUI::setDarkTheme(bool dark)
     settings.sync();
     Application::instance()->themeSupport()->setVisualStyle(
         dark ? VisualStyle::Dark : VisualStyle::Bright);
-    // ChatView đọc app.getDarkTheme() 1 lần lúc trang được tạo (property
-    // binding vào 1 Q_INVOKABLE, không phải Q_PROPERTY có NOTIFY, nên QML
-    // không tự re-evaluate) — nếu user đổi theme trong Settings trong khi
-    // 1 ChatView vẫn đang mở phía dưới, trang đó bị kẹt màu cũ cho tới khi
-    // rời/mở lại thread. Emit signal này để ChatView (đã có sẵn Connections
-    // { target: app } cho showRecalledMessagesChanged, cùng pattern) tự
-    // cập nhật isDark ngay, không cần thoát ra vào lại.
+    // ChatView reads getDarkTheme() once (Q_INVOKABLE, no NOTIFY), so emit a signal to
+    // refresh open pages when the theme changes.
     emit darkThemeChanged(dark);
 }
 
@@ -487,10 +423,8 @@ void ApplicationUI::onSystemLanguageChanged()
 
 void ApplicationUI::pingHandoffService(const char *action)
 {
-    qDebug() << "[Handoff] invoke service target" << ServiceHandoff::TARGET_SERVICE << "action" << action;
     bb::system::InvokeTargetReply *reply = ServiceHandoff::pingService(m_pInvokeManager, action);
     if (!reply) {
-        qDebug() << "[Handoff] pingService: no InvokeManager";
         return;
     }
     connect(reply, SIGNAL(finished()), this, SLOT(onServicePingFinished()));
@@ -500,33 +434,26 @@ void ApplicationUI::onServicePingFinished()
 {
     bb::system::InvokeTargetReply *reply = qobject_cast<bb::system::InvokeTargetReply *>(sender());
     if (!reply) return;
-    // error() == 0 (NoError) nghĩa là Navigator đã nhận và chuyển lệnh tới service
-    // (kể cả khi phải khởi động nó). Khác 0: không tìm thấy target / không launch được.
-    qDebug() << "[Handoff] service invoke finished, error =" << (int)reply->error();
+    // error() == 0 means Navigator accepted the invoke (even if it had to start the service).
     reply->deleteLater();
 }
 
 void ApplicationUI::onManualExit()
 {
-    if (m_exitHandled) return; // manualExit() / aboutToQuit() / SIGTERM có thể trùng nhau
+    if (m_exitHandled) return;
     m_exitHandled = true;
 
     if (m_zService && m_zService->loggedIn()) {
-        qDebug() << "[App] manualExit: saving session";
         m_zService->saveSession();
         m_zService->closeWebSocketGracefully();
     }
-    // Báo service nhận lại WebSocket (xoá pid file trước, rồi mới ping).
     ServiceHandoff::markUiGone();
-    qDebug() << "[Handoff] UI closing, pid file removed, isUiAlive=" << ServiceHandoff::isUiAlive();
     pingHandoffService(ServiceHandoff::ACTION_UI_CLOSED);
     bb::cascades::Application::instance()->quit();
 }
 
 void ApplicationUI::onTermSignal(int fd)
 {
-    // Xả hết byte trong pipe (self-pipe trick từ signal handler SIGTERM, xem
-    // main.cpp) — không bắt buộc vì process sắp thoát, nhưng dọn cho sạch.
     char buf[16];
     while (::read(fd, buf, sizeof(buf)) > 0) {}
 
@@ -546,73 +473,31 @@ void ApplicationUI::onAppNotFullscreen()
 
 void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
 {
-    // Debug tạm: dòng log ĐẦU TIÊN tuyệt đối của hàm, trước mọi logic khác
-    // — để xác nhận 100% slot này CÓ được Qt gọi khi short-tap Hub item,
-    // tách bạch khỏi khả năng bị early-return/exception ở logic parse bên
-    // dưới. Xoá sau khi xác nhận xong.
-    qDebug() << "[App] onInvoked() ENTERED";
 
-    // Called when app is opened from Hub notification.
-    //
-    // Có 2 nguồn invoke KHÁC NHAU tới cùng target này, và mỗi nguồn mang
-    // payload theo cách khác nhau:
-    //
-    //   1) sendBannerNotification()/InvokeRequest tự app soạn trước đây
-    //      (đã gỡ) — set data() = "threadId|isGroup" thủ công. Không còn
-    //      call site nào tạo ra path này nữa, nhưng giữ lại làm fallback
-    //      vô hại phòng khi cần dùng lại sau này.
-    //   2) BlackBerry Hub tự soạn InvokeRequest khi user tap 1 UDS inbox
-    //      item (xem HubIntegration::upsertThreadItem()). ĐÃ XÁC NHẬN qua
-    //      log thực tế trên máy: Hub gửi qua data() (không phải uri(), uri()
-    //      luôn rỗng) một khối JSON dạng:
-    //        { "attributes": { "sourceId": "<threadId>", "unread": bool,
-    //                          "accountid": "...", "messageid": "...", ... } }
-    //      "sourceId" đúng bằng threadId đã set qua
-    //      uds_inbox_item_data_set_source_id() trong upsertThreadItem().
-    //      Đây là format riêng của Hub, không phải "URI theo chuẩn pim:"
-    //      như suy đoán ban đầu — bài học: field "attributes.sourceId",
-    //      không phải path/uri.
+    // Two invoke sources: (1) legacy self-built request, data() = "threadId|isGroup" (kept as
+    // fallback); (2) Hub item tap: data() is JSON {"attributes": {"sourceId": <threadId>, ...}},
+    // uri() is always empty.
     QString rawData = QString::fromUtf8(request.data());
     QUrl    rawUri  = request.uri();
-    qDebug() << "[App] onInvoked action:" << request.action()
-              << "target:" << request.target()
-              << "mimeType:" << request.mimeType()
-              << "data:" << rawData
-              << "uri:" << rawUri.toString();
 
     QString threadId;
     bool    isGroup = false;
 
     QString trimmed = rawData.trimmed();
     if (trimmed.startsWith("{")) {
-        // Path Hub thật (xem giải thích ở trên). jsonToMap() (ZaloServiceUtils.hpp)
-        // dùng chung với phần parse response Zalo — đã tự xử lý big-int
-        // 19-chữ-số như sourceId ở đây (quoteBigJsonInts trong hàm đó) nên
-        // không mất độ chính xác số như JSON.parse thường sẽ bị.
         QVariantMap root  = jsonToMap(rawData.toUtf8());
         QVariantMap attrs = root.value("attributes").toMap();
         threadId = attrs.value("sourceId").toString();
-        // Tap vào banner/alert do Hub tự bắn (notification_state=true) gửi
-        // payload rút gọn, chỉ có accountid + messageid (không có sourceId);
-        // messageid chính là sourceId (threadId) đã set ở upsertThreadItem().
         if (threadId.isEmpty())
             threadId = attrs.value("messageid").toString();
-        // Hub không có field "isGroup"/"is_group" trong payload này — item
-        // group hay DM đều dùng chung 1 cấu trúc attributes. Tra lại từ
-        // state đã lưu trong HubIntegration lúc item được tạo (xem
-        // ZaloService::isGroupHubThread() / HubIntegration::isGroupThread()),
-        // thay vì đoán mù false cho mọi trường hợp.
+        // The Hub payload has no isGroup flag: look it up from the state saved in HubIntegration
+        // when the item was created.
         isGroup = m_zService ? m_zService->isGroupHubThread(threadId) : false;
     } else if (!trimmed.isEmpty()) {
-        // Path cũ: data() dạng "threadId|isGroup" (không còn call site nào
-        // tạo ra, giữ fallback).
         QStringList parts = trimmed.split("|");
         threadId = parts.value(0);
         isGroup  = (parts.value(1) == "1");
     } else if (!rawUri.isEmpty()) {
-        // Path uri(): chưa từng thấy Hub dùng path này trên thực tế (log
-        // thật cho thấy uri() luôn rỗng khi Hub invoke), giữ lại làm
-        // fallback cuối cùng vô hại.
         QString path = rawUri.path();
         if (path.isEmpty()) path = rawUri.toString();
         QStringList segments = path.split(QRegExp("[/:]"), QString::SkipEmptyParts);
@@ -624,26 +509,19 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
             isGroup = (rawUri.queryItemValue("is_group") == "1");
         }
 
-        qDebug() << "[App] onInvoked parsed from uri() fallback, threadId guess:" << threadId;
     }
 
-    // Lưới cuối: uri() dạng "pim:<mime>:<accountId>:<threadId>" — lấy đoạn cuối.
     if (threadId.isEmpty() && !rawUri.isEmpty()) {
         QString u = rawUri.toString();
         threadId = u.mid(u.lastIndexOf(QLatin1Char(':')) + 1);
         isGroup  = m_zService ? m_zService->isGroupHubThread(threadId) : false;
-        qDebug() << "[App] onInvoked: threadId lấy từ uri() fallback:" << threadId;
     }
 
     if (threadId.isEmpty()) {
-        qDebug() << "[App] onInvoked: không tìm được threadId từ data() lẫn uri() — "
-                     "xem log 'action/target/mimeType/data/uri' ở trên để biết Hub thật sự gửi gì.";
+        qWarning() << "[App] onInvoked: no threadId in data() or uri()";
         return;
     }
 
-    // Mark read / Mark unread / Delete từ menu long-press hoặc
-    // "select more" của Hub: xử lý tại chỗ, KHÔNG mở thread. Trước đây mọi
-    // action đều rơi xuống openThreadRequested nên các lệnh này không có tác dụng.
     if (m_zService && m_zService->handleHubAction(request.action(), threadId)) {
         return;
     }
@@ -653,39 +531,33 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
 
 QString ApplicationUI::appVersion()
 {
-    // Đọc version trực tiếp từ bar-descriptor.xml lúc runtime, nên update
-    // version chỉ cần sửa file đó, không cần đổi code.
     return bb::ApplicationInfo().version();
 }
 
 QString ApplicationUI::exportLog()
 {
     QString srcPath  = QDir::homePath() + "/zalo10_runtime.log";
-    // Tách riêng zalo10/log/ với thư mục export data để tránh gộp nhầm
-    // log debug và lịch sử tin nhắn khi gửi hỗ trợ.
     QString destDir  = "/accounts/1000/shared/documents/zalo10/log";
     QString stamp    = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
     QString destPath = destDir + "/zalo10_log_" + stamp + ".txt";
 
     QDir dir;
     if (!dir.exists(destDir) && !dir.mkpath(destDir)) {
-        qDebug() << "[App] exportLog: failed to create" << destDir;
+        qWarning() << "[App] exportLog: failed to create" << destDir;
         return QString();
     }
 
     if (!QFile::exists(srcPath)) {
-        qDebug() << "[App] exportLog: no log file yet at" << srcPath;
         return QString();
     }
 
     bool ok = QFile::copy(srcPath, destPath);
-    qDebug() << "[App] exportLog:" << (ok ? "success ->" : "FAILED ->") << destPath;
+    qWarning() << "[App] exportLog:" << (ok ? "success ->" : "FAILED ->") << destPath;
     return ok ? destPath : QString();
 }
 
-// OpenSSL bundle của BB10 quá cũ để handshake TLS1.2+ với GitHub CDN, nên
-// phải nới protocol về AnyProtocol để OpenSSL tự thương lượng bản cao nhất
-// cả 2 bên hỗ trợ, thay vì bị khóa cứng ở default cũ của Qt.
+// Bundled OpenSSL is too old for TLS 1.2+ with the GitHub CDN: use AnyProtocol so it
+// negotiates the highest common version.
 static QNetworkRequest buildManifestRequest()
 {
     QNetworkRequest req((QUrl(QString::fromLatin1(VERSION_MANIFEST_URL))));
@@ -706,13 +578,10 @@ void ApplicationUI::checkForUpdate()
     connect(reply, SIGNAL(finished()), this, SLOT(onUpdateCheckFetchDone()));
 }
 
-// sslErrors() chỉ bắn khi lỗi xảy ra sau khi handshake xong (vd cert chain
-// lỗi), nên phần lớn không bắt được SslHandshakeFailedError, nhưng cứ giữ
-// lại phòng hờ.
 void ApplicationUI::onManifestSslErrors(const QList<QSslError> &errors)
 {
     for (int i = 0; i < errors.size(); ++i)
-        qDebug() << "[App] manifest SSL error:" << errors.at(i).errorString();
+        qWarning() << "[App] manifest SSL error:" << errors.at(i).errorString();
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (reply) reply->ignoreSslErrors();
 }
@@ -726,7 +595,7 @@ void ApplicationUI::onUpdateCheckFetchDone()
     reply->deleteLater();
 
     if (err != QNetworkReply::NoError) {
-        qDebug() << "[App] checkForUpdate: network error" << err << "-" << reply->errorString();
+        qWarning() << "[App] checkForUpdate: network error" << err << "-" << reply->errorString();
         emit updateCheckResult(false, "", "", "Could not check for updates. Check your internet connection.");
         return;
     }
@@ -735,14 +604,13 @@ void ApplicationUI::onUpdateCheckFetchDone()
     QString latest      = root.value("latestVersion").toString();
     QString downloadUrl = root.value("downloadUrl").toString();
     if (latest.isEmpty()) {
-        qDebug() << "[App] checkForUpdate: manifest missing/invalid";
+        qWarning() << "[App] checkForUpdate: manifest missing/invalid";
         emit updateCheckResult(false, "", "", "Update info unavailable right now. Try again later.");
         return;
     }
 
     QString current = appVersion();
     bool isLatest = !isVersionNewer(latest, current);
-    qDebug() << "[App] checkForUpdate: current=" << current << "latest=" << latest << "isLatest=" << isLatest;
     emit updateCheckResult(isLatest, latest, downloadUrl, "");
 }
 
@@ -763,7 +631,7 @@ void ApplicationUI::onChangelogFetchDone()
     reply->deleteLater();
 
     if (err != QNetworkReply::NoError) {
-        qDebug() << "[App] fetchChangelog: network error" << err << "-" << reply->errorString();
+        qWarning() << "[App] fetchChangelog: network error" << err << "-" << reply->errorString();
         emit changelogReady("", "Could not load the changelog. Check your internet connection.");
         return;
     }
@@ -778,9 +646,6 @@ void ApplicationUI::onChangelogFetchDone()
     emit changelogReady(buildChangelogHtml(versions), "");
 }
 
-// Render mảng "changelog" trong manifest thành HTML: header "Version X.x"
-// + bullet list mỗi entry. Tự bold tag đầu dòng (NEW:/IMPROVE:/FIX:/REMOVED:)
-// và hỗ trợ **word** kiểu markdown, để viết changelog trên web không cần HTML.
 QString ApplicationUI::buildChangelogHtml(const QVariantList &versions) const
 {
     static const char *tags[] = { "NEW:", "IMPROVE:", "FIX:", "REMOVED:", 0 };
@@ -818,8 +683,6 @@ QString ApplicationUI::buildChangelogHtml(const QVariantList &versions) const
                 }
             }
 
-            // "**word**" -> "<b>word</b>" — split on the literal marker and
-            // alternate plain/bold, same trick used for simple markdown.
             QStringList parts = line.split("**");
             QString rendered;
             for (int p = 0; p < parts.size(); ++p)

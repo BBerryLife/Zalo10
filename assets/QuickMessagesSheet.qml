@@ -2,9 +2,6 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// Quick Messages management screen, pushed as a Page so it gets the back chevron
-// "Use in Chat" sets useInChatRequested + insertRequestedContent; ChatsTab.qml
-// watches for that, pops this page, and inserts the content into the chat
 Page {
     id: quickMsgPage
 

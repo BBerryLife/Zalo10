@@ -48,8 +48,6 @@ Sheet {
             exportProgressToast.body = "Exporting data…";
             exportProgressToast.show();
 
-            // exportData() runs synchronously but is fast, so a worker thread isn't
-            // needed — the progress toast just covers the brief blocking window
             var result = zService.exportData("/accounts/1000/shared/documents");
 
             exportProgressToast.cancel();
@@ -236,11 +234,9 @@ Sheet {
                         id: exportToast
                     },
 
-                    // --- Export Data flow (3 system toasts total: progress while exporting,
-                    // then a result toast with an OK button) -------------------------------
                     SystemProgressToast {
                         id: exportProgressToast
-                        progress: -1 // indefinite — the work finishes well before any % would be meaningful
+                        progress: -1
                         state: SystemUiProgressState.Active
                     },
                     SystemToast {
@@ -249,7 +245,6 @@ Sheet {
                         button.enabled: true
                     },
 
-                    // --- Import Data flow ---------------------------------------------------
                     FilePicker {
                         id: importFilePicker
                         type: FileType.Other
@@ -293,9 +288,6 @@ Sheet {
                         button.enabled: true
                     },
 
-                    // --- Sync Messages from Phone flow ---------------------------------------
-                    // confirm -> zService.startPhoneSync() -> phone asks the user to accept ->
-                    // progress dialog (percent + status from the service) -> result toast.
                     SystemDialog {
                         id: phoneSyncConfirm
                         title: "Sync Messages from Phone"
@@ -318,7 +310,6 @@ Sheet {
                         confirmButton.label: "Hide"
                         cancelButton.label: "Stop"
                         onFinished: {
-                            // Only an explicit "Stop" cancels; our own cancel() after completion gives a different result
                             if (result === SystemUiResult.CancelButtonSelection) zService.cancelPhoneSync();
                         }
                     },
@@ -340,7 +331,6 @@ Sheet {
                         }
                     },
 
-                    // --- Clear Cache flow -----------------------------------------------------
                     SystemDialog {
                         id: clearCacheDialog
                         title: "Clear Cache"

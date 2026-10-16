@@ -1,4 +1,3 @@
-// coverImg is set from applicationui.cpp, already picked for the current screen size
 
 import bb.cascades 1.0
 

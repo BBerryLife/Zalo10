@@ -1,10 +1,8 @@
 #ifndef ZALOSERVICEUTILS_HPP
 #define ZALOSERVICEUTILS_HPP
 
-// Helper JSON/crypto nhỏ dùng chung cho các file ZaloService_*.cpp.
-// Qt4 không có QJson nên (de)serialize JSON qua QScriptEngine; các hàm
-// wrapper ở đây gom logic đó lại 1 chỗ. Tất cả đều `inline` vì header này
-// được include ở nhiều file .cpp.
+// Small JSON/crypto helpers shared by ZaloService_*.cpp. Qt4 has no QJson, so JSON goes through
+// QScriptEngine. Everything is inline (header included from many .cpp files).
 
 #include <QString>
 #include <QByteArray>
@@ -19,37 +17,23 @@
 #include <openssl/evp.h>
 #include <QRegExp>
 
-// JSON của Zalo không nhất quán khi encode uid: có field luôn là chuỗi có
-// quote, nhưng một số field khác (vd "ownerId" trong quote object, một số
-// "globalMsgId"/"msgId") lại là số JSON trần không quote. Uid của Zalo dài
-// ~19 chữ số, vượt quá 2^53 mà double (IEEE-754) biểu diễn chính xác được.
-// Vì parse JSON ở đây đi qua QScriptEngine (1 JS engine thật), số lớn cỡ đó
-// sẽ bị làm tròn ngay khi JSON.parse chạm vào (đã xác nhận qua thực tế),
-// trước cả khi C++ đọc được.
-//
-// Fix: viết lại số nguyên trần từ 16 chữ số trở lên thành chuỗi có quote,
-// TRƯỚC khi đưa cho JSON.parse, để giữ nguyên giá trị dạng string thay vì
-// bị ép qua double. Chỉ khớp số ở vị trí VALUE (sau ':', '[' hoặc ',' và
-// trước ',', ']' hoặc '}') để không lỡ tay sửa số nằm trong 1 chuỗi có sẵn.
+// Zalo uids are ~19 digits (> 2^53) and sometimes sent as bare JSON numbers, which QScriptEngine
+// rounds during JSON.parse. Integers of 16+ digits in value position are rewritten as quoted
+// strings before parsing.
 inline QByteArray quoteBigJsonInts(const QByteArray &raw)
 {
-    // Single left-to-right scan that tracks whether we're inside a string literal.
-    // The previous regex-only version could not tell, so a big number inside a string
-    // value — e.g. the nested JSON that "group.poll" messages carry in a string:
-    //   "params":"{\"creator\":2569746440952845034,...}"
-    // — got an unescaped '"' injected into the middle of the string. That produced
-    // invalid JSON, JSON.parse failed, jsonToMap() returned an empty map and the whole
-    // WebSocket frame was silently dropped (this is why live poll votes never arrived).
+    // Single left-to-right scan tracking string literals: a regex can't tell a big number inside a
+    // string (e.g. the nested JSON of "group.poll") and corrupted it, dropping whole WS frames
+    // (live poll votes never arrived).
     QString s = QString::fromUtf8(raw);
     const int n = s.length();
     QString out;
     out.reserve(n + 64);
     int i = 0;
-    QChar prev = QLatin1Char('{');   // last significant char written outside strings
+    QChar prev = QLatin1Char('{');
     while (i < n) {
         QChar c = s.at(i);
         if (c == QLatin1Char('"')) {
-            // A string literal: copy it verbatim (handling \" and \\ escapes).
             int j = i + 1;
             while (j < n) {
                 QChar cj = s.at(j);
@@ -57,14 +41,12 @@ inline QByteArray quoteBigJsonInts(const QByteArray &raw)
                 if (cj == QLatin1Char('"')) break;
                 ++j;
             }
-            if (j >= n) j = n - 1;                 // unterminated: copy the rest
+            if (j >= n) j = n - 1;
             out.append(s.mid(i, j - i + 1));
             i = j + 1;
             prev = QLatin1Char('"');
             continue;
         }
-        // Only a number sitting in VALUE position (after ':', '[' or ',') and followed
-        // by ',', ']' or '}' is a candidate; 16+ digits risk exceeding 2^53.
         if ((c == QLatin1Char('-') || c.isDigit())
             && (prev == QLatin1Char(':') || prev == QLatin1Char('[') || prev == QLatin1Char(','))) {
             int j = i;
@@ -84,7 +66,7 @@ inline QByteArray quoteBigJsonInts(const QByteArray &raw)
                 out.append(s.mid(i, j - i));
             }
             i = j;
-            prev = QLatin1Char('0');               // a value was just written
+            prev = QLatin1Char('0');
             continue;
         }
         out.append(c);
@@ -94,18 +76,9 @@ inline QByteArray quoteBigJsonInts(const QByteArray &raw)
     return out.toUtf8();
 }
 
-// ---------------------------------------------------------------------------
-// JSON "native" (không QtScript) cho service headless.
-//
-// QtScript (JavaScriptCore) segfault ngay lần evaluate() đầu tiên trong process
-// headless (bb::Application, không Cascades) trên QNX — nó không reserve được vùng
-// nhớ cho register file/JIT. Đã xác nhận qua log service: SIGSEGV (11) ngay khi
-// jsonToMap() parse cookie. App UI vẫn dùng QtScript như cũ. Service bật
-// ZJson::nativeMode() = true ở đầu main(); khi đó mọi hàm JSON bên dưới đi qua
-// bộ parse/serialize viết tay này (đệ quy xuống, không có script engine).
-// Bộ này lấy từ project Zalo10Headless cũ, đã chạy thực tế trong process headless.
-// Số JSON luôn thành double trong QVariant (đúng như QScriptValue::toVariant()).
-// ---------------------------------------------------------------------------
+// Native JSON (no QtScript) for the headless service: QtScript segfaults on its first evaluate()
+// in a headless bb::Application process on QNX. The service sets ZJson::nativeMode() = true in
+// main(). Numbers become double, as with QScriptValue::toVariant().
 namespace ZJson {
 
 inline bool &nativeMode() { static bool v = false; return v; }
@@ -202,8 +175,8 @@ private:
     {
         if (!expect('"')) return QString();
 
-        // Fast path: đa số chuỗi không có escape -> cắt 1 lần bằng mid(), 1 allocation
-        // (tránh nối từng ký tự gây bad_alloc với payload base64 dài).
+        // Fast path: most strings have no escapes, so one mid() avoids per-char appends
+        // (which caused bad_alloc on long base64).
         int start = pos;
         int i = pos;
         while (i < len) {
@@ -217,7 +190,6 @@ private:
             ++i;
         }
 
-        // Slow path: có escape sequence.
         QString out = s.mid(start, i - start);
         pos = i;
         while (pos < len) {
@@ -256,7 +228,7 @@ private:
                 ++pos;
             }
         }
-        if (pos >= len) ok = false; // chuỗi không đóng
+        if (pos >= len) ok = false;
         return out;
     }
 
@@ -328,8 +300,6 @@ inline QString escape(const QString &s)
     return out;
 }
 
-// Số -> JSON giống JSON.stringify: số nguyên in không có phần thập phân, NaN/Inf -> null,
-// số thực in dạng ngắn nhất còn round-trip.
 inline QString numberToJson(double d)
 {
     if (d != d || d - d != 0) return QString("null");
@@ -340,7 +310,6 @@ inline QString numberToJson(double d)
     return s;
 }
 
-// QVariant -> chuỗi JSON đệ quy. indent<0: compact; indent>=0: pretty với số space mỗi cấp.
 inline QString serialize(const QVariant &v, int indent, int depth)
 {
     const QString nl  = indent >= 0 ? QString("\n") : QString();
@@ -390,8 +359,6 @@ inline QString serialize(const QVariant &v, int indent, int depth)
     }
 }
 
-// Tương đương mapToJson() bản QtScript: giá trị top-level số/bool/chuỗi giữ nguyên kiểu,
-// List giữ số/bool và ép phần tử còn lại thành chuỗi, kiểu khác -> toString().
 inline QByteArray mapToJsonNative(const QVariantMap &map)
 {
     QVariantMap flat;
@@ -426,7 +393,7 @@ inline QByteArray mapToJsonNative(const QVariantMap &map)
     return serialize(flat, -1, 0).toUtf8();
 }
 
-} // namespace ZJson
+}
 
 inline QVariantMap jsonToMap(const QByteArray &raw)
 {
@@ -452,15 +419,11 @@ inline QVariantMap jsonToMap(const QByteArray &raw)
     return QVariantMap();
 }
 
-// A "group.poll" message is Zalo's in-chat notice that a poll was created or voted in. It is
-// not something to show as a text bubble — the poll's own inline card shows the result —
-// but it IS the only real-time signal that the poll changed, so callers use it to refresh.
 inline bool isGroupPollNotice(const QVariantMap &m)
 {
     return m.value("msgType").toString() == QLatin1String("group.poll");
 }
 
-// Best-effort: the poll id carried by a group.poll notice ("" if the shape is unknown).
 inline QString extractPollNoticeId(const QVariantMap &m)
 {
     QVariantList sources;
@@ -481,7 +444,7 @@ inline QString extractPollNoticeId(const QVariantMap &m)
             if (!v.isValid()) continue;
             QString id;
             if (v.type() == QVariant::String) id = v.toString();
-            else id = QString::number(v.toLongLong());   // avoid "1.15718e+09" from double->string
+            else id = QString::number(v.toLongLong());
             if (!id.isEmpty() && id != QLatin1String("0")) return id;
         }
     }
@@ -563,11 +526,8 @@ inline QByteArray mapToJson(const QVariantMap &map)
     return result.toString().toUtf8();
 }
 
-// Chuyển đổi QVariant -> QScriptValue đệ quy tổng quát, khác mapToJson()
-// ở trên (chỉ xử lý dữ liệu phẳng). Cần cho exportData()/importData(), có
-// payload là object gốc chứa mảng message/quickMessage lồng nhau kèm
-// metadata. Giữ tách riêng khỏi mapToJson() vì các nơi đang dùng
-// mapToJson() thuộc wire protocol login/messaging, không nên đổi hành vi.
+// Generic recursive QVariant -> QScriptValue for exportData()/importData(). mapToJson() is flat
+// and used by the wire protocol, so it stays untouched.
 inline QScriptValue variantToScriptValue(QScriptEngine &eng, const QVariant &v)
 {
     switch (v.type()) {
@@ -601,16 +561,13 @@ inline QByteArray variantToJsonPretty(const QVariant &root)
     QScriptEngine eng;
     QScriptValue val = variantToScriptValue(eng, root);
     QScriptValue jsonStringify = eng.evaluate("JSON.stringify");
-    // Indent 2-space để file export vẫn đọc được nếu ai đó mở lên xem.
     QScriptValue result = jsonStringify.call(QScriptValue(), QScriptValueList()
                                               << val << QScriptValue() << QScriptValue(2));
     return result.toString().toUtf8();
 }
 
-// Bản compact (không indent) của variantToJsonPretty(), dùng cho payload
-// wire-protocol sẽ bị AES-encrypt sau đó. Không dùng lại mapToJson() được
-// vì nhánh QVariant::List của nó flatten mọi phần tử qua toString(), làm
-// hỏng mảng object (vd "msgs": [ {cliMsgId, globalMsgId,...} ]).
+// Compact variantToJsonPretty() for wire payloads that get AES-encrypted. mapToJson() can't be
+// reused: its List branch flattens elements via toString() and breaks arrays of objects.
 inline QByteArray variantToJsonCompact(const QVariant &root)
 {
     if (ZJson::nativeMode()) return ZJson::serialize(root, -1, 0).toUtf8();
@@ -625,9 +582,6 @@ inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
 {
     QString nUrl, hUrl, tUrl;
 
-    // Lấy caption TRƯỚC khi logic bên dưới bỏ qua mọi thứ trừ URL ảnh.
-    // Zalo cho phép gửi ảnh kèm caption text, nằm trong "title" (hoặc
-    // "description" ở vài dạng tin nhắn khác) của content object.
     QString caption;
     {
         QVariantMap rawCm = m["content"].toMap();
@@ -637,37 +591,31 @@ inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
         if (caption.isEmpty()) caption = rawCm["description"].toString();
     }
 
-    // 1. Try content JSON field first
     if (!rawContent.isEmpty() && rawContent.trimmed().startsWith("{")) {
         QVariantMap cm = jsonToMap(rawContent.toUtf8());
-        // normalUrl có thể là blob protobuf thay vì URL, nên href/oriUrl
-        // đáng tin hơn — chỉ dùng normalUrl khi nó thực sự là URL http.
+        // normalUrl may be a protobuf blob: prefer href/oriUrl, use normalUrl only if it is an http URL.
         QString nu = cm["normalUrl"].toString();
         if (nu.startsWith("http")) {
             nUrl = nu;
         } else {
-            // normalUrl là blob protobuf — dùng href/oriUrl làm URL CDN thật
             nUrl = cm["href"].toString();
             if (nUrl.isEmpty()) nUrl = cm["oriUrl"].toString();
-            if (nUrl.isEmpty() && nu.startsWith("http")) nUrl = nu; // fallback
+            if (nUrl.isEmpty() && nu.startsWith("http")) nUrl = nu;
         }
         hUrl = cm["hdUrl"].toString();
         if (hUrl.isEmpty()) hUrl = cm["oriUrl"].toString();
         if (hUrl.isEmpty()) hUrl = cm["href"].toString();
         tUrl = cm["thumbUrl"].toString();
         if (tUrl.isEmpty()) tUrl = cm["thumb"].toString();
-        // Nếu vẫn rỗng thì dùng tạm cái gì có sẵn
         if (nUrl.isEmpty()) nUrl = nu;
     }
 
-    // 2. Thử field ở top-level của message map
     if (nUrl.isEmpty()) nUrl = m["normalUrl"].toString();
     if (hUrl.isEmpty()) hUrl = m["hdUrl"].toString();
     if (tUrl.isEmpty()) tUrl = m["thumbUrl"].toString();
     if (nUrl.isEmpty()) nUrl = m["oriUrl"].toString();
     if (tUrl.isEmpty()) tUrl = m["thumb"].toString();
 
-    // 3. Thử paramsExt JSON string (ảnh gửi real-time qua Zalo WS)
     if (nUrl.isEmpty() || !nUrl.startsWith("http")) {
         QString pe = m["paramsExt"].toString();
         if (!pe.isEmpty() && pe.trimmed().startsWith("{")) {
@@ -685,7 +633,6 @@ inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
         }
     }
 
-    // 4. Try attach sub-object
     if (nUrl.isEmpty() || !nUrl.startsWith("http")) {
         QVariantMap att = m["attach"].toMap();
         if (att.isEmpty()) {
@@ -705,7 +652,6 @@ inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
         }
     }
 
-    // 5. previewThumb as last resort (may be CDN URL or base64)
     if (nUrl.isEmpty()) {
         QString pt = m["previewThumb"].toString();
         if (!pt.isEmpty()) { nUrl = pt; tUrl = pt; }
@@ -725,19 +671,9 @@ inline QString normalizePhotoContent(const QVariantMap &m, const QString &rawCon
            .arg(nUrl).arg(tUrl).arg(hUrl);
 }
 
-
-// Zalo còn gửi event "chat.delete" — echo/notification cho "xóa cho tôi"
-// (onlyMe). Khác chat.undo (thu hồi): chat.delete chỉ nên ẩn tin nhắn ở
-// phía người bấm xóa, KHÔNG phải broadcast "tin này không còn tồn tại cho
-// ai cả" như undo. Nhưng WS của Zalo vẫn gửi chat.delete cho CẢ 2 phía
-// trong thread. Nếu xử lý chat.delete giống hệt chat.undo thì người A xóa
-// "chỉ cho mình" sẽ vô tình ẩn/gắn tag luôn ở màn hình người B. Nên: trích
-// ra ai thực sự bấm xóa (content[].uidFrom), để caller tự quyết — chỉ ẩn
-// local nếu khớp uid của mình, còn không thì bỏ qua hoàn toàn.
-//
-// content là QVariantList các object: [{type,actionType,uidFrom,uidTo,
-// clientDelMsgId,globalDelMsgId,destId}]. Trả về true và điền outMsgId/
-// outDeleterUid nếu m là event chat.delete; false nếu không phải.
+// chat.delete is echoed to BOTH sides for "delete for me", unlike chat.undo (recall). Extract who
+// deleted (content[].uidFrom) so the caller hides locally only if it matches our uid.
+// Returns true and fills outMsgId/outDeleterUid for chat.delete events.
 inline bool extractDeleteInfo(const QVariantMap &m, QString &outMsgId, QString &outDeleterUid)
 {
     QString msgTypeStr = m.value("msgType").toString();
@@ -763,10 +699,6 @@ inline bool extractDeleteInfo(const QVariantMap &m, QString &outMsgId, QString &
     return true;
 }
 
-// Quote chuỗi JSON tối giản (escape backslash/quote/ký tự điều khiển, bọc
-// trong "..."). Dùng khi tự tay build 1 đoạn JSON dưới dạng QString thay vì
-// đi qua mapToJson() — vd payload "message" trong reactMessage(), cần
-// gMsgID/cMsgID là số nguyên trần, không qua cast LongLong -> double.
 inline QString jsonQuote(const QString &s)
 {
     QString out;
@@ -792,22 +724,17 @@ inline QString jsonQuote(const QString &s)
     return out;
 }
 
-// Map icon-id <-> ký hiệu wire cho reaction — "like"/"heart"/"haha"/"wow"/
-// "cry"/"angry" ở 1 phía, ký hiệu text ngắn Zalo dùng làm rIcon ở phía kia
-// (vd "/-heart", ":>" — không phải emoji Unicode). Đã xác nhận qua log
-// thiết bị thật khi nhận cmd=612 reaction, khớp với enum Reactions của
-// zca-js. Bản mapping cũ dùng emoji Unicode tự đặt ở cả 2 phía nên không
-// khớp gì cả — mọi reaction round-trip đều rỗng/không nhận diện được.
-// Một nguồn duy nhất cho cả 2 chiều: reactMessage() (gửi đi, icon -> rIcon)
-// và handler cmd=612 (nhận về, rIcon -> icon).
+// icon-id <-> wire symbol map for reactions (rIcon like "/-heart", ":>"; not Unicode emoji),
+// confirmed on a real device and matching zca-js Reactions. Single source for sending
+// (icon -> rIcon) and for cmd=612 (rIcon -> icon).
 inline QString reactionIconToEmoji(const QString &icon)
 {
-    if (icon == "like")  return QString::fromUtf8("/-strong"); // Reactions.LIKE
-    if (icon == "heart") return QString::fromUtf8("/-heart");  // Reactions.HEART
-    if (icon == "haha")  return QString::fromUtf8(":>");       // Reactions.HAHA
-    if (icon == "wow")   return QString::fromUtf8(":o");       // Reactions.WOW
-    if (icon == "cry")   return QString::fromUtf8(":-((");     // Reactions.CRY
-    if (icon == "angry") return QString::fromUtf8(":-h");      // Reactions.ANGRY
+    if (icon == "like")  return QString::fromUtf8("/-strong");
+    if (icon == "heart") return QString::fromUtf8("/-heart");
+    if (icon == "haha")  return QString::fromUtf8(":>");
+    if (icon == "wow")   return QString::fromUtf8(":o");
+    if (icon == "cry")   return QString::fromUtf8(":-((");
+    if (icon == "angry") return QString::fromUtf8(":-h");
     return QString();
 }
 inline QString emojiToReactionIcon(const QString &emoji)
@@ -821,14 +748,8 @@ inline QString emojiToReactionIcon(const QString &emoji)
     return QString();
 }
 
-// rType companion to the icon<->rIcon mapping above — Zalo's numeric
-// reaction-type index does NOT follow this app's own 0..5 slot order.
-// Confirmed against zca-js's addReactionFactory() switch statement (the
-// same source the rIcon symbols above were cross-checked against) and the
-// Log thiết bị thật cho thấy rType:5 là reaction heart, khớp với rType=5
-// của Zalo (Reactions.HEART). Quy ước cũ trong QML (like=0 heart=1 haha=2
-// wow=3 cry=4 angry=5, tức thứ tự hiển thị) không phải số thật của Zalo —
-// reactMessage() giờ lấy rType từ đây thay vì từ map đó.
+// Zalo's rType does NOT follow this app's 0..5 slot order (heart = 5, per zca-js
+// addReactionFactory()); reactMessage() takes rType from here.
 inline int reactionIconToRType(const QString &icon)
 {
     if (icon == "haha")  return 0;
@@ -840,13 +761,8 @@ inline int reactionIconToRType(const QString &icon)
     return -1;
 }
 
-// Tương tự extractDeleteInfo/extractRecalledMsgId, cho reaction push event.
-// "chat.reaction" là tên tự đặt (chưa xác nhận qua traffic thật như
-// "chat.undo"/"chat.delete"), theo quy ước "chat.<action>" Zalo đang dùng,
-// tới khi có bằng chứng khác. Content dạng {globalMsgId hoặc msgId, uidFrom,
-// rIcon, rType} (cũng là suy đoán). rType < 0 hoặc rIcon rỗng nghĩa là uid
-// đó vừa gỡ reaction — outIcon để rỗng trong trường hợp đó. Trả về true và
-// điền output nếu m giống 1 reaction event; false nếu không.
+// Reaction push event. "chat.reaction" is an unconfirmed name following the chat.<action>
+// convention. rType < 0 or empty rIcon means the reaction was removed (outIcon stays empty).
 inline bool extractReactionInfo(const QVariantMap &m, QString &outMsgId, QString &outUid, QString &outIcon)
 {
     QString msgTypeStr = m.value("msgType").toString();
@@ -874,18 +790,14 @@ inline bool extractReactionInfo(const QVariantMap &m, QString &outMsgId, QString
     return true;
 }
 
-
-// Content dạng {"globalMsgId":..., "cliMsgId":..., "deleteMsg":..., "srcId":...,
-// "destId":...} trỏ tới msgId của tin nhắn GỐC — không phải tin nhắn mới.
-// Trả về msgId gốc đang bị thu hồi, hoặc rỗng nếu m không phải recall event.
+// content points at the ORIGINAL message being recalled; returns its msgId, or empty if m is not a recall.
 inline QString extractRecalledMsgId(const QVariantMap &m)
 {
     QString msgTypeStr = m.value("msgType").toString();
     if (msgTypeStr.compare("chat.undo", Qt::CaseInsensitive) != 0)
         return QString();
 
-    // content đến dạng QVariantMap lồng (QScriptEngine tự convert JSON
-    // object), nhưng cũng có thể là chuỗi JSON tùy đường gọi.
+    // content is usually a nested QVariantMap but can be a JSON string depending on the call path.
     QVariantMap c = m.value("content").toMap();
     if (c.isEmpty()) {
         QString cs = m.value("content").toString();
@@ -897,21 +809,17 @@ inline QString extractRecalledMsgId(const QVariantMap &m)
     return recalledId;
 }
 
-// AES-GCM decrypt cho WS event data (zca-js decodeEventData, encryptType=2/3)
-// Layout: iv[0:16] + aad[16:32] + ciphertext[32:N-16] + tag[N-16:N]
-// encryptType=2: base64(urlencoded(data)) → inflate(plaintext)
-// encryptType=3: base64(data)            → plaintext trực tiếp (no inflate)
 inline QByteArray aesGcmDecrypt(const QByteArray &keyRaw, const QByteArray &cipherBytes)
 {
-    if (cipherBytes.size() < 48) return QByteArray(); // iv(16)+aad(16)+tag(16) minimum
+    if (cipherBytes.size() < 48) return QByteArray();
     QByteArray key = keyRaw;
     if (key.size() != 16 && key.size() != 24 && key.size() != 32) {
         key = QByteArray::fromBase64(keyRaw);
     }
     if (key.size() != 16 && key.size() != 24 && key.size() != 32) return QByteArray();
 
-    const unsigned char *iv  = (const unsigned char*)cipherBytes.constData();       // bytes 0-15
-    const unsigned char *aad = (const unsigned char*)cipherBytes.constData() + 16;  // bytes 16-31
+    const unsigned char *iv  = (const unsigned char*)cipherBytes.constData();
+    const unsigned char *aad = (const unsigned char*)cipherBytes.constData() + 16;
     int cipherLen = cipherBytes.size() - 32 - 16;
     if (cipherLen <= 0) return QByteArray();
     const unsigned char *cipher = (const unsigned char*)cipherBytes.constData() + 32;
@@ -927,27 +835,21 @@ inline QByteArray aesGcmDecrypt(const QByteArray &keyRaw, const QByteArray &ciph
     EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 16, NULL);
     EVP_DecryptInit_ex(ctx, NULL, NULL,
         (const unsigned char*)key.constData(), iv);
-    // AAD
     int len = 0;
     EVP_DecryptUpdate(ctx, NULL, &len, aad, 16);
-    // Decrypt
     QByteArray out(cipherLen + 16, '\0');
     EVP_DecryptUpdate(ctx, (unsigned char*)out.data(), &len,
         cipher, cipherLen);
     int outLen = len;
-    // Set tag
     EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void*)tag);
     int ret = EVP_DecryptFinal_ex(ctx, (unsigned char*)out.data() + outLen, &len);
     EVP_CIPHER_CTX_free(ctx);
     if (ret <= 0) {
-        qDebug() << "[Zalo WS] aesGcmDecrypt: EVP_DecryptFinal FAILED ret=" << ret
-                 << "keyLen=" << key.size() << "cipherLen=" << cipherLen
-                 << "tagHex=" << QByteArray((const char*)tag, 16).toHex();
-        return QByteArray(); // tag mismatch
+        qWarning() << "[Crypto] AES-GCM decrypt failed, ret=" << ret;
+        return QByteArray();
     }
     out.resize(outLen + len);
     return out;
 }
 
-
-#endif // ZALOSERVICEUTILS_HPP
+#endif

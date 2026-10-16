@@ -1,13 +1,9 @@
 #ifndef SERVICEHANDOFF_HPP
 #define SERVICEHANDOFF_HPP
 
-// Bàn giao WebSocket giữa app UI và service headless (Zalo10Service).
-// Dùng chung cho cả 2 process nên chỉ gồm hàm inline, không có .cpp riêng.
-//
-// Nguồn sự thật: file PID của UI trong thư mục data (cả 2 process cùng sandbox
-// vì cùng 1 BAR). UI sống  -> service nhường WS. UI chết/không có file -> service
-// giữ WS để nhận thông báo. Invoke chỉ để service phản ứng nhanh, mất invoke
-// cũng không sao vì service còn poll file PID.
+// WebSocket handoff between the UI app and the headless service.
+// The UI pid file is the source of truth: UI alive -> service yields the WS,
+// UI dead -> service keeps it. Invokes only speed this up (service also polls the file).
 
 #include <QString>
 #include <QDir>
@@ -38,8 +34,6 @@ inline void markUiAlive()
 
 inline void markUiGone() { QFile::remove(pidFilePath()); }
 
-// true nếu file PID tồn tại VÀ process đó còn sống (kill(pid,0) không gửi
-// signal thật). File PID mồ côi sau khi UI bị kill -9 sẽ trả về false.
 inline bool isUiAlive()
 {
     QFile f(pidFilePath());
@@ -50,8 +44,6 @@ inline bool isUiAlive()
     return (::kill((pid_t)pid, 0) == 0) || (errno == EPERM);
 }
 
-// Gửi invoke tới service. Lần đầu cũng đóng vai trò KHỞI ĐỘNG service nếu
-// nó chưa chạy. Trả về InvokeTargetReply* (caller nối finished() để log error()) hoặc 0.
 inline bb::system::InvokeTargetReply *pingService(bb::system::InvokeManager *im, const char *action)
 {
     if (!im) return 0;
@@ -61,6 +53,6 @@ inline bb::system::InvokeTargetReply *pingService(bb::system::InvokeManager *im,
     return im->invoke(req);
 }
 
-} // namespace ServiceHandoff
+}
 
 #endif

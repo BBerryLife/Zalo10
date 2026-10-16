@@ -23,7 +23,6 @@ NavigationPane {
             repeat: false
             onTriggered: groupsNav.refreshCooldown = false
         },
-        // Pre-warms ChatView.qml in the background, same as ChatsTab.qml's chatViewWarmupTimer
         Timer {
             id: groupViewWarmupTimer
             interval: 800
@@ -38,11 +37,8 @@ NavigationPane {
 
     property variant lastThreads: []
 
-    // Dựng danh sách nhóm từ threads + lịch sử local (preview, thứ tự, ghim).
-    // Dùng chung cho onConversationsReady và các lần làm mới sau khi đồng bộ.
     function buildGroups(threads, restoreAvatars) {
         groupsLoading.visible = false;
-        // Rebuild (after sync/pin refresh) keeps already-downloaded avatars
         var avatarByTid = {};
         if (restoreAvatars) {
             for (var a = 0; a < groupModel.size(); a++) {
@@ -50,24 +46,19 @@ NavigationPane {
                 if (ad.threadId && ad.localAvatar) avatarByTid[ad.threadId] = ad.localAvatar;
             }
         }
-        // Pinned conversations (server-side pin list) float to the top, same row UI
         var pinnedIds = zService.pinnedThreadIds();
         var pinMap = {};
         for (var pn = 0; pn < pinnedIds.length; pn++) pinMap[pinnedIds[pn]] = true;
         groupModel.clear();
         var arr = [];
-        // Restore last messages from local history — the server's group list
-        // doesn't include one, so without this every group shows
-        // "No messages yet" until a new message arrives
+        // Restore last messages from local history: the server's group list has none.
         var lastMsgs = zService.getThreadLastMessages();
-        // Persisted unread threads (yellow pellet survives app restarts)
         var unreadIds = zService.unreadThreadIds();
         var unreadMap = {};
         for (var u = 0; u < unreadIds.length; u++) unreadMap[unreadIds[u]] = true;
         for (var i = 0; i < threads.length; i++) {
             if (!threads[i].isGroup) continue;
-            // Copy: writes into the list handed over by a C++ signal (or kept in a
-            // property) can silently no-op on this runtime
+            // Copy: writes into a list handed over by a C++ signal can silently no-op on this runtime.
             var g = {};
             for (var gk in threads[i]) g[gk] = threads[i][gk];
             g.localAvatar    = (restoreAvatars && avatarByTid[g.threadId || ""]) ? avatarByTid[g.threadId] : "";
@@ -103,8 +94,6 @@ NavigationPane {
             }
             arr.push(g);
         }
-        // Server's thread order isn't sorted by recency, so sort here to keep
-        // the most recently active group on top
         arr.sort(function(a, b) {
             var pa = a.isPinned ? 1 : 0, pb = b.isPinned ? 1 : 0;
             if (pa !== pb) return pb - pa;
@@ -121,8 +110,6 @@ NavigationPane {
         groupsNav.allGroups = arr;
     }
 
-    // Index of the first non-pinned row. Pinned rows are always kept at the top of the list,
-    // so a conversation that just received a message goes right below them, not above.
     function firstUnpinnedIndex() {
         var n = 0;
         for (var k = 0; k < groupModel.size(); k++) {
@@ -167,10 +154,7 @@ NavigationPane {
         return mon + " " + date.getDate();
     }
 
-    // Preview snippet cho tin nhắn cuối trong danh sách nhóm — cùng logic
-    // với ChatsTab.qml (xem ghi chú ở đó). Trước đây GroupsTab hoàn toàn
-    // không xử lý msgType===3, nên preview 1 video/file gửi trong nhóm hiện
-    // thẳng JSON thô (dạng {"fileName":"...",...}) thay vì "[Video]" hay tên file.
+    // Handles msgType===3 (video/file) like ChatsTab; otherwise the preview showed raw JSON.
     function extractFileName(content) {
         var c = content || "";
         if (c.length === 0 || c.charCodeAt(0) !== 123) return "";
@@ -203,14 +187,8 @@ NavigationPane {
         if (isVideo) return "[Video]";
         return fname.length > 0 ? fname : "[File]";
     }
-    // Nội dung dòng preview thứ 2 trong mỗi ô danh sách nhóm. Trước đây đây
-    // là 1 block-body binding trực tiếp trên Label.text — pattern này bị
-    // cấm trên QtQuick1/Cascades (xem ghi chú ở videoBubble trong
-    // ChatView.qml, nơi cùng lỗi này từng gây crash parse thật trên máy).
-    // Chuyển thành hàm riêng để nhất quán và loại bỏ rủi ro, dù chỗ này có
-    // thể đã "chạy được" nhờ may mắn về context binding cụ thể. Prefix
-    // "You: " (không phải "Me: " như ChatsTab.qml) — giữ nguyên khác biệt
-    // gốc, không tự ý đồng bộ hoá 2 chỗ.
+    // Preview line as a function (no block-body binding on Label.text, see videoBubble in
+    // ChatView.qml). The prefix is "You: " here but "Me: " in ChatsTab.qml; intentional.
     function lastMessagePreview(lastMessage, lastMsgIsMine, lastSenderName) {
         var lm = lastMessage || "";
         if (lm.length === 0) return "No messages yet";
@@ -354,12 +332,8 @@ NavigationPane {
 
                 function itemType(data, indexPath) { return "item"; }
 
-                // Proxy function — ListItemComponent delegates KHÔNG resolve được
-                // id của Page/NavigationPane cha (nguyên nhân dòng preview tin
-                // nhắn cuối biến mất hoàn toàn: gọi thẳng "groupsNav.lastMessagePreview"
-                // từ trong delegate ném ReferenceError "Can't find variable: groupsNav").
-                // ListView (groupList) gọi được groupsNav bình thường vì nó không
-                // nằm trong 1 ListItemComponent — nên "tunnel" qua đây.
+                // Proxy: delegates can't resolve groupsNav (ReferenceError); they go through
+                // ListItem.view.lastMessagePreview().
                 function lastMessagePreview(lastMessage, lastMsgIsMine, lastSenderName) {
                     return groupsNav.lastMessagePreview(lastMessage, lastMsgIsMine, lastSenderName);
                 }
@@ -417,15 +391,11 @@ NavigationPane {
                                         layout: DockLayout {}
                                         horizontalAlignment: HorizontalAlignment.Fill
 
-                                        // Message-state pellet: only when the group has a message.
-                                        // Yellow = unread, grey = read. No pellet on "No messages yet".
                                         ImageView {
                                             visible: ((ListItemData.lastMessage || "").length > 0)
                                             imageSource: ListItemData.hasUnread
                                                          ? "asset:///images/Message States/yellow_pellet.png"
                                                          : "asset:///images/Message States/grey_pellet.png"
-                                            // The PNG is a 40x40 canvas with a ~16px dot that has ~11px of
-                                            // transparent padding on the left. At 4.4du the dot is ~17px.
                                             preferredWidth:  ui.du(4.4)
                                             preferredHeight: ui.du(4.4)
                                             minWidth:        ui.du(4.4)
@@ -434,10 +404,6 @@ NavigationPane {
                                             horizontalAlignment: HorizontalAlignment.Left
                                             scalingMethod: ScalingMethod.AspectFit
                                         }
-                                        // Wrapper uses leftPadding (margins on a Label inside DockLayout
-                                        // are ignored on-device). 5.0du = pellet width 4.4du + a small
-                                        // gap, so the text sits just right of the dot. Rows without a
-                                        // pellet ("No messages yet") get no offset.
                                         Container {
                                             horizontalAlignment: HorizontalAlignment.Fill
                                             verticalAlignment: VerticalAlignment.Center
@@ -466,7 +432,6 @@ NavigationPane {
                     var t0 = Date.now();
                     var item = dataModel.data(indexPath);
                     var page = groupsDef.createObject();
-                    console.log("[GroupsTab] createObject took " + (Date.now() - t0) + "ms");
                     if (!page) return;
                     page.threadId   = item.threadId || "";
                     page.threadName = item.name || "Group";
@@ -477,7 +442,6 @@ NavigationPane {
                     page.selfName   = groupsNav.selfName;
                     var t1 = Date.now();
                     groupsNav.push(page);
-                    console.log("[GroupsTab] push() took " + (Date.now() - t1) + "ms, total tap-to-push " + (Date.now() - t0) + "ms");
                     groupsNav.currentPage = page;
                     groupQmTriggerConn.target = page;
                     groupBoardTriggerConn.target = page;
@@ -520,9 +484,6 @@ NavigationPane {
                 source: "asset:///GroupBoardSheet.qml"
             },
             Connections {
-                // Group Board only opens from a group ChatView, so this only needs
-                // wiring here, not in ChatsTab. Same null-target-then-assign pattern
-                // as groupQmTriggerConn below.
                 id: groupBoardTriggerConn
                 target: null
                 onGroupBoardRequestedChanged: {
@@ -538,10 +499,8 @@ NavigationPane {
                 }
             },
             Connections {
-                // target starts null and is assigned once the real page exists (see
-                // openThread()) — binding directly to groupsNav.currentPage triggers a
-                // "Cannot assign to non-existent property" warning since it's null at
-                // construction time
+                // target starts null and is assigned in openThread(): binding to groupsNav.currentPage warns
+                // while it is null.
                 id: groupQmTriggerConn
                 target: null
                 onQmRequestedChanged: {
@@ -582,7 +541,6 @@ NavigationPane {
                     groupsNav.buildGroups(threads, false);
                 }
 
-                // Đồng bộ lịch sử xong / danh sách ghim về -> dựng lại preview + thứ tự
                 onHistorySynced: {
                     if (groupsNav.lastThreads && groupsNav.lastThreads.length > 0)
                         groupsNav.buildGroups(groupsNav.lastThreads, true);
@@ -635,13 +593,10 @@ NavigationPane {
                                 d.lastMessage    = snippet;
                                 d.lastMsgIsMine  = isMine;
                                 d.lastSenderName = message.dName || "";
-                                // Incoming + not currently being viewed -> yellow; viewing it now -> grey
                                 d.hasUnread      = !isMine && !zService.isActiveThread(tid);
                                 zService.setThreadUnread(tid, d.hasUnread);
-                                // Update the displayed time, otherwise it never advances
                                 if (message.ts) d.lastTime = groupsNav.formatTime(message.ts);
                                 groupModel.removeAt(i);
-                                // pinned stay on top (newest activity first among them); the rest go right below
                                 groupModel.insert(d.isPinned ? 0 : groupsNav.firstUnpinnedIndex(), d);
                                 break;
                             }
@@ -649,7 +604,6 @@ NavigationPane {
                     }
                 }
 
-                // Group opened (from the list OR from a Hub item) -> yellow becomes grey
                 onThreadRead: {
                     for (var i = 0; i < groupModel.size(); i++) {
                         var d = groupModel.value(i);
@@ -667,7 +621,6 @@ NavigationPane {
                     }
                 }
 
-                // "Mark Unread" từ Hub -> pellet xám trở lại vàng
                 onThreadMarkedUnread: {
                     for (var i = 0; i < groupModel.size(); i++) {
                         var d = groupModel.value(i);
@@ -709,8 +662,7 @@ NavigationPane {
                             break;
                         }
                     }
-                    // Extra safety: pop back to the list directly here in case the
-                    // popRequested -> popWatcher chain doesn't fire
+                    // Pop back directly in case the popRequested -> popWatcher chain doesn't fire.
                     if (groupsNav.currentPage && groupsNav.currentPage.threadId === groupId) {
                         groupsNav.pop();
                     }
@@ -720,8 +672,6 @@ NavigationPane {
     }
 
     function openThread(threadId, isGroup) {
-        // NavigationPane không có popToRoot()/popAll() — xem giải thích đầy
-        // đủ tại ChatsTab.qml::openThread(), cùng lỗi lặp lại ở đây.
         while (groupsNav.count() > 1) {
             groupsNav.pop();
         }

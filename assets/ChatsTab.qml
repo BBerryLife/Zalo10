@@ -30,11 +30,8 @@ NavigationPane {
             repeat: false
             onTriggered: chatsNav.refreshCooldown = false
         }
-        // NOTE: used to have a warm-up Timer here that pre-parsed ChatView.qml via
-        // createObject()+destroy() to avoid a parse-cost hit on first tap. Removed —
-        // it caused a SIGSEGV on device (creating/destroying a parentless Page-derived
-        // UIObject isn't safe on this Qt4 Cascades runtime). Not worth the crash risk
-        // for a minor perf win.
+        // No warm-up Timer pre-parsing ChatView.qml via createObject()+destroy(): creating and
+        // destroying a parentless Page UIObject caused SIGSEGV on this runtime.
     ]
 
     Page {
@@ -163,14 +160,9 @@ NavigationPane {
 
                 function itemType(data, indexPath) { return "item"; }
 
-                // Proxy function — ListItemComponent delegates KHÔNG resolve được
-                // id của Page/NavigationPane cha (đây chính là nguyên nhân dòng
-                // preview tin nhắn cuối biến mất hoàn toàn: "chatsNav.lastMessagePreview"
-                // gọi thẳng từ trong delegate ném ReferenceError "Can't find variable:
-                // chatsNav" ở mọi lần re-evaluate, binding rỗng nên Label không hiện gì).
-                // ListView (friendList) thì gọi được chatsNav bình thường vì nó không
-                // nằm trong 1 ListItemComponent — nên "tunnel" qua đây, delegate gọi
-                // ListItem.view.lastMessagePreview(...) thay vì chatsNav trực tiếp.
+                // Proxy: ListItemComponent delegates can't resolve the parent Page/NavigationPane id (calling
+                // chatsNav.lastMessagePreview threw "Can't find variable: chatsNav" and hid the preview).
+                // Delegates call ListItem.view.lastMessagePreview(...) instead.
                 function lastMessagePreview(lastMessage, lastMsg, lastMsgIsMine, lastSenderName) {
                     return chatsNav.lastMessagePreview(lastMessage, lastMsg, lastMsgIsMine, lastSenderName);
                 }
@@ -233,16 +225,11 @@ NavigationPane {
                                         layout: DockLayout {}
                                         horizontalAlignment: HorizontalAlignment.Fill
 
-                                        // Message-state pellet: only when the thread actually has a
-                                        // message. Yellow = unread, grey = read (stays from then on).
-                                        // "No messages yet" rows get no pellet at all.
                                         ImageView {
                                             visible: ((ListItemData.lastMessage || ListItemData.lastMsg || "").length > 0)
                                             imageSource: ListItemData.hasUnread
                                                          ? "asset:///images/Message States/yellow_pellet.png"
                                                          : "asset:///images/Message States/grey_pellet.png"
-                                            // The PNG is a 40x40 canvas with a ~16px dot that has ~11px of
-                                            // transparent padding on the left. At 4.4du the dot is ~17px.
                                             preferredWidth:  ui.du(4.4)
                                             preferredHeight: ui.du(4.4)
                                             minWidth:        ui.du(4.4)
@@ -251,10 +238,6 @@ NavigationPane {
                                             horizontalAlignment: HorizontalAlignment.Left
                                             scalingMethod: ScalingMethod.AspectFit
                                         }
-                                        // Wrapper uses leftPadding (margins on a Label inside DockLayout
-                                        // are ignored on-device). 5.0du = pellet width 4.4du + a small
-                                        // gap, so the text sits just right of the dot. Rows without a
-                                        // pellet ("No messages yet") get no offset.
                                         Container {
                                             horizontalAlignment: HorizontalAlignment.Fill
                                             verticalAlignment: VerticalAlignment.Center
@@ -283,7 +266,6 @@ NavigationPane {
                     var t0 = Date.now();
                     var item = dataModel.data(indexPath);
                     var page = chatsDef.createObject();
-                    console.log("[ChatsTab] createObject took " + (Date.now() - t0) + "ms");
                     if (!page) return;
                     page.threadId   = item.threadId || item.uid || "";
                     page.threadName = item.name || "Chat";
@@ -295,10 +277,8 @@ NavigationPane {
                     if (d) { d.hasUnread = false; friendModel.replace(idx, d); }
                     chatsNav.activeChatPage = page;
                     chatPageConn.target = page;
-                    // Push first, load second — navigation shouldn't wait on message fetch
                     var t1 = Date.now();
                     chatsNav.push(page);
-                    console.log("[ChatsTab] push() took " + (Date.now() - t1) + "ms, total tap-to-push " + (Date.now() - t0) + "ms");
                     page.startChat();
                 }
             }
@@ -350,10 +330,8 @@ NavigationPane {
                 source: "asset:///QuickMessagesSheet.qml"
             },
             Connections {
-                // target starts null and is assigned once the page exists (see
-                // openThread()) — binding directly to chatsNav.activeChatPage causes a
-                // "Cannot assign to non-existent property" warning since it's null
-                // at construction time
+                // target starts null and is assigned in openThread(): binding to chatsNav.activeChatPage warns
+                // "Cannot assign to non-existent property" while it is null.
                 id: chatPageConn
                 target: null
                 onQmRequestedChanged: {
@@ -384,8 +362,6 @@ NavigationPane {
                     chatsNav.buildFriends(friends, false);
                 }
 
-                // Sau khi đồng bộ lịch sử từ cloud xong, hoặc khi danh sách hội thoại
-                // ghim về: dựng lại preview + thứ tự từ SQLite (giữ avatar đã tải)
                 onHistorySynced: {
                     if (chatsNav.lastFriends && chatsNav.lastFriends.length > 0)
                         chatsNav.buildFriends(chatsNav.lastFriends, true);
@@ -440,20 +416,16 @@ NavigationPane {
                             d.lastMessage    = snippet;
                             d.lastMsgIsMine  = isMine;
                             d.lastSenderName = senderName;
-                            // Incoming + not currently being viewed -> yellow; viewing it now -> grey
                             d.hasUnread      = !isMine && !zService.isActiveThread(tid);
                             zService.setThreadUnread(tid, d.hasUnread);
-                            // Update the displayed time as new messages come in
                             if (message.ts) d.lastTime = chatsNav.formatTime(message.ts);
                             friendModel.removeAt(i);
-                            // pinned stay on top (newest activity first among them); the rest go right below
                             friendModel.insert(d.isPinned ? 0 : chatsNav.firstUnpinnedIndex(), d);
                             return;
                         }
                     }
                 }
 
-                // Thread opened (from the list OR from a Hub item) -> yellow becomes grey
                 onThreadRead: {
                     for (var i = 0; i < friendModel.size(); i++) {
                         var d = friendModel.value(i);
@@ -471,7 +443,6 @@ NavigationPane {
                     }
                 }
 
-                // "Mark Unread" từ Hub -> pellet xám trở lại vàng
                 onThreadMarkedUnread: {
                     for (var i = 0; i < friendModel.size(); i++) {
                         var d = friendModel.value(i);
@@ -513,12 +484,8 @@ NavigationPane {
 
     property variant lastFriends: []
 
-    // Dựng danh sách chat từ friends + lịch sử local (preview, thứ tự, ghim).
-    // Dùng chung cho onFriendsReady và các lần làm mới sau khi đồng bộ từ cloud.
     function buildFriends(friends, restoreAvatars) {
         chatsLoading.visible = false;
-        // Rebuild (after sync/pin refresh) keeps already-downloaded avatars instead of
-        // re-downloading every one: snapshot threadId -> localAvatar before clearing.
         var avatarByTid = {};
         if (restoreAvatars) {
             for (var a = 0; a < friendModel.size(); a++) {
@@ -527,21 +494,16 @@ NavigationPane {
                 if (atid.length > 0 && ad.localAvatar) avatarByTid[atid] = ad.localAvatar;
             }
         }
-        // Pinned conversations (server-side pin list) float to the top, same row UI
         var pinnedIds = zService.pinnedThreadIds();
         var pinMap = {};
         for (var pn = 0; pn < pinnedIds.length; pn++) pinMap[pinnedIds[pn]] = true;
         friendModel.clear();
-        // Server's friends list has no last-message field, so pull it from
-        // local history and merge in before building the model
         var lastMsgs = zService.getThreadLastMessages();
-        // Persisted unread threads (yellow pellet survives app restarts)
         var unreadIds = zService.unreadThreadIds();
         var unreadMap = {};
         for (var u = 0; u < unreadIds.length; u++) unreadMap[unreadIds[u]] = true;
-        // Build a fresh array instead of mutating `friends` in place —
-        // it's a QVariantList from a C++ signal and writes back to it
-        // silently no-op on this runtime
+        // Build a fresh array: `friends` is a QVariantList from a C++ signal and in-place writes
+        // silently no-op on this runtime.
         var outArr = [];
         for (var i = 0; i < friends.length; i++) {
             var f = friends[i];
@@ -574,22 +536,17 @@ NavigationPane {
                 out.lastSenderName = lm.dName || "";
                 out.lastTime       = lm.ts || "";
             }
-            // Yellow only for a thread that has a message and was never opened since
             out.hasUnread = (unreadMap[tid] === true) && (out.lastMessage.length > 0)
                             && !out.lastMsgIsMine;
             if (out.lastTime && out.lastTime !== "") {
                 var ts = parseInt(out.lastTime);
                 if (!isNaN(ts)) {
-                    // Keep the raw timestamp for sorting since lastTime gets
-                    // overwritten with a formatted string below
                     out.sortTs = ts;
                     out.lastTime = chatsNav.formatTime(ts);
                 }
             }
             outArr.push(out);
         }
-        // Server returns threads in a fixed order, not by recency — re-sort
-        // so the most recently active conversation stays on top
         outArr.sort(function(a, b) {
             var pa = a.isPinned ? 1 : 0, pb = b.isPinned ? 1 : 0;
             if (pa !== pb) return pb - pa;
@@ -607,8 +564,6 @@ NavigationPane {
 
     }
 
-    // Index of the first non-pinned row. Pinned rows are always kept at the top of the list,
-    // so a conversation that just received a message goes right below them, not above.
     function firstUnpinnedIndex() {
         var n = 0;
         for (var k = 0; k < friendModel.size(); k++) {
@@ -633,18 +588,11 @@ NavigationPane {
     }
 
     function openThread(threadId, isGroup) {
-        // Pop về root trước nếu đang trong chat khác. NavigationPane
-        // (Cascades) KHÔNG có method popToRoot()/popAll() — chỉ có pop()
-        // từng page 1 và count() (xem navigationpane.h). Đây là bug có
-        // thật, độc lập với vụ Hub — nhưng nằm ngay trên code path mà
-        // luồng Hub-invoke (ApplicationUI::onInvoked -> openThreadRequested)
-        // chạy tới lần đầu tiên, nên sửa luôn cùng đợt.
         while (chatsNav.count() > 1) {
             chatsNav.pop();
         }
         var page = chatsDef.createObject();
         if (!page) return;
-        // Tìm tên từ model nếu có
         var threadName = "Chat";
         var avatarUrl  = "";
         for (var i = 0; i < friendModel.size(); i++) {
@@ -684,14 +632,6 @@ NavigationPane {
         return mon + " " + date.getDate();
     }
 
-    // Preview snippet cho tin nhắn cuối trong danh sách chat. msgType===3
-    // (video/file, xem ghi chú videoBubble ở ChatView.qml) trước đây luôn
-    // hiện cứng "[Video]" kể cả với file tài liệu — giờ chỉ hiện "[Video]"
-    // cho đúng .mp4/.mov/.3gp/.mkv, còn lại hiện tên file thật (theo yêu
-    // cầu, không dùng "[File]"). fileName đọc thủ công từ content JSON
-    // ({"fileName":"...","href":"...","fileSize":...}) bằng string scan
-    // đơn giản, không parse JSON đầy đủ — đủ dùng và nhất quán với cách
-    // ChatView.qml đọc field này (extractJsonStringField).
     function extractFileName(content) {
         var c = content || "";
         if (c.length === 0 || c.charCodeAt(0) !== 123) return "";
@@ -718,7 +658,6 @@ NavigationPane {
         }
         if (mt === 5 || mt === "5") return "[Sticker]";
         if (mt === 6 || mt === "6") {
-            // link-share: content JSON = {"linkTitle":..,"linkDesc":..,"linkHref":..,"linkThumb":..}
             var lc = content || "";
             var lt = "";
             var li = lc.indexOf('"linkTitle":"');
@@ -736,13 +675,8 @@ NavigationPane {
         if (isVideo) return "[Video]";
         return fname.length > 0 ? fname : "[File]";
     }
-    // Nội dung dòng preview thứ 2 trong mỗi ô danh sách chat (tên người gửi
-    // + tin nhắn cuối). Trước đây đây là 1 block-body binding trực tiếp
-    // trên Label.text ({ var lm = ...; ...; return prefix + lm; }) — pattern
-    // này bị cấm trên QtQuick1/Cascades (xem ghi chú ở videoBubble trong
-    // ChatView.qml, nơi cùng lỗi này từng gây crash parse thật trên máy).
-    // Chuyển thành hàm riêng để nhất quán và loại bỏ rủi ro, dù chỗ này có
-    // thể đã "chạy được" nhờ may mắn về context binding cụ thể.
+    // Preview line as a function: block-body bindings on Label.text are invalid in QtQuick1/Cascades
+    // (see videoBubble in ChatView.qml).
     function lastMessagePreview(lastMessage, lastMsg, lastMsgIsMine, lastSenderName) {
         var lm = lastMessage || lastMsg || "";
         if (lm.length === 0) return "No messages yet";

@@ -4,10 +4,8 @@ Container {
     id: emojiPanel
     background: isDark ? Color.create("#1f1f1f") : Color.create("#e8e8e8")
 
-    // - Public API -
     signal emojiPicked(string charStr)
 
-    // - Internal state -
     property real   pageWidth:       0
     property int    categoryIndex:   0
     property int    pagePeople:   0
@@ -17,7 +15,6 @@ Container {
     property int    pageSymbols:  0
     property bool   isDark:       false
 
-    // - Convert emoji filename to Unicode character -
     function fileToChar(filename) {
         var s = filename.replace("emoji_", "").replace("_64.png", "");
         var parts = s.split("_");
@@ -34,8 +31,6 @@ Container {
         return result;
     }
 
-
-    // - Measure page width -
     attachedObjects: [
         LayoutUpdateHandler {
             id: panelLUH
@@ -46,8 +41,6 @@ Container {
         }
     ]
 
-
-    // - People -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -379,9 +372,6 @@ Container {
                     EmojiButton { emojiFile: "emoji_1f48b_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48d_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
                     EmojiButton { emojiFile: "emoji_1f48e_64.png"; emojiCategory: "people"; onEmojiTapped: { emojiPicked(fileToChar(file)) } }
-                    // Last page of the first category has only 3 real emojis. Without a
-                    // full row to anchor it, GridLayout stretches them across the whole
-                    // width, so pad out to 6 cells with invisible spacers to keep them packed left
                     Container {
                         preferredHeight: ui.du(7); maxHeight: ui.du(7); maxWidth: ui.du(7.5)
                         opacity: 0
@@ -402,7 +392,6 @@ Container {
         }
     }
 
-    // - Nature -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -565,7 +554,6 @@ Container {
         }
     }
 
-    // - Objects -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -858,7 +846,6 @@ Container {
         }
     }
 
-    // - Places -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -1043,7 +1030,6 @@ Container {
         }
     }
 
-    // - Symbols -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -1279,8 +1265,6 @@ Container {
         }
     }
 
-
-    // - Bottom: Category tabs + Backspace -
     Container {
         horizontalAlignment: HorizontalAlignment.Fill
         background: emojiPanel.isDark ? Color.create("#272727") : Color.create("#C8C8C8")
@@ -1359,4 +1343,4 @@ Container {
         }
     }
 
-} // end emojiPanel
+}

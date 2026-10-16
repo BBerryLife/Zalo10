@@ -2,22 +2,10 @@ import bb.cascades 1.4
 import bb.system 1.2
 import QtQuick 1.0
 
-// Reaction picker backed by the real bb::system::SystemListDialog
-//
-// Root is QtObject, not SystemListDialog directly — SystemListDialog is a plain
-// QObject (no attachedObjects) with its default property bound to "buttons", so
-// it can't host a Timer or other children directly. QtObject wraps it instead;
-// openFor()/reacted are forwarded at this level so ChatView.qml's existing wiring
-// still works unchanged.
-//
-// Limitation: appendItem() only takes (text[, enabled[, selected]]) — no icon
-// param exists on this class, so rows are text-only ("Like", "Heart", "Haha", ...),
-// not the emoji icons in the reference design.
-//
-// Needs "import bb.system 1.3" for dismissOnSelection to be available on this
-// target — 1.0 and 1.1 don't expose it, and without it the dialog won't auto-close
-// on tap (selectedIndices only populates after finished() fires, so a polling
-// workaround can't catch the selection in time).
+// Backed by bb::system::SystemListDialog. The root is a QtObject because the dialog's default
+// property is "buttons", so it can't host a Timer or other children. Rows are text-only
+// (appendItem() has no icon parameter). Needs "import bb.system 1.3" for dismissOnSelection;
+// without it the dialog doesn't auto-close on tap.
 QtObject {
     id: root
 
@@ -25,16 +13,12 @@ QtObject {
     property string pendingCliMsgId: ""
     property int    pendingMsgType: 0
 
-    // Order must match the appendItem() calls in openFor() below — index N here
-    // is what selectedIndices[0] reports for the Nth row
+    // Order must match the appendItem() calls in openFor(): index N is what selectedIndices[0] reports.
     property variant reactionIcons: ["like", "heart", "haha", "wow", "cry", "angry"]
 
-    // icon is one of reactionIcons above. ChatView.qml's doSendReaction() treats
-    // tapping the same icon again as "remove", so this just reports which icon was tapped
     signal reacted(string msgId, string cliMsgId, int msgType, string icon)
 
-    // existingIcon just pre-highlights a row via appendItem()'s 3rd arg —
-    // purely visual, doesn't affect what a subsequent tap reports
+    // existingIcon only pre-highlights a row (3rd arg of appendItem()); it doesn't affect what a tap reports.
     function openFor(msgId, cliMsgId, msgType, existingIcon) {
         root.pendingMsgId    = msgId || "";
         root.pendingCliMsgId = cliMsgId || "";
@@ -60,9 +44,6 @@ QtObject {
         dismissOnSelection: true
         confirmButton.label: ""
 
-        // finished() fires when the dialog closes, either from a row tap
-        // (dismissOnSelection) or a Cancel tap. selectedIndices is only
-        // non-empty in the tap case, which is how we tell the two apart.
         onFinished: {
             if (dlg.selectedIndices && dlg.selectedIndices.length > 0) {
                 var idx = dlg.selectedIndices[0];

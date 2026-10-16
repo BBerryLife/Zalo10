@@ -1,14 +1,8 @@
 import bb.cascades 1.4
 
-// Poll voting sheet. Opened by the "Vote" button on the inline poll card in ChatView.
-//
-// Look & feel follows AboutSheet/SettingsSheet (blue title bar with an X to close). Each option
-// has a checkbox; a single-choice poll lets exactly one be ticked, a multi-choice poll any
-// number. "Vote" is disabled until the selection is non-empty AND differs from what the user
-// already voted (so re-opening a poll you've voted in doesn't offer a pointless re-submit).
-//
-// The result comes back through zService.votePollDone, which ChatView already handles to refresh
-// the card — this sheet only sends the vote and closes.
+// Opened by the Vote button on the poll card in ChatView; the result comes back via
+// zService.votePollDone (handled by ChatView). Vote is disabled until the selection is
+// non-empty AND differs from the user's current vote.
 Sheet {
     id: pollVoteSheet
 
@@ -27,14 +21,12 @@ Sheet {
     function formatWhen(ts) {
         var t = Number(ts);
         if (!t || t <= 0) return "";
-        if (t < 1e12) t = t * 1000;                   // seconds -> ms
+        if (t < 1e12) t = t * 1000;
         var d = new Date(t);
         return pad2(d.getDate()) + "/" + pad2(d.getMonth() + 1) + "/" + d.getFullYear()
              + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
     }
 
-    // `row` is the poll's row from ChatView's message model (pollId, pollQuestion, pollOptions,
-    // pollAllowMulti, pollCreatorId, pollCreatedTs, pollNumVote).
     function openFor(row, gid) {
         pollVoteSheet.pollId     = row.pollId || "";
         pollVoteSheet.groupId    = gid || "";
@@ -54,7 +46,6 @@ Sheet {
         var opts = row.pollOptions || [];
         for (var i = 0; i < opts.length; i++) {
             var voted = !!opts[i].voted;
-            // `checked` is what the user is editing; `voted` is what the server has
             optionModel.append({
                 optionId: opts[i].optionId,
                 content:  opts[i].content || "",
@@ -86,8 +77,6 @@ Sheet {
             it.checked = !it.checked;
             optionModel.replace(idx, it);
         } else {
-            // Single choice: behaves like a radio group — tapping an option selects it and
-            // clears the others; tapping the selected one leaves it selected.
             for (var i = 0; i < optionModel.size(); i++) {
                 var o = optionModel.value(i);
                 var want = (i === idx);
@@ -153,14 +142,12 @@ Sheet {
             layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
             background: pollVoteSheet.isDark ? Color.create("#1a1a1a") : Color.White
 
-            // ---- Header: name, creator • time, poll type, voter count ----
             Container {
                 horizontalAlignment: HorizontalAlignment.Fill
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
                 topPadding: ui.du(2); bottomPadding: ui.du(1.2)
                 leftPadding: ui.du(2); rightPadding: ui.du(2)
 
-                // Same style as the poll name on the chat card: BigText, regular weight
                 Label {
                     text: pollVoteSheet.question
                     multiline: true
@@ -186,7 +173,6 @@ Sheet {
                 }
             }
 
-            // ---- Options (checkbox per row) ----
             ListView {
                 id: optionList
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -216,9 +202,8 @@ Sheet {
                                     CheckBox {
                                         verticalAlignment: VerticalAlignment.Center
                                         checked: ListItemData.checked === true
-                                        // enabled must stay true or Cascades greys the checkbox out.
-                                        // PassThrough so a tap directly on the checkbox still reaches
-                                        // the ListView's onTriggered (that is where selection changes)
+                                        // enabled must stay true or Cascades greys out the checkbox. PassThrough lets taps reach the
+                                        // ListView's onTriggered, where the selection changes.
                                         touchPropagationMode: TouchPropagationMode.PassThrough
                                     }
                                     Label {
@@ -245,7 +230,6 @@ Sheet {
                 }
             }
 
-            // ---- Vote button (disabled until something is selected) ----
             Container {
                 horizontalAlignment: HorizontalAlignment.Fill
                 topPadding: ui.du(1.2); bottomPadding: ui.du(1.2)

@@ -2,8 +2,6 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// Add/edit form for a single Quick Message, opened on top of QuickMessagesSheet.qml
-// editId < 0 = creating a new one, editId >= 0 = editing that message
 Sheet {
     id: qmEditSheetRoot
 

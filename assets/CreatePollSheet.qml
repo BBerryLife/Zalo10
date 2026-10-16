@@ -2,12 +2,8 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// "Create Poll" dialog for the Group Board, opened from GroupBoardSheet.qml
-//
-// Up to 10 option fields are fixed TextFields instead of a Repeater — this
-// QML runtime (bb.cascades 1.4 / QtQuick 1.0) doesn't have one, same
-// workaround as GroupBoardSheet.qml. optionVisibleCount controls how many
-// of the 10 slots are shown; "+ Add option" just reveals one more.
+// Up to 10 fixed TextFields (no Repeater on bb.cascades 1.4 / QtQuick 1.0);
+// optionVisibleCount controls how many are shown.
 Sheet {
     id: createPollSheetRoot
 
@@ -152,7 +148,6 @@ Sheet {
                     }
                 }
 
-                // Fixed 10 option slots, only optionVisibleCount of them shown
                 Container {
                     horizontalAlignment: HorizontalAlignment.Fill
                     leftPadding: 20; rightPadding: 20; topPadding: 8

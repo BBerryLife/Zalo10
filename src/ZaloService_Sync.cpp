@@ -12,34 +12,24 @@
 #include <QDebug>
 #include <sqlite3.h>
 
-// Đồng bộ hội thoại + lịch sử tin nhắn từ cloud lúc khởi động, và danh sách
-// hội thoại đã ghim. zca-js chưa có đồng bộ đầy đủ (issue #129), nhưng WS
-// cmd=510 trả luồng tin DM toàn cục (lastId dùng chung cho mọi thread) và
-// HTTP group/history trả lịch sử từng nhóm — ghép lại đủ để lấp SQLite, từ
-// đó danh sách Chats/Groups tự có preview + thứ tự đúng (ChatsTab/GroupsTab
-// dựng từ getThreadLastMessages()).
-
 namespace {
-const int SYNC_MAX_PAGES     = 80;     // trần số trang DM mỗi lần chạy (cursor được lưu, lần sau chạy tiếp)
-const int SYNC_MAX_MSGS      = 8000;   // trần số tin DM mỗi lần chạy
-const int SYNC_PAGE_DELAY_MS = 400;    // nghỉ giữa 2 trang để không dồn máy BB10 / server
-const int SYNC_TIMEOUT_MS    = 15000;  // không thấy response trong khoảng này -> gửi lại
-const int SYNC_RESTART_GAP_MS = 120000; // không chạy lại quá dày khi WS reconnect liên tục
-const int GROUP_SYNC_COUNT   = 100;    // số tin xin cho mỗi nhóm
+const int SYNC_MAX_PAGES     = 80;
+const int SYNC_MAX_MSGS      = 8000;
+const int SYNC_PAGE_DELAY_MS = 400;
+const int SYNC_TIMEOUT_MS    = 15000;
+const int SYNC_RESTART_GAP_MS = 120000;
+const int GROUP_SYNC_COUNT   = 100;
 const int GROUP_SYNC_DELAY_MS = 250;
 }
-
-// ─── Hội thoại đã ghim ──────────────────────────────────────────────────
 
 void ZaloService::fetchPinConversations()
 {
     if (!m_loggedIn) return;
     if (m_conversationServiceUrl.isEmpty()) {
-        qDebug() << "[Zalo] fetchPinConversations: no zpwServiceMap.conversation url (re-login to refresh it)";
+        qDebug() << "[Sync] fetchPinConversations: no zpwServiceMap.conversation url (re-login to refresh it)";
         return;
     }
 
-    // GET + params AES trong query, giống zca-js getPinConversations
     QVariantMap innerParams;
     innerParams["imei"] = m_imei;
     QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
@@ -48,7 +38,6 @@ void ZaloService::fetchPinConversations()
                    + "&zpw_type=" + QString::number(API_TYPE)
                    + "&params=" + QUrl::toPercentEncoding(encParams);
 
-    qDebug() << "[Zalo] fetchPinConversations GET" << urlStr.left(100);
     QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
     connect(reply, SIGNAL(finished()), this, SLOT(onPinConversationsDone()));
 }
@@ -60,15 +49,13 @@ void ZaloService::onPinConversationsDone()
     QByteArray raw = reply->readAll();
     reply->deleteLater();
 
-    qDebug() << "[Zalo] fetchPinConversations raw (first200):" << raw.left(200);
     QVariantMap root = jsonToMap(raw);
     if (root["error_code"].toInt() != 0) {
-        qDebug() << "[Zalo Error] fetchPinConversations:" << root["error_message"].toString();
+        qWarning() << "[Sync] fetchPinConversations:" << root["error_message"].toString();
         return;
     }
 
     QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
-    qDebug() << "[Zalo] fetchPinConversations decrypted (first300):" << dec.left(300);
     QVariantMap outer = jsonToMap(dec.toUtf8());
 
     QVariantList convs;
@@ -77,8 +64,6 @@ void ZaloService::onPinConversationsDone()
     if (convs.isEmpty())
         convs = outer["conversations"].toList();
 
-    // Chưa xác nhận id ghim có tiền tố u/g (kiểu "u123"/"g456") hay không, nên
-    // giữ cả dạng gốc lẫn dạng đã bỏ tiền tố — so khớp với threadId được cả 2.
     QSet<QString> ids;
     for (int i = 0; i < convs.size(); ++i) {
         QString c = convs[i].toString();
@@ -94,7 +79,6 @@ void ZaloService::onPinConversationsDone()
         }
     }
     m_pinnedIds = ids;
-    qDebug() << "[Zalo] pinned conversations:" << convs.size() << "ids:" << m_pinnedIds.size();
     emit pinnedChanged();
 }
 
@@ -105,8 +89,6 @@ QStringList ZaloService::pinnedThreadIds() const
     for (; it != m_pinnedIds.constEnd(); ++it) out << *it;
     return out;
 }
-
-// ─── Đồng bộ DM (WS cmd=510, luồng toàn cục) ────────────────────────────
 
 bool ZaloService::dbMessageExists(const QString &msgId) const
 {
@@ -125,19 +107,14 @@ void ZaloService::startHistorySync()
 {
     if (!m_loggedIn || m_sync.active) return;
     if (!m_wsConnected || !m_webSocket || m_wsCipherKey.isEmpty()) {
-        qDebug() << "[Zalo Sync] WS not ready, DM sync skipped";
         return;
     }
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     if (m_sync.lastStartMs > 0 && (now - m_sync.lastStartMs) < SYNC_RESTART_GAP_MS) {
-        qDebug() << "[Zalo Sync] ran" << (now - m_sync.lastStartMs) << "ms ago, skipping";
         return;
     }
     m_sync.lastStartMs = now;
 
-    // Cursor = msgId lớn nhất đã đồng bộ (lastId của cmd=510 = "lấy các tin sau mốc
-    // này"). Lần đầu là "0" -> toàn bộ lịch sử; các lần sau chỉ lấy phần mới.
-    // Nếu DB local trống (xóa dữ liệu) mà cursor còn thì bỏ cursor để lấy lại từ đầu.
     QSettings s("BerryLife", "Zalo10");
     QString cursor = s.value("sync/dmCursor_" + m_uid, "0").toString();
     bool dbEmpty = true;
@@ -164,7 +141,6 @@ void ZaloService::startHistorySync()
         m_sync.watchdog->setSingleShot(true);
         connect(m_sync.watchdog, SIGNAL(timeout()), this, SLOT(onSyncWatchdog()));
     }
-    qDebug() << "[Zalo Sync] DM sync start, cursor=" << m_sync.cursor << "dbEmpty=" << dbEmpty;
     sendSyncPage();
 }
 
@@ -175,17 +151,12 @@ void ZaloService::sendSyncPage()
         finishDmSync("websocket not connected");
         return;
     }
-    // Giống zca-js requestOldMessages(): first:true + lastId, KHÔNG có toid
-    // -> luồng DM của mọi thread (khác fetchMessages() theo từng thread).
     QString req = QString("{\"first\":true,\"lastId\":\"%1\",\"preIds\":[]}").arg(m_sync.cursor);
     m_sync.awaiting = true;
     sendWsRequest(510, 1, req);
     if (m_sync.watchdog) m_sync.watchdog->start(SYNC_TIMEOUT_MS);
-    qDebug() << "[Zalo Sync] DM page request #" << (m_sync.pages + 1) << "lastId=" << m_sync.cursor;
 }
 
-// Hoãn 1 nhịp sau handshake để request cmd=510 theo thread (nếu user đang mở chat)
-// đi trước, rồi mới chạy đồng bộ nền.
 void ZaloService::onSyncStartDeferred()
 {
     startHistorySync();
@@ -201,7 +172,7 @@ void ZaloService::onSyncWatchdog()
     if (!m_sync.active || !m_sync.awaiting) return;
     if (m_sync.retries < 2 && m_wsConnected) {
         m_sync.retries++;
-        qDebug() << "[Zalo Sync] no response in" << SYNC_TIMEOUT_MS << "ms, retry" << m_sync.retries;
+        qDebug() << "[Sync] no response in" << SYNC_TIMEOUT_MS << "ms, retry" << m_sync.retries;
         sendSyncPage();
         return;
     }
@@ -215,7 +186,6 @@ void ZaloService::handleSyncPage(const QVariantList &rawMsgs)
     m_sync.retries = 0;
     m_sync.pages++;
 
-    // Chia batch theo thread (đối phương của cuộc trò chuyện), giữ nguyên thứ tự.
     QMap<QString, QVariantList> byThread;
     qint64 maxId = 0, minId = 0;
     int fresh = 0;
@@ -236,8 +206,6 @@ void ZaloService::handleSyncPage(const QVariantList &rawMsgs)
         byThread[tid].append(m);
     }
 
-    // 1 transaction cho cả trang: mỗi dbSaveMessage() là UPDATE+INSERT riêng, commit
-    // từng dòng trên flash của BB10 sẽ rất chậm.
     bool tx = (m_db && sqlite3_exec(m_db, "BEGIN", 0, 0, 0) == SQLITE_OK);
     QMap<QString, QVariantList>::const_iterator it = byThread.constBegin();
     for (; it != byThread.constEnd(); ++it) {
@@ -248,16 +216,12 @@ void ZaloService::handleSyncPage(const QVariantList &rawMsgs)
 
     m_sync.totalMsgs += rawMsgs.size();
     qint64 curNum = m_sync.cursor.toLongLong();
-    qDebug() << "[Zalo Sync] DM page" << m_sync.pages << "msgs=" << rawMsgs.size()
-             << "threads=" << byThread.size() << "new=" << fresh
-             << "minId=" << minId << "maxId=" << maxId << "cursor=" << m_sync.cursor;
 
     if (rawMsgs.isEmpty()) {
         finishDmSync("caught up (empty page)");
         return;
     }
     if (maxId <= curNum) {
-        // Không có tin nào mới hơn cursor -> server không tiến thêm; dừng để khỏi lặp vô hạn.
         finishDmSync("no forward progress");
         return;
     }
@@ -274,7 +238,7 @@ void ZaloService::handleSyncPage(const QVariantList &rawMsgs)
 
 void ZaloService::finishDmSync(const QString &why)
 {
-    qDebug() << "[Zalo Sync] DM sync done:" << why << "pages=" << m_sync.pages
+    qDebug() << "[Sync] DM sync done:" << why << "pages=" << m_sync.pages
              << "msgs=" << m_sync.totalMsgs << "threads=" << m_sync.threads.size();
     int total = m_sync.totalMsgs;
     m_sync.active   = false;
@@ -284,14 +248,10 @@ void ZaloService::finishDmSync(const QString &why)
     startGroupSync();
 }
 
-// ─── Đồng bộ nhóm (HTTP group/history, lần lượt từng nhóm) ──────────────
-
 void ZaloService::startGroupSync()
 {
-    // Chạy sau pha DM (hoặc ngay khi danh sách nhóm sẵn sàng nếu DM sync không
-    // chạy), mỗi lần khởi động đúng 1 lượt.
     if (m_sync.active || m_sync.groupActive || m_sync.groupRan || !m_loggedIn) return;
-    if (m_groupNames.isEmpty()) return;  // chưa có danh sách nhóm; fetchConversations() xong sẽ gọi lại
+    if (m_groupNames.isEmpty()) return;
 
     m_sync.groupQueue.clear();
     QMap<QString, QString>::const_iterator it = m_groupNames.constBegin();
@@ -299,7 +259,6 @@ void ZaloService::startGroupSync()
     m_sync.groupActive = true;
     m_sync.groupDone   = 0;
     m_sync.groupMsgs   = 0;
-    qDebug() << "[Zalo Sync] group sync start, groups=" << m_sync.groupQueue.size();
     onSyncGroupNext();
 }
 
@@ -330,13 +289,13 @@ void ZaloService::fetchGroupHistorySync(const QString &groupId)
     QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
     reply->setProperty("threadId",  groupId);
     reply->setProperty("isGroup",   true);
-    reply->setProperty("syncGroup", true);   // onFetchMsgDone(): chế độ im lặng + nối tiếp hàng đợi
+    reply->setProperty("syncGroup", true);
     connect(reply, SIGNAL(finished()), this, SLOT(onFetchMsgDone()));
 }
 
 void ZaloService::finishGroupSync()
 {
-    qDebug() << "[Zalo Sync] group sync done: groups=" << m_sync.groupDone
+    qDebug() << "[Sync] group sync done: groups=" << m_sync.groupDone
              << "msgs=" << m_sync.groupMsgs;
     int total = m_sync.groupMsgs;
     m_sync.groupActive = false;

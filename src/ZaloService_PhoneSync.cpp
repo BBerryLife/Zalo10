@@ -19,25 +19,21 @@
 #include <sqlite3.h>
 #include <string>
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Đồng bộ tin nhắn từ điện thoại (giao thức "sync msg to PC" của Zalo):
-//   1. tạo cặp khóa RSA-2048 (thread riêng, vài giây trên BB10)
-//   2. GET /api/message/pull_mobile_msg  (gửi public key)         -> điện thoại hỏi người dùng
-//   3. WS cmd=601 act_type "syncmsgmb": user_confirm -> syncmsg_info (url + encrypted_key)
-//   4. tải file .db.crypt, RSA giải encrypted_key -> khóa AES, AES-CBC từng chunk 64KB
-//   5. ZDB4.0 -> XZ -> các SQLite con (thread riêng, xem PhoneSyncCore.cpp)
-//   6. nối ID ngắn (file điện thoại) <-> ID dài (Zalo10) bằng cách khớp ID tin nhắn với
-//      các tin Zalo10 đã nhận (kết quả nhớ lại trong bảng phone_sync_alias), rồi nhập tin
-//      vào `messages` theo lát thời gian nhỏ để UI không bị đơ.
-// Hội thoại chưa từng thấy tin nào trong Zalo10 thì chưa nối được; lần đồng bộ sau (khi
-// Zalo10 đã nhận thêm tin) sẽ nối và nhập nốt.
-// ─────────────────────────────────────────────────────────────────────────────
+// Phone message sync (Zalo's "sync msg to PC"):
+// 1. RSA-2048 keypair (own thread, a few seconds on BB10)
+// 2. GET /api/message/pull_mobile_msg with the public key -> the phone asks the user
+// 3. WS cmd=601 act_type "syncmsgmb": user_confirm -> syncmsg_info (url + encrypted_key)
+// 4. download .db.crypt, RSA-decrypt encrypted_key -> AES key, AES-CBC per 64KB chunk
+// 5. ZDB4.0 -> XZ -> SQLite files (own thread, see PhoneSyncCore.cpp)
+// 6. map short phone ids <-> long Zalo10 ids by matching message ids (cached in phone_sync_alias),
+//    then import into `messages` in small time slices to keep the UI responsive.
+// Conversations with no received message can't be mapped yet; the next sync imports them.
 
 namespace {
 
-const int PS_CONFIRM_TIMEOUT_MS  = 10 * 60 * 1000;  // chờ người dùng bấm Đồng ý trên điện thoại
+const int PS_CONFIRM_TIMEOUT_MS  = 10 * 60 * 1000;
 const int PS_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
-const int PS_SLICE_MS            = 30;               // mỗi lát xử lý tối đa ~30ms rồi nhường UI
+const int PS_SLICE_MS            = 30;
 
 struct PsRow {
     QString sender, cli, glb;
@@ -55,7 +51,6 @@ struct PsPart {
     PsPart() : isGroup(false) {}
 };
 
-// Giải mã + giải nén + tách + đọc các SQLite con. Không đụng tới DB của app.
 class PsDecodeThread : public QThread {
 public:
     QByteArray    crypt;
@@ -86,8 +81,6 @@ protected:
         std::vector<std::string> names = parseTocNames(plain, xzOff);
         std::vector<Span> spans = splitSqlite(payload);
         plain.clear();
-        qDebug() << "[PhoneSync] payload" << (int)payload.size() << "bytes," << (int)spans.size() << "SQLite parts,"
-                 << (int)names.size() << "TOC names";
 
         QDir().mkpath(tmpDir);
         for (size_t i = 0; i < spans.size(); ++i) {
@@ -132,7 +125,7 @@ protected:
     }
 };
 
-// Tải file bằng TLS 1.2 dựng thẳng bằng OpenSSL (xem PhoneSyncCore::httpsGet), không qua QSslSocket của BB10.
+// TLS 1.2 built directly on OpenSSL (see PhoneSyncCore::httpsGet), bypassing BB10's QSslSocket.
 class PsRawHttpsThread : public QThread {
 public:
     QString    url, userAgent, cookie;
@@ -151,7 +144,7 @@ protected:
         if (path.isEmpty()) path = "/";
         if (u.hasQuery()) path += "?" + u.encodedQuery();
 
-        for (int variant = 0; variant < 2 && !ok; ++variant) {      // 0 = có Cookie, 1 = không Cookie
+        for (int variant = 0; variant < 2 && !ok; ++variant) {
             std::string hdr = std::string("User-Agent: ") + userAgent.toUtf8().constData() + "\r\n"
                 "Accept: */*\r\nAccept-Language: en-US\r\nCache-Control: no-store, must-revalidate\r\n"
                 "Pragma: no-cache\r\nExpires: 0\r\nSec-Fetch-Dest: empty\r\nSec-Fetch-Mode: no-cors\r\nSec-Fetch-Site: none\r\n";
@@ -174,7 +167,7 @@ protected:
     void run() { rsa = PhoneSyncCore::rsaGenerate(2048); }
 };
 
-} // namespace
+}
 
 struct PhoneSyncRuntime {
     PsRsaThread    *rsaThread;
@@ -182,30 +175,30 @@ struct PhoneSyncRuntime {
     void           *rsa;
     QNetworkReply  *pullReply;
     QNetworkReply  *dlReply;
-    QTimer         *timer;       // timeout theo pha
-    QTimer         *tick;        // lát xử lý
-    int             stage;       // 0 rsa, 1 pull, 2 chờ xác nhận, 3 tải, 4 giải mã, 5 nhập
+    QTimer         *timer;
+    QTimer         *tick;
+    int             stage;
     bool            cancelled;
 
     QList<PsPart>   parts;
-    int             phase;       // 0 chuẩn bị, 1 nối ID, 2 nhập, 3 xong
-    int             pi, ri;      // vị trí hiện tại
+    int             phase;
+    int             pi, ri;
     qint64          totalRows, doneRows;
     QString         meShort, myName;
-    QMap<QString, QString> threadLong;   // "g:123" / "u:123" -> ID dài
-    QMap<QString, QString> senderLong;   // ID ngắn người gửi -> ID dài
+    QMap<QString, QString> threadLong;
+    QMap<QString, QString> senderLong;
     QMap<QString, QString> senderName;
-    QMap<QString, qint64>  clearedAt;    // threadId -> mốc xóa lịch sử
+    QMap<QString, qint64>  clearedAt;
     sqlite3_stmt   *ins;
     sqlite3_stmt   *find;
     int             imported;
     QSet<QString>   importedThreads;
 
-    QString         dlUrl;        // URL tải hiện tại (có thể đổi sau khi theo chuyển hướng)
-    int             dlVariant;    // 0 = giống zca-js, 1 = như 0 nhưng không Cookie, 2 = như 0 + Referer/Origin, 3 = bộ header chung của app
+    QString         dlUrl;
+    int             dlVariant;
     int             dlRedirects;
-    int             dlRound;      // số vòng thử lại (mỗi vòng thử lần lượt các kiểu header)
-    bool            rawTried;     // đã thử đường TLS thuần trong vòng này chưa
+    int             dlRound;
+    bool            rawTried;
     PsRawHttpsThread *rawThread;
 
     PhoneSyncRuntime() : rsaThread(0), decodeThread(0), rsa(0), pullReply(0), dlReply(0), timer(0), tick(0),
@@ -213,11 +206,8 @@ struct PhoneSyncRuntime {
         dlVariant(0), dlRedirects(0), dlRound(0), rawTried(false), rawThread(0) {}
 };
 
-// ─── điều khiển ───────────────────────────────────────────────────────────
-
 bool ZaloService::isPhoneSyncing() const { return m_psh.p != 0; }
 
-// Giải nén gzip/zlib (tự nhận dạng) — dùng nếu máy chủ trả Content-Encoding: gzip/deflate
 static bool psInflate(const QByteArray &in, QByteArray &out)
 {
     z_stream zs;
@@ -277,7 +267,6 @@ void ZaloService::cancelPhoneSync()
     phoneSyncFail(QString::fromUtf8("Sync cancelled."));
 }
 
-// Dọn mọi thứ và báo kết quả. Gọi đúng 1 lần cho mỗi lượt đồng bộ.
 static void psCleanup(PhoneSyncRuntime *rt, sqlite3 *db)
 {
     if (rt->timer) rt->timer->stop();
@@ -294,9 +283,8 @@ void ZaloService::phoneSyncFail(const QString &msg)
 {
     PhoneSyncRuntime *rt = m_psh.p;
     if (!rt) return;
-    qDebug() << "[PhoneSync] FAIL:" << msg;
+    qWarning() << "[PhoneSync] FAIL:" << msg;
     psCleanup(rt, m_db);
-    // Thread có thể còn chạy (hiếm): để nó tự kết thúc, không xóa object khi đang chạy
     if (rt->rsaThread) {
         if (rt->rsaThread->isRunning()) QObject::connect(rt->rsaThread, SIGNAL(finished()), rt->rsaThread, SLOT(deleteLater()));
         else delete rt->rsaThread;
@@ -315,8 +303,6 @@ void ZaloService::phoneSyncFail(const QString &msg)
     m_psh.p = 0;
     emit phoneSyncFinished(false, msg);
 }
-
-// ─── bước 1: khóa RSA xong -> gửi yêu cầu ─────────────────────────────────
 
 void ZaloService::onPhoneSyncRsaDone()
 {
@@ -364,7 +350,6 @@ void ZaloService::onPhoneSyncPullDone()
     rt->pullReply = 0;
     if (rt->cancelled) return;
     QVariantMap root = jsonToMap(raw);
-    qDebug() << "[PhoneSync] pull_mobile_msg ->" << raw.left(160);
     if (reply->error() != QNetworkReply::NoError && raw.isEmpty()) {
         phoneSyncFail(QString::fromUtf8("Sync failed: could not send the request (network error)."));
         return;
@@ -378,12 +363,10 @@ void ZaloService::onPhoneSyncPullDone()
     emit phoneSyncProgress(12, QString::fromUtf8("Open Zalo on your phone and tap Agree…"));
 }
 
-// ─── bước 2: sự kiện WS (gọi từ ZaloService_WebSocket.cpp, cmd=601) ───────
-
 void ZaloService::handlePhoneSyncEvent(const QString &act, const QVariantMap &d)
 {
     PhoneSyncRuntime *rt = m_psh.p;
-    qDebug() << "[PhoneSync] event act=" << act << "keys=" << d.keys() << "active=" << (rt != 0);
+    qDebug() << "[PhoneSync] event act=" << act;
     if (!rt || rt->cancelled) return;
 
     if (act == "user_confirm") {
@@ -397,15 +380,13 @@ void ZaloService::handlePhoneSyncEvent(const QString &act, const QVariantMap &d)
     }
     if (act == "transfer_error") {
         int code = d["error_code"].toInt();
-        // Điện thoại gửi transfer_error với error_code=0 ngay sau syncmsg_info (không phải lỗi thật)
+        // The phone sends transfer_error with error_code=0 right after syncmsg_info; not a real error.
         if (code != 0 && rt->stage < 3) phoneSyncFail(QString::fromUtf8("Sync failed: your phone reported an error (code %1).").arg(code));
         return;
     }
     if (act == "syncmsg_info") {
-        if (rt->stage >= 3) return;   // sự kiện lặp
-        qDebug() << "[PhoneSync] syncmsg_info: file_size" << d["file_size"].toLongLong()
-                 << "from_seq_id" << d["from_seq_id"].toString() << "is_full_transfer" << d["is_full_transfer"].toString()
-                 << "trigger_reason" << d["trigger_reason"].toString() << "file_name" << d["file_name"].toString();
+        if (rt->stage >= 3) return;
+        qDebug() << "[PhoneSync] sync info: size=" << d["file_size"].toLongLong() << "full=" << d["is_full_transfer"].toString();
         phoneSyncBeginDownload(d);
     }
 }
@@ -419,7 +400,6 @@ void ZaloService::phoneSyncBeginDownload(const QVariantMap &d)
         phoneSyncFail(QString::fromUtf8("Sync failed: incomplete file information from your phone."));
         return;
     }
-    // Giải khóa AES ngay (RSA private decrypt) — lưu vào property của timer cho bước sau
     std::string aesRaw;
     QByteArray cipher = QByteArray::fromBase64(encKey.toLatin1());
     if (!PhoneSyncCore::rsaPrivateDecrypt(rt->rsa, std::string(cipher.constData(), (size_t)cipher.size()), aesRaw)
@@ -439,8 +419,6 @@ void ZaloService::phoneSyncBeginDownload(const QVariantMap &d)
     phoneSyncStartDownload();
 }
 
-// Một lần thử tải. Máy chủ file (trans-bin.zaloapp.com) từ chối bộ header chung của app (HTTP 400),
-// nên mặc định gửi đúng bộ header tối giản mà zca-js (getSyncData) dùng: KHÔNG có Referer/Origin/Accept.
 void ZaloService::phoneSyncStartDownload()
 {
     PhoneSyncRuntime *rt = m_psh.p;
@@ -458,13 +436,13 @@ void ZaloService::phoneSyncStartDownload()
         req = QNetworkRequest(QUrl::fromEncoded(rt->dlUrl.toUtf8()));
         QSslConfiguration sslConf = req.sslConfiguration();
         sslConf.setPeerVerifyMode(QSslSocket::VerifyNone);
-        // QSslSocket của BB10 mặc định chỉ chào TLS cũ; các host Zalo mới cần TLS 1.2 (cùng lý do và cách sửa
-        // như phần tải bản cập nhật trong ZaloService_Network.cpp): ép AnyProtocol để OpenSSL tự thương lượng.
+        // BB10's QSslSocket only offers old TLS by default and new Zalo hosts need TLS 1.2: force
+        // AnyProtocol (same fix as the update download in ZaloService_Network.cpp).
         sslConf.setProtocol(QSsl::AnyProtocol);
         req.setSslConfiguration(sslConf);
         req.setRawHeader("User-Agent", m_userAgent.toUtf8());
         req.setRawHeader("Accept", "*/*");
-        // zca-js gửi "gzip, deflate, br": máy chủ có thể đòi header này. Không xin "br" vì Qt không giải được.
+        // Sends "gzip, deflate" like zca-js; "br" is not offered because Qt can't decode it.
         req.setRawHeader("Accept-Encoding", "gzip, deflate");
         req.setRawHeader("Accept-Language", "en-US");
         req.setRawHeader("Cache-Control", "no-store, must-revalidate");
@@ -475,15 +453,12 @@ void ZaloService::phoneSyncStartDownload()
         req.setRawHeader("Sec-Fetch-Site", "none");
         req.setRawHeader("Connection", "keep-alive");
         QString ck = buildCookieHeader();
-        if (!ck.isEmpty() && rt->dlVariant != 1) req.setRawHeader("Cookie", ck.toUtf8());   // 400 có thể do Cookie quá dài/lạ
+        if (!ck.isEmpty() && rt->dlVariant != 1) req.setRawHeader("Cookie", ck.toUtf8());
         if (rt->dlVariant == 2) {
             req.setRawHeader("Referer", "https://chat.zalo.me/");
             req.setRawHeader("Origin", "https://chat.zalo.me");
         }
     }
-    qDebug() << "[PhoneSync] download: round" << rt->dlRound << "header variant" << rt->dlVariant << "redirects" << rt->dlRedirects
-             << "host" << req.url().host() << "path-len" << req.url().path().length()
-             << "valid" << req.url().isValid() << "query" << req.url().hasQuery();
     rt->dlReply = m_manager->get(req);
     connect(rt->dlReply, SIGNAL(finished()), this, SLOT(onPhoneSyncDownloadDone()));
     connect(rt->dlReply, SIGNAL(downloadProgress(qint64, qint64)), this, SLOT(onPhoneSyncDownloadProgress(qint64, qint64)));
@@ -519,29 +494,18 @@ void ZaloService::onPhoneSyncDownloadDone()
     reply->deleteLater();
     rt->dlReply = 0;
     if (rt->cancelled) return;
-    qDebug() << "[PhoneSync] download finished: http" << http << "bytes" << data.size() << "err" << (int)ne;
 
-    // Qt 4 không tự theo chuyển hướng như fetch() của JS
     if (http >= 300 && http < 400 && loc.isValid() && rt->dlRedirects < 5) {
         QUrl next = reqUrl.resolved(loc.toUrl());
         rt->dlRedirects++;
         rt->dlUrl = QString::fromUtf8(next.toEncoded());
-        qDebug() << "[PhoneSync] redirect ->" << next.host();
         phoneSyncStartDownload();
         return;
     }
     if (ne != QNetworkReply::NoError || http >= 400 || data.size() < 64) {
-        // Ghi lại phản hồi để chẩn đoán (không ghi cookie hay URL đầy đủ)
-        for (int h = 0; h < hdrs.size(); ++h) {
-            QByteArray n = hdrs[h].first.toLower();
-            if (n == "set-cookie" || n == "location") continue;
-            qDebug() << "[PhoneSync]   header" << hdrs[h].first << ":" << hdrs[h].second.left(120);
-        }
-        if (!data.isEmpty()) qDebug() << "[PhoneSync]   body" << data.left(200);
         if ((http == 400 || http == 403) && rt->dlVariant < 3) {
             rt->dlVariant++;
             rt->dlRedirects = 0;
-            qDebug() << "[PhoneSync] retrying with header variant" << rt->dlVariant;
             phoneSyncStartDownload();
             return;
         }
@@ -553,20 +517,16 @@ void ZaloService::onPhoneSyncDownloadDone()
         if (hdrs[h].first.toLower() == "content-encoding") encoding = hdrs[h].second.toLower();
     if (encoding.contains("gzip") || encoding.contains("deflate")) {
         QByteArray plainData;
-        if (psInflate(data, plainData)) { qDebug() << "[PhoneSync] inflated" << encoding << data.size() << "->" << plainData.size(); data = plainData; }
-        else qDebug() << "[PhoneSync] WARNING: Content-Encoding" << encoding << "but inflate failed";
+        if (psInflate(data, plainData)) data = plainData;
+        else qWarning() << "[PhoneSync] WARNING: Content-Encoding" << encoding << "but inflate failed";
     }
     phoneSyncDownloadSucceeded(data);
 }
 
-// Đã có đủ dữ liệu .db.crypt (từ Qt hoặc từ đường TLS thuần) -> giải mã ở thread riêng
 void ZaloService::phoneSyncDownloadSucceeded(const QByteArray &data)
 {
     PhoneSyncRuntime *rt = m_psh.p;
     if (!rt || rt->cancelled) return;
-    qint64 expect = rt->timer->property("fileSize").toLongLong();
-    if (expect > 0 && expect != data.size())
-        qDebug() << "[PhoneSync] WARNING: size" << data.size() << "differs from file_size" << expect;
 
     rt->stage = 4;
     rt->timer->stop();
@@ -579,7 +539,6 @@ void ZaloService::phoneSyncDownloadSucceeded(const QByteArray &data)
     rt->decodeThread->start();
 }
 
-// Hết các kiểu header của Qt: thử đường TLS thuần (OpenSSL, ép TLS 1.2); nếu vẫn lỗi thì chờ rồi thử cả vòng.
 void ZaloService::phoneSyncDownloadFailed(int http)
 {
     PhoneSyncRuntime *rt = m_psh.p;
@@ -595,13 +554,11 @@ void ZaloService::phoneSyncDownloadFailed(int http)
         rt->rawThread->start();
         return;
     }
-    // có thể file chưa sẵn sàng trên máy chủ -> chờ vài giây rồi thử lại cả vòng
     if ((http == 400 || http == 403 || http == 404 || http == 0) && rt->dlRound < 2) {
         rt->dlRound++;
         rt->dlVariant = 0;
         rt->dlRedirects = 0;
         rt->rawTried = false;
-        qDebug() << "[PhoneSync] waiting 4s before retry round" << rt->dlRound;
         emit phoneSyncProgress(25, QString::fromUtf8("Waiting for your phone to finish uploading…"));
         QTimer::singleShot(4000, this, SLOT(onPhoneSyncRetryDownload()));
         return;
@@ -621,12 +578,9 @@ void ZaloService::onPhoneSyncRawDone()
     th->deleteLater();
     rt->rawThread = 0;
     if (rt->cancelled) return;
-    qDebug() << "[PhoneSync] raw TLS:" << info;
     if (ok) { phoneSyncDownloadSucceeded(body); return; }
     phoneSyncDownloadFailed(status);
 }
-
-// ─── bước 3: giải mã xong -> nối ID + nhập, theo lát thời gian ────────────
 
 void ZaloService::onPhoneSyncDecodeDone()
 {
@@ -646,7 +600,6 @@ void ZaloService::onPhoneSyncDecodeDone()
     rt->totalRows = total;
     rt->stage = 5;
     rt->phase = 0; rt->pi = 0; rt->ri = 0; rt->doneRows = 0;
-    qDebug() << "[PhoneSync] decoded:" << rt->parts.size() << "conversations," << (qlonglong)total << "messages";
     emit phoneSyncProgress(55, QString::fromUtf8("Matching conversations…"));
     rt->tick->start();
 }
@@ -675,14 +628,12 @@ void ZaloService::onPhoneSyncTick()
     QTime clock;
     clock.start();
 
-    // ── pha 0: chuẩn bị ──
     if (rt->phase == 0) {
         sqlite3_exec(m_db,
             "CREATE TABLE IF NOT EXISTS phone_sync_alias ("
             "kind TEXT NOT NULL, shortId TEXT NOT NULL, longId TEXT NOT NULL, name TEXT, "
             "PRIMARY KEY(kind, shortId))", 0, 0, 0);
 
-        // "tôi" = người gửi xuất hiện ở nhiều hội thoại nhất
         QMap<QString, int> cnt;
         for (int i = 0; i < rt->parts.size(); ++i) {
             QSet<QString> seen;
@@ -697,7 +648,6 @@ void ZaloService::onPhoneSyncTick()
         if (rt->myName.isEmpty()) rt->myName = m_displayName;
         if (rt->myName.isEmpty()) rt->myName = QString::fromUtf8("Me");
 
-        // alias đã học ở các lần trước
         sqlite3_stmt *st = 0;
         if (sqlite3_prepare_v2(m_db, "SELECT kind, shortId, longId, name FROM phone_sync_alias", -1, &st, 0) == SQLITE_OK) {
             while (sqlite3_step(st) == SQLITE_ROW) {
@@ -709,7 +659,7 @@ void ZaloService::onPhoneSyncTick()
                     rt->senderLong[sh] = lg;
                     if (nm && *nm) rt->senderName[sh] = QString::fromUtf8((const char *)nm);
                 } else {
-                    rt->threadLong[kind + ":" + sh] = lg;      // kind = "g" | "u"
+                    rt->threadLong[kind + ":" + sh] = lg;
                 }
             }
             sqlite3_finalize(st);
@@ -721,7 +671,6 @@ void ZaloService::onPhoneSyncTick()
         rt->phase = 1; rt->pi = 0; rt->ri = 0;
     }
 
-    // ── pha 1: nối ID ngắn <-> dài bằng cách khớp ID tin nhắn với tin Zalo10 đã có ──
     if (rt->phase == 1) {
         while (rt->pi < rt->parts.size()) {
             PsPart &p = rt->parts[rt->pi];
@@ -749,7 +698,6 @@ void ZaloService::onPhoneSyncTick()
             if (rt->ri >= p.rows.size()) { rt->pi++; rt->ri = 0; }
             if (clock.elapsed() >= PS_SLICE_MS) { rt->tick->start(); return; }
         }
-        // hội thoại cá nhân đã nối: người gửi "kia" chính là hội thoại đó
         for (int i = 0; i < rt->parts.size(); ++i) {
             PsPart &p = rt->parts[i];
             QString tk = psKey(p);
@@ -758,13 +706,11 @@ void ZaloService::onPhoneSyncTick()
             }
             if (rt->threadLong.contains(tk)) p.threadLong = rt->threadLong[tk];
         }
-        // tên người gửi chưa có: lấy từ bất kỳ tin Zalo10 nào của họ
         for (QMap<QString,QString>::const_iterator it = rt->senderLong.constBegin(); it != rt->senderLong.constEnd(); ++it) {
             if (rt->senderName.contains(it.key())) continue;
             QString nm = psQueryString(m_db, "SELECT dName FROM messages WHERE senderId=? AND dName<>'' LIMIT 1", it.value());
             if (!nm.isEmpty()) rt->senderName[it.key()] = nm;
         }
-        // ghi nhớ alias cho các lần sau
         sqlite3_exec(m_db, "BEGIN", 0, 0, 0);
         sqlite3_stmt *st = 0;
         if (sqlite3_prepare_v2(m_db, "INSERT OR REPLACE INTO phone_sync_alias (kind, shortId, longId, name) VALUES (?,?,?,?)", -1, &st, 0) == SQLITE_OK) {
@@ -800,13 +746,11 @@ void ZaloService::onPhoneSyncTick()
         return;
     }
 
-    // ── pha 2: nhập tin, theo lát; mỗi lát là 1 transaction ──
     if (rt->phase == 2) {
         sqlite3_exec(m_db, "BEGIN", 0, 0, 0);
         while (rt->pi < rt->parts.size()) {
             PsPart &p = rt->parts[rt->pi];
             if (p.threadLong.isEmpty()) { rt->doneRows += p.rows.size(); rt->pi++; rt->ri = 0; continue; }
-            // mốc xóa lịch sử của hội thoại này (cache theo thread)
             if (rt->ri == 0 && !rt->clearedAt.contains(p.threadLong)) {
                 rt->clearedAt[p.threadLong] = psQueryString(m_db, "SELECT clearedAt FROM cleared_threads WHERE threadId=?", p.threadLong).toLongLong();
             }
@@ -814,7 +758,6 @@ void ZaloService::onPhoneSyncTick()
             while (rt->ri < p.rows.size()) {
                 const PsRow &r = p.rows[rt->ri++];
                 rt->doneRows++;
-                // v1: chỉ tin văn bản thường (MsgType 0). Ảnh/sticker/tệp cũ không có nội dung trong file.
                 if (r.type != 0 || r.glb == "0" || r.content.isEmpty()) continue;
                 qint64 ts = r.ts;
                 if (ts > 0 && ts < 1000000000000LL) ts *= 1000;
@@ -825,7 +768,6 @@ void ZaloService::onPhoneSyncTick()
                 QString sid = rt->senderLong.value(r.sender);
                 QString sname = rt->senderName.value(r.sender);
                 if (sid.isEmpty()) { sid = r.sender; sname = QString::fromUtf8("Member ") + r.sender; }
-                // ảnh có link tải sẵn (JSON normalUrl/thumbUrl/hdUrl) -> kiểu ảnh của Zalo10
                 int outType = 0;
                 if (r.content.startsWith(QChar('{')) && (r.content.contains("\"normalUrl\"") || r.content.contains("\"thumbUrl\"") || r.content.contains("\"hdUrl\"")))
                     outType = 2;
@@ -860,7 +802,6 @@ void ZaloService::onPhoneSyncTick()
         rt->phase = 3;
     }
 
-    // ── pha 3: xong ──
     int unmatched = 0;
     for (int i = 0; i < rt->parts.size(); ++i) if (rt->parts[i].threadLong.isEmpty()) unmatched++;
     int imported = rt->imported;
@@ -878,9 +819,9 @@ void ZaloService::onPhoneSyncTick()
     QString msg = QString::fromUtf8("Imported %1 older message(s) into %2 conversation(s).").arg(imported).arg(threads);
     if (unmatched > 0)
         msg += QString::fromUtf8("\n%1 of %2 conversations could not be matched yet (Zalo10 has not received any message from them). Run the sync again after a few days.").arg(unmatched).arg(total);
-    qDebug() << "[PhoneSync] XONG:" << imported << "messages," << threads << "conversations," << unmatched << "/" << total << "not matched yet";
+    qDebug() << "[PhoneSync] done:" << imported << "messages," << threads << "conversations," << unmatched << "of" << total << "not matched yet";
     emit phoneSyncProgress(100, QString::fromUtf8("Done"));
-    if (imported > 0) emit historySynced(imported);   // ChatsTab/GroupsTab dựng lại preview + thứ tự
+    if (imported > 0) emit historySynced(imported);
     emit phoneSyncFinished(true, msg);
 }
 

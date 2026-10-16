@@ -32,9 +32,6 @@
 #include <zlib.h>
 #include <string.h>
 
-// AES/MD5 helpers and the request-signing/identity generation used by the
-// login and API-request pipeline (IMEI, UUID, user-agent strings, etc).
-
 static QByteArray resolveKeyUtf8(const QString &keyStr)
 {
     QByteArray k = keyStr.toUtf8();
@@ -118,7 +115,6 @@ QString ZaloService::aesEncryptBase64(const QString &keyStr, const QString &plai
 QString ZaloService::aesEncryptBase64_256(const QString &keyStr, const QString &plainText)
 {
     QByteArray key  = resolveKeyUtf8(keyStr);
-    qDebug() << "[Zalo] aesEncryptBase64_256(params) keyBytes=" << key.toHex() << "bits=" << (key.size()*8);
     QByteArray data = plainText.toUtf8();
     unsigned char iv[AES_BLOCK_SIZE];
     memset(iv, 0, AES_BLOCK_SIZE);
@@ -132,7 +128,6 @@ QString ZaloService::aesEncryptBase64_256(const QString &keyStr, const QString &
     AES_cbc_encrypt((const unsigned char*)data.constData(), (unsigned char*)out.data(), data.size(), &k, iv, AES_ENCRYPT);
     return out.toBase64();
 }
-
 
 QString ZaloService::aesDecryptBase64(const QString &keyStr, const QString &cipherB64)
 {
@@ -179,7 +174,6 @@ ZaloService::EncryptedParams ZaloService::buildEncryptedParams(const QVariantMap
 {
     EncryptedParams ep;
     ep.enc_ver = "v2";
-    qDebug() << "[Zalo] buildEncryptedParams enc_ver=v2 API=" << API_VERSION;
 
     QString ts = data.contains("ts") ? data["ts"].toString()
                                      : QString::number(QDateTime::currentMSecsSinceEpoch());
@@ -207,7 +201,6 @@ ZaloService::EncryptedParams ZaloService::buildEncryptedParams(const QVariantMap
     ep.encryptKey = nEven8.join("") + zEven12.join("") + zOdd12.join("");
 
     ep.encryptedData = aesEncryptBase64_256(ep.encryptKey, QString::fromUtf8(mapToJson(data)));
-    qDebug() << "[Zalo] buildEncryptedParams encryptKey=" << ep.encryptKey << "zcid_ext=" << ep.zcid_ext;
     return ep;
 }
 
@@ -235,7 +228,6 @@ QString ZaloService::generateRandomUserAgent()
     static const int chromeMajors[] = { 118, 119, 120, 121, 122, 123, 124, 125 };
     static const int majorCount = 8;
 
-    // Windows versions
     static const char* winVersions[] = {
         "Windows NT 10.0; Win64; x64",
         "Windows NT 10.0; WOW64",

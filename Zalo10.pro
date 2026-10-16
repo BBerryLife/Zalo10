@@ -3,46 +3,37 @@ APP_NAME = Zalo10
 CONFIG += qt warn_on cascades10
 
 PKGNAME = com.berrylife.zalo10
-# Version is read at runtime from bar-descriptor.xml via bb::ApplicationInfo().version()
-# To release a new version, only update <versionNumber> in bar-descriptor.xml
+# Version is read at runtime from bar-descriptor.xml (bb::ApplicationInfo().version());
+# to release, only update <versionNumber> there.
 
-# Qt modules — tất cả có sẵn trong BB10 NDK 10.3
 QT += network script gui
 
-# BB10 Cascades libs + OpenSSL (có sẵn trong BB10 NDK)
 LIBS += -lbbcascades -lbbsystem -lbb -lbbplatform -lbbdevice -lbbpim
-# -lunifieddatasourcec: thư viện thật của UDS API (unified_data_source.h) —
-# TÊN THẬT theo doc chính thức của BlackBerry là "unifieddatasourcec", KHÔNG
-# phải "uds" (đã build lỗi "cannot find -luds" vì đoán sai tên link trước
-# đó). Dùng để đăng ký Zalo10 thành 1 account/tab riêng trong BlackBerry Hub
-# (xem src/HubIntegration.cpp).
+# -lunifieddatasourcec is the real UDS library name ("uds" fails with "cannot find -luds").
 LIBS += -lunifieddatasourcec
-# bbcascadespickers = bb::cascades::pickers (ContactPicker) — FilePicker
-# trước đây dùng đã kéo namespace pickers vào runtime rồi nhưng chưa từng
-# link tường minh; ContactPicker cần include header thật (không chỉ QML
-# plugin), nên phải thêm -lbbcascadespickers ở đây để linker resolve được.
+# -lbbcascadespickers: ContactPicker needs the real header and an explicit link.
 LIBS += -lbbcascadespickers
 LIBS += -lQtNetwork -lQtScript -lQtGui
 LIBS += -lssl -lcrypto
-LIBS += -lsocket   # PhoneSyncCore::httpsGet dùng socket POSIX trực tiếp
+LIBS += -lsocket   # POSIX sockets used directly by PhoneSyncCore::httpsGet
 LIBS += -lsqlite3
 
-# libwebpdecoder (vendored, decode-only build cho QNX armv7le/gcc4.6.3 —
-# xem src/third_party/webp/README.md) — dung de decode sticker .webp tai ve
-# tu CDN Zalo (chat.sticker) truoc khi luu thanh PNG cho Cascades ImageView,
-# vi Cascades/bb::cascades::Image KHONG co codec WebP built-in.
+# libwebpdecoder (vendored decode-only build for QNX armv7le/gcc 4.6.3, see
+# src/third_party/webp/README.md): decodes sticker .webp since Cascades has no WebP codec.
 LIBS += -L$$PWD/src/third_party/webp/lib -lwebpdecoder
 INCLUDEPATH += $$PWD/src/third_party/webp/include
 
 INCLUDEPATH += src
 
-# src/third_party/xz: XZ Embedded (vendored, 0BSD) — giải nén file đồng bộ tin nhắn từ điện thoại.
-# Biên dịch được ở chế độ C mặc định của qcc; KHÔNG thêm -std=gnu99 (qcc báo "unknown option").
+# src/third_party/xz: XZ Embedded (vendored, 0BSD) for phone sync. Built in qcc's default C mode;
+# do NOT add -std=gnu99 (qcc: unknown option).
 INCLUDEPATH += $$(QNX_TARGET)/usr/include/qt4/QtGui
 
 HEADERS += \
     src/ZaloCookieJar.hpp \
     src/ServiceHandoff.hpp \
+    src/LogSanitizer.hpp \
+    src/ZaloNetworkManager.hpp \
     src/PhoneSyncCore.hpp \
     src/applicationui.hpp \
     src/ZaloService.hpp \
