@@ -29,13 +29,13 @@ Sheet {
                     // ArrayDataModel has no declarable items property: fill it with qualified append() calls
                     // (attachModel.append); unqualified append()/insertList() throws ReferenceError.
                     Component.onCompleted: {
-                        attachModel.append({ key: "picture",     label: "Picture",     icon: "asset:///images/File Types/File Type - Picture (Image).png", enabled: true  });
-                        attachModel.append({ key: "video",       label: "Video",       icon: "asset:///images/File Types/File Type - Video.png",           enabled: true  });
-                        attachModel.append({ key: "location",    label: "Location",    icon: "asset:///images/File Types/File Type - Location.png",      enabled: false });
-                        attachModel.append({ key: "audio",       label: "Audio",       icon: "asset:///images/File Types/File Type - Audio.png",         enabled: true  });
-                        attachModel.append({ key: "voicenote",   label: "Voice Note",  icon: "asset:///images/File Types/File Type - Voice Note (Audio Recording).png", enabled: true  });
-                        attachModel.append({ key: "contact",     label: "Contact",     icon: "asset:///images/File Types/File Type - VCF (Contanct).png", enabled: true  });
-                        attachModel.append({ key: "file",        label: "File",        icon: "asset:///images/File Types/File Type - Generic.png",       enabled: true  });
+                        attachModel.append({ key: "picture",     label: "Picture",     icon: "asset:///images/ChatView/bubble/file_types/File Type - Picture (Image).png", enabled: true  });
+                        attachModel.append({ key: "video",       label: "Video",       icon: "asset:///images/ChatView/bubble/file_types/File Type - Video.png",           enabled: true  });
+                        attachModel.append({ key: "location",    label: "Location",    icon: "asset:///images/ChatView/bubble/file_types/File Type - Location.png",      enabled: false });
+                        attachModel.append({ key: "audio",       label: "Audio",       icon: "asset:///images/ChatView/bubble/file_types/File Type - Audio.png",         enabled: true  });
+                        attachModel.append({ key: "voicenote",   label: "Voice Note",  icon: "asset:///images/ChatView/bubble/file_types/File Type - Voice Note (Audio Recording).png", enabled: true  });
+                        attachModel.append({ key: "contact",     label: "Contact",     icon: "asset:///images/ChatView/bubble/file_types/File Type - VCF (Contanct).png", enabled: true  });
+                        attachModel.append({ key: "file",        label: "File",        icon: "asset:///images/ChatView/bubble/file_types/File Type - Generic.png",       enabled: true  });
                     }
                 }
 

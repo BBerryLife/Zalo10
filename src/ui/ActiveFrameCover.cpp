@@ -1,4 +1,4 @@
-#include "ActiveFrameCover.hpp"
+#include "ui/ActiveFrameCover.hpp"
 
 #include <bb/cascades/Container>
 #include <bb/cascades/DockLayout>

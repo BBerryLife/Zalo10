@@ -181,7 +181,7 @@ NavigationPane {
                             ImageView {
                                 imageSource: (ListItemData.localAvatar && ListItemData.localAvatar.length > 0)
                                     ? ListItemData.localAvatar
-                                    : "asset:///images/ContactsTab/blank.png"
+                                    : "asset:///images/ChatView/default_caller.png"
                                 horizontalAlignment: HorizontalAlignment.Fill
                                 verticalAlignment:   VerticalAlignment.Fill
                                 scalingMethod: ScalingMethod.AspectFill

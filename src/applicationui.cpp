@@ -1,8 +1,8 @@
 #include "applicationui.hpp"
-#include "ServiceHandoff.hpp"
-#include "ZaloService.hpp"
-#include "ZaloServiceUtils.hpp"
-#include "ActiveFrameCover.hpp"
+#include "core/ServiceHandoff.hpp"
+#include "core/ZaloService.hpp"
+#include "utils/ZaloServiceUtils.hpp"
+#include "ui/ActiveFrameCover.hpp"
 
 #include <bb/cascades/Application>
 #include <bb/cascades/QmlDocument>

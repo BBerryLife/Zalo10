@@ -14,7 +14,7 @@
 #include <QUrl>
 #include <string>
 
-#include "PhoneSyncCore.hpp"
+#include "core/PhoneSyncCore.hpp"
 
 // BB10's Qt SSL stack fails the TLS handshake with some Zalo API hosts (SslHandshakeFailedError)
 // while plain OpenSSL with TLS 1.2 connects fine. Requests to *.chat.zalo.me go through Qt as

@@ -1,5 +1,5 @@
 #include "applicationui.hpp"
-#include "LogSanitizer.hpp"
+#include "utils/LogSanitizer.hpp"
 
 #include <bb/cascades/Application>
 #include <bb/cascades/ThemeSupport>

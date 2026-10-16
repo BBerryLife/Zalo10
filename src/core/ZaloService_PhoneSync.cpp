@@ -1,6 +1,6 @@
-#include "ZaloService.hpp"
-#include "ZaloServiceUtils.hpp"
-#include "PhoneSyncCore.hpp"
+#include "core/ZaloService.hpp"
+#include "utils/ZaloServiceUtils.hpp"
+#include "core/PhoneSyncCore.hpp"
 
 #include <QThread>
 #include <QTimer>

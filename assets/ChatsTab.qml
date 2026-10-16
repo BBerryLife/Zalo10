@@ -184,7 +184,7 @@ NavigationPane {
                                     verticalAlignment: VerticalAlignment.Center
                                     layout: DockLayout {}
                                     ImageView {
-                                        imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/ChatsTab/blank.png"
+                                        imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/ChatView/default_caller.png"
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment: VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFill
@@ -228,8 +228,8 @@ NavigationPane {
                                         ImageView {
                                             visible: ((ListItemData.lastMessage || ListItemData.lastMsg || "").length > 0)
                                             imageSource: ListItemData.hasUnread
-                                                         ? "asset:///images/Message States/yellow_pellet.png"
-                                                         : "asset:///images/Message States/grey_pellet.png"
+                                                         ? "asset:///images/ChatView/bubble/message_states/yellow_pellet.png"
+                                                         : "asset:///images/ChatView/bubble/message_states/grey_pellet.png"
                                             preferredWidth:  ui.du(4.4)
                                             preferredHeight: ui.du(4.4)
                                             minWidth:        ui.du(4.4)

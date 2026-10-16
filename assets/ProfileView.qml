@@ -44,7 +44,7 @@ Page {
     actions: [
         ActionItem {
             title: "Send Message"
-            imageSource: "asset:///images/ProfileView/ic_bbm.png"
+            imageSource: "asset:///images/ContactsTab/ProfileView/ic_bbm.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             onTriggered: {
                 var chatPage = chatDef.createObject()
@@ -79,7 +79,7 @@ Page {
                     id: bgImage
                     imageSource: profilePage.bgAvatarPath.length > 0
                         ? profilePage.bgAvatarPath
-                        : "asset:///images/ProfileView/default_caller.png"
+                        : "asset:///images/ContactsTab/ProfileView/BB_Pattern_Vivid.jpg"
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
                     scalingMethod: ScalingMethod.AspectFill
@@ -108,7 +108,7 @@ Page {
                             id: avatarImage
                             imageSource: profilePage.avatarPath.length > 0
                                 ? profilePage.avatarPath
-                                : "asset:///images/ProfileView/blank.png"
+                                : "asset:///images/ChatView/default_caller.png"
                             horizontalAlignment: HorizontalAlignment.Fill
                             verticalAlignment: VerticalAlignment.Fill
                             scalingMethod: ScalingMethod.AspectFill

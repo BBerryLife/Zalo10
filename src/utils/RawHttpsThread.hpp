@@ -10,7 +10,7 @@
 #include <QUrl>
 #include <string>
 
-#include "PhoneSyncCore.hpp"
+#include "core/PhoneSyncCore.hpp"
 
 // GET over OpenSSL TLS 1.2 on a worker thread. Used when QNetworkAccessManager fails the TLS
 // handshake. headers: "Name: value\r\n" lines. info collects resolved IPs and the OpenSSL result.

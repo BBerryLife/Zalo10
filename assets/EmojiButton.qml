@@ -21,8 +21,8 @@ Container {
         verticalAlignment:   VerticalAlignment.Center
         preferredWidth:  ui.du(6.5)
         preferredHeight: ui.du(6.5)
-        defaultImageSource: "asset:///images/emoji/" + emojiBtnRoot.emojiCategory + "/" + emojiBtnRoot.emojiFile
-        pressedImageSource: "asset:///images/emoji/" + emojiBtnRoot.emojiCategory + "/" + emojiBtnRoot.emojiFile
+        defaultImageSource: "asset:///images/ChatView/emoji/" + emojiBtnRoot.emojiCategory + "/" + emojiBtnRoot.emojiFile
+        pressedImageSource: "asset:///images/ChatView/emoji/" + emojiBtnRoot.emojiCategory + "/" + emojiBtnRoot.emojiFile
         onClicked: {
             emojiBtnRoot.emojiTapped(emojiBtnRoot.emojiFile, emojiBtnRoot.emojiCategory);
         }

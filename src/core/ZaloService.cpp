@@ -1,8 +1,8 @@
-#include "ZaloService.hpp"
-#include "ZaloNetworkManager.hpp"
-#include "ZaloCookieJar.hpp"
-#include "ZaloServiceUtils.hpp"
-#include "HubIntegration.hpp"
+#include "core/ZaloService.hpp"
+#include "utils/ZaloNetworkManager.hpp"
+#include "utils/ZaloCookieJar.hpp"
+#include "utils/ZaloServiceUtils.hpp"
+#include "core/HubIntegration.hpp"
 #include <bb/platform/Notification>
 #include <bb/platform/NotificationDefaultApplicationSettings>
 #include <bb/system/InvokeRequest>

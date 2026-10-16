@@ -65,7 +65,7 @@ Sheet {
             topPadding: 60; bottomPadding: 60
 
             ImageView {
-                imageSource: "asset:///images/File Types/File Type - Voice Note (Audio Recording).png"
+                imageSource: "asset:///images/ChatView/bubble/file_types/File Type - Voice Note (Audio Recording).png"
                 scalingMethod: ScalingMethod.AspectFit
                 horizontalAlignment: HorizontalAlignment.Center
                 preferredWidth: 120; preferredHeight: 120

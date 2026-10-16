@@ -30,38 +30,38 @@ INCLUDEPATH += src
 INCLUDEPATH += $$(QNX_TARGET)/usr/include/qt4/QtGui
 
 HEADERS += \
-    src/ZaloCookieJar.hpp \
-    src/ServiceHandoff.hpp \
-    src/LogSanitizer.hpp \
-    src/ZaloNetworkManager.hpp \
-    src/PhoneSyncCore.hpp \
+    src/utils/ZaloCookieJar.hpp \
+    src/core/ServiceHandoff.hpp \
+    src/utils/LogSanitizer.hpp \
+    src/utils/ZaloNetworkManager.hpp \
+    src/core/PhoneSyncCore.hpp \
     src/applicationui.hpp \
-    src/ZaloService.hpp \
-    src/ZaloServiceUtils.hpp \
-    src/ActiveFrameCover.hpp \
-    src/HubIntegration.hpp
+    src/core/ZaloService.hpp \
+    src/utils/ZaloServiceUtils.hpp \
+    src/ui/ActiveFrameCover.hpp \
+    src/core/HubIntegration.hpp
 
 SOURCES += \
     src/main.cpp \
     src/applicationui.cpp \
-    src/ZaloService.cpp \
-    src/ZaloService_Auth.cpp \
-    src/ZaloService_WebSocket.cpp \
-    src/ZaloService_Contacts.cpp \
-    src/ZaloService_Messages.cpp \
-    src/ZaloService_ContactPicker.cpp \
-    src/ZaloService_Crypto.cpp \
-    src/ZaloService_Network.cpp \
-    src/ZaloService_Db.cpp \
-    src/ZaloService_Sync.cpp \
-    src/ZaloService_PhoneSync.cpp \
-    src/PhoneSyncCore.cpp \
+    src/core/ZaloService.cpp \
+    src/core/ZaloService_Auth.cpp \
+    src/core/ZaloService_WebSocket.cpp \
+    src/core/ZaloService_Contacts.cpp \
+    src/core/ZaloService_Messages.cpp \
+    src/core/ZaloService_ContactPicker.cpp \
+    src/core/ZaloService_Crypto.cpp \
+    src/core/ZaloService_Network.cpp \
+    src/core/ZaloService_Db.cpp \
+    src/core/ZaloService_Sync.cpp \
+    src/core/ZaloService_PhoneSync.cpp \
+    src/core/PhoneSyncCore.cpp \
     src/third_party/xz/xz_crc32.c \
     src/third_party/xz/xz_crc64.c \
     src/third_party/xz/xz_dec_stream.c \
     src/third_party/xz/xz_dec_lzma2.c \
-    src/ActiveFrameCover.cpp \
-    src/HubIntegration.cpp
+    src/ui/ActiveFrameCover.cpp \
+    src/core/HubIntegration.cpp
 
 OTHER_FILES += \
     bar-descriptor.xml \

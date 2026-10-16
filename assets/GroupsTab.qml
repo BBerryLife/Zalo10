@@ -349,7 +349,7 @@ NavigationPane {
                                 preferredHeight: ui.du(12.0)
 
                                 ImageView {
-                                    imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/GroupsTab/blank.png"
+                                    imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/GroupsTab/default_group.png"
                                     preferredWidth: ui.du(12.0)
                                     preferredHeight: ui.du(12.0)
                                     horizontalAlignment: HorizontalAlignment.Left
@@ -394,8 +394,8 @@ NavigationPane {
                                         ImageView {
                                             visible: ((ListItemData.lastMessage || "").length > 0)
                                             imageSource: ListItemData.hasUnread
-                                                         ? "asset:///images/Message States/yellow_pellet.png"
-                                                         : "asset:///images/Message States/grey_pellet.png"
+                                                         ? "asset:///images/ChatView/bubble/message_states/yellow_pellet.png"
+                                                         : "asset:///images/ChatView/bubble/message_states/grey_pellet.png"
                                             preferredWidth:  ui.du(4.4)
                                             preferredHeight: ui.du(4.4)
                                             minWidth:        ui.du(4.4)
@@ -437,7 +437,7 @@ NavigationPane {
                     page.threadName = item.name || "Group";
                     page.isGroup    = true;
                     var av = item.localAvatar || item.avatar || "";
-                    if (av.length === 0) av = "asset:///images/GroupsTab/blank.png";
+                    if (av.length === 0) av = "asset:///images/GroupsTab/default_group.png";
                     page.avatarUrl  = av;
                     page.selfName   = groupsNav.selfName;
                     var t1 = Date.now();
@@ -678,7 +678,7 @@ NavigationPane {
         var page = groupsDef.createObject();
         if (!page) return;
         var threadName = "Group";
-        var avatarUrl  = "asset:///images/GroupsTab/blank.png";
+        var avatarUrl  = "asset:///images/GroupsTab/default_group.png";
         for (var i = 0; i < groupModel.size(); i++) {
             var d = groupModel.value(i);
             if ((d.threadId || "") === threadId) {

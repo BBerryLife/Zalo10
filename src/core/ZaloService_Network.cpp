@@ -1,6 +1,6 @@
-#include "ZaloService.hpp"
-#include "ZaloServiceUtils.hpp"
-#include "ZaloCookieJar.hpp"
+#include "core/ZaloService.hpp"
+#include "utils/ZaloServiceUtils.hpp"
+#include "utils/ZaloCookieJar.hpp"
 #include <QDateTime>
 #include <bb/platform/Notification>
 #include <bb/platform/NotificationDefaultApplicationSettings>

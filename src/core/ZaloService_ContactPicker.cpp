@@ -1,4 +1,4 @@
-#include "ZaloService.hpp"
+#include "core/ZaloService.hpp"
 
 #include <bb/cascades/pickers/ContactPicker>
 #include <bb/cascades/pickers/ContactSelectionMode>

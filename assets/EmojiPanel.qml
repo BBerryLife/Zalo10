@@ -56,96 +56,96 @@ Container {
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 0
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 1
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 2
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 3
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 4
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 5
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 6
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 7
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 8
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 9
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 10
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePeople === 11
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
         }
 
@@ -407,40 +407,40 @@ Container {
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageNature === 0
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageNature === 1
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageNature === 2
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageNature === 3
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageNature === 4
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
         }
 
@@ -569,80 +569,80 @@ Container {
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 0
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 1
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 2
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 3
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 4
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 5
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 6
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 7
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 8
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageObjects === 9
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
         }
 
@@ -861,48 +861,48 @@ Container {
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePlaces === 0
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePlaces === 1
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePlaces === 2
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePlaces === 3
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePlaces === 4
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pagePlaces === 5
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
         }
 
@@ -1045,64 +1045,64 @@ Container {
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageSymbols === 0
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageSymbols === 1
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageSymbols === 2
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageSymbols === 3
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageSymbols === 4
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageSymbols === 5
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageSymbols === 6
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
             ImageView {
                 preferredWidth: ui.du(1.2); preferredHeight: ui.du(1.2)
                 verticalAlignment: VerticalAlignment.Center
                 leftMargin: ui.du(0.2); rightMargin: ui.du(0.2)
                 imageSource: pageSymbols === 7
-                    ? "asset:///images/emoji/activePageDot.png"
-                    : "asset:///images/emoji/inactivePageDot.png"
+                    ? "asset:///images/ChatView/emoji/activePageDot.png"
+                    : "asset:///images/ChatView/emoji/inactivePageDot.png"
             }
         }
 
@@ -1282,7 +1282,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                imageSource: "asset:///images/emoji/emoji_category_people.png"
+                imageSource: "asset:///images/ChatView/emoji/emoji_category_people.png"
             }
         }
         Container {
@@ -1296,7 +1296,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                imageSource: "asset:///images/emoji/emoji_category_nature.png"
+                imageSource: "asset:///images/ChatView/emoji/emoji_category_nature.png"
             }
         }
         Container {
@@ -1310,7 +1310,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                imageSource: "asset:///images/emoji/emoji_category_objects.png"
+                imageSource: "asset:///images/ChatView/emoji/emoji_category_objects.png"
             }
         }
         Container {
@@ -1324,7 +1324,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                imageSource: "asset:///images/emoji/emoji_category_places.png"
+                imageSource: "asset:///images/ChatView/emoji/emoji_category_places.png"
             }
         }
         Container {
@@ -1338,7 +1338,7 @@ Container {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
                 preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                imageSource: "asset:///images/emoji/emoji_category_symbols.png"
+                imageSource: "asset:///images/ChatView/emoji/emoji_category_symbols.png"
             }
         }
     }

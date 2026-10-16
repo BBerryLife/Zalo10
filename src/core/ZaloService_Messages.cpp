@@ -1,6 +1,6 @@
-#include "ZaloService.hpp"
-#include "ZaloServiceUtils.hpp"
-#include "HubIntegration.hpp"
+#include "core/ZaloService.hpp"
+#include "utils/ZaloServiceUtils.hpp"
+#include "core/HubIntegration.hpp"
 #include <bb/platform/Notification>
 #include <bb/platform/NotificationDefaultApplicationSettings>
 #include <bb/platform/NotificationDialog>

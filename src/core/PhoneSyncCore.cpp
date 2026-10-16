@@ -1,4 +1,4 @@
-#include "PhoneSyncCore.hpp"
+#include "core/PhoneSyncCore.hpp"
 
 #include <openssl/evp.h>
 #include <openssl/rsa.h>

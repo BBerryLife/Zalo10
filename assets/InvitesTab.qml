@@ -161,7 +161,7 @@ NavigationPane {
                                 rightPadding: ui.du(2)
 
                                 ImageView {
-                                    imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/InvitesTab/blank.png"
+                                    imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/ChatView/default_caller.png"
                                     preferredWidth: ui.du(9)
                                     preferredHeight: ui.du(9)
                                     scalingMethod: ScalingMethod.AspectFill

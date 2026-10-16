@@ -822,12 +822,12 @@ Page {
                 inputField.requestFocus();
             }
             property variant reactionAssets: ({
-                "like":  "asset:///images/emoji/people/emoji_1f44d_64.png",
-                "heart": "asset:///images/emoji/people/emoji_2764_64.png",
-                "haha":  "asset:///images/emoji/people/emoji_1f604_64.png",
-                "wow":   "asset:///images/emoji/people/emoji_1f631_64.png",
-                "cry":   "asset:///images/emoji/people/emoji_1f62d_64.png",
-                "angry": "asset:///images/emoji/people/emoji_1f621_64.png"
+                "like":  "asset:///images/ChatView/emoji/people/emoji_1f44d_64.png",
+                "heart": "asset:///images/ChatView/emoji/people/emoji_2764_64.png",
+                "haha":  "asset:///images/ChatView/emoji/people/emoji_1f604_64.png",
+                "wow":   "asset:///images/ChatView/emoji/people/emoji_1f631_64.png",
+                "cry":   "asset:///images/ChatView/emoji/people/emoji_1f62d_64.png",
+                "angry": "asset:///images/ChatView/emoji/people/emoji_1f621_64.png"
             })
             property variant reactionRTypes: ({ "like": 0, "heart": 1, "haha": 2, "wow": 3, "cry": 4, "angry": 5 })
             function reactionAssetFor(iconId) { return msgList.reactionAssets[iconId] || ""; }
@@ -1369,9 +1369,6 @@ Page {
                             : -1
                         onBubblePosChanged: {
                         }
-                        property string bubbleImage: rowRoot.mine
-                            ? ("asset:///images/Bubble/outgoing/" + rowRoot.bubblePos + ".png")
-                            : ("asset:///images/Bubble/incoming/" + rowRoot.bubblePos + ".png")
                         property real pollInnerW: Math.max(0, (rowLUH.layoutFrame.width > 94 ? rowLUH.layoutFrame.width
                                                   : (ListItem.view.widthHint > 94 ? ListItem.view.widthHint : 0)) - 40 - ui.du(2.0))
                         function pollFillPct(opts, numVote, i) {
@@ -1526,42 +1523,42 @@ Page {
                                     minHeight:       38
                                     ImageView {
                                         visible: rowRoot.outState === -1
-                                        imageSource: "asset:///images/Message States/grey_pellet.png"
+                                        imageSource: "asset:///images/ChatView/bubble/message_states/grey_pellet.png"
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment: VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
                                     }
                                     ImageView {
                                         visible: rowRoot.outState === 0
-                                        imageSource: "asset:///images/Message States/sending.png"
+                                        imageSource: "asset:///images/ChatView/bubble/message_states/sending.png"
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment: VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
                                     }
                                     ImageView {
                                         visible: rowRoot.outState === 1
-                                        imageSource: "asset:///images/Message States/sent.png"
+                                        imageSource: "asset:///images/ChatView/bubble/message_states/sent.png"
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment: VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
                                     }
                                     ImageView {
                                         visible: rowRoot.outState === 2
-                                        imageSource: "asset:///images/Message States/delivered.png"
+                                        imageSource: "asset:///images/ChatView/bubble/message_states/delivered.png"
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment: VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
                                     }
                                     ImageView {
                                         visible: rowRoot.outState === 3
-                                        imageSource: "asset:///images/Message States/read.png"
+                                        imageSource: "asset:///images/ChatView/bubble/message_states/read.png"
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment: VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
                                     }
                                     ImageView {
                                         visible: rowRoot.outState === 4
-                                        imageSource: "asset:///images/Message States/failed.png"
+                                        imageSource: "asset:///images/ChatView/bubble/message_states/failed.png"
                                         horizontalAlignment: HorizontalAlignment.Fill
                                         verticalAlignment: VerticalAlignment.Fill
                                         scalingMethod: ScalingMethod.AspectFit
@@ -1829,20 +1826,20 @@ Container {
                                         return di >= 0 ? n.substring(di + 1).toLowerCase() : "";
                                     }
                                     function iconFor(ext) {
-                                        if (ext === "txt")                 return "asset:///images/File Types/File Type - TXT.png";
-                                        if (ext === "doc" || ext === "docx") return "asset:///images/File Types/File Type - Document.png";
-                                        if (ext === "pdf")                 return "asset:///images/File Types/File Type - PDF.png";
-                                        if (ext === "ppt" || ext === "pptx") return "asset:///images/File Types/File Type - PPT.png";
-                                        if (ext === "xls" || ext === "xlsx") return "asset:///images/File Types/File Type - XLS (Spreadsheet).png";
-                                        if (ext === "epub")                return "asset:///images/File Types/File Type - ePUB.png";
-                                        if (ext === "apk")                 return "asset:///images/File Types/File Type - APK.png";
-                                        if (ext === "cer")                 return "asset:///images/File Types/File Type - Certificate.png";
-                                        if (ext === "zip" || ext === "rar" || ext === "7z") return "asset:///images/File Types/File Type - ZIP (Compressed).png";
-                                        if (ext === "vcf")                 return "asset:///images/File Types/File Type - VCF (Contanct).png";
-                                        if (ext === "mp3" || ext === "flac") return "asset:///images/File Types/File Type - Music.png";
-                                        if (ext === "m4a")                 return "asset:///images/File Types/File Type - Voice Note (Audio Recording).png";
-                                        if (ext === "bar")                 return "asset:///images/File Types/File Type - BAR.png";
-                                        return "asset:///images/File Types/File Type - Video.png";
+                                        if (ext === "txt")                 return "asset:///images/ChatView/bubble/file_types/File Type - TXT.png";
+                                        if (ext === "doc" || ext === "docx") return "asset:///images/ChatView/bubble/file_types/File Type - Document.png";
+                                        if (ext === "pdf")                 return "asset:///images/ChatView/bubble/file_types/File Type - PDF.png";
+                                        if (ext === "ppt" || ext === "pptx") return "asset:///images/ChatView/bubble/file_types/File Type - PPT.png";
+                                        if (ext === "xls" || ext === "xlsx") return "asset:///images/ChatView/bubble/file_types/File Type - XLS (Spreadsheet).png";
+                                        if (ext === "epub")                return "asset:///images/ChatView/bubble/file_types/File Type - ePUB.png";
+                                        if (ext === "apk")                 return "asset:///images/ChatView/bubble/file_types/File Type - APK.png";
+                                        if (ext === "cer")                 return "asset:///images/ChatView/bubble/file_types/File Type - Certificate.png";
+                                        if (ext === "zip" || ext === "rar" || ext === "7z") return "asset:///images/ChatView/bubble/file_types/File Type - ZIP (Compressed).png";
+                                        if (ext === "vcf")                 return "asset:///images/ChatView/bubble/file_types/File Type - VCF (Contanct).png";
+                                        if (ext === "mp3" || ext === "flac") return "asset:///images/ChatView/bubble/file_types/File Type - Music.png";
+                                        if (ext === "m4a")                 return "asset:///images/ChatView/bubble/file_types/File Type - Voice Note (Audio Recording).png";
+                                        if (ext === "bar")                 return "asset:///images/ChatView/bubble/file_types/File Type - BAR.png";
+                                        return "asset:///images/ChatView/bubble/file_types/File Type - Video.png";
                                     }
                                     // Status text as a function with explicit parameters (block-body bindings are invalid, and
                                     // explicit parameters keep the dependency visible to the binding engine).
@@ -1963,7 +1960,7 @@ Container {
                                     function iconForCall(missed, mine, video) {
                                         var kind = video ? "video" : "voice";
                                         var dir  = missed ? "missed" : (mine ? "outgoing" : "incoming");
-                                        return "asset:///images/Bubble/video_voice/ca_" + kind + "_chat_" + dir + ".png";
+                                        return "asset:///images/ChatView/bubble/video_voice/ca_" + kind + "_chat_" + dir + ".png";
                                     }
                                     function formatDuration(sec) {
                                         var s = sec || 0;

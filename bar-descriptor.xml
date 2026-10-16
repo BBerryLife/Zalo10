@@ -29,7 +29,7 @@
     </configuration>
 
     <!-- Two entry points: the UI (Zalo10) and the headless service (Zalo10Headless project,
-         see src/ServiceHandoff.hpp). -->
+         see src/core/ServiceHandoff.hpp). -->
     <entryPoint id="Zalo10">
         <name>Zalo10</name>
     </entryPoint>
