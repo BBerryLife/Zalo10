@@ -1,6 +1,6 @@
 # Zalo10
 
-![Version](https://img.shields.io/badge/version-1.4.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.5.0.0-blue)
 ![License](https://img.shields.io/badge/license-GPL%20v3.0-green)
 ![Platform](https://img.shields.io/badge/platform-BlackBerry%2010-orange)
 
@@ -46,6 +46,7 @@ Zalo10 stands on the shoulders of these projects:
 
 | Project | Used for | License |
 |---|---|---|
+| [BB10 root](https://bb10.root.sx/) by Oleksandr | Providing the rooting solution that enables the installation and development of unsigned applications once again. | - |
 | [zca-js](https://github.com/RFS-ADRENO/zca-js) by RFS-ADRENO | Reference for the Zalo Web protocol (API endpoints, request signing and encryption, WebSocket frames). Not bundled: its logic is reimplemented in C++/Qt. | MIT |
 | [XZ Embedded](https://tukaani.org/xz/embedded.html) | Decompressing the XZ stream in phone message sync (bundled in `src/third_party/xz`) | 0BSD |
 | [libwebp](https://github.com/webmproject/libwebp) | Decoding WebP stickers (decoder-only static build in `src/third_party/webp`) | BSD-3-Clause |
