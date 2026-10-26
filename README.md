@@ -11,7 +11,7 @@ Zalo10 is a Zalo messaging client built entirely with Cascades (Native C++/QML),
 > **Note:** The Zalo app for Android 4.3 has been dead since October-November 2024. Zalo10 is the replacement for BB10 users.
 
 <p align="center">
-  <img src="splash1280x720.png" alt="Zalo10 splash screen" width="720">
+  <img src="splash1280x720.png" alt="Zalo10 splash screen">
 </p>
 
 ---
@@ -35,7 +35,7 @@ Zalo10 is a Zalo messaging client built entirely with Cascades (Native C++/QML),
 ## Notes
 
 - **Login:** Currently uses web API / QR code scanning from the official Zalo app on another phone
-- **Menu:** To access Menu / Email / Info, swipe down with **1 fingers from the top edge of the screen**
+- **Menu:** To access Info / Feedback / Settings, swipe down with **1 fingers from the top edge of the screen**
 - Zalo10 is an **unofficial** app, not affiliated with Zalo Official
 
 ---
