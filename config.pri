@@ -46,7 +46,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ContactsTab.qml) \
         $$quote($$BASEDIR/assets/CreateNoteSheet.qml) \
         $$quote($$BASEDIR/assets/CreatePollSheet.qml) \
-        $$quote($$BASEDIR/assets/EmojiButton.qml) \
         $$quote($$BASEDIR/assets/EmojiPanel.qml) \
         $$quote($$BASEDIR/assets/ForwardPickerSheet.qml) \
         $$quote($$BASEDIR/assets/GroupBoardSheet.qml) \
@@ -65,6 +64,31 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
         $$quote($$BASEDIR/assets/SharePickerSheet.qml) \
         $$quote($$BASEDIR/assets/VoiceNoteSheet.qml) \
+        $$quote($$BASEDIR/assets/board/BoardListItem.qml) \
+        $$quote($$BASEDIR/assets/board/BoardTitleBar.qml) \
+        $$quote($$BASEDIR/assets/chat/BubbleActionsAdmin.qml) \
+        $$quote($$BASEDIR/assets/chat/BubbleActionsFailed.qml) \
+        $$quote($$BASEDIR/assets/chat/BubbleActionsMember.qml) \
+        $$quote($$BASEDIR/assets/chat/BubbleCall.qml) \
+        $$quote($$BASEDIR/assets/chat/BubbleLink.qml) \
+        $$quote($$BASEDIR/assets/chat/BubblePhoto.qml) \
+        $$quote($$BASEDIR/assets/chat/BubbleSticker.qml) \
+        $$quote($$BASEDIR/assets/chat/BubbleVideo.qml) \
+        $$quote($$BASEDIR/assets/chat/ChatAttachPreviewBar.qml) \
+        $$quote($$BASEDIR/assets/chat/ChatBubbleItem.qml) \
+        $$quote($$BASEDIR/assets/chat/ChatMessageFlowConnections.qml) \
+        $$quote($$BASEDIR/assets/chat/ChatQuickMessageBar.qml) \
+        $$quote($$BASEDIR/assets/chat/ChatReplyPreviewBar.qml) \
+        $$quote($$BASEDIR/assets/chat/ChatThreadEventConnections.qml) \
+        $$quote($$BASEDIR/assets/chat/ChatTitleBar.qml) \
+        $$quote($$BASEDIR/assets/chat/PollCard.qml) \
+        $$quote($$BASEDIR/assets/chat/RowReactions.qml) \
+        $$quote($$BASEDIR/assets/emoji/EmojiButton.qml) \
+        $$quote($$BASEDIR/assets/emoji/EmojiNaturePage.qml) \
+        $$quote($$BASEDIR/assets/emoji/EmojiObjectsPage.qml) \
+        $$quote($$BASEDIR/assets/emoji/EmojiPeoplePage.qml) \
+        $$quote($$BASEDIR/assets/emoji/EmojiPlacesPage.qml) \
+        $$quote($$BASEDIR/assets/emoji/EmojiSymbolsPage.qml) \
         $$quote($$BASEDIR/assets/images/AboutSheet/barcode.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/berrylife.png) \
         $$quote($$BASEDIR/assets/images/AboutSheet/ic_close_white.png) \
@@ -729,25 +753,56 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_info.png) \
         $$quote($$BASEDIR/assets/images/ic_mail.png) \
         $$quote($$BASEDIR/assets/images/ic_settings.png) \
+        $$quote($$BASEDIR/assets/lists/ChatsListItem.qml) \
+        $$quote($$BASEDIR/assets/lists/ChatsServiceConnections.qml) \
+        $$quote($$BASEDIR/assets/lists/ChatsTitleBar.qml) \
+        $$quote($$BASEDIR/assets/lists/GroupsListItem.qml) \
+        $$quote($$BASEDIR/assets/lists/GroupsServiceConnections.qml) \
+        $$quote($$BASEDIR/assets/lists/GroupsTitleBar.qml) \
         $$quote($$BASEDIR/assets/main.qml)
 }
 
 config_pri_source_group1 {
     SOURCES += \
-        $$quote($$BASEDIR/src/applicationui.cpp) \
+        $$quote($$BASEDIR/src/app/ApplicationUI.cpp) \
+        $$quote($$BASEDIR/src/app/ApplicationUI_Share.cpp) \
+        $$quote($$BASEDIR/src/app/ApplicationUI_Update.cpp) \
         $$quote($$BASEDIR/src/core/HubIntegration.cpp) \
         $$quote($$BASEDIR/src/core/PhoneSyncCore.cpp) \
         $$quote($$BASEDIR/src/core/ZaloService.cpp) \
-        $$quote($$BASEDIR/src/core/ZaloService_Auth.cpp) \
         $$quote($$BASEDIR/src/core/ZaloService_ContactPicker.cpp) \
-        $$quote($$BASEDIR/src/core/ZaloService_Contacts.cpp) \
         $$quote($$BASEDIR/src/core/ZaloService_Crypto.cpp) \
-        $$quote($$BASEDIR/src/core/ZaloService_Db.cpp) \
-        $$quote($$BASEDIR/src/core/ZaloService_Messages.cpp) \
-        $$quote($$BASEDIR/src/core/ZaloService_Network.cpp) \
-        $$quote($$BASEDIR/src/core/ZaloService_PhoneSync.cpp) \
         $$quote($$BASEDIR/src/core/ZaloService_Sync.cpp) \
-        $$quote($$BASEDIR/src/core/ZaloService_WebSocket.cpp) \
+        $$quote($$BASEDIR/src/core/auth/ZaloService_Auth_Cookie.cpp) \
+        $$quote($$BASEDIR/src/core/auth/ZaloService_Auth_QRFinish.cpp) \
+        $$quote($$BASEDIR/src/core/auth/ZaloService_Auth_QRSteps.cpp) \
+        $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Actions.cpp) \
+        $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Board.cpp) \
+        $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Conversations.cpp) \
+        $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Friends.cpp) \
+        $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Media.cpp) \
+        $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Polls.cpp) \
+        $$quote($$BASEDIR/src/core/db/ZaloService_Db_Messages.cpp) \
+        $$quote($$BASEDIR/src/core/db/ZaloService_Db_Store.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Actions.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Download.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Fetch.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_FileVideo.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Notify.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Photo.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_PhotoFetch.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Send.cpp) \
+        $$quote($$BASEDIR/src/core/network/ZaloService_Network_Download.cpp) \
+        $$quote($$BASEDIR/src/core/network/ZaloService_Network_Request.cpp) \
+        $$quote($$BASEDIR/src/core/network/ZaloService_Network_SessionKey.cpp) \
+        $$quote($$BASEDIR/src/core/phonesync/ZaloService_PhoneSync_Flow.cpp) \
+        $$quote($$BASEDIR/src/core/phonesync/ZaloService_PhoneSync_Tick.cpp) \
+        $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Dispatch.cpp) \
+        $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Events.cpp) \
+        $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Frames.cpp) \
+        $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_History.cpp) \
+        $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Push.cpp) \
+        $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Transport.cpp) \
         $$quote($$BASEDIR/src/main.cpp) \
         $$quote($$BASEDIR/src/third_party/xz/xz_crc32.c) \
         $$quote($$BASEDIR/src/third_party/xz/xz_crc64.c) \
@@ -756,11 +811,19 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/ui/ActiveFrameCover.cpp)
 
     HEADERS += \
+        $$quote($$BASEDIR/src/app/ApplicationUICommon.hpp) \
         $$quote($$BASEDIR/src/applicationui.hpp) \
         $$quote($$BASEDIR/src/core/HubIntegration.hpp) \
         $$quote($$BASEDIR/src/core/PhoneSyncCore.hpp) \
         $$quote($$BASEDIR/src/core/ServiceHandoff.hpp) \
         $$quote($$BASEDIR/src/core/ZaloService.hpp) \
+        $$quote($$BASEDIR/src/core/auth/AuthCommon.hpp) \
+        $$quote($$BASEDIR/src/core/contacts/ContactsCommon.hpp) \
+        $$quote($$BASEDIR/src/core/db/DbCommon.hpp) \
+        $$quote($$BASEDIR/src/core/messages/MessagesCommon.hpp) \
+        $$quote($$BASEDIR/src/core/network/NetworkCommon.hpp) \
+        $$quote($$BASEDIR/src/core/phonesync/PhoneSyncCommon.hpp) \
+        $$quote($$BASEDIR/src/core/websocket/WebSocketCommon.hpp) \
         $$quote($$BASEDIR/src/third_party/webp/include/webp/decode.h) \
         $$quote($$BASEDIR/src/third_party/webp/include/webp/types.h) \
         $$quote($$BASEDIR/src/third_party/xz/xz.h) \
@@ -773,7 +836,9 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/utils/RawHttpsThread.hpp) \
         $$quote($$BASEDIR/src/utils/ZaloCookieJar.hpp) \
         $$quote($$BASEDIR/src/utils/ZaloNetworkManager.hpp) \
-        $$quote($$BASEDIR/src/utils/ZaloServiceUtils.hpp)
+        $$quote($$BASEDIR/src/utils/ZaloServiceUtils.hpp) \
+        $$quote($$BASEDIR/src/utils/json/ZJson.hpp) \
+        $$quote($$BASEDIR/src/utils/json/ZaloMessageJson.hpp)
 }
 
 CONFIG += precompile_header
@@ -787,11 +852,51 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../src/*.cc) \
         $$quote($$BASEDIR/../src/*.cpp) \
         $$quote($$BASEDIR/../src/*.cxx) \
+        $$quote($$BASEDIR/../src/app/*.c) \
+        $$quote($$BASEDIR/../src/app/*.c++) \
+        $$quote($$BASEDIR/../src/app/*.cc) \
+        $$quote($$BASEDIR/../src/app/*.cpp) \
+        $$quote($$BASEDIR/../src/app/*.cxx) \
         $$quote($$BASEDIR/../src/core/*.c) \
         $$quote($$BASEDIR/../src/core/*.c++) \
         $$quote($$BASEDIR/../src/core/*.cc) \
         $$quote($$BASEDIR/../src/core/*.cpp) \
         $$quote($$BASEDIR/../src/core/*.cxx) \
+        $$quote($$BASEDIR/../src/core/auth/*.c) \
+        $$quote($$BASEDIR/../src/core/auth/*.c++) \
+        $$quote($$BASEDIR/../src/core/auth/*.cc) \
+        $$quote($$BASEDIR/../src/core/auth/*.cpp) \
+        $$quote($$BASEDIR/../src/core/auth/*.cxx) \
+        $$quote($$BASEDIR/../src/core/contacts/*.c) \
+        $$quote($$BASEDIR/../src/core/contacts/*.c++) \
+        $$quote($$BASEDIR/../src/core/contacts/*.cc) \
+        $$quote($$BASEDIR/../src/core/contacts/*.cpp) \
+        $$quote($$BASEDIR/../src/core/contacts/*.cxx) \
+        $$quote($$BASEDIR/../src/core/db/*.c) \
+        $$quote($$BASEDIR/../src/core/db/*.c++) \
+        $$quote($$BASEDIR/../src/core/db/*.cc) \
+        $$quote($$BASEDIR/../src/core/db/*.cpp) \
+        $$quote($$BASEDIR/../src/core/db/*.cxx) \
+        $$quote($$BASEDIR/../src/core/messages/*.c) \
+        $$quote($$BASEDIR/../src/core/messages/*.c++) \
+        $$quote($$BASEDIR/../src/core/messages/*.cc) \
+        $$quote($$BASEDIR/../src/core/messages/*.cpp) \
+        $$quote($$BASEDIR/../src/core/messages/*.cxx) \
+        $$quote($$BASEDIR/../src/core/network/*.c) \
+        $$quote($$BASEDIR/../src/core/network/*.c++) \
+        $$quote($$BASEDIR/../src/core/network/*.cc) \
+        $$quote($$BASEDIR/../src/core/network/*.cpp) \
+        $$quote($$BASEDIR/../src/core/network/*.cxx) \
+        $$quote($$BASEDIR/../src/core/phonesync/*.c) \
+        $$quote($$BASEDIR/../src/core/phonesync/*.c++) \
+        $$quote($$BASEDIR/../src/core/phonesync/*.cc) \
+        $$quote($$BASEDIR/../src/core/phonesync/*.cpp) \
+        $$quote($$BASEDIR/../src/core/phonesync/*.cxx) \
+        $$quote($$BASEDIR/../src/core/websocket/*.c) \
+        $$quote($$BASEDIR/../src/core/websocket/*.c++) \
+        $$quote($$BASEDIR/../src/core/websocket/*.cc) \
+        $$quote($$BASEDIR/../src/core/websocket/*.cpp) \
+        $$quote($$BASEDIR/../src/core/websocket/*.cxx) \
         $$quote($$BASEDIR/../src/third_party/*.c) \
         $$quote($$BASEDIR/../src/third_party/*.c++) \
         $$quote($$BASEDIR/../src/third_party/*.cc) \
@@ -832,9 +937,23 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../src/utils/*.cc) \
         $$quote($$BASEDIR/../src/utils/*.cpp) \
         $$quote($$BASEDIR/../src/utils/*.cxx) \
+        $$quote($$BASEDIR/../src/utils/json/*.c) \
+        $$quote($$BASEDIR/../src/utils/json/*.c++) \
+        $$quote($$BASEDIR/../src/utils/json/*.cc) \
+        $$quote($$BASEDIR/../src/utils/json/*.cpp) \
+        $$quote($$BASEDIR/../src/utils/json/*.cxx) \
         $$quote($$BASEDIR/../assets/*.qml) \
         $$quote($$BASEDIR/../assets/*.js) \
         $$quote($$BASEDIR/../assets/*.qs) \
+        $$quote($$BASEDIR/../assets/board/*.qml) \
+        $$quote($$BASEDIR/../assets/board/*.js) \
+        $$quote($$BASEDIR/../assets/board/*.qs) \
+        $$quote($$BASEDIR/../assets/chat/*.qml) \
+        $$quote($$BASEDIR/../assets/chat/*.js) \
+        $$quote($$BASEDIR/../assets/chat/*.qs) \
+        $$quote($$BASEDIR/../assets/emoji/*.qml) \
+        $$quote($$BASEDIR/../assets/emoji/*.js) \
+        $$quote($$BASEDIR/../assets/emoji/*.qs) \
         $$quote($$BASEDIR/../assets/images/*.qml) \
         $$quote($$BASEDIR/../assets/images/*.js) \
         $$quote($$BASEDIR/../assets/images/*.qs) \
@@ -897,7 +1016,10 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/images/InvitesTab/*.qs) \
         $$quote($$BASEDIR/../assets/images/SettingsSheet/*.qml) \
         $$quote($$BASEDIR/../assets/images/SettingsSheet/*.js) \
-        $$quote($$BASEDIR/../assets/images/SettingsSheet/*.qs)
+        $$quote($$BASEDIR/../assets/images/SettingsSheet/*.qs) \
+        $$quote($$BASEDIR/../assets/lists/*.qml) \
+        $$quote($$BASEDIR/../assets/lists/*.js) \
+        $$quote($$BASEDIR/../assets/lists/*.qs)
 
     HEADERS += \
         $$quote($$BASEDIR/../src/*.h) \

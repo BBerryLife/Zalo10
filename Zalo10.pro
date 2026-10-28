@@ -43,18 +43,43 @@ HEADERS += \
 
 SOURCES += \
     src/main.cpp \
-    src/applicationui.cpp \
+    src/app/ApplicationUI.cpp \
+    src/app/ApplicationUI_Share.cpp \
+    src/app/ApplicationUI_Update.cpp \
+    src/core/auth/ZaloService_Auth_Cookie.cpp \
+    src/core/auth/ZaloService_Auth_QRFinish.cpp \
+    src/core/auth/ZaloService_Auth_QRSteps.cpp \
+    src/core/contacts/ZaloService_Contacts_Actions.cpp \
+    src/core/contacts/ZaloService_Contacts_Board.cpp \
+    src/core/contacts/ZaloService_Contacts_Conversations.cpp \
+    src/core/contacts/ZaloService_Contacts_Friends.cpp \
+    src/core/contacts/ZaloService_Contacts_Media.cpp \
+    src/core/contacts/ZaloService_Contacts_Polls.cpp \
+    src/core/db/ZaloService_Db_Messages.cpp \
+    src/core/db/ZaloService_Db_Store.cpp \
+    src/core/messages/ZaloService_Messages_Actions.cpp \
+    src/core/messages/ZaloService_Messages_Download.cpp \
+    src/core/messages/ZaloService_Messages_Fetch.cpp \
+    src/core/messages/ZaloService_Messages_FileVideo.cpp \
+    src/core/messages/ZaloService_Messages_Notify.cpp \
+    src/core/messages/ZaloService_Messages_Photo.cpp \
+    src/core/messages/ZaloService_Messages_PhotoFetch.cpp \
+    src/core/messages/ZaloService_Messages_Send.cpp \
+    src/core/network/ZaloService_Network_Download.cpp \
+    src/core/network/ZaloService_Network_Request.cpp \
+    src/core/network/ZaloService_Network_SessionKey.cpp \
+    src/core/phonesync/ZaloService_PhoneSync_Flow.cpp \
+    src/core/phonesync/ZaloService_PhoneSync_Tick.cpp \
+    src/core/websocket/ZaloService_WebSocket_Dispatch.cpp \
+    src/core/websocket/ZaloService_WebSocket_Events.cpp \
+    src/core/websocket/ZaloService_WebSocket_Frames.cpp \
+    src/core/websocket/ZaloService_WebSocket_History.cpp \
+    src/core/websocket/ZaloService_WebSocket_Push.cpp \
+    src/core/websocket/ZaloService_WebSocket_Transport.cpp \
     src/core/ZaloService.cpp \
-    src/core/ZaloService_Auth.cpp \
-    src/core/ZaloService_WebSocket.cpp \
-    src/core/ZaloService_Contacts.cpp \
-    src/core/ZaloService_Messages.cpp \
     src/core/ZaloService_ContactPicker.cpp \
     src/core/ZaloService_Crypto.cpp \
-    src/core/ZaloService_Network.cpp \
-    src/core/ZaloService_Db.cpp \
     src/core/ZaloService_Sync.cpp \
-    src/core/ZaloService_PhoneSync.cpp \
     src/core/PhoneSyncCore.cpp \
     src/third_party/xz/xz_crc32.c \
     src/third_party/xz/xz_crc64.c \
@@ -75,7 +100,12 @@ OTHER_FILES += \
     assets/InfoDialog.qml \
     assets/ConfirmDialog.qml \
     assets/EmojiPanel.qml \
-    assets/EmojiButton.qml \
+    assets/emoji/EmojiPeoplePage.qml \
+    assets/emoji/EmojiNaturePage.qml \
+    assets/emoji/EmojiObjectsPage.qml \
+    assets/emoji/EmojiPlacesPage.qml \
+    assets/emoji/EmojiSymbolsPage.qml \
+    assets/emoji/EmojiButton.qml \
     assets/ContactsTab.qml \
     assets/LoginView.qml \
     assets/ProfileView.qml \
@@ -85,4 +115,42 @@ OTHER_FILES += \
     assets/QuickMessagesSheet.qml \
     assets/QuickMessageEditSheet.qml \
     assets/AttachPickerSheet.qml \
-    assets/VoiceNoteSheet.qml
+    assets/VoiceNoteSheet.qml \
+    assets/ChangelogPage.qml \
+    assets/ChatsTab.qml \
+    assets/CreateNoteSheet.qml \
+    assets/CreatePollSheet.qml \
+    assets/ForwardPickerSheet.qml \
+    assets/GroupBoardSheet.qml \
+    assets/GroupsTab.qml \
+    assets/InvitesTab.qml \
+    assets/NoteViewerSheet.qml \
+    assets/PinboardBar.qml \
+    assets/PollVotersSheet.qml \
+    assets/ReactionPickerSheet.qml \
+    assets/SharePickerSheet.qml \
+    assets/board/BoardListItem.qml \
+    assets/board/BoardTitleBar.qml \
+    assets/chat/BubbleActionsAdmin.qml \
+    assets/chat/BubbleActionsFailed.qml \
+    assets/chat/BubbleActionsMember.qml \
+    assets/chat/BubbleCall.qml \
+    assets/chat/BubbleLink.qml \
+    assets/chat/BubblePhoto.qml \
+    assets/chat/BubbleSticker.qml \
+    assets/chat/BubbleVideo.qml \
+    assets/chat/ChatAttachPreviewBar.qml \
+    assets/chat/ChatBubbleItem.qml \
+    assets/chat/ChatMessageFlowConnections.qml \
+    assets/chat/ChatQuickMessageBar.qml \
+    assets/chat/ChatReplyPreviewBar.qml \
+    assets/chat/ChatThreadEventConnections.qml \
+    assets/chat/ChatTitleBar.qml \
+    assets/chat/PollCard.qml \
+    assets/chat/RowReactions.qml \
+    assets/lists/ChatsListItem.qml \
+    assets/lists/ChatsServiceConnections.qml \
+    assets/lists/ChatsTitleBar.qml \
+    assets/lists/GroupsListItem.qml \
+    assets/lists/GroupsServiceConnections.qml \
+    assets/lists/GroupsTitleBar.qml

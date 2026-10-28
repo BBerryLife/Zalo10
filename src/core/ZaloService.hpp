@@ -421,6 +421,13 @@ private:
     bool parseWsHandshakeResponse(const QByteArray &data, int &headerEnd);
     void handleWsFrame(int opcode, const QByteArray &payload);
     void handleWsMessage(int opcode, const QByteArray &payload);
+    void handleWsHandshakeReply(const QByteArray &data);
+    void handleWsChatPush(qint32 cmd, const QByteArray &data);
+    void handleWsPushedMessage(QVariantMap m, bool isGroup);
+    void handleWsHistoryReply(const QByteArray &data);
+    void handleWsGroupEvent(const QByteArray &data);
+    void handleWsReceipts(qint32 cmd, const QByteArray &data);
+    void handleWsReactions(const QByteArray &data);
     QVariantMap decodeWsEnvelope(const QVariantMap &outer, const QString &debugTag);
     QByteArray maskWsFrame(int opcode, const QByteArray &data);
     bool applyRefreshSessionResponseNative(const QByteArray &raw);

@@ -17,7 +17,7 @@
 #include "core/PhoneSyncCore.hpp"
 
 // BB10's Qt SSL stack fails the TLS handshake with some Zalo API hosts (SslHandshakeFailedError)
-// while plain OpenSSL with TLS 1.2 connects fine. Requests to *.chat.zalo.me go through Qt as
+// while plain OpenSSL with TLS 1.2 connects fine. Requests to *.zalo.me and *.zaloapp.com go through Qt as
 // usual; only when the handshake fails is the same request replayed over OpenSSL, so callers
 // keep using the normal QNetworkReply API.
 
@@ -253,7 +253,8 @@ protected:
     {
         const QUrl u = req.url();
         bool wrap = (op == GetOperation || op == PostOperation) && u.scheme() == "https"
-                 && u.host().endsWith(".chat.zalo.me");
+                 && (u.host().endsWith(".zalo.me") || u.host() == "zalo.me"
+                     || u.host().endsWith(".zaloapp.com") || u.host() == "zaloapp.com");
         QByteArray body;
         if (wrap && outgoing) {
             if (outgoing->isSequential()) {
