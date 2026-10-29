@@ -21,6 +21,7 @@ chat/ChatQuickMessageBar.qml
 chat/ChatReplyPreviewBar.qml
 chat/ChatThreadEventConnections.qml
 chat/ChatTitleBar.qml
+chat/PollCard.qml
 chat/RowReactions.qml
 ChatsTab.qml
 ChatView.qml

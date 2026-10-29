@@ -78,21 +78,6 @@ void ZaloService::setActiveThread(const QString &threadId, bool isGroup)
     sendThreadSeenRemote(threadId);
 }
 
-namespace {
-// mapToJson() is flat (no list-of-maps), so the nested payloads below are assembled by hand.
-QString jsonQuote(const QString &v)
-{
-    QString out = "\"";
-    for (int i = 0; i < v.size(); ++i) {
-        const QChar c = v[i];
-        if (c == QChar('"') || c == QChar('\\')) { out += QChar('\\'); out += c; }
-        else if (c.unicode() < 0x20) out += QString("\\u%1").arg((int)c.unicode(), 4, 16, QChar('0'));
-        else out += c;
-    }
-    return out + "\"";
-}
-}
-
 // Newest message in the thread that someone else sent (what a "seen" receipt refers to).
 bool ZaloService::dbLastIncomingMessage(const QString &threadId, QVariantMap &out) const
 {
