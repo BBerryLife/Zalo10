@@ -61,6 +61,9 @@ CustomListItem {
                 text: (ListItemData.numVote || 0) + " member" + ((ListItemData.numVote === 1) ? "" : "s") + " voted"
                 textStyle { color: Color.create("#2575fc"); fontSize: FontSize.XSmall }
                 bottomMargin: ui.du(0.6)
+                gestureHandlers: [ TapHandler { onTapped: {
+                    groupBoardPage.openPollVoters(ListItemData.id);
+                } } ]
             }
             Container {
                 visible: !!(ListItemData.options && ListItemData.options.length > 0)
@@ -222,6 +225,23 @@ CustomListItem {
                 Label {
                     text: (ListItemData.options && ListItemData.options[5]) ? String(ListItemData.options[5].votes || 0) : ""
                     textStyle { color: Color.Gray }
+                }
+            }
+            Container {
+                visible: !!(ListItemData.options && ListItemData.options.length > 0) && !ListItemData.closed
+                horizontalAlignment: HorizontalAlignment.Fill
+                topMargin: ui.du(0.6)
+                preferredHeight: ui.du(5.8)
+                layout: DockLayout {}
+                background: Color.create("#dbe9fb")
+                gestureHandlers: [ TapHandler { onTapped: {
+                    groupBoardPage.openPollVote(ListItemData.id);
+                } } ]
+                Label {
+                    horizontalAlignment: HorizontalAlignment.Center
+                    verticalAlignment: VerticalAlignment.Center
+                    text: "Vote"
+                    textStyle { color: Color.create("#2575fc"); fontSize: FontSize.Large; fontWeight: FontWeight.Bold }
                 }
             }
         }

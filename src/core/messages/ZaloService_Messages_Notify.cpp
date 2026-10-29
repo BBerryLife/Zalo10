@@ -75,6 +75,151 @@ void ZaloService::setActiveThread(const QString &threadId, bool isGroup)
     m_hub->markThreadRead(threadId);
     setThreadUnread(threadId, false);
     emit threadRead(threadId);
+    sendThreadSeenRemote(threadId);
+}
+
+namespace {
+// mapToJson() is flat (no list-of-maps), so the nested payloads below are assembled by hand.
+QString jsonQuote(const QString &v)
+{
+    QString out = "\"";
+    for (int i = 0; i < v.size(); ++i) {
+        const QChar c = v[i];
+        if (c == QChar('"') || c == QChar('\\')) { out += QChar('\\'); out += c; }
+        else if (c.unicode() < 0x20) out += QString("\\u%1").arg((int)c.unicode(), 4, 16, QChar('0'));
+        else out += c;
+    }
+    return out + "\"";
+}
+}
+
+// Newest message in the thread that someone else sent (what a "seen" receipt refers to).
+bool ZaloService::dbLastIncomingMessage(const QString &threadId, QVariantMap &out) const
+{
+    if (!m_db || threadId.isEmpty()) return false;
+    const char *sql =
+        "SELECT msgId,cliMsgId,senderId,msgType,isGroup FROM messages "
+        "WHERE threadId=? AND isMine=0 ORDER BY CAST(ts AS INTEGER) DESC LIMIT 1;";
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, 0) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        out["msgId"]    = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 0));
+        out["cliMsgId"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 1));
+        out["senderId"] = QString::fromUtf8((const char*)sqlite3_column_text(stmt, 2));
+        out["msgType"]  = sqlite3_column_int(stmt, 3);
+        out["isGroup"]  = (sqlite3_column_int(stmt, 4) == 1);
+        found = true;
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
+// Mirrors zca-js sendSeenEvent (POST chat /api/message/seenv2 or group /api/group/seenv2) and
+// removeUnreadMark (POST conversation /api/conv/removeUnreadMark). Without these the official
+// Zalo keeps showing the thread as unread after it was read here.
+void ZaloService::sendThreadSeenRemote(const QString &threadId, bool isGroupFallback)
+{
+    if (!m_loggedIn || threadId.isEmpty()) return;
+
+    QVariantMap last;
+    bool haveMsg = dbLastIncomingMessage(threadId, last);
+    bool isGroup = haveMsg ? last["isGroup"].toBool()
+                           : (threadId == m_activeThreadId ? m_activeThreadIsGroup : isGroupFallback);
+
+    if (haveMsg) {
+        // Internal msgType -> Zalo wire string.
+        QString mt;
+        switch (last["msgType"].toInt()) {
+        case 2:  mt = "chat.photo";       break;
+        case 3:  mt = "share.file";       break;
+        case 5:  mt = "chat.sticker";     break;
+        case 6:  mt = "chat.recommended"; break;
+        default: mt = "webchat";          break;
+        }
+        QString infos = QString("{\"data\":[{\"cmi\":%1,\"gmi\":%2,\"si\":%3,\"di\":%4,\"mt\":%5,"
+                                "\"st\":0,\"at\":0,\"cmd\":0,\"ts\":0}],%6:%7}")
+            .arg(jsonQuote(last["cliMsgId"].toString()))
+            .arg(jsonQuote(last["msgId"].toString()))
+            .arg(jsonQuote(last["senderId"].toString()))
+            .arg(jsonQuote(isGroup ? threadId : QString("0")))
+            .arg(jsonQuote(mt))
+            .arg(isGroup ? "\"grid\"" : "\"senderId\"")
+            .arg(jsonQuote(threadId));
+
+        QVariantMap params;
+        params["msgInfos"] = infos;
+        if (isGroup) params["imei"] = m_imei;
+
+        QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+        QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+        QString base = isGroup ? m_groupServiceUrl : m_chatServiceUrl;
+        if (!base.isEmpty()) {
+            QString urlStr = base + (isGroup ? "/api/group/seenv2" : "/api/message/seenv2")
+                           + "?zpw_ver=" + QString::number(API_VERSION)
+                           + "&zpw_type=" + QString::number(API_TYPE)
+                           + "&nretry=0";
+            QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+            req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+            QNetworkReply *reply = m_manager->post(req, body);
+            connect(reply, SIGNAL(finished()), reply, SLOT(deleteLater()));
+        }
+    }
+
+    QStringList users, groups;
+    if (isGroup) groups << threadId; else users << threadId;
+    sendRemoveUnreadMark(users, groups);
+}
+
+void ZaloService::sendRemoveUnreadMark(const QStringList &userIds, const QStringList &groupIds)
+{
+    if (!m_loggedIn || m_conversationServiceUrl.isEmpty()) return;
+    if (userIds.isEmpty() && groupIds.isEmpty()) return;
+
+    const QString ts = QString::number((qint64)QDateTime::currentMSecsSinceEpoch());
+    QStringList usersQ, groupsQ, usersData, groupsData;
+    for (int i = 0; i < userIds.size(); ++i) {
+        usersQ << jsonQuote(userIds[i]);
+        usersData << QString("{\"id\":%1,\"ts\":%2}").arg(jsonQuote(userIds[i])).arg(ts);
+    }
+    for (int i = 0; i < groupIds.size(); ++i) {
+        groupsQ << jsonQuote(groupIds[i]);
+        groupsData << QString("{\"id\":%1,\"ts\":%2}").arg(jsonQuote(groupIds[i])).arg(ts);
+    }
+    QString inner = QString("{\"convsUser\":[%1],\"convsGroup\":[%2],"
+                            "\"convsUserData\":[%3],\"convsGroupData\":[%4]}")
+        .arg(usersQ.join(","), groupsQ.join(","), usersData.join(","), groupsData.join(","));
+
+    // zca-js wraps the inner object as a JSON *string* under "param".
+    QVariantMap params;
+    params["param"] = inner;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_conversationServiceUrl + "/api/conv/removeUnreadMark"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    QNetworkReply *reply = m_manager->post(req, body);
+    connect(reply, SIGNAL(finished()), reply, SLOT(deleteLater()));
+}
+
+int ZaloService::markAllThreadsRead()
+{
+    QStringList ids = unreadThreadIds();
+    int count = 0;
+    for (int i = 0; i < ids.size(); ++i) {
+        const QString tid = ids[i];
+        if (tid.isEmpty()) continue;
+        m_hub->markThreadRead(tid);
+        setThreadUnread(tid, false);
+        emit threadRead(tid);
+        sendThreadSeenRemote(tid, isGroupHubThread(tid));
+        ++count;
+    }
+    return count;
 }
 
 void ZaloService::sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup)
@@ -122,6 +267,7 @@ bool ZaloService::handleHubAction(const QString &action, const QString &threadId
         m_hub->markThreadRead(threadId);
         setThreadUnread(threadId, false);
         emit threadRead(threadId);
+        sendThreadSeenRemote(threadId);
     } else if (action == QLatin1String(HubIntegration::ACTION_MARK_UNREAD)) {
         m_hub->markThreadUnread(threadId);
         setThreadUnread(threadId, true);

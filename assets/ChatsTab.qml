@@ -23,6 +23,7 @@ NavigationPane {
     property bool refreshCooldown: false
     property variant activeChatPage: null
     property variant activeQmPage: null
+    property variant activeGroupBoardPage: null
 
     attachedObjects: [
         Timer {
@@ -163,13 +164,12 @@ NavigationPane {
 
         attachedObjects: [
             ArrayDataModel { id: friendModel },
-            SystemDialog {
+            ConfirmDialog {
                 id: markAllReadDialog
                 title: "Mark All as Read"
-                body: "This feature is still under development."
-                confirmButton.label: "OK"
-                cancelButton.label: ""
-                cancelButton.enabled: false
+                body: "Mark every unread chat and group as read, here and in the official Zalo app?"
+                confirmLabel: "Mark all"
+                onConfirmed: { zService.markAllThreadsRead(); }
             },
             SystemDialog {
                 id: editStatusDialog
@@ -188,11 +188,26 @@ NavigationPane {
                 id: qmPageDef
                 source: "asset:///QuickMessagesSheet.qml"
             },
+            ComponentDefinition {
+                id: groupBoardPageDef
+                source: "asset:///GroupBoardSheet.qml"
+            },
             Connections {
                 // target starts null and is assigned in openThread(): binding to chatsNav.activeChatPage warns
                 // "Cannot assign to non-existent property" while it is null.
                 id: chatPageConn
                 target: null
+                onGroupBoardRequestedChanged: {
+                    if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.groupBoardRequested) return;
+                    chatsNav.activeChatPage.groupBoardRequested = false;
+                    var boardPage = groupBoardPageDef.createObject();
+                    if (!boardPage) return;
+                    boardPage.groupId = chatsNav.activeChatPage.threadId;
+                    boardPage.groupName = chatsNav.activeChatPage.threadName;
+                    boardPage.groupsNavRef = chatsNav;
+                    chatsNav.activeGroupBoardPage = boardPage;
+                    chatsNav.push(boardPage);
+                }
                 onQmRequestedChanged: {
                     if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.qmRequested) return;
                     chatsNav.activeChatPage.qmRequested = false;

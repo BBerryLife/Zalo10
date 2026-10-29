@@ -477,6 +477,9 @@ void ZaloService::handleWsPushedMessage(QVariantMap m, bool isGroup)
         sendHubNotification(notifTitle, senderName + ": " + msgPreview, threadId, isGrp);
         sendBannerNotification(notifTitle, senderName + ": " + msgPreview, threadId, isGrp);
     }
+    // The user is looking at this thread, so the message is read: tell Zalo's servers too, or the
+    // official app keeps counting it as unread.
+    if (!isSelf && threadId == m_activeThreadId) sendThreadSeenRemote(threadId, out["isGroup"].toBool());
     if (threadId == m_activeThreadId && !msgId.isEmpty()) {
         qint64 newNum = msgId.toLongLong();
         qint64 curNum = m_lastPollMsgId.toLongLong();

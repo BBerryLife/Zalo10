@@ -45,6 +45,32 @@ Page {
             : "No items in this tab.";
     }
 
+    function openPollVote(pollId) {
+        if (!pollId || pollId.length === 0) return;
+        for (var i = 0; i < groupBoardPage.allItems.length; i++) {
+            var it = groupBoardPage.allItems[i];
+            if (it.boardType === "poll" && it.id === pollId) {
+                pollVoteSheet.isDark = app.getDarkTheme();
+                pollVoteSheet.openFor({
+                    pollId: it.id,
+                    pollQuestion: it.question || it.title || "",
+                    pollOptions: it.options || [],
+                    pollAllowMulti: !!it.allowMultiChoices,
+                    pollCreatorId: it.creatorId || "",
+                    pollCreatedTs: it.createTime || 0,
+                    pollNumVote: it.numVote || 0
+                }, groupBoardPage.groupId);
+                return;
+            }
+        }
+    }
+
+    function openPollVoters(pollId) {
+        if (!pollId || pollId.length === 0) return;
+        pollVotersSheet.isDark = app.getDarkTheme();
+        pollVotersSheet.openFor(pollId);
+    }
+
     function creatorLabel(creatorId) {
         if (creatorId && creatorId.length > 0 && creatorId === zService.selfUid) return "Me";
         if (!creatorId || creatorId.length === 0) return "Unknown";
@@ -243,6 +269,8 @@ Page {
         },
         NoteViewerSheet {
             id: noteViewerSheet
-        }
+        },
+        PollVoteSheet { id: pollVoteSheet },
+        PollVotersSheet { id: pollVotersSheet }
     ]
 }

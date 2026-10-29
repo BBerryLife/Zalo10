@@ -39,10 +39,6 @@ Page {
     property bool   groupBoardRequested: false
     property variant boardItems: []
     property variant removedBoardIds: ({})
-    // pollId -> true while a getPollDetail() requested for a board event is in flight.
-    // pollDetailReady also fires for PollVotersSheet lookups; without this guard, opening the
-    // voters list would move the poll card to the bottom.
-    property variant pollBumpPending: ({})
     property variant pendingImageUpdates: ([])
     property bool   pageVisible: false
     property bool   isDark: app.getDarkTheme()
@@ -248,139 +244,6 @@ Page {
         zService.fetchGroupBoard(chatViewPage.threadId, 1, 50);
     }
 
-    function doVotePollOption(pollId, optionId, allowMulti, options) {
-        if (!pollId || pollId.length === 0 || !options) return;
-        var newIds = [];
-        if (allowMulti) {
-            var alreadyVoted = false;
-            for (var i = 0; i < options.length; i++) {
-                if (options[i].optionId === optionId) alreadyVoted = !!options[i].voted;
-            }
-            for (var j = 0; j < options.length; j++) {
-                var thisId = options[j].optionId;
-                var voted = !!options[j].voted;
-                if (thisId === optionId) { if (!alreadyVoted) newIds.push(thisId); }
-                else if (voted) newIds.push(thisId);
-            }
-        } else {
-            var currentlyVotedHere = false;
-            for (var k = 0; k < options.length; k++) {
-                if (options[k].optionId === optionId && options[k].voted) currentlyVotedHere = true;
-            }
-            if (!currentlyVotedHere) newIds = [optionId];
-        }
-        zService.voteGroupPoll(chatViewPage.threadId, pollId, newIds);
-    }
-
-    function openPollVote(pollId) {
-        if (!pollId || pollId.length === 0) return;
-        chatViewPage.flushPendingRebuild();
-        var idx = chatViewPage.findPollRowIndex(pollId);
-        if (idx < 0) return;
-        pollVoteSheet.isDark = chatViewPage.isDark;
-        pollVoteSheet.openFor(msgModel.value(idx), chatViewPage.threadId);
-    }
-    function openPollVoters(pollId) {
-        if (!pollId || pollId.length === 0) return;
-        pollVotersSheet.isDark = chatViewPage.isDark;
-        pollVotersSheet.openFor(pollId);
-    }
-
-    function findPollRowIndex(pollId) {
-        for (var i = 0; i < msgModel.size(); i++) {
-            var r = msgModel.value(i);
-            if (r && r.kind === "poll" && r.pollId === pollId) return i;
-        }
-        return -1;
-    }
-
-    function buildPollRow(item) {
-        return {
-            kind: "poll",
-            msgId: "poll_" + item.id,
-            pollId: item.id,
-            ts: item.createTime || Date.now(),
-            pollQuestion: item.title || "",
-            pollOptions: item.options || [],
-            pollAllowMulti: !!item.allowMultiChoices,
-            pollCreatorId: item.creatorId || "",
-            pollCreatedTs: item.createTime || 0,
-            pollNumVote: item.numVote || 0
-        };
-    }
-
-    function insertPollAtChronological(row) {
-        var insertIdx = msgModel.size();
-        for (var i = 0; i < msgModel.size(); i++) {
-            var r = msgModel.value(i);
-            var rts = r ? (r.latestTs || r.ts || 0) : 0;
-            if (rts && rts > row.ts) { insertIdx = i; break; }
-        }
-        msgModel.insert(insertIdx, row);
-    }
-
-    // Called from groupBoardReady for every poll on the board. Never repositions a known row (a
-    // refresh isn't necessarily a vote); only inserts newly-seen polls at their chronological slot.
-    // bumpPollToBottom() moves a card, and only runs on an explicit vote.
-    // Returns true if a row was inserted.
-    function upsertPollRow(item) {
-        var idx = chatViewPage.findPollRowIndex(item.id);
-        var row = chatViewPage.buildPollRow(item);
-        if (idx >= 0) { msgModel.replace(idx, row); return false; }
-        chatViewPage.insertPollAtChronological(row);
-        return true;
-    }
-
-    function removePollRow(pollId) {
-        var idx = chatViewPage.findPollRowIndex(pollId);
-        if (idx < 0) return false;
-        msgModel.removeAt(idx);
-        return true;
-    }
-
-    function syncPollRows(items) {
-        chatViewPage.flushPendingRebuild();
-        var rem = chatViewPage.removedBoardIds || {};
-        var structural = false;
-        for (var i = 0; i < items.length; i++) {
-            var it = items[i];
-            if (it.boardType !== "poll") continue;
-            if (it.closed === true || rem[String(it.id)] || zService.isLocallyHidden("poll_" + it.id)) {
-                if (chatViewPage.removePollRow(it.id)) structural = true;
-            } else {
-                if (chatViewPage.upsertPollRow(it)) structural = true;
-            }
-        }
-        if (structural) chatViewPage.rebuildGroups();
-    }
-
-    function bumpPollToBottom(pollId, updatedOptions, detail) {
-        if (zService.isLocallyHidden("poll_" + pollId)) return;
-        chatViewPage.flushPendingRebuild();
-        var idx = chatViewPage.findPollRowIndex(pollId);
-        var row;
-        if (idx >= 0) {
-            row = msgModel.value(idx);
-            msgModel.removeAt(idx);
-            row = JSON.parse(JSON.stringify(row));
-        } else if (detail) {
-            row = {
-                kind: "poll", msgId: "poll_" + pollId, pollId: pollId, ts: Date.now(),
-                pollQuestion: detail.question || "", pollAllowMulti: !!detail.allowMultiChoices,
-                pollCreatorId: detail.creator || "",
-                pollCreatedTs: detail.createTime || 0,
-                pollNumVote: detail.numVote || 0
-            };
-        } else {
-            return;
-        }
-        row.pollOptions = updatedOptions || [];
-        if (detail && detail.numVote !== undefined) row.pollNumVote = detail.numVote;
-        row.ts = Date.now();
-        msgModel.append(row);
-        chatViewPage.rebuildGroups(true);
-    }
-
     function highlightMatches(text, query, color) {
         var esc = String(text)
             .replace(/&/g, "&amp;")
@@ -490,7 +353,6 @@ Page {
         chatViewPage.dbIsMineCache = {};
         chatViewPage.msgStates = {};
         chatViewPage.removedBoardIds = {};
-        chatViewPage.pollBumpPending = {};
         chatViewPage.boardItems = [];
     }
 
@@ -506,15 +368,15 @@ Page {
             isDark: chatViewPage.isDark
             horizontalAlignment: HorizontalAlignment.Fill
             onItemTapped: {
+                // Pinned messages jump to the message in the chat. Notes and polls live only in the
+                // Group Board, so open it.
                 if (boardType === "pin") {
                     chatViewPage.jumpToMessage(itemId);
-                } else if (boardType === "poll") {
-                    chatViewPage.jumpToMessage("poll_" + itemId);
                 } else {
-                    groupBoardUnderDevDialog.show();
+                    chatViewPage.groupBoardRequested = true;
                 }
             }
-            onMoreRequested: { groupBoardUnderDevDialog.show(); }
+            onMoreRequested: { chatViewPage.groupBoardRequested = true; }
         }
 
         Container {
@@ -566,10 +428,6 @@ Page {
             // uid -> name lookup built from getmg-v2 currentMems (the wire dName is unreliable).
             // Returns "" if unknown.
             function memberDisplayNameProxy(uid) { return zService.memberDisplayName(uid); }
-            function votePollOptionProxy(pollId, optionId, allowMulti, options) { chatViewPage.doVotePollOption(pollId, optionId, allowMulti, options); }
-            function viewPollVotersProxy(pollId) { chatViewPage.openPollVoters(pollId); }
-            function openPollVoteProxy(pollId) { chatViewPage.openPollVote(pollId); }
-            function openGroupBoardProxy() { groupBoardUnderDevDialog.show(); }
             property string pendingVideoOpenMsgId: ""
             property string videoProgressMsgId: ""
             property int    videoProgressPercent: 0
@@ -842,14 +700,6 @@ Page {
             }
             function doCreateEvent(msgId)  { createEventUnderDevDialog.show(); }
             function doDeleteForMe(msgId, cliMsgId, senderId) {
-                // Poll cards are synthetic rows ("poll_<id>") built from the group board; the server has no
-                // message to delete. Hide locally and remember it, or the next board fetch (on every open)
-                // brings the card back.
-                if ((msgId || "").indexOf("poll_") === 0) {
-                    zService.hideLocalMessage(chatViewPage.threadId, msgId);
-                    chatViewPage.applyLocalDelete(msgId);
-                    return;
-                }
                 zService.deleteMessage(chatViewPage.threadId, chatViewPage.isGroup, msgId, cliMsgId, senderId, true);
             }
             function doDeleteMsg(msgId)    {}
@@ -1028,7 +878,7 @@ Page {
             imageSource: "asset:///images/ChatView/ic_sb_notes.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: chatViewPage.isGroup
-            onTriggered: { groupBoardUnderDevDialog.show(); }
+            onTriggered: { chatViewPage.groupBoardRequested = true; }
         },
         ActionItem {
             title: "Leave group"
@@ -1273,7 +1123,7 @@ Page {
         for (var i = 0; i < size; i++) {
             var v = msgModel.value(i);
             var id = v.msgId || "";
-            if (id.length === 0 || id.indexOf("local_") === 0 || id.indexOf("poll_") === 0) continue;
+            if (id.length === 0 || id.indexOf("local_") === 0) continue;
             return v;
         }
         return null;
@@ -1674,14 +1524,13 @@ Page {
             }
         },
 
-        // Feeds PinboardBar and upserts every poll into msgModel as an inline card. Filtered by groupId
-        // so a stale fetch for a thread we've left can't clobber this one.
+        // Feeds PinboardBar. Polls are NOT rendered in the chat: they only live in the Group Board.
+        // Filtered by groupId so a stale fetch for a thread we've left can't clobber this one.
         Connections {
             target: zService
             onGroupBoardReady: {
                 if (groupId !== chatViewPage.threadId) return;
                 chatViewPage.boardItems = chatViewPage.filterBoardItems(items);
-                chatViewPage.syncPollRows(items);
             }
         },
         Connections {
@@ -1702,16 +1551,6 @@ Page {
         },
         Connections {
             target: zService
-            onVotePollDone: {
-                if (success) {
-                    chatViewPage.loadBoardItems();
-                    chatViewPage.bumpPollToBottom(pollId, updatedOptions, null);
-                }
-            }
-        },
-
-        Connections {
-            target: zService
             onBoardEventOccurred: {
                 if (groupId !== chatViewPage.threadId) return;
                 // isSelf events are NOT skipped: unpinning from the official app on another device of the same
@@ -1724,37 +1563,9 @@ Page {
                     chatViewPage.removedBoardIds = rem;
                     if (removedAct) {
                         chatViewPage.boardItems = chatViewPage.filterBoardItems(chatViewPage.boardItems);
-                        if (chatViewPage.removePollRow(topicId)) chatViewPage.rebuildGroups();
                     }
                 }
                 chatViewPage.loadBoardItems();
-                if (!isSelf && topicType === 3 && topicId.length > 0 && act !== "remove_board" && act !== "remove_topic") {
-                    var pb = chatViewPage.pollBumpPending || {};
-                    pb[topicId] = true;
-                    chatViewPage.pollBumpPending = pb;
-                    zService.getPollDetail(topicId);
-                }
-            }
-        },
-        Connections {
-            target: zService
-            onPollDetailReady: {
-                if (error && error.length > 0) return;
-                // Only react to lookups WE started for a board event: PollVotersSheet fires this signal too,
-                // and viewing voters must not move the card.
-                var pending = chatViewPage.pollBumpPending || {};
-                if (!pending[pollId]) return;
-                delete pending[pollId];
-                chatViewPage.pollBumpPending = pending;
-                if ((chatViewPage.removedBoardIds || {})[pollId]) return;
-                if (detail.closed === true) {
-                    if (chatViewPage.removePollRow(pollId)) chatViewPage.rebuildGroups();
-                    return;
-                }
-                // Never blank a card because a lookup came back without options.
-                var detailOpts = detail.options || [];
-                if (detailOpts.length === 0) return;
-                chatViewPage.bumpPollToBottom(pollId, detailOpts, detail);
             }
         },
         // Realtime reaction from the server (another member, or the WS echo of ours: a harmless
@@ -1813,8 +1624,6 @@ Page {
             }
         },
 
-        PollVotersSheet { id: pollVotersSheet },
-        PollVoteSheet { id: pollVoteSheet },
         ForwardPickerSheet { id: forwardPickerSheet; isDark: chatViewPage.isDark },
         ReactionPickerSheet {
             id: reactionPickerSheet
@@ -1869,12 +1678,6 @@ Page {
         InfoDialog {
             id: videoCallUnderDevDialog
             title: "Video Call"
-            body: "This feature is still under development."
-        },
-
-        InfoDialog {
-            id: groupBoardUnderDevDialog
-            title: "Group Board"
             body: "This feature is still under development."
         },
 

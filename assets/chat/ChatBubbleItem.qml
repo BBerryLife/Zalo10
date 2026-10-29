@@ -120,18 +120,6 @@ CustomListItem {
         : -1
     onBubblePosChanged: {
     }
-    property real pollInnerW: Math.max(0, (rowLUH.layoutFrame.width > 94 ? rowLUH.layoutFrame.width
-                              : (ListItem.view.widthHint > 94 ? ListItem.view.widthHint : 0)) - 40 - ui.du(2.0))
-    function pollFillPct(opts, numVote, i) {
-        if (!opts || !opts[i]) return 0;
-        var base = numVote || 0;
-        if (base <= 0) {
-            for (var k = 0; k < opts.length; k++) base += (opts[k].votes || 0);
-        }
-        if (base <= 0) return 0;
-        var pct = Math.round(100 * (opts[i].votes || 0) / base);
-        return Math.max(0, Math.min(100, pct));
-    }
     property real bubbleMaxW: rowLUH.layoutFrame.width > 94
                                ? (rowLUH.layoutFrame.width - 94)
                                : (ListItem.view.widthHint > 94
@@ -490,8 +478,6 @@ Container {
     // Reaction pills (kind === "message" only): one chip per distinct icon, "+N" for the count
     // (msgList.summarizePills()). 6 fixed slots, no Repeater in this QtQuick version.
     RowReactions {}
-
-    PollCard {}
 
     }
 

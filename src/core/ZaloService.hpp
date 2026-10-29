@@ -124,6 +124,9 @@ public:
     Q_INVOKABLE void clearActiveThread();
     Q_INVOKABLE QStringList unreadThreadIds() const;
     Q_INVOKABLE void setThreadUnread(const QString &threadId, bool unread);
+    // Marks every thread with a yellow pellet as read locally, in the Hub and on Zalo's servers.
+    // Returns how many threads were marked.
+    Q_INVOKABLE int markAllThreadsRead();
     Q_INVOKABLE bool isActiveThread(const QString &threadId) const
         { return !threadId.isEmpty() && m_activeThreadId == threadId; }
     Q_INVOKABLE void blockUser(const QString &userId);
@@ -233,6 +236,13 @@ signals:
     // Exactly one of the two signals is emitted per pickContact(); path has no file:// prefix.
     void contactVcfReady(const QString &threadId, const QString &path);
     void contactPickError(const QString &threadId, const QString &reason);
+
+private:
+    // Tells Zalo's servers a thread was read (zca-js sendSeenEvent + removeUnreadMark), so the
+    // official app shows it as read too. Fire-and-forget.
+    void sendThreadSeenRemote(const QString &threadId, bool isGroupFallback = false);
+    void sendRemoveUnreadMark(const QStringList &userIds, const QStringList &groupIds);
+    bool dbLastIncomingMessage(const QString &threadId, QVariantMap &out) const;
 
 private slots:
     void onPinConversationsDone();

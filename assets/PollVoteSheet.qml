@@ -1,7 +1,7 @@
 import bb.cascades 1.4
 
-// Opened by the Vote button on the poll card in ChatView; the result comes back via
-// zService.votePollDone (handled by ChatView). Vote is disabled until the selection is
+// Opened by the Vote button on a poll in the Group Board; the result comes back via
+// zService.votePollDone (handled by GroupBoardSheet). Vote is disabled until the selection is
 // non-empty AND differs from the user's current vote.
 Sheet {
     id: pollVoteSheet

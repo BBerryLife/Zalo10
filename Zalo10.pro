@@ -146,7 +146,6 @@ OTHER_FILES += \
     assets/chat/ChatReplyPreviewBar.qml \
     assets/chat/ChatThreadEventConnections.qml \
     assets/chat/ChatTitleBar.qml \
-    assets/chat/PollCard.qml \
     assets/chat/RowReactions.qml \
     assets/lists/ChatsListItem.qml \
     assets/lists/ChatsServiceConnections.qml \
