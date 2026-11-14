@@ -841,6 +841,22 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/utils/json/ZaloMessageJson.hpp)
 }
 
+INCLUDEPATH += $$quote($$BASEDIR/src/third_party/webp/include/webp) \
+    $$quote($$BASEDIR/src/core) \
+    $$quote($$BASEDIR/src/third_party/xz) \
+    $$quote($$BASEDIR/src/core/contacts) \
+    $$quote($$BASEDIR/src/core/db) \
+    $$quote($$BASEDIR/src/ui) \
+    $$quote($$BASEDIR/src) \
+    $$quote($$BASEDIR/src/core/websocket) \
+    $$quote($$BASEDIR/src/app) \
+    $$quote($$BASEDIR/src/core/network) \
+    $$quote($$BASEDIR/src/utils/json) \
+    $$quote($$BASEDIR/src/core/auth) \
+    $$quote($$BASEDIR/src/core/messages) \
+    $$quote($$BASEDIR/src/utils) \
+    $$quote($$BASEDIR/src/core/phonesync)
+
 CONFIG += precompile_header
 
 PRECOMPILED_HEADER = $$quote($$BASEDIR/precompiled.h)

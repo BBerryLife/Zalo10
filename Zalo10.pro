@@ -14,7 +14,17 @@ LIBS += -lunifieddatasourcec
 # -lbbcascadespickers: ContactPicker needs the real header and an explicit link.
 LIBS += -lbbcascadespickers
 LIBS += -lQtNetwork -lQtScript -lQtGui
-LIBS += -lssl -lcrypto
+# Bundled OpenSSL copied from bbcord (third_party/prebuilt is gitignored there, copy it by hand).
+# Static link; --exclude-libs keeps its symbols from clashing with the system libssl that
+# libQtNetwork loads. Simulator keeps the system OpenSSL.
+device {
+    INCLUDEPATH += $$PWD/third_party/prebuilt/device/openssl/include
+    LIBS += $$PWD/third_party/prebuilt/device/openssl/lib/libssl.a
+    LIBS += $$PWD/third_party/prebuilt/device/openssl/lib/libcrypto.a
+    QMAKE_LFLAGS += -Wl,--exclude-libs,ALL
+} else {
+    LIBS += -lssl -lcrypto
+}
 LIBS += -lsocket   # POSIX sockets used directly by PhoneSyncCore::httpsGet
 LIBS += -lsqlite3
 
