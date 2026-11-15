@@ -108,7 +108,7 @@ bool ZaloService::wsTlsHandshakeStep()
     if (!m_webSocket) return true;
 
     if (!m_wsSslCtx) {
-        const SSL_METHOD *method = TLSv1_2_client_method();
+        const SSL_METHOD *method = TLS_client_method();
         if (!method) {
             disconnectWebSocket();
             m_wsAdvanceUrlOnReconnect = true;
@@ -125,6 +125,7 @@ bool ZaloService::wsTlsHandshakeStep()
                 m_wsReconnectTimer->start(wsNextReconnectDelayMs());
             return true;
         }
+        SSL_CTX_set_min_proto_version(m_wsSslCtx, TLS1_2_VERSION);
         // TODO: the certificate chain is not verified (same as the old unconditional
         // ignoreSslErrors()); tighten once the WS is stable.
         SSL_CTX_set_verify(m_wsSslCtx, SSL_VERIFY_NONE, 0);

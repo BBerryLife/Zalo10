@@ -51,7 +51,10 @@ struct PsPart {
     bool          isGroup;
     QList<PsRow>  rows;
     QString       threadLong;
-    PsPart() : isGroup(false) {}
+    QString       schema;      // diagnostics: tables(columns) found in the part database
+    int           apiRows;     // diagnostics: rows in ApiSafe
+    QSet<QString> longIds;     // diagnostics: 17-19 digit numbers seen in message contents
+    PsPart() : isGroup(false), apiRows(0) {}
 };
 
 class PsDecodeThread : public QThread {
@@ -61,8 +64,11 @@ public:
     QString       tmpDir;
     QList<PsPart> parts;
     QString       err;
+    QString       tocPreview;  // diagnostics: sanitized start of the ZDB table of contents
+    QString       apiSample;   // diagnostics: masked sample of one ApiSafe row
+    qint64        tocSize;
     bool          ok;
-    PsDecodeThread() : ok(false) {}
+    PsDecodeThread() : tocSize(0), ok(false) {}
 
 protected:
     void run()
@@ -82,6 +88,18 @@ protected:
         size_t xzOff = 0;
         if (!xzDecodeAll(plain, payload, xzOff, e)) { err = QString::fromUtf8(e.c_str()); return; }
         std::vector<std::string> names = parseTocNames(plain, xzOff);
+        {
+            // Digits are masked as '#', other non-printable bytes as '.', so no ids end up in the log.
+            size_t n = xzOff < plain.size() ? xzOff : plain.size();
+            tocSize = (qint64)n;
+            if (n > 1200) n = 1200;
+            QString pv;
+            for (size_t k = 0; k < n; ++k) {
+                unsigned char c = (unsigned char)plain[k];
+                pv += (c >= '0' && c <= '9') ? QChar('#') : ((c >= 32 && c < 127) ? QChar((char)c) : QChar('.'));
+            }
+            tocPreview = pv;
+        }
         std::vector<Span> spans = splitSqlite(payload);
         plain.clear();
 
@@ -103,6 +121,54 @@ protected:
 
             sqlite3 *db = 0;
             if (sqlite3_open_v2(path.toUtf8().constData(), &db, SQLITE_OPEN_READONLY, 0) == SQLITE_OK) {
+                {
+                    QStringList tabs;
+                    sqlite3_stmt *ss = 0;
+                    if (sqlite3_prepare_v2(db, "SELECT name FROM sqlite_master WHERE type='table'", -1, &ss, 0) == SQLITE_OK) {
+                        while (sqlite3_step(ss) == SQLITE_ROW) {
+                            const unsigned char *c = sqlite3_column_text(ss, 0);
+                            if (c) tabs << QString::fromUtf8((const char *)c);
+                        }
+                        sqlite3_finalize(ss);
+                    }
+                    for (int t = 0; t < tabs.size(); ++t) {
+                        bool safe = !tabs[t].isEmpty();
+                        for (int k = 0; k < tabs[t].size(); ++k)
+                            if (!(tabs[t][k].isLetterOrNumber() || tabs[t][k] == QChar('_'))) safe = false;
+                        QStringList cols;
+                        if (safe) {
+                            QString q = QString("PRAGMA table_info(%1)").arg(tabs[t]);
+                            if (sqlite3_prepare_v2(db, q.toUtf8().constData(), -1, &ss, 0) == SQLITE_OK) {
+                                while (sqlite3_step(ss) == SQLITE_ROW) {
+                                    const unsigned char *c = sqlite3_column_text(ss, 1);
+                                    if (c) cols << QString::fromUtf8((const char *)c);
+                                }
+                                sqlite3_finalize(ss);
+                            }
+                        }
+                        part.schema += tabs[t] + "(" + cols.join(",") + ") ";
+                    }
+                    if (tabs.contains("ApiSafe")) {
+                        if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM ApiSafe", -1, &ss, 0) == SQLITE_OK) {
+                            if (sqlite3_step(ss) == SQLITE_ROW) part.apiRows = sqlite3_column_int(ss, 0);
+                            sqlite3_finalize(ss);
+                        }
+                        if (part.apiRows > 0 && apiSample.isEmpty()
+                            && sqlite3_prepare_v2(db, "SELECT Params, Result FROM ApiSafe LIMIT 1", -1, &ss, 0) == SQLITE_OK) {
+                            if (sqlite3_step(ss) == SQLITE_ROW) {
+                                for (int col = 0; col < 2; ++col) {
+                                    const unsigned char *c = sqlite3_column_text(ss, col);
+                                    QString v = c ? QString::fromUtf8((const char *)c) : QString();
+                                    if (v.size() > 200) v = v.left(200);
+                                    QString m;
+                                    for (int k = 0; k < v.size(); ++k) m += v[k].isDigit() ? QChar('#') : v[k];
+                                    apiSample += (col ? " | Result: " : "Params: ") + m;
+                                }
+                            }
+                            sqlite3_finalize(ss);
+                        }
+                    }
+                }
                 sqlite3_stmt *st = 0;
                 const char *sql = "SELECT SenderId, CliMsgId, GlbMsgId, MsgType, TimeStamp, MsgContent FROM ChatContent";
                 if (sqlite3_prepare_v2(db, sql, -1, &st, 0) == SQLITE_OK) {
@@ -115,6 +181,14 @@ protected:
                         r.ts      = (qint64)sqlite3_column_int64(st, 4);
                         const unsigned char *c = sqlite3_column_text(st, 5);
                         r.content = c ? QString::fromUtf8((const char *)c) : QString();
+                        if (part.longIds.size() < 200) {
+                            int run = 0;
+                            for (int k = 0; k <= r.content.size(); ++k) {
+                                if (k < r.content.size() && r.content[k].isDigit()) { ++run; continue; }
+                                if (run >= 17 && run <= 19) part.longIds.insert(r.content.mid(k - run, run));
+                                run = 0;
+                            }
+                        }
                         part.rows.append(r);
                     }
                     sqlite3_finalize(st);
@@ -201,12 +275,13 @@ struct PhoneSyncRuntime {
     int             dlVariant;
     int             dlRedirects;
     int             dlRound;
+    int             dlShort;      // retries after a download shorter than the announced size
     bool            rawTried;
     PsRawHttpsThread *rawThread;
 
     PhoneSyncRuntime() : rsaThread(0), decodeThread(0), rsa(0), pullReply(0), dlReply(0), timer(0), tick(0),
         stage(0), cancelled(false), phase(0), pi(0), ri(0), totalRows(0), doneRows(0), ins(0), find(0), imported(0),
-        dlVariant(0), dlRedirects(0), dlRound(0), rawTried(false), rawThread(0) {}
+        dlVariant(0), dlRedirects(0), dlRound(0), dlShort(0), rawTried(false), rawThread(0) {}
 };
 
 static inline void psCleanup(PhoneSyncRuntime *rt, sqlite3 *db)

@@ -295,6 +295,17 @@ void ZaloService::onPhoneSyncDownloadDone()
     QByteArray encoding;
     for (int h = 0; h < hdrs.size(); ++h)
         if (hdrs[h].first.toLower() == "content-encoding") encoding = hdrs[h].second.toLower();
+    {
+        // A download shorter than the announced size gives "truncated XZ stream" later: retry instead.
+        qint64 expected = rt->timer->property("fileSize").toLongLong();
+        qDebug() << "[PhoneSync] downloaded" << data.size() << "bytes, announced" << expected;
+        if (expected > 0 && data.size() < expected && encoding.isEmpty() && rt->dlShort < 3) {
+            rt->dlShort++;
+            qWarning() << "[PhoneSync] download shorter than announced, retry" << rt->dlShort;
+            QTimer::singleShot(2000, this, SLOT(onPhoneSyncRetryDownload()));
+            return;
+        }
+    }
     if (encoding.contains("gzip") || encoding.contains("deflate")) {
         QByteArray plainData;
         if (psInflate(data, plainData)) data = plainData;
@@ -358,7 +369,20 @@ void ZaloService::onPhoneSyncRawDone()
     th->deleteLater();
     rt->rawThread = 0;
     if (rt->cancelled) return;
-    if (ok) { phoneSyncDownloadSucceeded(body); return; }
+    if (ok) {
+        // A body shorter than the announced size gives "truncated XZ stream" later: download again.
+        qint64 expected = rt->timer->property("fileSize").toLongLong();
+        qDebug() << "[PhoneSync] raw download" << body.size() << "bytes, announced" << expected << info;
+        if (expected > 0 && body.size() < expected && rt->dlShort < 3) {
+            rt->dlShort++;
+            qWarning() << "[PhoneSync] raw download shorter than announced, retry" << rt->dlShort;
+            rt->rawTried = false;
+            phoneSyncDownloadFailed(0);
+            return;
+        }
+        phoneSyncDownloadSucceeded(body);
+        return;
+    }
     phoneSyncDownloadFailed(status);
 }
 
@@ -369,6 +393,9 @@ void ZaloService::onPhoneSyncDecodeDone()
     PsDecodeThread *th = rt->decodeThread;
     bool ok = th->ok;
     QString err = th->err;
+    QString tocPreview = th->tocPreview;
+    QString apiSample = th->apiSample;
+    qint64 tocSize = th->tocSize;
     rt->parts = th->parts;
     th->deleteLater();
     rt->decodeThread = 0;
@@ -378,8 +405,21 @@ void ZaloService::onPhoneSyncDecodeDone()
     qint64 total = 0;
     for (int i = 0; i < rt->parts.size(); ++i) total += rt->parts[i].rows.size();
     rt->totalRows = total;
+
+    // Diagnostics: is there anything besides ChatContent that could identify a conversation?
+    qDebug() << "[PhoneSync] ZDB toc size" << tocSize << "preview:" << tocPreview;
+    QMap<QString, int> schemas;
+    for (int i = 0; i < rt->parts.size(); ++i) schemas[rt->parts[i].schema]++;
+    for (QMap<QString, int>::const_iterator it = schemas.constBegin(); it != schemas.constEnd(); ++it)
+        qDebug() << "[PhoneSync] part schema x" << it.value() << ":" << it.key();
+
+    int apiRowsTotal = 0;
+    for (int i = 0; i < rt->parts.size(); ++i) apiRowsTotal += rt->parts[i].apiRows;
+    qDebug() << "[PhoneSync] ApiSafe rows in total:" << apiRowsTotal << "sample:" << apiSample;
+
     rt->stage = 5;
     rt->phase = 0; rt->pi = 0; rt->ri = 0; rt->doneRows = 0;
     emit phoneSyncProgress(55, QString::fromUtf8("Matching conversations…"));
     rt->tick->start();
 }
+

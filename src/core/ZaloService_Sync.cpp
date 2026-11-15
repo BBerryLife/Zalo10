@@ -18,8 +18,6 @@ const int SYNC_MAX_MSGS      = 8000;
 const int SYNC_PAGE_DELAY_MS = 400;
 const int SYNC_TIMEOUT_MS    = 15000;
 const int SYNC_RESTART_GAP_MS = 120000;
-const int GROUP_SYNC_COUNT   = 100;
-const int GROUP_SYNC_DELAY_MS = 250;
 }
 
 void ZaloService::fetchPinConversations()
@@ -105,7 +103,7 @@ bool ZaloService::dbMessageExists(const QString &msgId) const
 
 void ZaloService::startHistorySync()
 {
-    if (!m_loggedIn || m_sync.active) return;
+    if (!m_loggedIn || m_sync.active || m_sync.groupActive) return;
     if (!m_wsConnected || !m_webSocket || m_wsCipherKey.isEmpty()) {
         return;
     }
@@ -169,6 +167,16 @@ void ZaloService::onSyncNextPage()
 
 void ZaloService::onSyncWatchdog()
 {
+    if (m_sync.groupActive && m_sync.groupAwaiting) {
+        if (m_sync.groupRetries < 2 && m_wsConnected) {
+            m_sync.groupRetries++;
+            qDebug() << "[Sync] no group response in" << SYNC_TIMEOUT_MS << "ms, retry" << m_sync.groupRetries;
+            sendGroupSyncPage();
+            return;
+        }
+        finishGroupSync("timeout");
+        return;
+    }
     if (!m_sync.active || !m_sync.awaiting) return;
     if (m_sync.retries < 2 && m_wsConnected) {
         m_sync.retries++;
@@ -253,53 +261,112 @@ void ZaloService::startGroupSync()
     if (m_sync.active || m_sync.groupActive || m_sync.groupRan || !m_loggedIn) return;
     if (m_groupNames.isEmpty()) return;
 
-    m_sync.groupQueue.clear();
-    QMap<QString, QString>::const_iterator it = m_groupNames.constBegin();
-    for (; it != m_groupNames.constEnd(); ++it) m_sync.groupQueue << it.key();
-    m_sync.groupActive = true;
-    m_sync.groupDone   = 0;
-    m_sync.groupMsgs   = 0;
-    onSyncGroupNext();
+    QSettings s("BerryLife", "Zalo10");
+    QString cursor = s.value("sync/grpCursor_" + m_uid, "0").toString();
+    bool dbEmpty = true;
+    if (m_db) {
+        sqlite3_stmt *stmt = 0;
+        if (sqlite3_prepare_v2(m_db, "SELECT 1 FROM messages LIMIT 1", -1, &stmt, 0) == SQLITE_OK) {
+            dbEmpty = (sqlite3_step(stmt) != SQLITE_ROW);
+            sqlite3_finalize(stmt);
+        }
+    }
+    if (dbEmpty) cursor = "0";
+
+    m_sync.groupActive   = true;
+    m_sync.groupAwaiting = false;
+    m_sync.groupPages    = 0;
+    m_sync.groupMsgs     = 0;
+    m_sync.groupRetries  = 0;
+    m_sync.groupCursor   = cursor;
+    sendGroupSyncPage();
+}
+
+// Group history is paged over WS cmd=511 (same cursor scheme as the DM cmd=510 sync); the reply
+// arrives in handleWsGroupHistoryReply() -> handleGroupSyncPage().
+void ZaloService::sendGroupSyncPage()
+{
+    if (!m_sync.groupActive) return;
+    if (!m_wsConnected || !m_webSocket) {
+        finishGroupSync("websocket not connected");
+        return;
+    }
+    QString req = QString("{\"first\":true,\"lastId\":\"%1\",\"preIds\":[]}").arg(m_sync.groupCursor);
+    m_sync.groupAwaiting = true;
+    sendWsRequest(511, 1, req);
+    if (m_sync.watchdog) m_sync.watchdog->start(SYNC_TIMEOUT_MS);
 }
 
 void ZaloService::onSyncGroupNext()
 {
-    if (!m_sync.groupActive) return;
-    if (!m_loggedIn || m_sync.groupQueue.isEmpty()) {
-        finishGroupSync();
+    if (m_sync.groupActive && !m_sync.groupAwaiting) sendGroupSyncPage();
+}
+
+// Groups the raw messages by group id (idTo) and saves each group's batch. openGid is the group
+// whose chat is open/requested: its batch is parsed with the interactive side effects and always
+// emitted; other groups are saved quietly (and emitted only if they are the active thread).
+void ZaloService::saveGroupBuckets(const QVariantList &rawMsgs, const QString &openGid)
+{
+    QMap<QString, QVariantList> byGroup;
+    for (int i = 0; i < rawMsgs.size(); ++i) {
+        QVariantMap m = rawMsgs[i].toMap();
+        QString gid = m["idTo"].toString();
+        if (gid.isEmpty() || gid == "0") continue;
+        byGroup[gid].append(m);
+    }
+    QMap<QString, QVariantList>::const_iterator it = byGroup.constBegin();
+    for (; it != byGroup.constEnd(); ++it) {
+        bool open = (!openGid.isEmpty() && it.key() == openGid);
+        QVariantList msgs = saveGroupHistory(it.value(), it.key(), !open);
+        if (open || it.key() == m_activeThreadId)
+            emit messagesReady(it.key(), msgs);
+    }
+    if (!openGid.isEmpty() && !byGroup.contains(openGid))
+        emit messagesReady(openGid, QVariantList());
+}
+
+void ZaloService::handleGroupSyncPage(const QVariantList &rawMsgs)
+{
+    m_sync.groupAwaiting = false;
+    if (m_sync.watchdog) m_sync.watchdog->stop();
+    m_sync.groupRetries = 0;
+    m_sync.groupPages++;
+
+    qint64 maxId = 0;
+    for (int i = 0; i < rawMsgs.size(); ++i) {
+        qint64 num = rawMsgs[i].toMap()["msgId"].toString().toLongLong();
+        if (num > maxId) maxId = num;
+    }
+    saveGroupBuckets(rawMsgs, QString());
+    m_sync.groupMsgs += rawMsgs.size();
+
+    if (rawMsgs.isEmpty()) {
+        finishGroupSync("caught up (empty page)");
         return;
     }
-    QString gid = m_sync.groupQueue.takeFirst();
-    m_sync.groupDone++;
-    fetchGroupHistorySync(gid);
+    if (maxId <= m_sync.groupCursor.toLongLong()) {
+        finishGroupSync("no forward progress");
+        return;
+    }
+    m_sync.groupCursor = QString::number(maxId);
+    QSettings s("BerryLife", "Zalo10");
+    s.setValue("sync/grpCursor_" + m_uid, m_sync.groupCursor);
+
+    if (m_sync.groupPages >= SYNC_MAX_PAGES || m_sync.groupMsgs >= SYNC_MAX_MSGS) {
+        finishGroupSync("per-run cap reached (will resume next launch)");
+        return;
+    }
+    QTimer::singleShot(SYNC_PAGE_DELAY_MS, this, SLOT(onSyncGroupNext()));
 }
 
-void ZaloService::fetchGroupHistorySync(const QString &groupId)
+void ZaloService::finishGroupSync(const QString &why)
 {
-    QVariantMap innerParams;
-    innerParams["grid"]  = groupId;
-    innerParams["count"] = GROUP_SYNC_COUNT;
-
-    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
-    QString urlStr = m_groupServiceUrl + "/api/group/history"
-                   + "?zpw_ver=" + QString::number(API_VERSION)
-                   + "&zpw_type=" + QString::number(API_TYPE)
-                   + "&params=" + QUrl::toPercentEncoding(encParams);
-
-    QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
-    reply->setProperty("threadId",  groupId);
-    reply->setProperty("isGroup",   true);
-    reply->setProperty("syncGroup", true);
-    connect(reply, SIGNAL(finished()), this, SLOT(onFetchMsgDone()));
-}
-
-void ZaloService::finishGroupSync()
-{
-    qDebug() << "[Sync] group sync done: groups=" << m_sync.groupDone
+    qDebug() << "[Sync] group sync done:" << why << "pages=" << m_sync.groupPages
              << "msgs=" << m_sync.groupMsgs;
     int total = m_sync.groupMsgs;
-    m_sync.groupActive = false;
-    m_sync.groupRan    = true;
-    m_sync.groupQueue.clear();
+    m_sync.groupActive   = false;
+    m_sync.groupAwaiting = false;
+    m_sync.groupRan      = true;
+    if (m_sync.watchdog) m_sync.watchdog->stop();
     if (total > 0) emit historySynced(total);
 }

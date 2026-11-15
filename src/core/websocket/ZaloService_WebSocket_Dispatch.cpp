@@ -23,6 +23,10 @@ void ZaloService::handleWsMessage(int , const QByteArray &payload)
         handleWsHistoryReply(data);
     }
 
+    if (cmd == 511 && subCmd == 1) {
+        handleWsGroupHistoryReply(data);
+    }
+
     if (cmd == 601 && subCmd == 0) {
         handleWsGroupEvent(data);
     }

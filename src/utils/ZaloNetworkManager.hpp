@@ -17,9 +17,10 @@
 #include "core/PhoneSyncCore.hpp"
 
 // BB10's Qt SSL stack fails the TLS handshake with some Zalo API hosts (SslHandshakeFailedError)
-// while plain OpenSSL with TLS 1.2 connects fine. Requests to *.zalo.me and *.zaloapp.com go through Qt as
-// usual; only when the handshake fails is the same request replayed over OpenSSL, so callers
-// keep using the normal QNetworkReply API.
+// while the bundled OpenSSL (TLS 1.2/1.3) connects fine. Requests to *.zalo.me and *.zaloapp.com
+// go through Qt first; when the handshake fails the request is replayed over OpenSSL and the host
+// is remembered, so later requests to it skip Qt and go straight to OpenSSL. Callers keep using
+// the normal QNetworkReply API.
 
 class ZaloRawHttpsThread : public QThread {
 public:
@@ -69,12 +70,19 @@ public:
         setRequest(req);
         setUrl(req.url());
         setOpenMode(QIODevice::ReadOnly);
+        if (!real) return;
         real->setParent(this);
         connect(real, SIGNAL(readyRead()), this, SLOT(onRealReadyRead()));
         connect(real, SIGNAL(finished()), this, SLOT(onRealFinished()));
         connect(real, SIGNAL(downloadProgress(qint64,qint64)), this, SIGNAL(downloadProgress(qint64,qint64)));
         connect(real, SIGNAL(uploadProgress(qint64,qint64)), this, SIGNAL(uploadProgress(qint64,qint64)));
     }
+
+    // Hosts whose Qt handshake already failed this run.
+    static QSet<QString> &rawHosts() { static QSet<QString> s; return s; }
+
+    // Skips Qt and sends the request over OpenSSL right away (m_real is null).
+    void startRawOnly() { startRaw(); }
 
     void abort()
     {
@@ -111,6 +119,7 @@ private slots:
         if (r->error() == QNetworkReply::SslHandshakeFailedError && !m_aborted && m_buf.isEmpty()) {
             m_real = 0;
             r->deleteLater();
+            rawHosts().insert(url().host());
             startRaw();
             return;
         }
@@ -140,10 +149,15 @@ private slots:
         if (!t) return;
         if (m_aborted) { t->deleteLater(); finish(QNetworkReply::OperationCanceledError, "Operation canceled"); return; }
         if (!t->ok) {
-            qWarning() << "[Net] raw TLS 1.2 retry failed for" << url().host() << t->info;
+            qWarning() << "[Net] OpenSSL retry failed for" << url().host() << t->info;
             t->deleteLater();
             finish(QNetworkReply::SslHandshakeFailedError, "SSL handshake failed");
             return;
+        }
+        static QSet<QString> okLogged;
+        if (!okLogged.contains(url().host())) {
+            okLogged.insert(url().host());
+            qDebug() << "[Net] OpenSSL OK for" << url().host() << t->info;
         }
         parseRawResponse(t->respHead, t->status);
         m_buf += t->respBody;
@@ -181,7 +195,7 @@ private:
         static QSet<QString> logged;
         if (!logged.contains(url().host())) {
             logged.insert(url().host());
-            qDebug() << "[Net] TLS handshake failed for" << url().host() << "- retrying over raw TLS 1.2";
+            qDebug() << "[Net] using OpenSSL for" << url().host();
         }
         const QNetworkRequest &req = request();
         m_raw = new ZaloRawHttpsThread;
@@ -252,6 +266,14 @@ protected:
     QNetworkReply *createRequest(Operation op, const QNetworkRequest &req, QIODevice *outgoing)
     {
         const QUrl u = req.url();
+        if (u.host().isEmpty()) {
+            // Locates the source of Qt's "Invalid URL:" warning: path only (no query/params).
+            static QSet<QString> seenEmpty;
+            if (!seenEmpty.contains(u.path()) && seenEmpty.size() < 20) {
+                seenEmpty.insert(u.path());
+                qWarning() << "[Net] request with empty host, path:" << u.path() << "scheme:" << u.scheme();
+            }
+        }
         bool wrap = (op == GetOperation || op == PostOperation) && u.scheme() == "https"
                  && (u.host().endsWith(".zalo.me") || u.host() == "zalo.me"
                      || u.host().endsWith(".zaloapp.com") || u.host() == "zaloapp.com");
@@ -264,6 +286,14 @@ protected:
                 body = outgoing->readAll();
                 outgoing->seek(pos);
             }
+        }
+        // Every *.zalo.me / *.zaloapp.com host has failed the Qt handshake so far (BB10 Qt4 stack),
+        // so skip Qt entirely. Set to false to go back to "try Qt first, remember failures".
+        static const bool kRawFirst = true;
+        if (wrap && (kRawFirst || ZaloFallbackReply::rawHosts().contains(u.host()))) {
+            ZaloFallbackReply *r = new ZaloFallbackReply(op, req, body, 0, cookieJar(), this);
+            r->startRawOnly();
+            return r;
         }
         QNetworkReply *real = QNetworkAccessManager::createRequest(op, req, outgoing);
         if (!wrap) return real;

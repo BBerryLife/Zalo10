@@ -65,6 +65,45 @@ void ZaloService::onPhoneSyncTick()
         rt->senderLong[rt->meShort] = m_uid;
         rt->senderName[rt->meShort] = rt->myName;
 
+        // Phone ids vs Zalo ids: log only lengths/flags (never the ids) to see whether they are related.
+        {
+            qulonglong u = m_uid.toULongLong();
+            qDebug() << "[PhoneSync] own id: phone" << rt->meShort.size() << "digits, zalo" << m_uid.size()
+                     << "digits, equal=" << (rt->meShort == m_uid) << "suffix=" << m_uid.endsWith(rt->meShort)
+                     << "low32=" << ((qulonglong)(u & 0xFFFFFFFFULL) == rt->meShort.toULongLong());
+            QMap<int, int> partLen, friendLen;
+            QSet<QString> known;
+            for (int i = 0; i < m_friendUids.size(); ++i) { known.insert(m_friendUids[i]); friendLen[m_friendUids[i].size()]++; }
+            for (QMap<QString, QString>::const_iterator it = m_groupNames.constBegin(); it != m_groupNames.constEnd(); ++it) known.insert(it.key());
+            int direct = 0;
+            for (int i = 0; i < rt->parts.size(); ++i) {
+                PsPart &p = rt->parts[i];
+                partLen[p.shortId.size()]++;
+                if (known.contains(p.shortId)) {
+                    direct++;
+                    if (!rt->threadLong.contains(psKey(p))) rt->threadLong[psKey(p)] = p.shortId;
+                }
+            }
+            QString pl, fl;
+            for (QMap<int,int>::const_iterator it = partLen.constBegin(); it != partLen.constEnd(); ++it)
+                pl += QString("%1:%2 ").arg(it.key()).arg(it.value());
+            for (QMap<int,int>::const_iterator it = friendLen.constBegin(); it != friendLen.constEnd(); ++it)
+                fl += QString("%1:%2 ").arg(it.key()).arg(it.value());
+            qDebug() << "[PhoneSync] id lengths (len:count) parts:" << pl << "friends:" << fl
+                     << "groups:" << m_groupNames.size() << "directMatches=" << direct;
+            int partsWithLong = 0, partsHit = 0, totalHit = 0;
+            for (int i = 0; i < rt->parts.size(); ++i) {
+                const PsPart &pp = rt->parts[i];
+                if (!pp.longIds.isEmpty()) partsWithLong++;
+                int h = 0;
+                for (QSet<QString>::const_iterator it = pp.longIds.constBegin(); it != pp.longIds.constEnd(); ++it)
+                    if (known.contains(*it)) h++;
+                if (h) { partsHit++; totalHit += h; }
+            }
+            qDebug() << "[PhoneSync] long ids inside message contents: parts with any=" << partsWithLong
+                     << "parts mentioning a known friend/group=" << partsHit << "hits=" << totalHit;
+        }
+
         sqlite3_prepare_v2(m_db, "SELECT threadId, senderId, dName, isMine FROM messages WHERE msgId=?", -1, &rt->find, 0);
         rt->phase = 1; rt->pi = 0; rt->ri = 0;
     }

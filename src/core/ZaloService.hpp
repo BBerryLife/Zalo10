@@ -292,7 +292,6 @@ private slots:
     void onAcceptFriendDone();
     void onRejectFriendDone();
     void onGroupDetailsDone();
-    void onFetchMsgDone();
     void onFetchPhotoDetailDone();
     void onSendMsgDone();
     void onSendMsgQuoteDone();
@@ -404,7 +403,7 @@ private:
 
     // WebSocket TLS is built by hand: QSslSocket on BB10 always fails the handshake (error:1407742E)
     // and Qt 4.8's QSsl has no TlsV1_1/1_2. m_webSocket is a plain QTcpSocket with TLS run through
-    // the OpenSSL C API (TLSv1_2_client_method()). See wsTlsHandshakeStep()/wsWriteRaw()/wsReadAvailable().
+    // the OpenSSL C API (TLS_client_method(), min TLS 1.2). See wsTlsHandshakeStep()/wsWriteRaw()/wsReadAvailable().
     QTcpSocket *m_webSocket;
     SSL_CTX    *m_wsSslCtx;
     SSL        *m_wsSsl;
@@ -435,6 +434,7 @@ private:
     void handleWsChatPush(qint32 cmd, const QByteArray &data);
     void handleWsPushedMessage(QVariantMap m, bool isGroup);
     void handleWsHistoryReply(const QByteArray &data);
+    void handleWsGroupHistoryReply(const QByteArray &data);
     void handleWsGroupEvent(const QByteArray &data);
     void handleWsReceipts(qint32 cmd, const QByteArray &data);
     void handleWsReactions(const QByteArray &data);
@@ -503,11 +503,12 @@ private:
     QMap<QString, QString> m_memberNames;
     QSet<QString> m_seenMsgIds;
     QString m_pending510Toid;
+    QString m_pending511Gid;
 
     struct HistorySyncState {
         HistorySyncState()
             : active(false), awaiting(false), pages(0), totalMsgs(0), retries(0),
-              groupActive(false), groupRan(false), groupDone(0), groupMsgs(0),
+              groupActive(false), groupAwaiting(false), groupRan(false), groupPages(0), groupRetries(0), groupMsgs(0),
               lastStartMs(0), watchdog(0) {}
         bool    active;
         bool    awaiting;
@@ -517,10 +518,12 @@ private:
         QString cursor;
         QSet<QString> threads;
         bool    groupActive;
+        bool    groupAwaiting;
         bool    groupRan;
-        int     groupDone;
+        int     groupPages;
+        int     groupRetries;
         int     groupMsgs;
-        QStringList groupQueue;
+        QString groupCursor;
         qint64  lastStartMs;
         QTimer *watchdog;
     };
@@ -529,6 +532,7 @@ private:
     struct PsHandle { PsHandle() : p(0) {} PhoneSyncRuntime *p; };
     PsHandle m_psh;
     void handlePhoneSyncEvent(const QString &act, const QVariantMap &data);
+    QStringList m_friendUids;
     void phoneSyncBeginDownload(const QVariantMap &d);
     void phoneSyncStartDownload();
     void phoneSyncDownloadSucceeded(const QByteArray &data);
@@ -540,8 +544,11 @@ private:
     void sendSyncPage();
     void finishDmSync(const QString &why);
     void startGroupSync();
-    void fetchGroupHistorySync(const QString &groupId);
-    void finishGroupSync();
+    void sendGroupSyncPage();
+    void handleGroupSyncPage(const QVariantList &rawMsgs);
+    void saveGroupBuckets(const QVariantList &rawMsgs, const QString &openGid);
+    QVariantList saveGroupHistory(const QVariantList &rawMsgs, const QString &tid, bool syncGroup);
+    void finishGroupSync(const QString &why);
     bool dbMessageExists(const QString &msgId) const;
     QString m_conversationServiceUrl;
     QMap<QString, QString> m_pendingPhotoMsgIds;

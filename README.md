@@ -50,7 +50,7 @@ Zalo10 stands on the shoulders of these projects:
 | [zca-js](https://github.com/RFS-ADRENO/zca-js) by RFS-ADRENO | Reference for the Zalo Web protocol (API endpoints, request signing and encryption, WebSocket frames). Not bundled: its logic is reimplemented in C++/Qt. | MIT |
 | [XZ Embedded](https://tukaani.org/xz/embedded.html) | Decompressing the XZ stream in phone message sync (bundled in `src/third_party/xz`) | 0BSD |
 | [libwebp](https://github.com/webmproject/libwebp) | Decoding WebP stickers (decoder-only static build in `src/third_party/webp`) | BSD-3-Clause |
-| [OpenSSL](https://www.openssl.org/) | AES/RSA/MD5 and the TLS 1.2 connections (WebSocket, phone sync), from the BB10 NDK | OpenSSL License |
+| [OpenSSL](https://www.openssl.org/) | AES/RSA/MD5 and the TLS 1.2/1.3 connections (API, WebSocket, phone sync); OpenSSL 1.1.1w linked statically from `src/third_party/prebuilt` | OpenSSL License |
 | [SQLite](https://www.sqlite.org/) | Local message and contact database, from the BB10 NDK | Public domain |
 | [zlib](https://zlib.net/) | Inflating compressed WebSocket frames and HTTP responses | zlib License |
 | [Qt 4.8](https://doc.qt.io/archives/qt-4.8/) and the BlackBerry 10 Cascades framework | UI, networking, JSON parsing | LGPL / BlackBerry SDK terms |

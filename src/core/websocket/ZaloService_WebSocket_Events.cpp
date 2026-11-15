@@ -47,6 +47,11 @@ void ZaloService::handleWsHandshakeReply(const QByteArray &data)
                          .arg(m_pending510Toid);
         sendWsRequest(510, 1, req510);
     }
+    if (!m_pending511Gid.isEmpty()) {
+        QString req511 = QString("{\"first\":true,\"lastId\":\"%1\",\"grid\":\"%2\",\"preIds\":[]}")
+                         .arg(m_threadLastMsgId.value(m_pending511Gid, "0")).arg(m_pending511Gid);
+        sendWsRequest(511, 1, req511);
+    }
     fetchPinConversations();
     QTimer::singleShot(1500, this, SLOT(onSyncStartDeferred()));
 }
@@ -166,6 +171,38 @@ void ZaloService::handleWsHistoryReply(const QByteArray &data)
     }
 
     processOldDmBatch(rawMsgs, emitThread, false);
+}
+
+// cmd=511 subCmd=1: old group messages (zca-js requestOldMessages for groups). The payload carries
+// "groupMsgs"; every entry has idTo = group id. Serves both the background group sync and a
+// single group chat being opened (m_pending511Gid).
+void ZaloService::handleWsGroupHistoryReply(const QByteArray &data)
+{
+    QVariantMap outer = jsonToMap(data);
+    int encType = outer.contains("encrypt") ? outer["encrypt"].toInt() : 1;
+    QVariantMap d;
+    if (encType == 0 && outer["data"].type() == QVariant::String) {
+        QVariantMap parsed = jsonToMap(outer["data"].toString().toUtf8());
+        d = (parsed["data"].type() == QVariant::Map) ? parsed["data"].toMap() : parsed;
+    } else {
+        d = decodeWsEnvelope(outer, "cmd511");
+    }
+    QVariantList rawMsgs = d["groupMsgs"].toList();
+    if (rawMsgs.isEmpty()) rawMsgs = d["msgs"].toList();
+    if (rawMsgs.isEmpty())
+        qDebug() << "[WS] 511 empty reply: enc=" << encType << "outerKeys=" << outer.keys()
+                 << "dataKeys=" << d.keys();
+
+    if (m_sync.groupActive && m_sync.groupAwaiting) {
+        qDebug() << "[Sync] 511 page: msgs=" << rawMsgs.size();
+        handleGroupSyncPage(rawMsgs);
+        return;
+    }
+
+    QString openGid = m_pending511Gid;
+    m_pending511Gid.clear();
+    qDebug() << "[Msg] 511 reply: msgs=" << rawMsgs.size() << "open=" << !openGid.isEmpty();
+    saveGroupBuckets(rawMsgs, openGid);
 }
 
     // cmd=601 subCmd=0: group_event (pin/note/poll board activity from any member, plus unrelated

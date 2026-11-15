@@ -68,8 +68,20 @@ void ZaloService::onFetchFriendsDone()
     }
 
     QVariantList threads;
+    m_friendUids.clear();
     for (int i = 0; i < friends.size(); ++i) {
         QVariantMap f = friends[i].toMap();
+        if (i == 0) {
+            // Diagnostics for the phone-sync id mapping: field names with value length (d = all digits).
+            QString info;
+            for (QVariantMap::const_iterator it = f.constBegin(); it != f.constEnd(); ++it) {
+                QString v = it.value().toString();
+                bool digits = !v.isEmpty();
+                for (int k = 0; k < v.size(); ++k) if (!v[k].isDigit()) { digits = false; break; }
+                info += QString("%1[%2%3] ").arg(it.key()).arg(v.size()).arg(digits ? "d" : "");
+            }
+            qDebug() << "[Contacts] friend entry fields:" << info;
+        }
         QString uid  = f["userId"].toString();
         if (uid.isEmpty()) uid = f["uid"].toString();
         QString name = f["zaloName"].toString();
@@ -92,8 +104,10 @@ void ZaloService::onFetchFriendsDone()
         t["localBgAvatar"] = localBgAvatar;
         t["unread"]        = 0;
         t["lastMessage"]   = "";
-        if (!uid.isEmpty() && !name.isEmpty())
+        if (!uid.isEmpty() && !name.isEmpty()) {
             threads.append(t);
+            m_friendUids << uid;
+        }
     }
 
     m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch();

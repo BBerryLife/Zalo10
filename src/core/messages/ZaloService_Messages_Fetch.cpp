@@ -1,26 +1,21 @@
 #include "core/messages/MessagesCommon.hpp"
 
-static const int GROUP_SYNC_NEXT_DELAY_MS = 250;
-
 void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
 {
     if (!m_loggedIn) return;
 
     if (isGroup) {
-        QVariantMap innerParams;
-        innerParams["grid"]  = threadId;
-        innerParams["count"] = 50;
-
-        QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(innerParams)));
-        QString urlStr = m_groupServiceUrl + "/api/group/history"
-                       + "?zpw_ver=" + QString::number(API_VERSION)
-                       + "&zpw_type=" + QString::number(API_TYPE)
-                       + "&params=" + QUrl::toPercentEncoding(encParams);
-
-        QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
-        reply->setProperty("threadId", threadId);
-        reply->setProperty("isGroup",  true);
-        connect(reply, SIGNAL(finished()), this, SLOT(onFetchMsgDone()));
+        // The HTTP /api/group/history endpoint was removed by Zalo; group history comes over WS
+        // cmd=511 (zca-js requestOldMessages). The reply is handled by handleWsGroupHistoryReply().
+        m_pending511Gid = threadId;
+        if (!m_wsConnected || !m_webSocket) {
+            if (!m_zpwWsUrls.isEmpty()) connectWebSocket();
+            return;
+        }
+        QString lastId = m_threadLastMsgId.value(threadId, "0");
+        QString req511 = QString("{\"first\":true,\"lastId\":\"%1\",\"grid\":\"%2\",\"preIds\":[]}")
+                         .arg(lastId).arg(threadId);
+        sendWsRequest(511, 1, req511);
     } else {
         // DMs use WS cmd=510 requestOldMessages (zca-js listen.js); HTTP /api/message/getmsglist doesn't
         // exist (404).
@@ -36,47 +31,12 @@ void ZaloService::fetchMessages(const QString &threadId, bool isGroup)
     }
 }
 
-void ZaloService::onFetchMsgDone()
+// Parses, saves and returns one group's history messages. syncGroup=true is the bulk/background
+// variant: no sticker downloads, no active-thread poll bookkeeping.
+QVariantList ZaloService::saveGroupHistory(const QVariantList &rawMsgs, const QString &tid, bool syncGroup)
 {
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
-    if (!reply) return;
-    QString tid    = reply->property("threadId").toString();
-    bool syncGroup = reply->property("syncGroup").toBool();
-    QByteArray raw = reply->readAll();
-    reply->deleteLater();
-
-    if (syncGroup && (raw.contains("429 Too Many Requests") || raw.contains("<html"))) {
-        qWarning() << "[Sync] group history unavailable (HTML/404/429 response), stopping group sync";
-        m_sync.groupQueue.clear();
-        QTimer::singleShot(0, this, SLOT(onSyncGroupNext()));
-        return;
-    }
-    QVariantMap root = jsonToMap(raw);
-    if (root["error_code"].toInt() != 0) {
-        qWarning() << "[Msg] fetchMessages error:" << root["error_message"].toString();
-        if (syncGroup) {
-            QTimer::singleShot(GROUP_SYNC_NEXT_DELAY_MS, this, SLOT(onSyncGroupNext()));
-            return;
-        }
-        emit messagesReady(tid, QVariantList());
-        return;
-    }
-
     QVariantList msgs;
-    bool isGroup = reply->property("isGroup").toBool();
-
-    QString dec2 = aesDecryptBase64(m_secretKey, root["data"].toString());
-
-    QVariantMap outer2 = jsonToMap(dec2.toUtf8());
-    QVariantMap d2;
-    if (outer2.contains("data") && outer2["data"].type() == QVariant::Map)
-        d2 = outer2["data"].toMap();
-    else
-        d2 = outer2;
-
-    QVariantList rawMsgs = isGroup ? d2["groupMsgs"].toList() : d2["msgs"].toList();
-    if (rawMsgs.isEmpty()) rawMsgs = d2["data"].toList();
-    if (rawMsgs.isEmpty()) rawMsgs = d2["msgList"].toList();
+    const bool isGroup = true;
 
     qint64 maxMsgNum = -1;
     QString newestMsgId;
@@ -118,6 +78,7 @@ void ZaloService::onFetchMsgDone()
         QVariantMap out;
         QString msgId    = m["msgId"].toString();
         QString uidFrom  = m["uidFrom"].toString();
+        if (uidFrom == "0") uidFrom = m_uid;   // our own message echoed from another device
         bool    isMine   = (uidFrom == m_uid);
         out["msgId"]    = msgId;
         out["senderId"] = uidFrom;
@@ -232,14 +193,5 @@ void ZaloService::onFetchMsgDone()
     for (int i = 0; i < msgs.size(); ++i)
         dbSaveMessage(msgs[i].toMap(), tid);
     if (syncTx) sqlite3_exec(m_db, "COMMIT", 0, 0, 0);
-
-    if (syncGroup) {
-        m_sync.groupMsgs += msgs.size();
-        if (tid == m_activeThreadId)
-            emit messagesReady(tid, msgs);
-        QTimer::singleShot(GROUP_SYNC_NEXT_DELAY_MS, this, SLOT(onSyncGroupNext()));
-        return;
-    }
-
-    emit messagesReady(tid, msgs);
+    return msgs;
 }

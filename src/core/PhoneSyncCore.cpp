@@ -365,8 +365,9 @@ bool httpsGet(const std::string &host, int port, const std::string &path, const 
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-    SSL_CTX *ctx = SSL_CTX_new(TLSv1_2_client_method());
+    SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
     if (!ctx) { info = "SSL_CTX_new failed: " + lastSslError(); close(fd); return false; }
+    SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     SSL *ssl = SSL_new(ctx);
     if (!ssl) { info = "SSL_new failed"; SSL_CTX_free(ctx); close(fd); return false; }
@@ -478,8 +479,9 @@ bool httpsRequest(const std::string &method, const std::string &host, int port, 
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
-    SSL_CTX *ctx = SSL_CTX_new(TLSv1_2_client_method());
+    SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
     if (!ctx) { info = "SSL_CTX_new failed: " + lastSslError(); close(fd); return false; }
+    SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
     SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
     SSL *ssl = SSL_new(ctx);
     if (!ssl) { info = "SSL_new failed"; SSL_CTX_free(ctx); close(fd); return false; }
