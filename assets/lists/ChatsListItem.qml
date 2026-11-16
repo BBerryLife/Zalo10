@@ -37,6 +37,23 @@ CustomListItem {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 horizontalAlignment: HorizontalAlignment.Fill
 
+                // The title Label adds ~2du of left inset of its own, so a 3du slot puts the name
+                // at the same x as the last-message text (13du + 5du).
+                Container {
+                    preferredWidth: ui.du(3.0)
+                    minWidth:       ui.du(3.0)
+                    verticalAlignment: VerticalAlignment.Center
+                    layout: DockLayout {}
+                    ImageView {
+                        visible: friendRow.ListItem.view.onlineMap[ListItemData.threadId || ListItemData.uid || ""] === true
+                        imageSource: "asset:///images/ChatsTab/online_dot.png"
+                        preferredWidth:  ui.du(2.6)
+                        preferredHeight: ui.du(2.6)
+                        horizontalAlignment: HorizontalAlignment.Left
+                        verticalAlignment: VerticalAlignment.Center
+                        scalingMethod: ScalingMethod.AspectFit
+                    }
+                }
                 Label {
                     text: ListItemData.name || ListItemData.displayName || "Unknown User"
                     textStyle { base: SystemDefaults.TextStyles.TitleText }
@@ -121,7 +138,7 @@ CustomListItem {
                 Container {
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Center
-                    leftPadding: ((ListItemData.lastMessage || ListItemData.lastMsg || "").length > 0) ? ui.du(5.0) : 0
+                    leftPadding: ui.du(5.0)
                     Label {
                         text: friendRow.ListItem.view.lastMessagePreview(ListItemData.lastMessage, ListItemData.lastMsg,
                               ListItemData.lastMsgIsMine, ListItemData.lastSenderName)

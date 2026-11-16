@@ -1,5 +1,5 @@
 1
-724
+725
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -53,6 +53,7 @@ images/ChatsTab/action_icon_search.png
 images/ChatsTab/ai_add_task.png
 images/ChatsTab/edit.png
 images/ChatsTab/ic_sync.png
+images/ChatsTab/online_dot.png
 images/ChatView/action_delete.png
 images/ChatView/action_icon_search.png
 images/ChatView/add.png

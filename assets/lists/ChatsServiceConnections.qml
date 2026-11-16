@@ -8,6 +8,11 @@ Connections {
     onFriendsReady: {
         chatsNav.lastFriends = friends;
         chatsNav.buildFriends(friends, false);
+        friendList.startPresence();
+    }
+
+    onProfileDetailsReady: {
+        friendList.setOnline(uid, profile.lastActionTime);
     }
 
     onHistorySynced: {

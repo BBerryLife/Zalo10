@@ -58,6 +58,9 @@ Page {
     property bool hasMoreOlder:  true
     property bool olderArmed:    false  // Set shortly after open so the initial scroll-to-end can't trigger a load.
 
+    property string presenceText:   ""
+    property bool   presenceOnline: false
+
     property real clockOffsetMs: 0
     property bool clockOffsetSet: false
 
@@ -277,6 +280,30 @@ Page {
         chatViewPage.pendingImageUpdates = [];
     }
 
+    // lastMs is Zalo's lastActionTime (seconds or milliseconds); 0/empty means the user hides it.
+    function applyPresence(lastMs) {
+        lastMs = Number(lastMs);
+        if (lastMs > 0 && lastMs < 100000000000) lastMs = lastMs * 1000;
+        if (!lastMs || lastMs <= 0 || isNaN(lastMs)) {
+            chatViewPage.presenceText = "Status hidden";
+            chatViewPage.presenceOnline = false;
+            return;
+        }
+        var mins = Math.floor((Date.now() - lastMs) / 60000);
+        if (mins < 0) mins = 0;
+        if (mins < 5) {
+            chatViewPage.presenceOnline = true;
+            chatViewPage.presenceText = "Online";
+            return;
+        }
+        chatViewPage.presenceOnline = false;
+        var t;
+        if (mins < 60)            t = mins + " min ago";
+        else if (mins < 60 * 24)  t = Math.floor(mins / 60) + " h ago";
+        else                      t = Math.floor(mins / 1440) + " d ago";
+        chatViewPage.presenceText = "Active " + t;
+    }
+
     function startChat() {
         if (chatViewPage.initialized) return;
         if (chatViewPage.threadId === "") return;
@@ -339,6 +366,9 @@ Page {
 
         zService.fetchMessages(chatViewPage.threadId, chatViewPage.isGroup);
         chatViewPage.loadBoardItems();
+        chatViewPage.presenceText = "";
+        chatViewPage.presenceOnline = false;
+        if (!chatViewPage.isGroup) presenceFetchTimer.restart();
     }
 
     onThreadIdChanged: {
@@ -1485,6 +1515,22 @@ Page {
             id: copyToast
             body: "Copied to clipboard"
             position: SystemUiPosition.MiddleCenter
+        },
+
+        // Fetched after the chat is on screen so it doesn't compete with message loading.
+        Timer {
+            id: presenceFetchTimer
+            interval: 3000
+            repeat: false
+            onTriggered: { if (!chatViewPage.isGroup) zService.fetchProfileDetails(chatViewPage.threadId); }
+        },
+
+        Connections {
+            target: zService
+            onProfileDetailsReady: {
+                if (uid !== chatViewPage.threadId || chatViewPage.isGroup) return;
+                chatViewPage.applyPresence(profile.lastActionTime);
+            }
         },
 
         Timer {

@@ -725,6 +725,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/edit.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/online_dot.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ProfileView/BB_Pattern_Vivid.jpg) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ProfileView/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/Profile_Star_icon.png) \
@@ -782,6 +783,7 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Friends.cpp) \
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Media.cpp) \
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Polls.cpp) \
+        $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Profile.cpp) \
         $$quote($$BASEDIR/src/core/db/ZaloService_Db_Messages.cpp) \
         $$quote($$BASEDIR/src/core/db/ZaloService_Db_Store.cpp) \
         $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Actions.cpp) \

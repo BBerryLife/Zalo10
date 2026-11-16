@@ -32,6 +32,10 @@ CustomListItem {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 horizontalAlignment: HorizontalAlignment.Fill
 
+                Container {
+                    preferredWidth: ui.du(3.0)
+                    minWidth:       ui.du(3.0)
+                }
                 Label {
                     text: ListItemData.name || "Unknown Group"
                     textStyle { base: SystemDefaults.TextStyles.TitleText }
@@ -116,7 +120,7 @@ CustomListItem {
                 Container {
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Center
-                    leftPadding: ((ListItemData.lastMessage || "").length > 0) ? ui.du(5.0) : 0
+                    leftPadding: ui.du(5.0)
                     Label {
                         text: groupRow.ListItem.view.lastMessagePreview(ListItemData.lastMessage,
                               ListItemData.lastMsgIsMine, ListItemData.lastSenderName)

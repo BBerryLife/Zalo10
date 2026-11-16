@@ -68,6 +68,7 @@ SOURCES += \
     src/core/contacts/ZaloService_Contacts_Friends.cpp \
     src/core/contacts/ZaloService_Contacts_Media.cpp \
     src/core/contacts/ZaloService_Contacts_Polls.cpp \
+    src/core/contacts/ZaloService_Contacts_Profile.cpp \
     src/core/db/ZaloService_Db_Messages.cpp \
     src/core/db/ZaloService_Db_Store.cpp \
     src/core/messages/ZaloService_Messages_Actions.cpp \

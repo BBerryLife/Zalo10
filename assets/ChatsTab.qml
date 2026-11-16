@@ -106,6 +106,27 @@ NavigationPane {
                 verticalAlignment: VerticalAlignment.Fill
                 dataModel: chatsNav.searchVisible ? searchModel : friendModel
 
+                // Online dot next to the name: lastActionTime of the first few chats, one request every 1.5s.
+                // Read by the delegate through ListItem.view (delegates can't see outer ids).
+                property variant onlineMap: ({})
+                property int     presenceIdx: 0
+                function startPresence() {
+                    friendList.onlineMap = ({});
+                    friendList.presenceIdx = 0;
+                    presenceTimer.restart();
+                }
+                function setOnline(uid, lastMs) {
+                    lastMs = Number(lastMs);
+                    if (lastMs > 0 && lastMs < 100000000000) lastMs = lastMs * 1000;
+                    var on = (lastMs > 0) && ((Date.now() - lastMs) < 5 * 60 * 1000);
+                    var m = friendList.onlineMap;
+                    if ((m[uid] === true) === on) return;
+                    var nm = {};
+                    for (var k in m) nm[k] = m[k];
+                    nm[uid] = on;
+                    friendList.onlineMap = nm;
+                }
+
                 function itemType(data, indexPath) { return "item"; }
 
                 // Proxy: ListItemComponent delegates can't resolve the parent Page/NavigationPane id (calling
@@ -164,6 +185,18 @@ NavigationPane {
 
         attachedObjects: [
             ArrayDataModel { id: friendModel },
+            Timer {
+                id: presenceTimer
+                interval: 1500
+                repeat: true
+                onTriggered: {
+                    if (friendList.presenceIdx >= 8 || friendList.presenceIdx >= friendModel.size()) { presenceTimer.stop(); return; }
+                    var d = friendModel.value(friendList.presenceIdx);
+                    friendList.presenceIdx++;
+                    var uid = d ? (d.threadId || d.uid || "") : "";
+                    if (uid.length > 0) zService.fetchProfileDetails(uid);
+                }
+            },
             ConfirmDialog {
                 id: markAllReadDialog
                 title: "Mark All as Read"

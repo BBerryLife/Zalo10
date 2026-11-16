@@ -58,8 +58,9 @@ TitleBar {
                         topMargin: 0; bottomMargin: 0
                     }
                     Label {
-                        text: chatViewPage.isGroup ? "Group" : "Zalo Contact"
-                        textStyle { color: Color.create("#b3d4ff"); fontSize: FontSize.XSmall }
+                        text: chatViewPage.isGroup ? "Group"
+                              : (chatViewPage.presenceText.length > 0 ? chatViewPage.presenceText : "Zalo Contact")
+                        textStyle { color: chatViewPage.presenceOnline ? Color.create("#7dff9b") : Color.create("#b3d4ff"); fontSize: FontSize.XSmall }
                         topMargin: ui.du(0.2); bottomMargin: 0
                     }
                 }

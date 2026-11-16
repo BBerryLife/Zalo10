@@ -161,6 +161,8 @@ NavigationPane {
                 layout: GridListLayout {
                     columnCount: 4
                     headerMode: ListHeaderMode.None
+                    horizontalCellSpacing: ui.du(0.1)
+                    verticalCellSpacing:   ui.du(0.1)
                 }
 
                 property variant profileDef: contactsProfileDef

@@ -56,6 +56,9 @@ public:
 
     Q_INVOKABLE void fetchConversations();
     Q_INVOKABLE void fetchFriends();
+    Q_INVOKABLE void fetchProfileDetails(const QString &uid);
+    Q_INVOKABLE void fetchBizAccount(const QString &uid);
+    Q_INVOKABLE void fetchFullAvatar(const QString &uid);
     Q_INVOKABLE void fetchInvites();
     Q_INVOKABLE void acceptFriendRequest(const QString &friendId);
     Q_INVOKABLE void rejectFriendRequest(const QString &friendId);
@@ -187,6 +190,9 @@ signals:
     void qrExpired();
     void conversationsReady(const QVariantList &threads);
     void friendsReady(const QVariantList &friends);
+    void profileDetailsReady(const QString &uid, const QVariantMap &profile);
+    void bizAccountReady(const QString &uid, const QVariantMap &biz);
+    void fullAvatarReady(const QString &uid, const QString &url);
     void pinnedChanged();
     void historySynced(int messages);
     void phoneSyncProgress(int percent, const QString &text);
@@ -280,6 +286,9 @@ private slots:
 
     void onFetchConvoDone();
     void onFetchFriendsDone();
+    void onProfileDetailsDone();
+    void onBizAccountDone();
+    void onFullAvatarDone();
     void onFetchServerQuickMessagesDone();
     void onFetchInvitesDone();
     void onFetchGroupBoardDone();
@@ -382,6 +391,7 @@ private:
     QString generateUUIDv4();
     QString buildRawUrl(const QString &base, const QVariantMap &params);
     QNetworkRequest buildRequest(const QString &urlStr, const QString &referer, bool jsonAccept = false);
+    QNetworkReply *sendProfileApi(const QString &path, bool post, QVariantMap params);
     QString buildCookieHeader() const;
     void parseCookiesFromReply(QNetworkReply *reply);
     QByteArray buildFormBody(const QList<QPair<QString, QString> > &fields);
