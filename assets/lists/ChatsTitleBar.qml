@@ -24,6 +24,40 @@ TitleBar {
                 visible: !chatsNav.searchVisible
             }
             Container {
+                // Header buttons: Search sits to the left of New chat (New chat is the outermost one).
+                visible: !chatsNav.searchVisible
+                horizontalAlignment: HorizontalAlignment.Right
+                verticalAlignment: VerticalAlignment.Center
+                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                ImageButton {
+                    defaultImageSource: "asset:///images/ChatsTab/action_icon_search.png"
+                    preferredWidth: ui.du(7)
+                    preferredHeight: ui.du(7)
+                    verticalAlignment: VerticalAlignment.Center
+                    onClicked: {
+                        chatsNav.searchVisible = true;
+                        chatsSearchField.requestFocus();
+                    }
+                }
+                ImageButton {
+                    defaultImageSource: "asset:///images/ChatsTab/ic_start_chat.png"
+                    preferredWidth: ui.du(8)
+                    preferredHeight: ui.du(8)
+                    verticalAlignment: VerticalAlignment.Center
+                    onClicked: newChatDialog.show()
+                }
+                attachedObjects: [
+                    SystemDialog {
+                        id: newChatDialog
+                        title: "New Chat"
+                        body: "This feature is still under development."
+                        confirmButton.label: "OK"
+                        cancelButton.label: ""
+                        cancelButton.enabled: false
+                    }
+                ]
+            }
+            Container {
                 visible: chatsNav.searchVisible
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Center

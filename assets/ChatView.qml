@@ -52,7 +52,7 @@ Page {
     // Windowed history: only a bounded slice lives in msgModel (one ListView with a long history
     // lagged/crashed BB10). The newest historyPageSize rows load on open; scrolling to the top loads
     // another page from SQLite (requestOlderMessages) up to historyMaxRows.
-    property int  historyPageSize: 30
+    property int  historyPageSize: 15
     property int  historyMaxRows:  240
     property bool loadingOlder:  false
     property bool hasMoreOlder:  true
@@ -304,6 +304,19 @@ Page {
         chatViewPage.presenceText = "Active " + t;
     }
 
+    // Lite: photo / link-thumbnail downloads for the messages of a page are queued and handed to
+    // zService a few at a time (newest first: the bottom of the chat is what is on screen), instead of
+    // all at once while the chat is still opening. Dropped when the thread changes.
+    function queueMediaDownload(msgId, url) {
+        if (!msgId || !url || url.length === 0) return;
+        mediaDlModel.append({ mid: String(msgId), url: url, tid: chatViewPage.threadId });
+        if (!mediaDlTimer.running) mediaDlTimer.start();
+    }
+    function cancelMediaDownloads() {
+        mediaDlTimer.stop();
+        mediaDlModel.clear();
+    }
+
     function startChat() {
         if (chatViewPage.initialized) return;
         if (chatViewPage.threadId === "") return;
@@ -323,6 +336,7 @@ Page {
         rebuildFlushTimer.pendingScroll = false;
         rebuildFlushTimer.pendingAnchor = -1;
 
+        chatViewPage.cancelMediaDownloads();
         msgModel.clear();
         zService.setActiveThread(chatViewPage.threadId, chatViewPage.isGroup);
 
@@ -349,7 +363,7 @@ Page {
                 if (isPhoto && !hasLocal && c.msgId) {
                     var photoUrl1 = chatViewPage.extractPhotoUrl(c.content || "");
                     if (photoUrl1.length > 0)
-                        zService.downloadImageMessage(c.msgId, photoUrl1, chatViewPage.threadId);
+                        chatViewPage.queueMediaDownload(c.msgId, photoUrl1);
                 }
                 var isLink = (c.msgType === 6 || c.msgType === "6");
                 if (isLink && !hasLocal && c.msgId) {
@@ -357,7 +371,7 @@ Page {
                     // download-to-local-file pipeline, as for photos.
                     var linkThumbUrl1 = chatViewPage.extractJsonField(c.content || "", "linkThumb");
                     if (linkThumbUrl1.length > 0)
-                        zService.downloadImageMessage(c.msgId, linkThumbUrl1, chatViewPage.threadId);
+                        chatViewPage.queueMediaDownload(c.msgId, linkThumbUrl1);
                 }
             }
             chatViewPage.dbIsMineCache = newCache;
@@ -375,6 +389,7 @@ Page {
         chatViewPage.initialized = false;
         chatViewPage.pageVisible = false;
         chatViewPage.pendingImageUpdates = [];
+        chatViewPage.cancelMediaDownloads();
         msgModel.clear();
         chatViewPage.loadingOlder = false;
         chatViewPage.hasMoreOlder = true;
@@ -390,7 +405,7 @@ Page {
         layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
         horizontalAlignment: HorizontalAlignment.Fill
         verticalAlignment:   VerticalAlignment.Fill
-        background: chatViewPage.isDark ? Color.create("#1a1a1a") : Color.create("#d6d6d6")
+        background: chatViewPage.isDark ? Color.black : Color.create("#d6d6d6")
 
         PinboardBar {
             id: pinboardBar
@@ -1203,13 +1218,13 @@ Page {
             if (isPhoto && !hasLocal) {
                 var photoUrl = chatViewPage.extractPhotoUrl(c.content || "");
                 if (photoUrl.length > 0)
-                    zService.downloadImageMessage(c.msgId, photoUrl, chatViewPage.threadId);
+                    chatViewPage.queueMediaDownload(c.msgId, photoUrl);
             }
             var isLink = (c.msgType === 6 || c.msgType === "6");
             if (isLink && !hasLocal) {
                 var linkThumbUrl = chatViewPage.extractJsonField(c.content || "", "linkThumb");
                 if (linkThumbUrl.length > 0)
-                    zService.downloadImageMessage(c.msgId, linkThumbUrl, chatViewPage.threadId);
+                    chatViewPage.queueMediaDownload(c.msgId, linkThumbUrl);
             }
         }
         chatViewPage.dbIsMineCache = cache;
@@ -1670,6 +1685,23 @@ Page {
             }
         },
 
+        ArrayDataModel { id: mediaDlModel },
+        Timer {
+            id: mediaDlTimer
+            interval: 250
+            repeat: true
+            onTriggered: {
+                var n = 0;
+                while (n < 3 && mediaDlModel.size() > 0) {
+                    var it = mediaDlModel.value(mediaDlModel.size() - 1);   // newest first
+                    mediaDlModel.removeAt(mediaDlModel.size() - 1);
+                    if (it.tid === chatViewPage.threadId)
+                        zService.downloadImageMessage(it.mid, it.url, it.tid);
+                    n++;
+                }
+                if (mediaDlModel.size() === 0) mediaDlTimer.stop();
+            }
+        },
         ForwardPickerSheet { id: forwardPickerSheet; isDark: chatViewPage.isDark },
         ReactionPickerSheet {
             id: reactionPickerSheet
