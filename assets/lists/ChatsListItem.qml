@@ -18,7 +18,7 @@ CustomListItem {
             verticalAlignment: VerticalAlignment.Center
             layout: DockLayout {}
             ImageView {
-                imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/ChatView/default_caller.png"
+                imageSource: ListItemData.localAvatar ? ListItemData.localAvatar : "asset:///images/ChatsTab/default_avt.png"
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
                 scalingMethod: ScalingMethod.AspectFill

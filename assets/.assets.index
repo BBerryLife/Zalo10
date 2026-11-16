@@ -1,5 +1,5 @@
 1
-725
+739
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -51,7 +51,11 @@ images/ActiveFrame/Activeframe_zl10_Small.png
 images/bbid.png
 images/ChatsTab/action_icon_search.png
 images/ChatsTab/ai_add_task.png
+images/ChatsTab/default_avt.png
+images/ChatsTab/desktop.ini
 images/ChatsTab/edit.png
+images/ChatsTab/ic_chat_multiperson.png
+images/ChatsTab/ic_start_chat.png
 images/ChatsTab/ic_sync.png
 images/ChatsTab/online_dot.png
 images/ChatView/action_delete.png
@@ -693,6 +697,8 @@ images/GroupsTab/ic_create_group_disabled.png
 images/GroupsTab/ic_sync.png
 images/ic_add_contact.png
 images/ic_bbm.png
+images/ic_bb_status_black.png
+images/ic_bb_status_white.png
 images/ic_contact.png
 images/ic_groups_white.png
 images/ic_info.png
@@ -701,11 +707,19 @@ images/ic_settings.png
 images/InvitesTab/action_icon_search.png
 images/InvitesTab/ai_add_task.png
 images/InvitesTab/ic_sync.png
+images/SettingsSheet/ca_bugreport.png
+images/SettingsSheet/ca_notification.png
+images/SettingsSheet/ca_security_wipe.png
+images/SettingsSheet/ca_softwarelogtool.png
+images/SettingsSheet/ca_storage_access.png
 images/SettingsSheet/desktop.ini
+images/SettingsSheet/eye-2-96.png
 images/SettingsSheet/ic_close_white.png
+images/SettingsSheet/ic_picture.png
 images/SettingsSheet/ic_save.png
 InfoDialog.qml
 InvitesTab.qml
+lists/avatarhub.js
 lists/ChatsListItem.qml
 lists/ChatsServiceConnections.qml
 lists/ChatsTitleBar.qml

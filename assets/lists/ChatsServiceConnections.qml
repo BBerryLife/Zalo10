@@ -11,6 +11,10 @@ Connections {
         friendList.startPresence();
     }
 
+    onFriendsFetchFailed: {
+        chatsNav.friendsFetchFailedHandler();
+    }
+
     onProfileDetailsReady: {
         friendList.setOnline(uid, profile.lastActionTime);
     }
@@ -25,24 +29,8 @@ Connections {
     }
 
     onAvatarReady: {
-        for (var i = 0; i < friendModel.size(); i++) {
-            var d = friendModel.value(i);
-            if ((d.threadId || d.uid || "") === threadId) {
-                d.localAvatar = localPath;
-                friendModel.replace(i, d);
-                break;
-            }
-        }
-        if (chatsNav.searchVisible) {
-            for (var j = 0; j < searchModel.size(); j++) {
-                var sd = searchModel.value(j);
-                if ((sd.threadId || sd.uid || "") === threadId) {
-                    sd.localAvatar = localPath;
-                    searchModel.replace(j, sd);
-                    break;
-                }
-            }
-        }
+        // Lite: O(1) row lookup (see lists/avatarhub.js) instead of scanning the whole list.
+        chatsNav.applyAvatar(threadId, localPath);
     }
 
     onLoginSuccess: {
@@ -53,6 +41,7 @@ Connections {
             chatsRefreshCooldownTimer.restart();
             zService.fetchFriends();
             chatsLoading.visible = true;
+            chatsNav.startFriendsWatch();
         }
     }
 

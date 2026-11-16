@@ -2,6 +2,7 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 import "lists"
+import "lists/avatarhub.js" as AvatarHub
 
 NavigationPane {
     id: groupsNav
@@ -24,14 +25,15 @@ NavigationPane {
             repeat: false
             onTriggered: groupsNav.refreshCooldown = false
         },
+        // Lite: the old 0.8 s warm-up (createObject()+destroy() of a whole ChatView at start-up) is
+        // gone; the first chat opens a little slower instead of slowing every start.
         Timer {
-            id: groupViewWarmupTimer
-            interval: 800
-            repeat: false
-            running: true
+            // Lite: hands avatar requests to zService at a steady pace (see lists/avatarhub.js).
+            id: groupAvatarPaceTimer
+            interval: 300   // = AvatarHub.TICK_MS
+            repeat: true
             onTriggered: {
-                var w = groupsDef.createObject();
-                if (w) w.destroy();
+                if (AvatarHub.drain("groups", zService, Date.now()) === 0) groupAvatarPaceTimer.stop();
             }
         }
     ]
@@ -40,6 +42,8 @@ NavigationPane {
 
     function buildGroups(threads, restoreAvatars) {
         groupsLoading.visible = false;
+        AvatarHub.reset("groups");
+        AvatarHub.invalidate("groups");
         var avatarByTid = {};
         if (restoreAvatars) {
             for (var a = 0; a < groupModel.size(); a++) {
@@ -110,9 +114,27 @@ NavigationPane {
             var gurl = gg.avatar || "";
             var gtid = gg.threadId || "";
             if (gurl.length > 0 && gtid.length > 0 && !(restoreAvatars && gg.localAvatar))
-                zService.downloadAvatar(gtid, gurl);
+                AvatarHub.enqueue("groups", gtid, gurl);
         }
+        if (AvatarHub.pending("groups")) groupAvatarPaceTimer.restart();
         groupsNav.allGroups = arr;
+    }
+
+    // ---- Lite: avatar updates in O(1) instead of scanning the whole list ----
+    function applyAvatar(tid, localPath) {
+        AvatarHub.arrived("groups", tid);
+        var hit = AvatarHub.find("groups", groupModel, tid);
+        if (hit && hit.row.localAvatar !== localPath) {
+            hit.row.localAvatar = localPath;
+            groupModel.replace(hit.i, hit.row);
+        }
+        if (groupsNav.searchVisible) {
+            var sh = AvatarHub.find("groupsSearch", searchModel, tid);
+            if (sh && sh.row.localAvatar !== localPath) {
+                sh.row.localAvatar = localPath;
+                searchModel.replace(sh.i, sh.row);
+            }
+        }
     }
 
     function firstUnpinnedIndex() {
@@ -126,6 +148,7 @@ NavigationPane {
     function filterList() {
         var q = groupsNav.searchText.toLowerCase().trim();
         searchModel.clear();
+        AvatarHub.invalidate("groupsSearch");
         for (var i = 0; i < groupModel.size(); i++) {
             var g = groupModel.value(i);
             if (q.length === 0) {
@@ -246,6 +269,7 @@ NavigationPane {
                     groupsNav.refreshCooldown = true;
                     groupsRefreshCooldownTimer.restart();
                     groupModel.clear();
+                    AvatarHub.invalidate("groups");
                     zService.fetchConversations();
                     groupsLoading.visible = true;
                 }

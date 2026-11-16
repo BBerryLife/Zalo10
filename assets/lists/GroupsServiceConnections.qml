@@ -20,24 +20,8 @@ Connections {
     }
 
     onAvatarReady: {
-        for (var i = 0; i < groupModel.size(); i++) {
-            var d = groupModel.value(i);
-            if (d.threadId === threadId) {
-                d.localAvatar = localPath;
-                groupModel.replace(i, d);
-                break;
-            }
-        }
-        if (groupsNav.searchVisible) {
-            for (var j = 0; j < searchModel.size(); j++) {
-                var sd = searchModel.value(j);
-                if (sd.threadId === threadId) {
-                    sd.localAvatar = localPath;
-                    searchModel.replace(j, sd);
-                    break;
-                }
-            }
-        }
+        // Lite: O(1) row lookup (see lists/avatarhub.js); friend/cover avatars are skipped instantly.
+        groupsNav.applyAvatar(threadId, localPath);
     }
 
     onLoginSuccess: {

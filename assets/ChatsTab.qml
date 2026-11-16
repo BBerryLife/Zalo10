@@ -2,6 +2,7 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 import "lists"
+import "lists/avatarhub.js" as AvatarHub
 
 NavigationPane {
     id: chatsNav
@@ -65,8 +66,10 @@ NavigationPane {
                     chatsNav.refreshCooldown = true;
                     chatsRefreshCooldownTimer.restart();
                     friendModel.clear();
+                    AvatarHub.invalidate("chats");
                     zService.fetchFriends();
                     chatsLoading.visible = true;
+                    chatsNav.startFriendsWatch();
                 }
             },
             ActionItem {
@@ -197,6 +200,22 @@ NavigationPane {
                     if (uid.length > 0) zService.fetchProfileDetails(uid);
                 }
             },
+            Timer {
+                // Lite: hands avatar requests to zService at a steady pace (see lists/avatarhub.js).
+                id: avatarPaceTimer
+                interval: 300   // = AvatarHub.TICK_MS
+                repeat: true
+                onTriggered: {
+                    if (AvatarHub.drain("chats", zService, Date.now()) === 0) avatarPaceTimer.stop();
+                }
+            },
+            Timer {
+                // Lite: friend list never arrived (error / 429 / network) -> retry, then tell the user.
+                id: friendsRetryTimer
+                interval: 15000
+                repeat: true
+                onTriggered: chatsNav.checkFriendsLoad()
+            },
             ConfirmDialog {
                 id: markAllReadDialog
                 title: "Mark All as Read"
@@ -272,6 +291,10 @@ NavigationPane {
 
     function buildFriends(friends, restoreAvatars) {
         chatsLoading.visible = false;
+        friendsRetryTimer.stop();
+        chatsEmpty.text = "No friends found";
+        AvatarHub.reset("chats");
+        AvatarHub.invalidate("chats");
         var avatarByTid = {};
         if (restoreAvatars) {
             for (var a = 0; a < friendModel.size(); a++) {
@@ -348,10 +371,56 @@ NavigationPane {
             var furl = ff.avatar || "";
             var ftid = ff.threadId || ff.uid || "";
             if (furl.length > 0 && ftid.length > 0 && !(restoreAvatars && ff.localAvatar))
-                zService.downloadAvatar(ftid, furl);
+                AvatarHub.enqueue("chats", ftid, furl);
         }
+        if (AvatarHub.pending("chats")) avatarPaceTimer.restart();
         chatsEmpty.visible = (outArr.length === 0);
 
+    }
+
+    // ---- Lite: avatar updates in O(1) instead of scanning the whole list ----
+    function applyAvatar(tid, localPath) {
+        AvatarHub.arrived("chats", tid);
+        var hit = AvatarHub.find("chats", friendModel, tid);
+        if (hit && hit.row.localAvatar !== localPath) {
+            hit.row.localAvatar = localPath;
+            friendModel.replace(hit.i, hit.row);
+        }
+        if (chatsNav.searchVisible) {
+            var sh = AvatarHub.find("chatsSearch", searchModel, tid);
+            if (sh && sh.row.localAvatar !== localPath) {
+                sh.row.localAvatar = localPath;
+                searchModel.replace(sh.i, sh.row);
+            }
+        }
+    }
+
+    // ---- Lite: retry when the friend list does not arrive ----
+    property int friendsRetries: 0
+    function startFriendsWatch() {
+        chatsNav.friendsRetries = 0;
+        chatsEmpty.visible = false;
+        friendsRetryTimer.interval = 15000;   // fallback watchdog if no signal ever comes
+        friendsRetryTimer.restart();
+    }
+    // C++ told us the fetch failed (429 / error / empty / network): retry soon instead of waiting 15 s.
+    // 11 s is just past the 10 s fetch cooldown in ZaloService, so the retry is not ignored.
+    function friendsFetchFailedHandler() {
+        if (!chatsLoading.visible) return;
+        friendsRetryTimer.interval = 11000;
+        friendsRetryTimer.restart();
+    }
+    function checkFriendsLoad() {
+        if (!chatsLoading.visible) { friendsRetryTimer.stop(); return; }
+        if (chatsNav.friendsRetries >= 3) {
+            friendsRetryTimer.stop();
+            chatsLoading.visible = false;
+            chatsEmpty.text = "Could not load your friends. Check the connection, then tap Refresh.";
+            chatsEmpty.visible = true;
+            return;
+        }
+        chatsNav.friendsRetries++;
+        zService.fetchFriends();
     }
 
     function firstUnpinnedIndex() {
@@ -365,6 +434,7 @@ NavigationPane {
     function filterList() {
         var q = chatsNav.searchText.toLowerCase().trim();
         searchModel.clear();
+        AvatarHub.invalidate("chatsSearch");
         for (var i = 0; i < friendModel.size(); i++) {
             var f = friendModel.value(i);
             if (q.length === 0) {

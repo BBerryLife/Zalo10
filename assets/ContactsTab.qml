@@ -1,6 +1,7 @@
 import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
+import "lists/avatarhub.js" as AvatarHub
 
 NavigationPane {
     id: contactsNav
@@ -16,6 +17,7 @@ NavigationPane {
     function filterList() {
         var q = contactsNav.searchText.toLowerCase().trim();
         searchModel.clear();
+        AvatarHub.invalidate("contactsSearch");
         for (var i = 0; i < contactModel.size(); i++) {
             var f = contactModel.value(i);
             if (q.length === 0) {
@@ -26,6 +28,33 @@ NavigationPane {
             }
         }
         contactsEmpty.visible = (contactModel.size() === 0);
+    }
+
+    // ---- Lite: avatar updates in O(1) instead of scanning the whole grid ----
+    // Avatar requests themselves are paced by the Chats tab (same friend list); this tab only
+    // receives avatarReady. Cover images ("bg_<id>") are no longer fetched for every friend at
+    // start-up: ProfileView downloads the cover when that profile is opened.
+    function applyAvatar(threadId, localPath) {
+        var isBg = (threadId.indexOf("bg_") === 0);
+        var id   = isBg ? threadId.substring(3) : threadId;
+        var hit = AvatarHub.find("contacts", contactModel, id);
+        if (hit) {
+            if (isBg) {
+                if (hit.row.localBgAvatar !== localPath) { hit.row.localBgAvatar = localPath; contactModel.replace(hit.i, hit.row); }
+            } else {
+                if (hit.row.localAvatar !== localPath)   { hit.row.localAvatar   = localPath; contactModel.replace(hit.i, hit.row); }
+            }
+        }
+        if (contactsNav.searchVisible) {
+            var sh = AvatarHub.find("contactsSearch", searchModel, id);
+            if (sh) {
+                if (isBg) {
+                    if (sh.row.localBgAvatar !== localPath) { sh.row.localBgAvatar = localPath; searchModel.replace(sh.i, sh.row); }
+                } else {
+                    if (sh.row.localAvatar !== localPath)   { sh.row.localAvatar   = localPath; searchModel.replace(sh.i, sh.row); }
+                }
+            }
+        }
     }
 
     attachedObjects: [
@@ -124,6 +153,7 @@ NavigationPane {
                     refreshCooldownTimer.restart();
                     contactsPage.populated = false
                     contactModel.clear()
+                    AvatarHub.invalidate("contacts")
                     zService.fetchFriends()
                     contactsLoading.visible = true
                 }
@@ -266,69 +296,31 @@ NavigationPane {
             Connections {
                 target: zService
 
+                onFriendsFetchFailed: {
+                    // Lite: the Chats tab retries the fetch; do not leave this spinner running forever.
+                    contactsLoading.visible = false
+                }
+
                 onFriendsReady: {
                     contactsLoading.visible = false
                     if (contactsPage.populated && contactModel.size() > 0)
                         return
                     contactsPage.populated = true
                     contactModel.clear()
-                    for (var i = 0; i < friends.length; i++) {
-                        var f = friends[i]
-                        contactModel.append(f)
-                        var tid = f.threadId || f.uid || ""
-                        if (tid.length > 0) {
-                            if ((f.avatar || "").length > 0 && (!f.localAvatar || f.localAvatar.length === 0))
-                                zService.downloadAvatar(tid, f.avatar)
-                            if ((f.bgavatar || "").length > 0 && (!f.localBgAvatar || f.localBgAvatar.length === 0))
-                                zService.downloadAvatar("bg_" + tid, f.bgavatar)
-                        }
-                    }
+                    AvatarHub.invalidate("contacts")
+                    for (var i = 0; i < friends.length; i++)
+                        contactModel.append(friends[i])
                     contactsEmpty.visible = (friends.length === 0)
                 }
 
                 onAvatarReady: {
-                    var isBg = (threadId.indexOf("bg_") === 0)
-                    for (var i = 0; i < contactModel.size(); i++) {
-                        var d = contactModel.value(i)
-                        var tid = d.threadId || d.uid || ""
-                        if (isBg) {
-                            if (("bg_" + tid) === threadId) {
-                                d.localBgAvatar = localPath
-                                contactModel.replace(i, d)
-                                break
-                            }
-                        } else {
-                            if (tid === threadId) {
-                                d.localAvatar = localPath
-                                contactModel.replace(i, d)
-                                break
-                            }
-                        }
-                    }
-                    if (contactsNav.searchVisible) {
-                        for (var j = 0; j < searchModel.size(); j++) {
-                            var sd = searchModel.value(j)
-                            var stid = sd.threadId || sd.uid || ""
-                            if (isBg) {
-                                if (("bg_" + stid) === threadId) {
-                                    sd.localBgAvatar = localPath
-                                    searchModel.replace(j, sd)
-                                    break
-                                }
-                            } else {
-                                if (stid === threadId) {
-                                    sd.localAvatar = localPath
-                                    searchModel.replace(j, sd)
-                                    break
-                                }
-                            }
-                        }
-                    }
+                    contactsNav.applyAvatar(threadId, localPath)
                 }
 
                 onLoginSuccess: {
                     contactsPage.populated = false
                     contactModel.clear()
+                    AvatarHub.invalidate("contacts")
                 }
             }
         ]

@@ -186,6 +186,17 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
     m_pendingAvatarWaiters[baseUrl].clear();
     m_pendingAvatarWaiters[baseUrl].insert(threadId);
 
+    // Lite: never more than MAX_AVATAR_DOWNLOADS requests at once. The entry is already registered as
+    // pending above, so duplicates keep joining its waiters while it waits for a free slot.
+    if (m_activeAvatarDownloads >= MAX_AVATAR_DOWNLOADS) {
+        m_avatarWaitQueue.append(qMakePair(threadId, url));
+        return;
+    }
+    startAvatarRequest(threadId, url);
+}
+
+void ZaloService::startAvatarRequest(const QString &threadId, const QString &url)
+{
     QString httpUrl = url;
     if (httpUrl.startsWith("https://"))
         httpUrl = "http://" + httpUrl.mid(8);
@@ -198,13 +209,35 @@ void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
     QNetworkReply *reply = m_manager->get(avatarReq);
     reply->setProperty("avatarUrl",      url);
     reply->setProperty("avatarThreadId", threadId);
+    ++m_activeAvatarDownloads;
     connect(reply, SIGNAL(finished()), this, SLOT(onAvatarDownloaded()));
+    // A hung connection must not hold one of the MAX_AVATAR_DOWNLOADS slots forever. The timer is a child
+    // of the reply (destroyed with it); if it fires, onAvatarTimeout() aborts the reply, which then
+    // finishes with an error and frees the slot in onAvatarDownloaded().
+    QTimer *timeout = new QTimer(reply);
+    timeout->setSingleShot(true);
+    connect(timeout, SIGNAL(timeout()), this, SLOT(onAvatarTimeout()));
+    timeout->start(20000);
+}
+
+void ZaloService::onAvatarTimeout()
+{
+    QTimer *t = qobject_cast<QTimer*>(sender());
+    if (!t) return;
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(t->parent());
+    if (reply && reply->isRunning())
+        reply->abort();
 }
 
 void ZaloService::onAvatarDownloaded()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) return;
+    if (m_activeAvatarDownloads > 0) --m_activeAvatarDownloads;
+    while (m_activeAvatarDownloads < MAX_AVATAR_DOWNLOADS && !m_avatarWaitQueue.isEmpty()) {
+        QPair<QString, QString> next = m_avatarWaitQueue.takeFirst();
+        startAvatarRequest(next.first, next.second);   // network is asynchronous: no re-entrancy here
+    }
     QString url        = reply->property("avatarUrl").toString();
     QString threadId   = reply->property("avatarThreadId").toString();
     bool hasError      = (reply->error() != QNetworkReply::NoError);
@@ -245,27 +278,7 @@ void ZaloService::onAvatarDownloaded()
     if (!waiters.contains(threadId))
         emit avatarReady(threadId, localPath);
 
-    if (!m_pendingFriends.isEmpty() && m_pendingFriendAvatarCount > 0) {
-        QSet<QString> allWaiters = waiters;
-        allWaiters.insert(threadId);
-        bool updated = false;
-        for (int i = 0; i < m_pendingFriends.size(); ++i) {
-            QVariantMap t = m_pendingFriends[i].toMap();
-            QString tid = t["threadId"].toString();
-            if (allWaiters.contains(tid) && t["localAvatar"].toString().isEmpty()) {
-                t["localAvatar"] = localPath;
-                m_pendingFriends[i] = t;
-                m_loadedFriendAvatarCount++;
-                updated = true;
-            }
-        }
-        Q_UNUSED(updated);
-        if (m_loadedFriendAvatarCount >= m_pendingFriendAvatarCount) {
-            QVariantList finalList = m_pendingFriends;
-            m_pendingFriends.clear();
-            m_pendingFriendAvatarCount = 0;
-            m_loadedFriendAvatarCount  = 0;
-            emit friendsReady(finalList);
-        }
-    }
+    // Lite: the old "second friendsReady" (full list once every avatar finished) is gone. Every avatar
+    // already reaches the UI through avatarReady, and re-emitting made the Chats tab throw away and
+    // rebuild the whole list, then request every avatar again.
 }

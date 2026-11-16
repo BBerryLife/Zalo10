@@ -81,6 +81,7 @@ ZaloService::ZaloService(QObject *parent)
       m_hub(new HubIntegration(this))
 {
     m_manager->setCookieJar(new ZaloCookieJar(m_manager));
+    m_activeAvatarDownloads = 0;
     m_realtimeSuspended = false;
     m_appForeground = true;
     m_qrExpireTimer->setSingleShot(true);

@@ -161,6 +161,7 @@ OTHER_FILES += \
     assets/chat/ChatThreadEventConnections.qml \
     assets/chat/ChatTitleBar.qml \
     assets/chat/RowReactions.qml \
+    assets/lists/avatarhub.js \
     assets/lists/ChatsListItem.qml \
     assets/lists/ChatsServiceConnections.qml \
     assets/lists/ChatsTitleBar.qml \

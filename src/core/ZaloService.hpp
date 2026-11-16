@@ -190,6 +190,7 @@ signals:
     void qrExpired();
     void conversationsReady(const QVariantList &threads);
     void friendsReady(const QVariantList &friends);
+    void friendsFetchFailed();   // Lite: fetchFriends ended without a usable list (429 / error / empty / network)
     void profileDetailsReady(const QString &uid, const QVariantMap &profile);
     void bizAccountReady(const QString &uid, const QVariantMap &biz);
     void fullAvatarReady(const QString &uid, const QString &url);
@@ -330,6 +331,7 @@ private slots:
     void onListenDone();
     void onPollMsgDone();
     void onAvatarDownloaded();
+    void onAvatarTimeout();   // Lite: aborts an avatar download that hung (QNetworkReply::abort is not a slot in Qt4)
     void onStickerDownloaded();
     void onKeepAliveTimer();
     void onKeepAliveDone();
@@ -590,6 +592,11 @@ private:
     QMap<QString, QString> m_avatarCache;
     QSet<QString> m_pendingAvatars;
     QMap<QString, QSet<QString> > m_pendingAvatarWaiters;
+    // Lite: at most MAX_AVATAR_DOWNLOADS avatar HTTP requests in flight; the rest wait here.
+    int m_activeAvatarDownloads;
+    QList<QPair<QString, QString> > m_avatarWaitQueue;
+    static const int MAX_AVATAR_DOWNLOADS = 6;
+    void startAvatarRequest(const QString &threadId, const QString &url);
     QMap<qint64, QString> m_stickerCache;
     QSet<qint64> m_pendingStickers;
 

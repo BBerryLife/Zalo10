@@ -723,7 +723,11 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/default_avt.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ChatsTab/edit.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/ic_chat_multiperson.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/ic_start_chat.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/online_dot.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ProfileView/BB_Pattern_Vivid.jpg) \
@@ -742,12 +746,21 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/InvitesTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ca_bugreport.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ca_notification.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ca_security_wipe.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ca_softwarelogtool.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ca_storage_access.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/desktop.ini) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/eye-2-96.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_close_white.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ic_picture.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_save.png) \
         $$quote($$BASEDIR/assets/images/bbid.png) \
         $$quote($$BASEDIR/assets/images/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ic_add_contact.png) \
+        $$quote($$BASEDIR/assets/images/ic_bb_status_black.png) \
+        $$quote($$BASEDIR/assets/images/ic_bb_status_white.png) \
         $$quote($$BASEDIR/assets/images/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/ic_contact.png) \
         $$quote($$BASEDIR/assets/images/ic_groups_white.png) \
@@ -760,6 +773,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/lists/GroupsListItem.qml) \
         $$quote($$BASEDIR/assets/lists/GroupsServiceConnections.qml) \
         $$quote($$BASEDIR/assets/lists/GroupsTitleBar.qml) \
+        $$quote($$BASEDIR/assets/lists/avatarhub.js) \
         $$quote($$BASEDIR/assets/main.qml)
 }
 

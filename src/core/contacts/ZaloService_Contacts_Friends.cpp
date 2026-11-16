@@ -43,6 +43,7 @@ void ZaloService::onFetchFriendsDone()
         qWarning() << "[Contacts] fetchFriends: got 429, backing off for" << (FETCH_COOLDOWN_MS * 3) << "ms";
         m_isFetchingFriends = false;
         m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch() + (FETCH_COOLDOWN_MS * 2);
+        emit friendsFetchFailed();
         return;
     }
 
@@ -50,6 +51,7 @@ void ZaloService::onFetchFriendsDone()
     if (root["error_code"].toInt() != 0) {
         qWarning() << "[Contacts] fetchFriends:" << root["error_message"].toString();
         m_isFetchingFriends = false;
+        emit friendsFetchFailed();
         return;
     }
 
@@ -113,24 +115,12 @@ void ZaloService::onFetchFriendsDone()
     m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch();
 
     if (!threads.isEmpty()) {
-        // IMPORTANT: compute needDownload and set m_pendingFriends/m_pendingFriendAvatarCount BEFORE
-        // emit friendsReady(). The emit is synchronous: the QML handler (~87 downloadAvatar() calls)
-        // re-enters on this stack, and with stale bookkeeping it crashed (SIGSEGV inside Qt's QHash)
-        // when the avatar cache was empty.
-        int needDownload = 0;
-        for (int i = 0; i < threads.size(); ++i) {
-            QVariantMap t = threads[i].toMap();
-            if (t["localAvatar"].toString().isEmpty() && !t["avatar"].toString().isEmpty())
-                needDownload++;
-        }
-        if (needDownload > 0) {
-            m_pendingFriends = threads;
-            m_pendingFriendAvatarCount = needDownload;
-            m_loadedFriendAvatarCount  = 0;
-        }
         emit friendsReady(threads);
+        m_isFetchingFriends = false;
+    } else {
+        m_isFetchingFriends = false;
+        emit friendsFetchFailed();
     }
-    m_isFetchingFriends = false;
 }
 
 void ZaloService::fetchServerQuickMessages()
