@@ -28,7 +28,8 @@ ActionSet {
     }
     ActionItem {
         title: "Recall"
-        imageSource: "asset:///images/ChatView/ic_recall.png"
+        imageSource: "asset:///images/ChatView/ic_retract_message.png"
+        enabled: rowRoot.canRecall(ListItemData.ts)
         onTriggered: { rowRoot.ListItem.view.doRecallMsg(ListItemData.msgId, ListItemData.cliMsgId, rowRoot.mine); }
     }
     ActionItem {

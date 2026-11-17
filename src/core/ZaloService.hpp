@@ -57,6 +57,7 @@ public:
     Q_INVOKABLE void fetchConversations();
     Q_INVOKABLE void fetchFriends();
     Q_INVOKABLE void fetchProfileDetails(const QString &uid);
+    Q_INVOKABLE void fetchSelfProfile();   // own avatar URL + display name (profile/me-v2)
     Q_INVOKABLE void fetchBizAccount(const QString &uid);
     Q_INVOKABLE void fetchFullAvatar(const QString &uid);
     Q_INVOKABLE void fetchInvites();
@@ -192,6 +193,7 @@ signals:
     void friendsReady(const QVariantList &friends);
     void friendsFetchFailed();   // Lite: fetchFriends ended without a usable list (429 / error / empty / network)
     void profileDetailsReady(const QString &uid, const QVariantMap &profile);
+    void selfProfileReady(const QString &avatarUrl, const QString &displayName);
     void bizAccountReady(const QString &uid, const QVariantMap &biz);
     void fullAvatarReady(const QString &uid, const QString &url);
     void pinnedChanged();
@@ -288,6 +290,7 @@ private slots:
     void onFetchConvoDone();
     void onFetchFriendsDone();
     void onProfileDetailsDone();
+    void onSelfProfileDone();
     void onBizAccountDone();
     void onFullAvatarDone();
     void onFetchServerQuickMessagesDone();

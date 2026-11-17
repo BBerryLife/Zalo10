@@ -702,6 +702,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled_white.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_forward_message.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_invite_to_bbm.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_list.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_microphone.png) \
@@ -711,6 +712,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_recall.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_replace_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_resend.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_retract_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_review_add.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_save.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_save_image.png) \
@@ -733,10 +735,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ContactsTab/ProfileView/BB_Pattern_Vivid.jpg) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ProfileView/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/Profile_Star_icon.png) \
-        $$quote($$BASEDIR/assets/images/ContactsTab/action_icon_search.png) \
-        $$quote($$BASEDIR/assets/images/ContactsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_add_contact.png) \
-        $$quote($$BASEDIR/assets/images/ContactsTab/ic_invite_to_bbm.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_start_chat.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/action_icon_search.png) \
@@ -762,17 +761,21 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ic_bb_status_black.png) \
         $$quote($$BASEDIR/assets/images/ic_bb_status_white.png) \
         $$quote($$BASEDIR/assets/images/ic_bbm.png) \
+        $$quote($$BASEDIR/assets/images/ic_buy.png) \
         $$quote($$BASEDIR/assets/images/ic_contact.png) \
         $$quote($$BASEDIR/assets/images/ic_groups_white.png) \
         $$quote($$BASEDIR/assets/images/ic_info.png) \
         $$quote($$BASEDIR/assets/images/ic_mail.png) \
         $$quote($$BASEDIR/assets/images/ic_settings.png) \
+        $$quote($$BASEDIR/assets/images/updates.png) \
         $$quote($$BASEDIR/assets/lists/ChatsListItem.qml) \
         $$quote($$BASEDIR/assets/lists/ChatsServiceConnections.qml) \
         $$quote($$BASEDIR/assets/lists/ChatsTitleBar.qml) \
         $$quote($$BASEDIR/assets/lists/GroupsListItem.qml) \
         $$quote($$BASEDIR/assets/lists/GroupsServiceConnections.qml) \
         $$quote($$BASEDIR/assets/lists/GroupsTitleBar.qml) \
+        $$quote($$BASEDIR/assets/lists/ProfileTitleBar.qml) \
+        $$quote($$BASEDIR/assets/lists/TabActionItem.qml) \
         $$quote($$BASEDIR/assets/lists/avatarhub.js) \
         $$quote($$BASEDIR/assets/main.qml)
 }

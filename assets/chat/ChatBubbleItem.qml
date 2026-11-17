@@ -10,6 +10,14 @@ CustomListItem {
     // Helper functions for bindings: block-body bindings ({ var x; ...; return x; }) are a
     // parse-time error on this QtQuick1/Cascades engine ("Expected token `numeric literal'").
     // Every multi-statement binding in this delegate must go through a named function.
+    // Zalo refuses to recall a message older than 24 h: the Recall action is disabled after that.
+    function canRecall(ts) {
+        if (!ts) return true;
+        var n = ts * 1;
+        if (isNaN(n) || n <= 0) return true;
+        if (n < 1e12) n *= 1000;
+        return (new Date().getTime() - n) < 24 * 60 * 60 * 1000;
+    }
     function timestampLabel(latestTs, ts) {
         var t = latestTs || ts;
         if (!t) return "";

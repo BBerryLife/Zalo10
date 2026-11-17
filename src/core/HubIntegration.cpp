@@ -166,7 +166,7 @@ bool HubIntegration::init()
     uds_account_data_t *account = uds_account_data_create();
     uds_account_data_set_id(account, ACCOUNT_ID);
     uds_account_data_set_name(account, "Zalo10");
-    uds_account_data_set_description(account, "Zalo10 messages");
+    uds_account_data_set_description(account, "");
     uds_account_data_set_icon(account, HUB_ICON_FILE);
     uds_account_data_set_target_name(account, HUB_SERVICE_TARGET);
     uds_account_data_set_supports_compose(account, false);

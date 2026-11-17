@@ -164,7 +164,7 @@ OTHER_FILES += \
     assets/lists/avatarhub.js \
     assets/lists/ChatsListItem.qml \
     assets/lists/ChatsServiceConnections.qml \
-    assets/lists/ChatsTitleBar.qml \
+    assets/lists/ProfileTitleBar.qml \
+    assets/lists/TabActionItem.qml \
     assets/lists/GroupsListItem.qml \
-    assets/lists/GroupsServiceConnections.qml \
-    assets/lists/GroupsTitleBar.qml
+    assets/lists/GroupsServiceConnections.qml

@@ -104,6 +104,47 @@ void ZaloService::onProfileDetailsDone()
     emit profileDetailsReady(uid, profile);
 }
 
+// Own profile (avatar link + display name). Same endpoint zca-js uses in fetchAccountInfo():
+// GET <profile service>/api/social/profile/me-v2, no parameters; the answer is encrypted like the others.
+void ZaloService::fetchSelfProfile()
+{
+    if (!m_loggedIn || m_profileServiceUrl.isEmpty()) return;
+    QString urlStr = m_profileServiceUrl + "/api/social/profile/me-v2"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+    QNetworkReply *reply = m_manager->get(buildRequest(urlStr, "https://chat.zalo.me/"));
+    connect(reply, SIGNAL(finished()), this, SLOT(onSelfProfileDone()));
+}
+
+void ZaloService::onSelfProfileDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+
+    QVariantMap root = jsonToMap(raw);
+    if (root["error_code"].toInt() != 0) {
+        qWarning() << "[Contacts] fetchSelfProfile:" << root["error_code"].toInt();
+        // Fallback: the generic profile lookup also works for our own uid.
+        fetchProfileDetails(m_uid);
+        return;
+    }
+    QVariantMap outer = jsonToMap(aesDecryptBase64(m_secretKey, root["data"].toString()).toUtf8());
+    QVariantMap profile = outer["data"].toMap()["profile"].toMap();
+    if (profile.isEmpty()) profile = outer["profile"].toMap();
+    if (profile.isEmpty()) profile = findProfileMap(outer, m_uid, 0);
+    QString avatar = profile["avatar"].toString();
+    if (avatar.isEmpty()) {
+        qWarning() << "[Contacts] fetchSelfProfile: no avatar in response";
+        fetchProfileDetails(m_uid);
+        return;
+    }
+    QString name = profile["displayName"].toString();
+    if (name.isEmpty()) name = profile["zaloName"].toString();
+    emit selfProfileReady(avatar, name.isEmpty() ? m_displayName : name);
+}
+
 void ZaloService::fetchBizAccount(const QString &uid)
 {
     if (!m_loggedIn || uid.isEmpty()) return;

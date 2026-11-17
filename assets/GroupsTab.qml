@@ -9,7 +9,9 @@ NavigationPane {
     peekEnabled: false
 
     property string selfName: ""
+    property string selfAvatar: ""
     signal onUnreadMessage()
+    signal tabRequested(string target)
     property variant currentPage: null
     property variant activeQmPage: null
     property variant activeGroupBoardPage: null
@@ -243,27 +245,30 @@ NavigationPane {
     Page {
         id: groupsPage
 
-        titleBar: GroupsTitleBar {}
+        titleBar: ProfileTitleBar {
+            selfName:   groupsNav.selfName
+            selfAvatar: groupsNav.selfAvatar
+            addIcon: "asset:///images/GroupsTab/ic_create_group_disabled.png"
+            addDialogTitle: "Create Group"
+        }
 
         shortcuts: [
             Shortcut {
                 key: "s"
-                onTriggered: {
-                    groupsNav.searchVisible = !groupsNav.searchVisible;
-                    if (!groupsNav.searchVisible) {
-                        groupsNav.searchText = "";
-                        groupsNav.filterList();
-                    }
-                }
+                onTriggered: { groupsSearchField.requestFocus(); }
             }
         ]
 
         actions: [
+            // BB10 (10.3) fits only 3 actions between the menu and overflow buttons, so the page's own tab is left out.
+            TabActionItem { target: "chats"; onPicked: groupsNav.tabRequested(target) },
+            TabActionItem { target: "feeds" },
+            TabActionItem { target: "contacts"; onPicked: groupsNav.tabRequested(target) },
             ActionItem {
                 title: groupsNav.refreshCooldown ? "Please wait..." : "Refresh"
                 enabled: !groupsNav.refreshCooldown
                 imageSource: "asset:///images/GroupsTab/ic_sync.png"
-                ActionBar.placement: ActionBarPlacement.OnBar
+                ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
                     if (groupsNav.refreshCooldown) return;
                     groupsNav.refreshCooldown = true;
@@ -273,29 +278,48 @@ NavigationPane {
                     zService.fetchConversations();
                     groupsLoading.visible = true;
                 }
-            },
-            ActionItem {
-                title: "Search"
-                imageSource: "asset:///images/GroupsTab/action_icon_search.png"
-                ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {
-                    groupsNav.searchVisible = !groupsNav.searchVisible;
-                    if (!groupsNav.searchVisible) {
-                        groupsNav.searchText = "";
-                        groupsNav.filterList();
-                    }
-                }
-            },
-            ActionItem {
-                title: "Create Group"
-                imageSource: "asset:///images/GroupsTab/ic_create_group_disabled.png"
-                ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: { createGroupDialog.show() }
             }
         ]
 
         content: Container {
+            horizontalAlignment: HorizontalAlignment.Fill
+            verticalAlignment: VerticalAlignment.Fill
+
+            // Search box under the header, drawn with a visible border.
+            Container {
+                background: Color.create("#f2f2f2")
+                horizontalAlignment: HorizontalAlignment.Fill
+                topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
+                leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
+                Container {
+                    background: Color.create("#9a9a9a")
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.2); bottomPadding: ui.du(0.2)
+                    leftPadding: ui.du(0.2); rightPadding: ui.du(0.2)
+                    Container {
+                        background: Color.White
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        TextField {
+                            id: groupsSearchField
+                            hintText: "Search groups..."
+                            backgroundVisible: false
+                            horizontalAlignment: HorizontalAlignment.Fill
+                        onTextChanging: {
+                            groupsNav.searchText = text;
+                            groupsNav.searchVisible = (text.trim().length > 0);
+                            groupsNav.filterList();
+                        }
+                        onCreationCompleted: {
+                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        }
+                        }
+                    }
+                }
+            }
+
+            Container {
             layout: DockLayout {}
+            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
 
@@ -350,18 +374,11 @@ NavigationPane {
                 running: visible
                 visible: false
             }
+            }
         }
 
         attachedObjects: [
             ArrayDataModel { id: groupModel },
-            SystemDialog {
-                id: createGroupDialog
-                title: "Create Group"
-                body: "This feature is still under development."
-                confirmButton.label: "OK"
-                cancelButton.label: ""
-                cancelButton.enabled: false
-            },
             ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: groupsDef

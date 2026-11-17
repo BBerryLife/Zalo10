@@ -1,9 +1,14 @@
 import bb.cascades 1.4
 import QtQuick 1.0
+import "lists"
 
 NavigationPane {
     id: invitesNav
     peekEnabled: false
+
+    property string selfName: ""
+    property string selfAvatar: ""
+    signal tabRequested(string target)
 
     property bool searchVisible: false
     property string searchText: ""
@@ -25,59 +30,17 @@ NavigationPane {
     }
 
     Page {
-        titleBar: TitleBar {
-            kind: TitleBarKind.FreeForm
-            kindProperties: FreeFormTitleBarKindProperties {
-                content: Container {
-                    background: Color.create("#2575fc")
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    verticalAlignment: VerticalAlignment.Fill
-                    layout: DockLayout {}
-                    leftPadding: ui.du(2.5)
-                    rightPadding: ui.du(2.5)
-                    Label {
-                        text: "Friend Requests"
-                        textStyle {
-                            color: Color.White
-                            base: SystemDefaults.TextStyles.TitleText
-                            fontWeight: FontWeight.Bold
-                        }
-                        verticalAlignment: VerticalAlignment.Center
-                        horizontalAlignment: HorizontalAlignment.Left
-                        visible: !invitesNav.searchVisible
-                    }
-                    Container {
-                        visible: invitesNav.searchVisible
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        verticalAlignment: VerticalAlignment.Center
-                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                        TextField {
-                            id: invitesSearchField
-                            hintText: "Search requests..."
-                            verticalAlignment: VerticalAlignment.Center
-                            textStyle { color: Color.White }
-                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            onTextChanging: {
-                                invitesNav.searchText = text;
-                                invitesNav.filterList();
-                            }
-                            onCreationCompleted: {
-                                inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
-                            }
-                        }
-                        Button {
-                            text: "Cancel"
-                            preferredWidth: ui.du(14)
-                            verticalAlignment: VerticalAlignment.Center
-                            onClicked: {
-                                invitesSearchField.text = "";
-                                invitesNav.searchText = "";
-                                invitesNav.searchVisible = false;
-                                invitesNav.filterList();
-                            }
-                        }
-                    }
-                }
+        titleBar: ProfileTitleBar {
+            id: invitesBar
+            selfName:   invitesNav.selfName
+            selfAvatar: invitesNav.selfAvatar
+            searchHint: "Search requests..."
+            searchMode: invitesNav.searchVisible
+            onSearchChanged: { invitesNav.searchText = text; invitesNav.filterList(); }
+            onSearchClosed: {
+                invitesNav.searchText = "";
+                invitesNav.searchVisible = false;
+                invitesNav.filterList();
             }
         }
 
@@ -87,18 +50,25 @@ NavigationPane {
                 onTriggered: {
                     invitesNav.searchVisible = !invitesNav.searchVisible;
                     if (!invitesNav.searchVisible) {
+                        invitesBar.clearSearch();
                         invitesNav.searchText = "";
                         invitesNav.filterList();
+                    } else {
+                        invitesBar.focusSearch();
                     }
                 }
             }
         ]
 
         actions: [
+            // BB10 (10.3) fits only 3 actions between the menu and overflow buttons, so the page's own tab is left out.
+            TabActionItem { target: "chats"; onPicked: invitesNav.tabRequested(target) },
+            TabActionItem { target: "contacts"; onPicked: invitesNav.tabRequested(target) },
+            TabActionItem { target: "groups"; onPicked: invitesNav.tabRequested(target) },
             ActionItem {
                 title: "Refresh"
                 imageSource: "asset:///images/InvitesTab/ic_sync.png"
-                ActionBar.placement: ActionBarPlacement.OnBar
+                ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
                     inviteModel.clear();
                     zService.fetchInvites();
@@ -112,8 +82,11 @@ NavigationPane {
                 onTriggered: {
                     invitesNav.searchVisible = !invitesNav.searchVisible;
                     if (!invitesNav.searchVisible) {
+                        invitesBar.clearSearch();
                         invitesNav.searchText = "";
                         invitesNav.filterList();
+                    } else {
+                        invitesBar.focusSearch();
                     }
                 }
             },

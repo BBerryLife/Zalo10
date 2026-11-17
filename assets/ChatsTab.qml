@@ -40,7 +40,22 @@ NavigationPane {
     Page {
         id: chatsPage
 
-        titleBar: ChatsTitleBar {}
+        titleBar: ProfileTitleBar {
+            selfName:   chatsNav.selfName
+            selfAvatar: chatsNav.selfAvatar
+            searchHint: "Search chats..."
+            searchMode: chatsNav.searchVisible
+            showSearchButton: true
+            addIcon: "asset:///images/ChatsTab/ic_start_chat.png"
+            addDialogTitle: "New Chat"
+            onSearchOpened: { chatsNav.searchVisible = true; focusSearch(); }
+            onSearchChanged: { chatsNav.searchText = text; chatsNav.filterList(); }
+            onSearchClosed: {
+                chatsNav.searchText = "";
+                chatsNav.searchVisible = false;
+                chatsNav.filterList();
+            }
+        }
 
         shortcuts: [
             Shortcut {
@@ -56,11 +71,15 @@ NavigationPane {
         ]
 
         actions: [
+            // BB10 (10.3) fits only 3 actions between the menu and overflow buttons, so the page's own tab is left out.
+            TabActionItem { target: "feeds" },
+            TabActionItem { target: "contacts"; onPicked: chatsNav.tabRequested(target) },
+            TabActionItem { target: "groups"; onPicked: chatsNav.tabRequested(target) },
             ActionItem {
                 title: chatsNav.refreshCooldown ? "Please wait..." : "Refresh"
                 enabled: !chatsNav.refreshCooldown
                 imageSource: "asset:///images/ChatsTab/ic_sync.png"
-                ActionBar.placement: ActionBarPlacement.OnBar
+                ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
                     if (chatsNav.refreshCooldown) return;
                     chatsNav.refreshCooldown = true;
@@ -273,7 +292,9 @@ NavigationPane {
     }
 
     property string selfName: ""
+    property string selfAvatar: ""
     signal onUnreadMessage()
+    signal tabRequested(string target)
 
     property variant lastFriends: []
 

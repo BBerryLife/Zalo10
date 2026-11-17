@@ -49,6 +49,8 @@ CustomListItem {
                         imageSource: "asset:///images/ChatsTab/online_dot.png"
                         preferredWidth:  ui.du(2.6)
                         preferredHeight: ui.du(2.6)
+                        // Centre of the dot = centre of the pellet below (4.4du box -> 2.2du from the same left edge).
+                        leftMargin: ui.du(0.9)
                         horizontalAlignment: HorizontalAlignment.Left
                         verticalAlignment: VerticalAlignment.Center
                         scalingMethod: ScalingMethod.AspectFit

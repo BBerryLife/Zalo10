@@ -1,6 +1,7 @@
 import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
+import "lists"
 import "lists/avatarhub.js" as AvatarHub
 
 NavigationPane {
@@ -8,6 +9,8 @@ NavigationPane {
     peekEnabled: false
 
     property string selfName: ""
+    property string selfAvatar: ""
+    signal tabRequested(string target)
     onSelfNameChanged: contactsPage.selfName = selfName
 
     property bool searchVisible: false
@@ -71,82 +74,31 @@ NavigationPane {
         property bool populated: false
         property string selfName: contactsNav.selfName
 
-        titleBar: TitleBar {
-            kind: TitleBarKind.FreeForm
-            kindProperties: FreeFormTitleBarKindProperties {
-                content: Container {
-                    background: Color.create("#2575fc")
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    verticalAlignment:   VerticalAlignment.Fill
-                    layout: DockLayout {}
-                    leftPadding: ui.du(2.5)
-                    rightPadding: ui.du(2.5)
-                    Label {
-                        text: "Contacts"
-                        textStyle {
-                            color: Color.White
-                            base: SystemDefaults.TextStyles.TitleText
-                            fontWeight: FontWeight.Bold
-                        }
-                        verticalAlignment:   VerticalAlignment.Center
-                        horizontalAlignment: HorizontalAlignment.Left
-                        visible: !contactsNav.searchVisible
-                    }
-                    Container {
-                        visible: contactsNav.searchVisible
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        verticalAlignment: VerticalAlignment.Center
-                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-                        TextField {
-                            id: contactsSearchField
-                            hintText: "Search contacts..."
-                            verticalAlignment: VerticalAlignment.Center
-                            textStyle { color: Color.White }
-                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            onTextChanging: {
-                                contactsNav.searchText = text;
-                                contactsNav.filterList();
-                            }
-                            onCreationCompleted: {
-                                inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
-                            }
-                        }
-                        Button {
-                            text: "Cancel"
-                            preferredWidth: ui.du(14)
-                            verticalAlignment: VerticalAlignment.Center
-                            onClicked: {
-                                contactsSearchField.text = "";
-                                contactsNav.searchText = "";
-                                contactsNav.searchVisible = false;
-                                contactsNav.filterList();
-                            }
-                        }
-                    }
-                }
-            }
+        titleBar: ProfileTitleBar {
+            selfName:   contactsNav.selfName
+            selfAvatar: contactsNav.selfAvatar
+            addIcon: "asset:///images/ContactsTab/ic_add_contact.png"
+            addDialogTitle: "Add Contact"
         }
 
         shortcuts: [
             Shortcut {
                 key: "s"
-                onTriggered: {
-                    contactsNav.searchVisible = !contactsNav.searchVisible;
-                    if (!contactsNav.searchVisible) {
-                        contactsNav.searchText = "";
-                        contactsNav.filterList();
-                    }
-                }
+                onTriggered: { contactsSearchField.requestFocus(); }
             }
         ]
 
         actions: [
+            // BB10 (10.3) fits only 3 actions between the menu and overflow buttons, so the page's own tab is left out.
+            TabActionItem { target: "chats"; onPicked: contactsNav.tabRequested(target) },
+            TabActionItem { target: "feeds" },
+            TabActionItem { target: "groups"; onPicked: contactsNav.tabRequested(target) },
             ActionItem {
                 id: contactsRefreshAction
                 title: contactsNav.refreshCooldown ? "Please wait..." : "Refresh"
                 enabled: !contactsNav.refreshCooldown
                 imageSource: "asset:///images/ContactsTab/ic_sync.png"
-                ActionBar.placement: ActionBarPlacement.OnBar
+                ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
                     if (contactsNav.refreshCooldown) return;
                     contactsNav.refreshCooldown = true;
@@ -157,29 +109,48 @@ NavigationPane {
                     zService.fetchFriends()
                     contactsLoading.visible = true
                 }
-            },
-            ActionItem {
-                title: "Search"
-                imageSource: "asset:///images/ContactsTab/action_icon_search.png"
-                ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {
-                    contactsNav.searchVisible = !contactsNav.searchVisible;
-                    if (!contactsNav.searchVisible) {
-                        contactsNav.searchText = "";
-                        contactsNav.filterList();
-                    }
-                }
-            },
-            ActionItem {
-                title: "Add Contact"
-                imageSource: "asset:///images/ContactsTab/ic_add_contact.png"
-                ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: { addContactDialog.show() }
             }
         ]
 
         Container {
+            horizontalAlignment: HorizontalAlignment.Fill
+            verticalAlignment:   VerticalAlignment.Fill
+
+            // Search box under the header, drawn with a visible border.
+            Container {
+                background: Color.create("#f2f2f2")
+                horizontalAlignment: HorizontalAlignment.Fill
+                topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
+                leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
+                Container {
+                    background: Color.create("#9a9a9a")
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    topPadding: ui.du(0.2); bottomPadding: ui.du(0.2)
+                    leftPadding: ui.du(0.2); rightPadding: ui.du(0.2)
+                    Container {
+                        background: Color.White
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        TextField {
+                            id: contactsSearchField
+                            hintText: "Search contacts..."
+                            backgroundVisible: false
+                            horizontalAlignment: HorizontalAlignment.Fill
+                        onTextChanging: {
+                            contactsNav.searchText = text;
+                            contactsNav.searchVisible = (text.trim().length > 0);
+                            contactsNav.filterList();
+                        }
+                        onCreationCompleted: {
+                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                        }
+                        }
+                    }
+                }
+            }
+
+            Container {
             layout: DockLayout {}
+            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
 
@@ -276,18 +247,11 @@ NavigationPane {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment:   VerticalAlignment.Center
             }
+            }
         }
 
         attachedObjects: [
             ArrayDataModel { id: contactModel },
-            SystemDialog {
-                id: addContactDialog
-                title: "Add Contact"
-                body: "This feature is still under development."
-                confirmButton.label: "OK"
-                cancelButton.label: ""
-                cancelButton.enabled: false
-            },
             ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: contactsProfileDef

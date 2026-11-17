@@ -1,5 +1,5 @@
 1
-739
+742
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -662,6 +662,7 @@ images/ChatView/ic_edit.png
 images/ChatView/ic_emoticon_enabled.png
 images/ChatView/ic_emoticon_enabled_white.png
 images/ChatView/ic_forward_message.png
+images/ChatView/ic_invite_to_bbm.png
 images/ChatView/ic_keyboard_enabled.png
 images/ChatView/ic_list.png
 images/ChatView/ic_microphone.png
@@ -671,6 +672,7 @@ images/ChatView/ic_quote_message.png
 images/ChatView/ic_recall.png
 images/ChatView/ic_replace_message.png
 images/ChatView/ic_resend.png
+images/ChatView/ic_retract_message.png
 images/ChatView/ic_review_add.png
 images/ChatView/ic_save.png
 images/ChatView/ic_save_image.png
@@ -681,10 +683,7 @@ images/ChatView/ic_status.png
 images/ChatView/ic_textmessage.png
 images/ChatView/timemess.png
 images/ChatView/timemesswhite.png
-images/ContactsTab/action_icon_search.png
-images/ContactsTab/desktop.ini
 images/ContactsTab/ic_add_contact.png
-images/ContactsTab/ic_invite_to_bbm.png
 images/ContactsTab/ic_start_chat.png
 images/ContactsTab/ic_sync.png
 images/ContactsTab/ProfileView/BB_Pattern_Vivid.jpg
@@ -699,6 +698,7 @@ images/ic_add_contact.png
 images/ic_bbm.png
 images/ic_bb_status_black.png
 images/ic_bb_status_white.png
+images/ic_buy.png
 images/ic_contact.png
 images/ic_groups_white.png
 images/ic_info.png
@@ -717,6 +717,7 @@ images/SettingsSheet/eye-2-96.png
 images/SettingsSheet/ic_close_white.png
 images/SettingsSheet/ic_picture.png
 images/SettingsSheet/ic_save.png
+images/updates.png
 InfoDialog.qml
 InvitesTab.qml
 lists/avatarhub.js
@@ -726,6 +727,8 @@ lists/ChatsTitleBar.qml
 lists/GroupsListItem.qml
 lists/GroupsServiceConnections.qml
 lists/GroupsTitleBar.qml
+lists/ProfileTitleBar.qml
+lists/TabActionItem.qml
 LoginView.qml
 main.qml
 NoteViewerSheet.qml

@@ -8,6 +8,7 @@ TabbedPane {
     sidebarState: SidebarState.VisibleCompact
     
     property string selfName: "Me"
+    property string selfAvatar: ""
     property int chatsUnreadCount: 0
     property int groupsUnreadCount: 0
     
@@ -63,6 +64,13 @@ TabbedPane {
         return mon + " " + date.getDate();
     }
     
+    // Action-bar shortcuts (Chats / Contacts / Groups) of every tab page land here.
+    function switchTab(target) {
+        if (target === "chats")         root.activeTab = chatsTab;
+        else if (target === "contacts") root.activeTab = contactsTab;
+        else if (target === "groups")   root.activeTab = groupsTab;
+    }
+
     function startLogin() {
         if (!zService.loadSession()) {
             loginSheet.open();
@@ -85,6 +93,8 @@ TabbedPane {
         imageSource: "asset:///images/ic_bbm.png"
         ChatsTab {
             id: chatsTabContent
+            selfAvatar: root.selfAvatar
+            onTabRequested: root.switchTab(target)
             onOnUnreadMessage: {
                 if (root.activeTab !== chatsTab)
                     root.chatsUnreadCount++;
@@ -99,6 +109,8 @@ TabbedPane {
         imageSource: "asset:///images/ic_contact.png"
         ContactsTab {
             id: contactsTabContent
+            selfAvatar: root.selfAvatar
+            onTabRequested: root.switchTab(target)
         }
     }
     
@@ -109,6 +121,8 @@ TabbedPane {
         imageSource: "asset:///images/ic_groups_white.png"
         GroupsTab {
             id: groupsTabContent
+            selfAvatar: root.selfAvatar
+            onTabRequested: root.switchTab(target)
             onOnUnreadMessage: {
                 if (root.activeTab !== groupsTab)
                     root.groupsUnreadCount++;
@@ -123,6 +137,9 @@ TabbedPane {
         imageSource: "asset:///images/ic_add_contact.png"
         InvitesTab {
             id: invitesTabContent
+            selfName: root.selfName
+            selfAvatar: root.selfAvatar
+            onTabRequested: root.switchTab(target)
         }
     }
     
@@ -155,6 +172,25 @@ TabbedPane {
                     groupsTabContent.selfName   = displayName;
                     contactsTabContent.selfName = displayName;
                 }
+                zService.fetchSelfProfile();
+            }
+            // Own avatar: me-v2 gives the link, the normal avatar downloader caches it under the id "self".
+            onSelfProfileReady: {
+                if (displayName.length > 0) {
+                    root.selfName = displayName;
+                    chatsTabContent.selfName    = displayName;
+                    groupsTabContent.selfName   = displayName;
+                    contactsTabContent.selfName = displayName;
+                }
+                if (avatarUrl.length > 0) zService.downloadAvatar("self", avatarUrl);
+            }
+            // Fallback path (getprofiles/v2 for our own uid) when me-v2 is refused.
+            onProfileDetailsReady: {
+                if (uid === zService.selfUid && profile.avatar && profile.avatar.length > 0)
+                    zService.downloadAvatar("self", profile.avatar);
+            }
+            onAvatarReady: {
+                if (threadId === "self") root.selfAvatar = localPath;
             }
         },
 
