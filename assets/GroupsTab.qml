@@ -11,7 +11,6 @@ NavigationPane {
     property string selfName: ""
     property string selfAvatar: ""
     signal onUnreadMessage()
-    signal tabRequested(string target)
     property variant currentPage: null
     property variant activeQmPage: null
     property variant activeGroupBoardPage: null
@@ -260,10 +259,6 @@ NavigationPane {
         ]
 
         actions: [
-            // BB10 (10.3) fits only 3 actions between the menu and overflow buttons, so the page's own tab is left out.
-            TabActionItem { target: "chats"; onPicked: groupsNav.tabRequested(target) },
-            TabActionItem { target: "feeds" },
-            TabActionItem { target: "contacts"; onPicked: groupsNav.tabRequested(target) },
             ActionItem {
                 title: groupsNav.refreshCooldown ? "Please wait..." : "Refresh"
                 enabled: !groupsNav.refreshCooldown
@@ -284,6 +279,8 @@ NavigationPane {
         content: Container {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
+
+            FocusSink {}
 
             // Search box under the header, drawn with a visible border.
             Container {

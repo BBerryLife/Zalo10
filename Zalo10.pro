@@ -114,6 +114,8 @@ OTHER_FILES += \
     assets/InfoDialog.qml \
     assets/ConfirmDialog.qml \
     assets/EmojiPanel.qml \
+    assets/FeedsTab.qml \
+    assets/FocusSink.qml \
     assets/emoji/EmojiPeoplePage.qml \
     assets/emoji/EmojiNaturePage.qml \
     assets/emoji/EmojiObjectsPage.qml \
@@ -165,6 +167,5 @@ OTHER_FILES += \
     assets/lists/ChatsListItem.qml \
     assets/lists/ChatsServiceConnections.qml \
     assets/lists/ProfileTitleBar.qml \
-    assets/lists/TabActionItem.qml \
     assets/lists/GroupsListItem.qml \
     assets/lists/GroupsServiceConnections.qml

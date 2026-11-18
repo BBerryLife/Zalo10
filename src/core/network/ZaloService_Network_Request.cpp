@@ -100,6 +100,7 @@ void ZaloService::saveSession()
     s.setValue("profileUrl", m_profileServiceUrl);
     s.setValue("grpPollUrl", m_groupPollServiceUrl);
     s.setValue("grpBoardUrl", m_groupBoardServiceUrl);
+    s.setValue("grpCloudMsgUrl", m_groupCloudMsgServiceUrl);
     s.setValue("friendUrl",  m_friendServiceUrl);
     s.setValue("fileUrl",    m_fileServiceUrl);
     s.setValue("quickMsgUrl", m_quickMessageServiceUrl);
@@ -148,6 +149,7 @@ bool ZaloService::loadSession()
     m_profileServiceUrl   = s.value("profileUrl").toString();
     m_groupPollServiceUrl = s.value("grpPollUrl").toString();
     m_groupBoardServiceUrl = s.value("grpBoardUrl").toString();
+    m_groupCloudMsgServiceUrl = s.value("grpCloudMsgUrl").toString();
     m_friendServiceUrl    = s.value("friendUrl").toString();
     m_fileServiceUrl      = s.value("fileUrl").toString();
     m_quickMessageServiceUrl = s.value("quickMsgUrl").toString();

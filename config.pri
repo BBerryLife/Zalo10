@@ -47,6 +47,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/CreateNoteSheet.qml) \
         $$quote($$BASEDIR/assets/CreatePollSheet.qml) \
         $$quote($$BASEDIR/assets/EmojiPanel.qml) \
+        $$quote($$BASEDIR/assets/FeedsTab.qml) \
+        $$quote($$BASEDIR/assets/FocusSink.qml) \
         $$quote($$BASEDIR/assets/ForwardPickerSheet.qml) \
         $$quote($$BASEDIR/assets/GroupBoardSheet.qml) \
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
@@ -775,7 +777,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/lists/GroupsServiceConnections.qml) \
         $$quote($$BASEDIR/assets/lists/GroupsTitleBar.qml) \
         $$quote($$BASEDIR/assets/lists/ProfileTitleBar.qml) \
-        $$quote($$BASEDIR/assets/lists/TabActionItem.qml) \
         $$quote($$BASEDIR/assets/lists/avatarhub.js) \
         $$quote($$BASEDIR/assets/main.qml)
 }

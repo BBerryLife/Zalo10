@@ -4,13 +4,17 @@ import QtQuick 1.0
 
 TabbedPane {
     id: root
-    showTabsOnActionBar: false
+    // Tabs go on the action bar (like CrackBerry): the system fits as many as the screen allows,
+    // the rest stay in the overflow. Pages only keep their own actions (Refresh, Search...) in overflow.
+    showTabsOnActionBar: true
     sidebarState: SidebarState.VisibleCompact
     
     property string selfName: "Me"
     property string selfAvatar: ""
     property int chatsUnreadCount: 0
     property int groupsUnreadCount: 0
+    // Last tab that really has a page; Shop has none yet and bounces back to it.
+    property variant lastRealTab: null
     
     onChatsUnreadCountChanged: {
         chatsTab.title = chatsUnreadCount > 0
@@ -23,6 +27,13 @@ TabbedPane {
         : "Groups";
     }
     onActiveTabChanged: {
+        if (activeTab === shopTab) {
+            // Under development: show the dialog and return to the tab we came from.
+            devTabDialog.show();
+            devTabRevertTimer.restart();
+            return;
+        }
+        root.lastRealTab = activeTab;
         if (activeTab === chatsTab)  root.chatsUnreadCount  = 0;
         if (activeTab === groupsTab) root.groupsUnreadCount = 0;
     }
@@ -64,13 +75,6 @@ TabbedPane {
         return mon + " " + date.getDate();
     }
     
-    // Action-bar shortcuts (Chats / Contacts / Groups) of every tab page land here.
-    function switchTab(target) {
-        if (target === "chats")         root.activeTab = chatsTab;
-        else if (target === "contacts") root.activeTab = contactsTab;
-        else if (target === "groups")   root.activeTab = groupsTab;
-    }
-
     function startLogin() {
         if (!zService.loadSession()) {
             loginSheet.open();
@@ -78,6 +82,7 @@ TabbedPane {
     }
 
     onCreationCompleted: {
+        root.lastRealTab = chatsTab;
         aboutSheet.zService = zService;
         if (app.getTosAccepted()) {
             startLogin();
@@ -94,7 +99,6 @@ TabbedPane {
         ChatsTab {
             id: chatsTabContent
             selfAvatar: root.selfAvatar
-            onTabRequested: root.switchTab(target)
             onOnUnreadMessage: {
                 if (root.activeTab !== chatsTab)
                     root.chatsUnreadCount++;
@@ -103,6 +107,18 @@ TabbedPane {
     }
     
     Tab {
+        id: feedsTab
+        title: "Feeds"
+        description: "Timeline"
+        imageSource: "asset:///images/updates.png"
+        FeedsTab {
+            id: feedsTabContent
+            selfName: root.selfName
+            selfAvatar: root.selfAvatar
+        }
+    }
+
+    Tab {
         id: contactsTab
         title: "Contacts"
         description: "Friends"
@@ -110,7 +126,6 @@ TabbedPane {
         ContactsTab {
             id: contactsTabContent
             selfAvatar: root.selfAvatar
-            onTabRequested: root.switchTab(target)
         }
     }
     
@@ -122,7 +137,6 @@ TabbedPane {
         GroupsTab {
             id: groupsTabContent
             selfAvatar: root.selfAvatar
-            onTabRequested: root.switchTab(target)
             onOnUnreadMessage: {
                 if (root.activeTab !== groupsTab)
                     root.groupsUnreadCount++;
@@ -139,10 +153,17 @@ TabbedPane {
             id: invitesTabContent
             selfName: root.selfName
             selfAvatar: root.selfAvatar
-            onTabRequested: root.switchTab(target)
         }
     }
     
+    // No page yet: selecting it only shows the "under development" dialog (see onActiveTabChanged).
+    Tab {
+        id: shopTab
+        title: "Shop"
+        description: "Store"
+        imageSource: "asset:///images/ic_buy.png"
+    }
+
     attachedObjects: [
         Sheet {
             id: loginSheet
@@ -211,6 +232,19 @@ TabbedPane {
                     : ("Cannot create event: " + error);
                 eventResultDialog.show();
             }
+        },
+
+        Timer {
+            id: devTabRevertTimer
+            interval: 1
+            repeat: false
+            onTriggered: { root.activeTab = root.lastRealTab ? root.lastRealTab : chatsTab; }
+        },
+
+        InfoDialog {
+            id: devTabDialog
+            title: "Shop"
+            body: "This feature is still under development."
         },
 
         Timer {

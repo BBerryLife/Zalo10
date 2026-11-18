@@ -71,10 +71,6 @@ NavigationPane {
         ]
 
         actions: [
-            // BB10 (10.3) fits only 3 actions between the menu and overflow buttons, so the page's own tab is left out.
-            TabActionItem { target: "feeds" },
-            TabActionItem { target: "contacts"; onPicked: chatsNav.tabRequested(target) },
-            TabActionItem { target: "groups"; onPicked: chatsNav.tabRequested(target) },
             ActionItem {
                 title: chatsNav.refreshCooldown ? "Please wait..." : "Refresh"
                 enabled: !chatsNav.refreshCooldown
@@ -109,6 +105,8 @@ NavigationPane {
             layout: DockLayout {}
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
+
+            FocusSink {}
 
             ListView {
                 id: friendList
@@ -294,7 +292,6 @@ NavigationPane {
     property string selfName: ""
     property string selfAvatar: ""
     signal onUnreadMessage()
-    signal tabRequested(string target)
 
     property variant lastFriends: []
 

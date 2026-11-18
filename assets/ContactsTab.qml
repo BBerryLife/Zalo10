@@ -10,7 +10,6 @@ NavigationPane {
 
     property string selfName: ""
     property string selfAvatar: ""
-    signal tabRequested(string target)
     onSelfNameChanged: contactsPage.selfName = selfName
 
     property bool searchVisible: false
@@ -89,10 +88,6 @@ NavigationPane {
         ]
 
         actions: [
-            // BB10 (10.3) fits only 3 actions between the menu and overflow buttons, so the page's own tab is left out.
-            TabActionItem { target: "chats"; onPicked: contactsNav.tabRequested(target) },
-            TabActionItem { target: "feeds" },
-            TabActionItem { target: "groups"; onPicked: contactsNav.tabRequested(target) },
             ActionItem {
                 id: contactsRefreshAction
                 title: contactsNav.refreshCooldown ? "Please wait..." : "Refresh"
@@ -115,6 +110,8 @@ NavigationPane {
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
+
+            FocusSink {}
 
             // Search box under the header, drawn with a visible border.
             Container {

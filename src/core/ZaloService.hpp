@@ -83,6 +83,9 @@ public:
     Q_INVOKABLE void voteGroupPoll(const QString &groupId, const QString &pollId, const QVariantList &optionIds);
     Q_INVOKABLE void getPollDetail(const QString &pollId);
     Q_INVOKABLE void fetchMessages(const QString &threadId, bool isGroup);
+    // Older group messages from Zalo's cloud message service (zca-js getCloudMessage, PR #397).
+    // Saves one page into SQLite and answers with groupCloudOlderDone().
+    Q_INVOKABLE void fetchGroupCloudOlder(const QString &groupId);
     Q_INVOKABLE void sendMessage(const QString &threadId, const QString &content, bool isGroup);
     Q_INVOKABLE void sendMessageQuote(const QString &threadId, const QString &content, bool isGroup,
                                        const QString &quoteMsgId, const QString &quoteCliMsgId,
@@ -212,6 +215,7 @@ signals:
     void forwardMessageDone(bool success, int successCount, int failCount, const QString &error);
     void friendRequestResponded(const QString &friendId, bool accepted, bool success);
     void messagesReady(const QString &threadId, const QVariantList &messages);
+    void groupCloudOlderDone(const QString &threadId, int saved, bool hasMore);
     void messageSent(bool success, const QString &threadId);
     void newMessage(const QString &threadId, const QVariantMap &message);
     void threadRead(const QString &threadId);
@@ -252,6 +256,7 @@ private:
     void sendThreadSeenRemote(const QString &threadId, bool isGroupFallback = false);
     void sendRemoveUnreadMark(const QStringList &userIds, const QStringList &groupIds);
     bool dbLastIncomingMessage(const QString &threadId, QVariantMap &out) const;
+    QString dbOldestMsgId(const QString &threadId) const;
 
 private slots:
     void onPinConversationsDone();
@@ -333,6 +338,7 @@ private slots:
     void onListenTimer();
     void onListenDone();
     void onPollMsgDone();
+    void onGroupCloudMsgDone();
     void onAvatarDownloaded();
     void onAvatarTimeout();   // Lite: aborts an avatar download that hung (QNetworkReply::abort is not a slot in Qt4)
     void onStickerDownloaded();
@@ -566,6 +572,9 @@ private:
     void finishGroupSync(const QString &why);
     bool dbMessageExists(const QString &msgId) const;
     QString m_conversationServiceUrl;
+    QString m_groupCloudMsgServiceUrl;                 // zpwServiceMap.group_cloud_message
+    QMap<QString, QString> m_cloudCursorId;            // groupId -> lastMsgId of the last cloud page
+    QMap<QString, bool>    m_cloudCursorIsOld;         // groupId -> isOld of the last cloud page
     QMap<QString, QString> m_pendingPhotoMsgIds;
     // clientId -> {localPath,fileSize,fileName} for photos just sent. The WS echo (cmd=501) usually
     // arrives before the HTTP response and can reuse the local file instead of re-downloading

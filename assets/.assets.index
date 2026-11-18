@@ -1,5 +1,5 @@
 1
-742
+743
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -36,6 +36,8 @@ emoji/EmojiPeoplePage.qml
 emoji/EmojiPlacesPage.qml
 emoji/EmojiSymbolsPage.qml
 EmojiPanel.qml
+FeedsTab.qml
+FocusSink.qml
 ForwardPickerSheet.qml
 GroupBoardSheet.qml
 GroupsTab.qml
@@ -728,7 +730,6 @@ lists/GroupsListItem.qml
 lists/GroupsServiceConnections.qml
 lists/GroupsTitleBar.qml
 lists/ProfileTitleBar.qml
-lists/TabActionItem.qml
 LoginView.qml
 main.qml
 NoteViewerSheet.qml

@@ -56,6 +56,7 @@ Page {
     property int  historyMaxRows:  240
     property bool loadingOlder:  false
     property bool hasMoreOlder:  true
+    property bool cloudOlderExhausted: false   // groups: Zalo's cloud history has nothing older
     property bool olderArmed:    false  // Set shortly after open so the initial scroll-to-end can't trigger a load.
 
     property string presenceText:   ""
@@ -344,6 +345,7 @@ Page {
 
         chatViewPage.msgStates = zService.getThreadMessageStates(chatViewPage.threadId) || {};
         chatViewPage.loadingOlder = false;
+        chatViewPage.cloudOlderExhausted = false;
         chatViewPage.olderArmed   = false;
         olderArmTimer.restart();
         var cached = zService.dbLoadMessagesPage(chatViewPage.threadId, "", chatViewPage.historyPageSize);
@@ -393,6 +395,7 @@ Page {
         msgModel.clear();
         chatViewPage.loadingOlder = false;
         chatViewPage.hasMoreOlder = true;
+        chatViewPage.cloudOlderExhausted = false;
         chatViewPage.olderArmed   = false;
         olderLoadTimer.stop();
         chatViewPage.dbIsMineCache = {};
@@ -1229,9 +1232,18 @@ Page {
         }
         chatViewPage.dbIsMineCache = cache;
 
-        chatViewPage.hasMoreOlder = (page.length >= want + 1) && (fresh.length > 0)
-                                    && (msgModel.size() + fresh.length < chatViewPage.historyMaxRows);
+        var sqliteMore = (page.length >= want + 1) && (fresh.length > 0)
+                         && (msgModel.size() + fresh.length < chatViewPage.historyMaxRows);
+        // Local rows ran out: a group can keep going back through Zalo's cloud message service.
+        var cloudMore = chatViewPage.isGroup && !chatViewPage.cloudOlderExhausted
+                        && (msgModel.size() + fresh.length < chatViewPage.historyMaxRows);
+        chatViewPage.hasMoreOlder = sqliteMore || cloudMore;
         if (fresh.length === 0) {
+            if (cloudMore) {
+                // loadingOlder stays true until onGroupCloudOlderDone (ChatMessageFlowConnections).
+                zService.fetchGroupCloudOlder(chatViewPage.threadId);
+                return;
+            }
             chatViewPage.loadingOlder = false;
             return;
         }

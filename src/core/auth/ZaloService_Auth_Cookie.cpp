@@ -149,11 +149,13 @@ void ZaloService::onCookieStep1Done()
     QVariantList qmA    = svcMap["quick_message"].toList();
     QVariantList boardA = svcMap["group_board"].toList();
     QVariantList reactA = svcMap["reaction"].toList();
+    QVariantList cloudA = svcMap["group_cloud_message"].toList();
     if (!chatA.isEmpty())  m_chatServiceUrl  = chatA[0].toString();
     if (!groupA.isEmpty()) m_groupServiceUrl = groupA[0].toString();
     if (!qmA.isEmpty())    m_quickMessageServiceUrl = qmA[0].toString();
     if (!boardA.isEmpty()) m_groupBoardServiceUrl = boardA[0].toString();
     if (!reactA.isEmpty()) m_reactionServiceUrl = reactA[0].toString();
+    if (!cloudA.isEmpty()) m_groupCloudMsgServiceUrl = cloudA[0].toString();
 
     if (m_uid.isEmpty()) {
         emit loginFailed("Cookie het han hoac sai - Lay lai ZPSID/ZPW_SEK moi");

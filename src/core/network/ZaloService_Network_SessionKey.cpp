@@ -116,11 +116,13 @@ void ZaloService::onRefreshSessionKeyDone()
                     QScriptValue qm= svcMap.property("quick_message");
                     QScriptValue rc= svcMap.property("reaction");
                     QScriptValue cv= svcMap.property("conversation");
+                    QScriptValue cm= svcMap.property("group_cloud_message");
                     if (c.isArray())  m_chatServiceUrl      = c.property(0).toString();
                     if (g.isArray())  m_groupServiceUrl     = g.property(0).toString();
                     if (p.isArray())  m_profileServiceUrl   = p.property(0).toString();
                     if (gp.isArray()) m_groupPollServiceUrl = gp.property(0).toString();
                     if (gb.isArray()) m_groupBoardServiceUrl = gb.property(0).toString();
+                    if (cm.isArray()) m_groupCloudMsgServiceUrl = cm.property(0).toString();
                     if (f.isArray())  m_friendServiceUrl    = f.property(0).toString();
                     if (qm.isArray()) m_quickMessageServiceUrl = qm.property(0).toString();
                     if (rc.isArray()) m_reactionServiceUrl  = rc.property(0).toString();
@@ -211,6 +213,7 @@ bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
             { "profile",       &m_profileServiceUrl },
             { "group_poll",    &m_groupPollServiceUrl },
             { "group_board",   &m_groupBoardServiceUrl },
+            { "group_cloud_message", &m_groupCloudMsgServiceUrl },
             { "friend",        &m_friendServiceUrl },
             { "quick_message", &m_quickMessageServiceUrl },
             { "reaction",      &m_reactionServiceUrl },

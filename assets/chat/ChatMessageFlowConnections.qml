@@ -5,6 +5,20 @@ import QtQuick 1.0
 Connections {
     target: zService
 
+    // One cloud page of an older group history has been saved to SQLite (see fetchGroupCloudOlder).
+    onGroupCloudOlderDone: {
+        if (threadId !== chatViewPage.threadId || !chatViewPage.loadingOlder) return;
+        if (saved > 0) {
+            chatViewPage.doLoadOlderMessages();      // the new rows are in SQLite: page them in as usual
+        } else if (hasMore) {
+            zService.fetchGroupCloudOlder(chatViewPage.threadId);
+        } else {
+            chatViewPage.cloudOlderExhausted = true;
+            chatViewPage.hasMoreOlder = false;
+            chatViewPage.loadingOlder = false;
+        }
+    }
+
     onMessagesReady: {
         if (threadId !== chatViewPage.threadId) return;
         // Must run before any direct msgModel read/append: see flushPendingRebuild().

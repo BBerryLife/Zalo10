@@ -8,7 +8,6 @@ NavigationPane {
 
     property string selfName: ""
     property string selfAvatar: ""
-    signal tabRequested(string target)
 
     property bool searchVisible: false
     property string searchText: ""
@@ -61,10 +60,6 @@ NavigationPane {
         ]
 
         actions: [
-            // BB10 (10.3) fits only 3 actions between the menu and overflow buttons, so the page's own tab is left out.
-            TabActionItem { target: "chats"; onPicked: invitesNav.tabRequested(target) },
-            TabActionItem { target: "contacts"; onPicked: invitesNav.tabRequested(target) },
-            TabActionItem { target: "groups"; onPicked: invitesNav.tabRequested(target) },
             ActionItem {
                 title: "Refresh"
                 imageSource: "asset:///images/InvitesTab/ic_sync.png"
@@ -109,6 +104,8 @@ NavigationPane {
             layout: DockLayout {}
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
+
+            FocusSink {}
 
             ListView {
                 horizontalAlignment: HorizontalAlignment.Fill
