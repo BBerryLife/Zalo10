@@ -11,27 +11,10 @@ TabbedPane {
     
     property string selfName: "Me"
     property string selfAvatar: ""
-    property int chatsUnreadCount: 0
-    property int groupsUnreadCount: 0
     property int feedsUnreadCount: 0
     // Last tab that really has a page; Shop has none yet and bounces back to it.
     property variant lastRealTab: null
-    
-    onChatsUnreadCountChanged: {
-        chatsTab.title = chatsUnreadCount > 0
-        ? "Chats (" + chatsUnreadCount + ")"
-        : "Chats";
-    }
-    onGroupsUnreadCountChanged: {
-        groupsTab.title = groupsUnreadCount > 0
-        ? "Groups (" + groupsUnreadCount + ")"
-        : "Groups";
-    }
-    onFeedsUnreadCountChanged: {
-        feedsTab.title = feedsUnreadCount > 0
-        ? "Feeds (" + feedsUnreadCount + ")"
-        : "Feeds";
-    }
+
     onActiveTabChanged: {
         zService.setFeedsViewing(activeTab === feedsTab);
         if (activeTab === shopTab) {
@@ -41,8 +24,6 @@ TabbedPane {
             return;
         }
         root.lastRealTab = activeTab;
-        if (activeTab === chatsTab)  root.chatsUnreadCount  = 0;
-        if (activeTab === groupsTab) root.groupsUnreadCount = 0;
     }
     
     Menu.definition: MenuDefinition {
@@ -101,23 +82,24 @@ TabbedPane {
     Tab {
         id: chatsTab
         title: "Chats"
-        description: "Messages"
+        // Subtitle like the old BBM list: "N Active Chats" (singular for 1).
+        description: chatsTabContent.onlineChatCount + (chatsTabContent.onlineChatCount === 1 ? " Active Chat" : " Active Chats")
         imageSource: "asset:///images/ic_bbm.png"
+        // Native red spark on the tab: right in the menu AND on the navigation bar (a custom icon
+        // with a baked-in spark got tinted dark there). Chats stay lit while any chat is unread.
+        newContentAvailable: chatsTabContent.unreadCount > 0
         ChatsTab {
             id: chatsTabContent
             selfAvatar: root.selfAvatar
-            onOnUnreadMessage: {
-                if (root.activeTab !== chatsTab)
-                    root.chatsUnreadCount++;
-            }
         }
     }
     
     Tab {
         id: feedsTab
         title: "Feeds"
-        description: "Timeline"
+        description: root.feedsUnreadCount + (root.feedsUnreadCount === 1 ? " New Update" : " New Updates")
         imageSource: "asset:///images/updates.png"
+        newContentAvailable: root.feedsUnreadCount > 0
         FeedsTab {
             id: feedsTabContent
             selfName: root.selfName
@@ -128,7 +110,7 @@ TabbedPane {
     Tab {
         id: contactsTab
         title: "Contacts"
-        description: "Friends"
+        description: contactsTabContent.contactCount + (contactsTabContent.contactCount === 1 ? " Contact" : " Contacts")
         imageSource: "asset:///images/ic_contact.png"
         ContactsTab {
             id: contactsTabContent
@@ -139,23 +121,21 @@ TabbedPane {
     Tab {
         id: groupsTab
         title: "Groups"
-        description: "Group chats"
+        description: groupsTabContent.groupCount + (groupsTabContent.groupCount === 1 ? " Group" : " Groups")
         imageSource: "asset:///images/ic_groups_white.png"
+        newContentAvailable: groupsTabContent.unreadCount > 0
         GroupsTab {
             id: groupsTabContent
             selfAvatar: root.selfAvatar
-            onOnUnreadMessage: {
-                if (root.activeTab !== groupsTab)
-                    root.groupsUnreadCount++;
-            }
         }
     }
     
     Tab {
         id: invitesTab
         title: "Invites"
-        description: "Friend requests"
+        description: invitesTabContent.inviteCount + (invitesTabContent.inviteCount === 1 ? " New Invite" : " New Invites")
         imageSource: "asset:///images/ic_add_contact.png"
+        newContentAvailable: invitesTabContent.inviteCount > 0
         InvitesTab {
             id: invitesTabContent
             selfName: root.selfName
@@ -229,6 +209,12 @@ TabbedPane {
             target: app
             onOpenFeedsRequested: { root.activeTab = feedsTab; }
             onOpenThreadRequested: {
+                // A Hub "Zalo10 Feeds" item must open the Feeds tab, never a chat (its id is
+                // "feed:updates"; some invoke paths only deliver the part after the colon).
+                if (threadId.indexOf("feed") === 0 || threadId === "updates") {
+                    root.activeTab = feedsTab;
+                    return;
+                }
                 if (isGroup) {
                     root.activeTab = groupsTab;
                     groupsTabContent.openThread(threadId, isGroup);

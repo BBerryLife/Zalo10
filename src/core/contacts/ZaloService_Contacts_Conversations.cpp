@@ -314,7 +314,7 @@ void ZaloService::onGroupDetailsDone()
                 QString memName = mem["dName"].toString();
                 if (memName.isEmpty()) memName = mem["zaloName"].toString();
                 if (!memId.isEmpty() && !memName.isEmpty()) {
-                    m_memberNames[memId] = memName;
+                    rememberMemberName(memId, memName);
                 }
             }
         }
@@ -339,7 +339,7 @@ void ZaloService::onGroupDetailsDone()
                 QString memName = mem["dName"].toString();
                 if (memName.isEmpty()) memName = mem["zaloName"].toString();
                 if (!memId.isEmpty() && !memName.isEmpty()) {
-                    m_memberNames[memId] = memName;
+                    rememberMemberName(memId, memName);
                 }
             }
         }

@@ -137,10 +137,23 @@ CustomListItem {
                         scalingMethod: ScalingMethod.AspectFit
                     }
                 }
+                // Pin icon right under the time, for pinned chats/groups. Dark icon on the light
+                // theme, white one on the dark theme.
+                ImageView {
+                    visible: ListItemData.isPinned === true
+                    imageSource: friendRow.ListItem.view.isDark ? "asset:///images/ChatView/ic_pin.png"
+                                                         : "asset:///images/ChatView/ic_pin_dark.png"
+                    preferredWidth:  ui.du(5.0)
+                    preferredHeight: ui.du(5.0)
+                    horizontalAlignment: HorizontalAlignment.Right
+                    verticalAlignment: VerticalAlignment.Center
+                    scalingMethod: ScalingMethod.AspectFit
+                }
                 Container {
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Center
                     leftPadding: ui.du(5.0)
+                    rightPadding: ListItemData.isPinned === true ? ui.du(6.5) : 0
                     Label {
                         text: friendRow.ListItem.view.lastMessagePreview(ListItemData.lastMessage, ListItemData.lastMsg,
                               ListItemData.lastMsgIsMine, ListItemData.lastSenderName)

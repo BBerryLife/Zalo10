@@ -96,6 +96,10 @@ ZaloService::ZaloService(QObject *parent)
     m_feedWatchdog->setSingleShot(true);
     connect(m_feedTimer,    SIGNAL(timeout()), this, SLOT(onFeedScanTick()));
     connect(m_feedWatchdog, SIGNAL(timeout()), this, SLOT(onFeedRequestTimeout()));
+    m_memberBusy = false; m_memberDbLoaded = false;
+    m_memberTimer = new QTimer(this);
+    m_memberTimer->setSingleShot(true);
+    connect(m_memberTimer, SIGNAL(timeout()), this, SLOT(onMemberLookupTick()));
     m_qrExpireTimer->setSingleShot(true);
     m_wsReconnectTimer->setSingleShot(true);
     connect(m_qrExpireTimer,    SIGNAL(timeout()), this, SLOT(onQRExpired()));

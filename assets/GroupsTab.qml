@@ -18,6 +18,19 @@ NavigationPane {
     property string searchText: ""
     property variant allGroups: []
     property bool refreshCooldown: false
+    property bool isDark: app.getDarkTheme()
+    // Number of groups, shown as the Groups tab subtitle ("N Groups") by main.qml.
+    property int groupCount: 0
+    // Groups that still have unread messages (yellow pellet). main.qml shows the tab's red spark
+    // while this is above 0, so the spark only goes away once those groups have been read.
+    property int unreadCount: 0
+    function recountUnread() {
+        var n = 0;
+        for (var k = 0; k < groupModel.size(); k++) {
+            if (groupModel.value(k).hasUnread === true) n++;
+        }
+        groupsNav.unreadCount = n;
+    }
 
     attachedObjects: [
         Timer {
@@ -147,6 +160,7 @@ NavigationPane {
         groupsNav.appendPending(60);
         if (groupsNav.pendingPos < arr.length) groupAppendTimer.restart();
         groupsNav.allGroups = arr;
+        groupsNav.groupCount = arr.length;
     }
 
     // ---- Lite: avatar updates in O(1) instead of scanning the whole list ----
@@ -311,33 +325,35 @@ NavigationPane {
 
             FocusSink {}
 
-            // Search box under the header, drawn with a visible border.
+            // Search box under the header, drawn with a visible border. Colours follow the theme
+            // (Settings > Dark Theme) live, through groupsNav.isDark.
             Container {
-                background: Color.create("#f2f2f2")
+                background: groupsNav.isDark ? Color.create("#000000") : Color.create("#f2f2f2")
                 horizontalAlignment: HorizontalAlignment.Fill
                 topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
                 leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
                 Container {
-                    background: Color.create("#9a9a9a")
+                    background: groupsNav.isDark ? Color.create("#3a3a3a") : Color.create("#9a9a9a")
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.2); bottomPadding: ui.du(0.2)
                     leftPadding: ui.du(0.2); rightPadding: ui.du(0.2)
                     Container {
-                        background: Color.White
+                        background: groupsNav.isDark ? Color.create("#1a1a1a") : Color.White
                         horizontalAlignment: HorizontalAlignment.Fill
                         TextField {
                             id: groupsSearchField
                             hintText: "Search groups..."
                             backgroundVisible: false
                             horizontalAlignment: HorizontalAlignment.Fill
-                        onTextChanging: {
-                            groupsNav.searchText = text;
-                            groupsNav.searchVisible = (text.trim().length > 0);
-                            groupsNav.filterList();
-                        }
-                        onCreationCompleted: {
-                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
-                        }
+                            textStyle.color: groupsNav.isDark ? Color.White : Color.Black
+                            onTextChanging: {
+                                groupsNav.searchText = text;
+                                groupsNav.searchVisible = (text.trim().length > 0);
+                                groupsNav.filterList();
+                            }
+                            onCreationCompleted: {
+                                inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                            }
                         }
                     }
                 }
@@ -355,6 +371,7 @@ NavigationPane {
                 verticalAlignment: VerticalAlignment.Fill
                 dataModel: groupsNav.searchVisible ? searchModel : groupModel
 
+                property bool isDark: app.getDarkTheme()   // read by rows through ListItem.view
                 function itemType(data, indexPath) { return "item"; }
 
                 // Proxy: delegates can't resolve groupsNav (ReferenceError); they go through
@@ -404,7 +421,19 @@ NavigationPane {
         }
 
         attachedObjects: [
-            ArrayDataModel { id: groupModel },
+            ArrayDataModel {
+                id: groupModel
+                onItemAdded:    { unreadRecountTimer.restart(); }
+                onItemRemoved:  { unreadRecountTimer.restart(); }
+                onItemUpdated:  { unreadRecountTimer.restart(); }
+                onItemsChanged: { unreadRecountTimer.restart(); }
+            },
+            Timer {
+                id: unreadRecountTimer
+                interval: 250
+                repeat: false
+                onTriggered: { groupsNav.recountUnread(); }
+            },
             ArrayDataModel { id: searchModel },
             ComponentDefinition {
                 id: groupsDef
@@ -417,6 +446,10 @@ NavigationPane {
             ComponentDefinition {
                 id: groupBoardPageDef
                 source: "asset:///GroupBoardSheet.qml"
+            },
+            Connections {
+                target: app
+                onDarkThemeChanged: { groupsNav.isDark = dark; groupList.isDark = dark; }
             },
             Connections {
                 id: groupBoardTriggerConn

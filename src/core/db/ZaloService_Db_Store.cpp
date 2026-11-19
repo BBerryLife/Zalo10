@@ -55,6 +55,17 @@ void ZaloService::avatarMetaUpsert(const QString &threadId, const QString &urlHa
     }
 }
 
+void ZaloService::avatarMetaForget(const QString &threadId)
+{
+    if (!m_db || threadId.isEmpty()) return;
+    sqlite3_stmt *stmt = 0;
+    if (sqlite3_prepare_v2(m_db, "DELETE FROM avatar_meta WHERE threadId=?", -1, &stmt, 0) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, threadId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+}
+
 void ZaloService::loadAvatarCacheFromDb()
 {
     if (!m_db) return;

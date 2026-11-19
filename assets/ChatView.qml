@@ -475,7 +475,9 @@ Page {
             function jumpToMessageProxy(msgId) { chatViewPage.jumpToMessage(msgId); }
             // uid -> name lookup built from getmg-v2 currentMems (the wire dName is unreliable).
             // Returns "" if unknown.
-            function memberDisplayNameProxy(uid) { return zService.memberDisplayName(uid); }
+            // Bumped when names arrive from the background lookup, so labels read it and re-evaluate.
+            property int namesVersion: 0
+            function memberDisplayNameProxy(uid) { var v = msgList.namesVersion; return zService.memberDisplayName(uid); }
             property string pendingVideoOpenMsgId: ""
             property string videoProgressMsgId: ""
             property int    videoProgressPercent: 0
@@ -870,6 +872,14 @@ Page {
     }
 
     actions: [
+        // Left of Send on the action bar (OnBar actions are laid out in declaration order).
+        ActionItem {
+            id: inviteMoreAction
+            title: "Invite More"
+            imageSource: "asset:///images/ChatView/ic_invite_to_bbm.png"
+            ActionBar.placement: ActionBarPlacement.OnBar
+            onTriggered: { inviteMoreUnderDevDialog.show(); }
+        },
         ActionItem {
             id: sendAction
             title: "Send"
@@ -1525,6 +1535,10 @@ Page {
     }
 
     attachedObjects: [
+        Connections {
+            target: zService
+            onMemberNamesResolved: { msgList.namesVersion = msgList.namesVersion + 1; }
+        },
         ComponentDefinition {
             id: emojiPanelDef
             source: "EmojiPanel.qml"
@@ -1757,6 +1771,12 @@ Page {
                 ]
             }
             onOpened: { shareDimFadeIn.play(); }
+        },
+
+        InfoDialog {
+            id: inviteMoreUnderDevDialog
+            title: "Invite More"
+            body: "This feature is still under development."
         },
 
         InfoDialog {

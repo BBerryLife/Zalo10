@@ -46,12 +46,21 @@ Connections {
     }
 
     onNewMessage: {
+        // Group messages belong to the Groups tab (its own handler moves them up).
+        if (message.isGroup === true || message.isGroup === "true") return;
         var tid = threadId;
         var snippet = (message.msgType === 2 || message.msgType === "2")
             ? "[Photo]" : chatsNav.msgSnippet(message.msgType, message.content);
         var isMine = (message.isMine === true || message.isMine === "true" || message.isMine === 1);
         var senderName = message.dName || "";
+        var tsNum = Number(message.ts);
+        if (!(tsNum > 0)) tsNum = Date.now();
+        else if (tsNum < 100000000000) tsNum = tsNum * 1000;
         if (!isMine) chatsNav.onUnreadMessage();
+        var unread = !isMine && !zService.isActiveThread(tid);
+        zService.setThreadUnread(tid, unread);
+
+        var found = false;
         for (var i = 0; i < friendModel.size(); i++) {
             var d = friendModel.value(i);
             if ((d.threadId || d.uid || "") === tid) {
@@ -60,12 +69,43 @@ Connections {
                 d.lastMsgId      = message.msgId || "";
                 d.lastMsgState   = isMine ? 1 : 0;
                 d.lastSenderName = senderName;
-                d.hasUnread      = !isMine && !zService.isActiveThread(tid);
-                zService.setThreadUnread(tid, d.hasUnread);
-                if (message.ts) d.lastTime = chatsNav.formatTime(message.ts);
+                d.hasUnread      = unread;
+                d.sortTs         = tsNum;
+                d.lastTime       = chatsNav.formatTime(tsNum);
                 friendModel.removeAt(i);
-                friendModel.insert(d.isPinned ? 0 : chatsNav.firstUnpinnedIndex(), d);
-                return;
+                // Newest on top, right under the pinned chats (pinned ones stay first).
+                friendModel.insert(d.isPinned ? chatsNav.firstPinnedSlot(tid) : chatsNav.firstUnpinnedIndex(), d);
+                found = true;
+                break;
+            }
+        }
+
+        // A chat with someone who is not in the friend list (opened from the Hub, a stranger...) had
+        // no row at all, so nothing could move up. Give it one. Skipped while the list is still being
+        // filled slice by slice: that build already reads the message from the database.
+        if (!found && !isMine && tid.length > 0 && chatsNav.pendingPos >= chatsNav.pendingRows.length) {
+            var nr = {
+                threadId: tid, uid: tid,
+                name: senderName.length > 0 ? senderName : "Unknown User",
+                avatar: "", localAvatar: "",
+                isPinned: false, hasUnread: unread,
+                lastMessage: snippet, lastMsgIsMine: false,
+                lastMsgId: message.msgId || "", lastMsgState: 0,
+                lastSenderName: senderName,
+                sortTs: tsNum, lastTime: chatsNav.formatTime(tsNum)
+            };
+            friendModel.insert(chatsNav.firstUnpinnedIndex(), nr);
+        }
+
+        // Search results show their own copy of the row: keep it in step.
+        for (var j = 0; j < searchModel.size(); j++) {
+            var sd = searchModel.value(j);
+            if ((sd.threadId || sd.uid || "") === tid) {
+                sd.lastMessage = snippet; sd.lastMsgIsMine = isMine; sd.lastMsgId = message.msgId || "";
+                sd.lastMsgState = isMine ? 1 : 0; sd.lastSenderName = senderName; sd.hasUnread = unread;
+                sd.lastTime = chatsNav.formatTime(tsNum);
+                searchModel.replace(j, sd);
+                break;
             }
         }
     }

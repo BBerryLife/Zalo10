@@ -141,7 +141,7 @@ CustomListItem {
         ? ListItem.view.memberDisplayNameProxy(ListItemData.quoteOwnerId || "")
         : ""
     property string quoteSenderResolved: rowRoot.quoteIsMine
-        ? (ListItem.view.selfNameProxy || "Me")
+        ? "Me"
         : ((!ListItem.view.isGroupChat && ListItem.view.threadNameProxy.length > 0)
            ? ListItem.view.threadNameProxy
            : ((ListItem.view.isGroupChat && rowRoot.quoteMemberName.length > 0)
@@ -157,7 +157,7 @@ CustomListItem {
         ? ListItem.view.threadNameProxy
         : ((ListItem.view.isGroupChat && rowRoot.otherMemberName.length > 0)
            ? rowRoot.otherMemberName
-           : (ListItemData.dName || "Unknown"))
+           : ((ListItemData.dName && !/^[0-9]+$/.test(ListItemData.dName)) ? ListItemData.dName : "Unknown"))
 
     property bool isJumpHighlighted: ListItem.view.jumpHighlightMsgId.length > 0
                                       && ListItem.view.jumpHighlightMsgId === (ListItemData.msgId || "")
@@ -228,7 +228,7 @@ CustomListItem {
             Label {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 text: rowRoot.mine
-                      ? (ListItemData.selfName || "Me")
+                      ? "Me"
                       : rowRoot.otherDisplayName
                 textStyle {
                     fontSize:   FontSize.Small

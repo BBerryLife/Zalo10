@@ -43,7 +43,9 @@ public:
 
     bool loggedIn() const { return m_loggedIn; }
     QString selfUid() const { return m_uid; }
-    Q_INVOKABLE QString memberDisplayName(const QString &uid) const { return m_memberNames.value(uid, QString()); }
+    // Name of a group member. Unknown ids are looked up in the background (getprofiles) and the
+    // answer arrives through memberNamesResolved(); until then the result is empty.
+    Q_INVOKABLE QString memberDisplayName(const QString &uid);
 
     Q_INVOKABLE void startQRLogin();
     Q_INVOKABLE void retryQRLogin();
@@ -120,6 +122,10 @@ public:
     Q_INVOKABLE void downloadImageMessage(const QString &msgId, const QString &url, const QString &threadId = QString());
     Q_INVOKABLE void downloadVideoMessage(const QString &msgId, const QString &url, const QString &fileName);
     Q_INVOKABLE void downloadAvatar(const QString &threadId, const QString &url);
+    // A contact changed their picture: forget what is cached for the old link, remember `url` as
+    // the newest link for `uid` and download it again. Answers through avatarReady(uid, path) with
+    // a NEW file path, so every list that shows this person refreshes.
+    Q_INVOKABLE void refreshAvatar(const QString &uid, const QString &url);
     // Sticker images never change per id, so they are cached forever. stickerId is a QString:
     // a qint64 Q_INVOKABLE parameter caused SIGSEGV when QML numbers were marshalled in Qt 4.8.
     Q_INVOKABLE void downloadSticker(const QString &stickerId);
@@ -206,6 +212,7 @@ signals:
     void qrExpired();
     void conversationsReady(const QVariantList &threads);
     void friendsReady(const QVariantList &friends);
+    void memberNamesResolved();           // new group member names are known: refresh name labels
     void feedEventsChanged(int unseen);   // feed list changed; unseen = events not yet seen
     void friendsFetchFailed();   // Lite: fetchFriends ended without a usable list (429 / error / empty / network)
     void profileDetailsReady(const QString &uid, const QVariantMap &profile);
@@ -328,6 +335,8 @@ private slots:
     void onFeedScanTick();
     void onFeedProfilesDone();
     void onFeedRequestTimeout();
+    void onMemberLookupTick();
+    void onMemberLookupDone();
     void onFetchPhotoDetailDone();
     void onSendMsgDone();
     void onSendMsgQuoteDone();
@@ -413,6 +422,7 @@ private:
     void    loadAvatarCacheFromDb();
     bool    avatarMetaLookup(const QString &threadId, QString &urlHashOut, QString &localPathOut) const;
     void    avatarMetaUpsert(const QString &threadId, const QString &urlHash, const QString &localPath);
+    void    avatarMetaForget(const QString &threadId);
 
     EncryptedParams buildEncryptedParams(const QVariantMap &data);
     QString buildSignKey(const QString &type, const QVariantMap &params);
@@ -540,6 +550,17 @@ private:
     // uid -> display name from each group's "currentMems"; the wire "dName" is unreliable for
     // incoming group messages (it sometimes carries our own name).
     QMap<QString, QString> m_memberNames;
+    // Members whose name is missing are fetched in small batches (see Contacts_Feeds.cpp). Names are
+    // kept in the member_names table so they are there right after a restart.
+    QStringList   m_memberQueue;
+    QSet<QString> m_memberAsked;
+    QTimer       *m_memberTimer;
+    bool          m_memberBusy;
+    bool          m_memberDbLoaded;
+    void memberEnsureTable();
+    void loadMemberNamesFromDb();
+    void rememberMemberName(const QString &uid, const QString &name, bool overwrite = true);
+    void rememberMemberNames(const QMap<QString, QString> &names);   // one transaction, never overwrites
     QSet<QString> m_seenMsgIds;
     QString m_pending510Toid;
     QString m_pending511Gid;
@@ -620,6 +641,9 @@ private:
     QString m_contactPickerThreadId;
 
     QMap<QString, QString> m_avatarCache;
+    // uid -> newest avatar link seen in a profile-change event; older links requested for the same
+    // uid (stale friend lists) are answered with this one.
+    QMap<QString, QString> m_avatarLatestUrl;
     QSet<QString> m_pendingAvatars;
     QMap<QString, QSet<QString> > m_pendingAvatarWaiters;
     // Lite: at most MAX_AVATAR_DOWNLOADS avatar HTTP requests in flight; the rest wait here.

@@ -148,8 +148,27 @@ void ZaloService::onStickerDownloaded()
     emit stickerReady(QString::number(stickerId), localPath);
 }
 
-void ZaloService::downloadAvatar(const QString &threadId, const QString &url)
+void ZaloService::refreshAvatar(const QString &uid, const QString &url)
 {
+    if (uid.isEmpty() || url.isEmpty()) return;
+    const QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
+
+    // From now on every request for this person, even one carrying an older link from a stale
+    // friend list, is answered with the newest picture.
+    m_avatarLatestUrl[uid] = url;
+
+    // Drop what is remembered for the new link (a changed token on the same path must be fetched
+    // again) and the stored "unchanged picture" record of this person, then download.
+    m_avatarCache.remove(url);
+    m_avatarCache.remove(baseUrl);
+    avatarMetaForget(uid);
+    downloadAvatar(uid, url);
+}
+
+void ZaloService::downloadAvatar(const QString &threadId, const QString &requestedUrl)
+{
+    QString url = requestedUrl;
+    if (m_avatarLatestUrl.contains(threadId)) url = m_avatarLatestUrl.value(threadId);
     QString baseUrl = url.contains('?') ? url.left(url.indexOf('?')) : url;
 
     if (m_avatarCache.contains(url)) {
@@ -258,9 +277,11 @@ void ZaloService::onAvatarDownloaded()
         return;
     }
 
-    // File name is per person (md5 of threadId, not of the URL): a changed avatar overwrites the old
-    // file instead of leaving orphans when the CDN returns different URLs.
-    QString fname = "/tmp/avatar_" + md5Hex(threadId) + ".jpg";
+    // File name is per person AND per picture (md5 of threadId + the first 8 hex of md5 of the link
+    // without its query): a CDN link with a new token still maps to the same file, but a really new
+    // picture gets a new path. Overwriting one fixed path left the path string unchanged, so the
+    // lists compared "same path" and never reloaded the image.
+    QString fname = "/tmp/avatar_" + md5Hex(threadId) + "_" + md5Hex(baseUrl).left(8) + ".jpg";
     QFile f(fname);
     if (f.open(QIODevice::WriteOnly)) {
         f.write(data);

@@ -6,7 +6,12 @@
 // (using the poll host returned 404 on every fetch); poll actions use the plain group service.
 void ZaloService::fetchGroupBoard(const QString &groupId, int page, int count)
 {
-    if (!m_loggedIn || groupId.isEmpty()) return;
+    // Always answer: returning silently here left the Group Board spinner running forever.
+    if (groupId.isEmpty()) return;
+    if (!m_loggedIn) {
+        emit groupBoardReady(groupId, QVariantList(), "Not logged in");
+        return;
+    }
 
     QString base = m_groupBoardServiceUrl.isEmpty() ? m_groupServiceUrl : m_groupBoardServiceUrl;
 

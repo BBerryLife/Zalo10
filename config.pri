@@ -709,7 +709,9 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_list.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_microphone.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_open.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_pin.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_pin_dark.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_quote_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_recall.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_replace_message.png) \
@@ -753,10 +755,10 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_softwarelogtool.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_storage_access.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/desktop.ini) \
-        $$quote($$BASEDIR/assets/images/SettingsSheet/eye-2-96.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_picture.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_save.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ic_unhide.png) \
         $$quote($$BASEDIR/assets/images/bbid.png) \
         $$quote($$BASEDIR/assets/images/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ic_add_contact.png) \

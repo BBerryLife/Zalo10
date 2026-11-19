@@ -652,6 +652,13 @@ int ZaloService::feedsApplyProfiles(const QStringList &uids, const QMap<QString,
 
     if (added == 0) return 0;
 
+    // The feed shows the new picture, so the Chats and Contacts lists must show it too: re-download
+    // it now. avatarReady(uid, newPath) then updates every row of that person.
+    for (int i = 0; i < addedEvents.size(); ++i) {
+        if (addedEvents[i].kind == "avatar" && !addedEvents[i].newValue.isEmpty())
+            refreshAvatar(addedEvents[i].uid, addedEvents[i].newValue);
+    }
+
     if (m_feedsViewing) {
         markFeedsSeen();
         return added;
@@ -760,4 +767,148 @@ void ZaloService::setFeedsViewing(bool viewing)
 {
     m_feedsViewing = viewing;
     if (viewing) markFeedsSeen();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Group member names. Names come from (1) each group's currentMems, which only lists some members,
+// (2) the friend list, (3) this lookup: members that nobody has named yet are queued when a label
+// asks for them, then read in batches with the same getprofiles call the feed scan uses (it works
+// for any user id, not just friends). Everything is stored in member_names, so a restart does not
+// bring the bare numbers back.
+// ---------------------------------------------------------------------------------------------
+
+void ZaloService::memberEnsureTable()
+{
+    if (!m_db) return;
+    sqlite3_exec(m_db,
+        "CREATE TABLE IF NOT EXISTS member_names (uid TEXT PRIMARY KEY, name TEXT NOT NULL, ts INTEGER)",
+        0, 0, 0);
+}
+
+void ZaloService::loadMemberNamesFromDb()
+{
+    if (!m_db) return;
+    m_memberDbLoaded = true;
+    memberEnsureTable();
+    sqlite3_stmt *st = 0;
+    if (sqlite3_prepare_v2(m_db, "SELECT uid, name FROM member_names", -1, &st, 0) != SQLITE_OK) return;
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        QString uid  = colText(st, 0);
+        QString name = colText(st, 1);
+        if (!uid.isEmpty() && !name.isEmpty() && !m_memberNames.contains(uid))
+            m_memberNames.insert(uid, name);
+    }
+    sqlite3_finalize(st);
+}
+
+void ZaloService::rememberMemberName(const QString &uid, const QString &nameIn, bool overwrite)
+{
+    QString name = nameIn.trimmed();
+    if (uid.isEmpty() || name.isEmpty() || name == uid) return;   // the id itself is not a name
+    QMap<QString, QString>::const_iterator it = m_memberNames.constFind(uid);
+    if (it != m_memberNames.constEnd() && (!overwrite || it.value() == name)) return;
+    m_memberNames.insert(uid, name);
+    if (!m_db) return;
+    memberEnsureTable();
+    sqlite3_stmt *st = 0;
+    if (sqlite3_prepare_v2(m_db, "INSERT OR REPLACE INTO member_names (uid, name, ts) VALUES (?,?,?)",
+                           -1, &st, 0) == SQLITE_OK) {
+        bindText(st, 1, uid);
+        bindText(st, 2, name);
+        sqlite3_bind_int64(st, 3, QDateTime::currentMSecsSinceEpoch());
+        sqlite3_step(st);
+        sqlite3_finalize(st);
+    }
+}
+
+void ZaloService::rememberMemberNames(const QMap<QString, QString> &names)
+{
+    if (names.isEmpty()) return;
+    if (!m_memberDbLoaded) loadMemberNamesFromDb();
+    const bool haveDb = (m_db != 0);
+    if (haveDb) { memberEnsureTable(); sqlite3_exec(m_db, "BEGIN", 0, 0, 0); }
+    for (QMap<QString, QString>::const_iterator it = names.constBegin(); it != names.constEnd(); ++it)
+        rememberMemberName(it.key(), it.value(), false);
+    if (haveDb) sqlite3_exec(m_db, "COMMIT", 0, 0, 0);
+    emit memberNamesResolved();
+}
+
+QString ZaloService::memberDisplayName(const QString &uid)
+{
+    if (uid.isEmpty()) return QString();
+    if (!m_memberDbLoaded && m_db) loadMemberNamesFromDb();
+    QMap<QString, QString>::const_iterator it = m_memberNames.constFind(uid);
+    if (it != m_memberNames.constEnd() && !it.value().isEmpty()) return it.value();
+
+    // Unknown: ask once per session. Our own id and non-numeric ids are never looked up.
+    if (m_loggedIn && uid != m_uid && allDigits(uid) && !m_memberAsked.contains(uid)) {
+        m_memberAsked.insert(uid);
+        m_memberQueue << uid;
+        if (!m_memberTimer->isActive()) m_memberTimer->start(700);
+    }
+    return QString();
+}
+
+void ZaloService::onMemberLookupTick()
+{
+    if (m_memberQueue.isEmpty() || m_memberBusy) return;
+    if (!m_loggedIn || m_secretKey.isEmpty()) { m_memberTimer->start(5000); return; }
+
+    QStringList batch;
+    while (batch.size() < 20 && !m_memberQueue.isEmpty()) batch << m_memberQueue.takeFirst();
+
+    QVariantList verMap;
+    for (int i = 0; i < batch.size(); ++i) verMap.append(batch[i] + "_0");
+    QVariantMap p;
+    p["phonebook_version"]   = 0;
+    p["friend_pversion_map"] = verMap;
+    p["avatar_size"]         = 120;
+    p["language"]            = "vi";
+    p["show_online_status"]  = 0;
+
+    QNetworkReply *reply = sendProfileApi("/api/social/friend/getprofiles/v2", true, p);
+    reply->setProperty("memberUids", batch);
+    m_memberBusy = true;
+    connect(reply, SIGNAL(finished()), this, SLOT(onMemberLookupDone()));
+}
+
+void ZaloService::onMemberLookupDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    m_memberBusy = false;
+    QStringList uids = reply->property("memberUids").toStringList();
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+
+    // Rate limit / network trouble: put the ids back and try again later, slowly.
+    if (raw.isEmpty() || raw.contains("429 Too Many Requests") || raw.contains("<html")) {
+        for (int i = uids.size() - 1; i >= 0; --i) m_memberQueue.prepend(uids[i]);
+        m_memberTimer->start(raw.contains("429") ? 120000 : 30000);
+        return;
+    }
+
+    QVariantMap root = jsonToMap(raw);
+    int ec = root["error_code"].toInt();
+    QVariantMap outer;
+    if (ec == 0) {
+        outer = jsonToMap(aesDecryptBase64(m_secretKey, root["data"].toString()).toUtf8());
+        if (outer.contains("error_code")) ec = outer["error_code"].toInt();
+    }
+    if (ec != 0) {
+        qWarning() << "[Members] getprofiles error_code" << ec;   // not retried: bad ids must not loop
+    } else {
+        QMap<QString, QVariantMap> profs;
+        collectProfiles(QVariant(outer), profs, 0);
+        int got = 0;
+        for (QMap<QString, QVariantMap>::const_iterator it = profs.constBegin(); it != profs.constEnd(); ++it) {
+            QString name = it.value().value("displayName").toString();
+            if (name.isEmpty()) name = it.value().value("zaloName").toString();
+            if (name.isEmpty()) name = it.value().value("username").toString();
+            if (!name.isEmpty() && m_memberNames.value(it.key()) != name) { rememberMemberName(it.key(), name, true); ++got; }
+        }
+        qDebug() << "[Members] asked" << uids.size() << "named" << got;
+        if (got > 0) emit memberNamesResolved();
+    }
+    if (!m_memberQueue.isEmpty()) m_memberTimer->start(1500);
 }

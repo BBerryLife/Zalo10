@@ -12,6 +12,8 @@ NavigationPane {
     property bool searchVisible: false
     property string searchText: ""
     property variant allInvites: []
+    // Number of pending invites, shown as the Invites tab subtitle ("N New Invites") by main.qml.
+    property int inviteCount: 0
 
     function filterList() {
         var q = invitesNav.searchText.toLowerCase().trim();
@@ -213,7 +215,12 @@ NavigationPane {
         }
 
         attachedObjects: [
-            ArrayDataModel { id: inviteModel },
+            ArrayDataModel {
+                id: inviteModel
+                onItemAdded:    { invitesNav.inviteCount = inviteModel.size(); }
+                onItemRemoved:  { invitesNav.inviteCount = inviteModel.size(); }
+                onItemsChanged: { invitesNav.inviteCount = inviteModel.size(); }
+            },
             ArrayDataModel { id: searchModel },
             Connections {
                 target: zService

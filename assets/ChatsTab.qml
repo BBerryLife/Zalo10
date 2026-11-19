@@ -22,6 +22,19 @@ NavigationPane {
     property bool searchVisible: false
     property string searchText: ""
     property bool refreshCooldown: false
+    // Chats whose online dot is lit, shown as the Chats tab subtitle ("N Active Chats") by main.qml.
+    // Maintained by friendList.setOnline() / startPresence().
+    property int onlineChatCount: 0
+    // Chats that still have unread messages (yellow pellet). main.qml shows the tab's red spark
+    // while this is above 0, so the spark only goes away once those chats have been read.
+    property int unreadCount: 0
+    function recountUnread() {
+        var n = 0;
+        for (var k = 0; k < friendModel.size(); k++) {
+            if (friendModel.value(k).hasUnread === true) n++;
+        }
+        chatsNav.unreadCount = n;
+    }
     property variant activeChatPage: null
     property variant activeQmPage: null
     property variant activeGroupBoardPage: null
@@ -113,14 +126,18 @@ NavigationPane {
                 id: friendList
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
-                dataModel: chatsNav.searchVisible ? searchModel : friendModel
+                // Stay on the full list until something is typed: the search model is empty before the
+                // first keystroke, which showed a blank white page on the first search.
+                dataModel: (chatsNav.searchVisible && chatsNav.searchText.trim().length > 0) ? searchModel : friendModel
 
                 // Online dot next to the name: lastActionTime of the first few chats, one request every 1.5s.
                 // Read by the delegate through ListItem.view (delegates can't see outer ids).
                 property variant onlineMap: ({})
+                property bool isDark: app.getDarkTheme()   // read by rows through ListItem.view
                 property int     presenceIdx: 0
                 function startPresence() {
                     friendList.onlineMap = ({});
+                    chatsNav.onlineChatCount = 0;
                     friendList.presenceIdx = 0;
                     presenceTimer.restart();
                 }
@@ -134,6 +151,9 @@ NavigationPane {
                     for (var k in m) nm[k] = m[k];
                     nm[uid] = on;
                     friendList.onlineMap = nm;
+                    var n = 0;
+                    for (var ok in nm) { if (nm[ok] === true) n++; }
+                    chatsNav.onlineChatCount = n;
                 }
 
                 function itemType(data, indexPath) { return "item"; }
@@ -193,7 +213,20 @@ NavigationPane {
         }
 
         attachedObjects: [
-            ArrayDataModel { id: friendModel },
+            ArrayDataModel {
+                id: friendModel
+                // Any change (new message, read, rebuild) re-counts the unread chats, once things settle.
+                onItemAdded:    { unreadRecountTimer.restart(); }
+                onItemRemoved:  { unreadRecountTimer.restart(); }
+                onItemUpdated:  { unreadRecountTimer.restart(); }
+                onItemsChanged: { unreadRecountTimer.restart(); }
+            },
+            Timer {
+                id: unreadRecountTimer
+                interval: 250
+                repeat: false
+                onTriggered: { chatsNav.recountUnread(); }
+            },
             Timer {
                 id: presenceTimer
                 interval: 1500
@@ -258,6 +291,10 @@ NavigationPane {
             ComponentDefinition {
                 id: groupBoardPageDef
                 source: "asset:///GroupBoardSheet.qml"
+            },
+            Connections {
+                target: app
+                onDarkThemeChanged: { friendList.isDark = dark; }
             },
             Connections {
                 // target starts null and is assigned in openThread(): binding to chatsNav.activeChatPage warns
@@ -394,6 +431,7 @@ NavigationPane {
             if (out.lastTime && out.lastTime !== "") {
                 var ts = parseInt(out.lastTime);
                 if (!isNaN(ts)) {
+                    if (ts > 0 && ts < 100000000000) ts = ts * 1000;   // seconds -> ms so both sort together
                     out.sortTs = ts;
                     out.lastTime = chatsNav.formatTime(ts);
                 }
@@ -466,6 +504,9 @@ NavigationPane {
         }
         return n;
     }
+
+    // A pinned chat that just got a message goes to the top of the pinned block.
+    function firstPinnedSlot(tid) { return 0; }
 
     function filterList() {
         var q = chatsNav.searchText.toLowerCase().trim();

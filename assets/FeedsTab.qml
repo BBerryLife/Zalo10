@@ -182,9 +182,12 @@ NavigationPane {
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
 
                 ListView {
+                    id: feedList
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment:   VerticalAlignment.Fill
                     dataModel: feedModel
+                    // Read by the row delegates through ListItem.view (they cannot see outer ids).
+                    property bool isDark: app.getDarkTheme()
 
                     function itemType(data, indexPath) { return "post"; }
 
@@ -192,7 +195,13 @@ NavigationPane {
                         ListItemComponent {
                             type: "post"
                             CustomListItem {
-                                dividerVisible: true
+                                id: feedRow
+                                // The thin system divider is replaced by a band as thick as the gap
+                                // between tiles in the Contacts grid (2 du), drawn at the end of the row.
+                                dividerVisible: false
+                                Container {
+                                    horizontalAlignment: HorizontalAlignment.Fill
+                                    layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
                                 Container {
                                     horizontalAlignment: HorizontalAlignment.Fill
                                     topPadding: ui.du(1.5); bottomPadding: ui.du(1.5)
@@ -253,6 +262,12 @@ NavigationPane {
                                         imageSource: ListItemData.localPhoto ? ListItemData.localPhoto : ""
                                     }
                                 }
+                                    Container {
+                                        horizontalAlignment: HorizontalAlignment.Fill
+                                        preferredHeight: ui.du(2.0)
+                                        background: feedRow.ListItem.view.isDark ? Color.create("#1a1a1a") : Color.create("#dcdcdc")
+                                    }
+                                }
                             }
                         }
                     ]
@@ -261,18 +276,22 @@ NavigationPane {
                 Container {
                     id: feedEmpty
                     visible: true
-                    horizontalAlignment: HorizontalAlignment.Center
+                    horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment:   VerticalAlignment.Center
+                    // Side padding gives the grey text room on both sides; the bottom padding lifts
+                    // both lines a little above the centre.
+                    leftPadding: ui.du(5); rightPadding: ui.du(5)
+                    bottomPadding: ui.du(14)
                     Label {
                         text: "No updates yet"
                         horizontalAlignment: HorizontalAlignment.Center
-                        textStyle.fontWeight: FontWeight.Bold
+                        textStyle.base: SystemDefaults.TextStyles.BigText
                     }
                     Label {
                         text: "Changes to your contacts' profile pictures, covers, bios and birthdays show up here."
                         multiline: true
                         horizontalAlignment: HorizontalAlignment.Center
-                        textStyle.base: SystemDefaults.TextStyles.SmallText
+                        textStyle.textAlign: TextAlign.Center
                         textStyle.color: Color.create("#7a7a7a")
                     }
                 }
@@ -287,6 +306,10 @@ NavigationPane {
                 body: "Remove all feed updates?"
                 confirmLabel: "Clear"
                 onConfirmed: { zService.clearFeedEvents(); }
+            },
+            Connections {
+                target: app
+                onDarkThemeChanged: { feedList.isDark = dark; }
             },
             Connections {
                 target: zService

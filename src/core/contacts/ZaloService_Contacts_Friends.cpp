@@ -159,6 +159,7 @@ void ZaloService::finishFriends()
     m_friendsSeen.clear();
 
     QVariantList threads;
+    QMap<QString, QString> friendNames;
     m_friendUids.clear();
     for (int i = 0; i < friends.size(); ++i) {
         QVariantMap f = friends[i].toMap();
@@ -196,10 +197,14 @@ void ZaloService::finishFriends()
         t["unread"]        = 0;
         t["lastMessage"]   = "";
         if (!uid.isEmpty() && !name.isEmpty()) {
+            friendNames[uid] = name;
             threads.append(t);
             m_friendUids << uid;
         }
     }
+
+    // Friends are group members too: their names answer most "who is this" questions for free.
+    rememberMemberNames(friendNames);
 
     m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch();
 

@@ -176,6 +176,16 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
     QString threadId;
     bool    isGroup = false;
 
+    // The Hub "Zalo10 Feeds" item (id "feed:updates") must open the Feeds tab. Decide that first,
+    // from the raw payload: the uri branch below splits on ':' and would keep only "updates", which
+    // then opened an empty chat view.
+    const QString feedId = QString::fromLatin1(HubIntegration::FEED_ITEM_ID);
+    if (rawData.contains(feedId) || rawUri.toString().contains(feedId)) {
+        if (!(m_zService && m_zService->handleHubAction(request.action(), feedId)))
+            emit openFeedsRequested();
+        return;
+    }
+
     QString trimmed = rawData.trimmed();
     if (trimmed.startsWith("{")) {
         QVariantMap root  = jsonToMap(rawData.toUtf8());

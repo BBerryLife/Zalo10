@@ -15,6 +15,9 @@ NavigationPane {
     property bool searchVisible: false
     property string searchText: ""
     property bool refreshCooldown: false
+    property bool isDark: app.getDarkTheme()
+    // Number of contacts, shown as the Contacts tab subtitle ("N Contacts") by main.qml.
+    property int contactCount: 0
 
     // Friends go into the model in slices so a few thousand rows never stall the UI.
     property variant pendingRows: []
@@ -131,33 +134,35 @@ NavigationPane {
 
             FocusSink {}
 
-            // Search box under the header, drawn with a visible border.
+            // Search box under the header, drawn with a visible border. Colours follow the theme
+            // (Settings > Dark Theme) live, through contactsNav.isDark.
             Container {
-                background: Color.create("#f2f2f2")
+                background: contactsNav.isDark ? Color.create("#000000") : Color.create("#f2f2f2")
                 horizontalAlignment: HorizontalAlignment.Fill
                 topPadding: ui.du(1.0); bottomPadding: ui.du(1.0)
                 leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
                 Container {
-                    background: Color.create("#9a9a9a")
+                    background: contactsNav.isDark ? Color.create("#3a3a3a") : Color.create("#9a9a9a")
                     horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(0.2); bottomPadding: ui.du(0.2)
                     leftPadding: ui.du(0.2); rightPadding: ui.du(0.2)
                     Container {
-                        background: Color.White
+                        background: contactsNav.isDark ? Color.create("#1a1a1a") : Color.White
                         horizontalAlignment: HorizontalAlignment.Fill
                         TextField {
                             id: contactsSearchField
                             hintText: "Search contacts..."
                             backgroundVisible: false
                             horizontalAlignment: HorizontalAlignment.Fill
-                        onTextChanging: {
-                            contactsNav.searchText = text;
-                            contactsNav.searchVisible = (text.trim().length > 0);
-                            contactsNav.filterList();
-                        }
-                        onCreationCompleted: {
-                            inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
-                        }
+                            textStyle.color: contactsNav.isDark ? Color.White : Color.Black
+                            onTextChanging: {
+                                contactsNav.searchText = text;
+                                contactsNav.searchVisible = (text.trim().length > 0);
+                                contactsNav.filterList();
+                            }
+                            onCreationCompleted: {
+                                inputMode.type = TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff;
+                            }
                         }
                     }
                 }
@@ -168,17 +173,21 @@ NavigationPane {
             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
+            // Outer margin = half the gap between tiles, like the BBM contacts grid.
+            leftPadding: ui.du(1.0); rightPadding: ui.du(1.0)
 
             ListView {
                 id: contactsGrid
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment:   VerticalAlignment.Fill
 
+                // Still exactly 4 tiles per row: the layout divides (width - 3 gaps) by 4. The gap is
+                // thicker (was 0.1 du) to match the BBM contacts grid.
                 layout: GridListLayout {
                     columnCount: 4
                     headerMode: ListHeaderMode.None
-                    horizontalCellSpacing: ui.du(0.1)
-                    verticalCellSpacing:   ui.du(0.1)
+                    horizontalCellSpacing: ui.du(2.0)
+                    verticalCellSpacing:   ui.du(2.0)
                 }
 
                 property variant profileDef: contactsProfileDef
@@ -282,6 +291,10 @@ NavigationPane {
                 }
             },
             Connections {
+                target: app
+                onDarkThemeChanged: { contactsNav.isDark = dark; }
+            },
+            Connections {
                 target: zService
 
                 onFriendsFetchFailed: {
@@ -294,6 +307,7 @@ NavigationPane {
                     if (contactsPage.populated && contactModel.size() > 0)
                         return
                     contactsPage.populated = true
+                    contactsNav.contactCount = friends.length
                     contactsNav.resetPending()
                     contactModel.clear()
                     AvatarHub.invalidate("contacts")
@@ -308,6 +322,7 @@ NavigationPane {
                 }
 
                 onLoginSuccess: {
+                    contactsNav.contactCount = 0
                     contactsNav.resetPending()
                     contactsPage.populated = false
                     contactModel.clear()
