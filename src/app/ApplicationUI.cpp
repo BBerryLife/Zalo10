@@ -1,4 +1,5 @@
 #include "app/ApplicationUICommon.hpp"
+#include "core/HubIntegration.hpp"
 
 ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain")
 {
@@ -215,6 +216,11 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
     }
 
     if (m_zService && m_zService->handleHubAction(request.action(), threadId)) {
+        return;
+    }
+
+    if (HubIntegration::isFeedId(threadId)) {
+        emit openFeedsRequested();
         return;
     }
 

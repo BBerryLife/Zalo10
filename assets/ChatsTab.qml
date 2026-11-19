@@ -80,6 +80,7 @@ NavigationPane {
                     if (chatsNav.refreshCooldown) return;
                     chatsNav.refreshCooldown = true;
                     chatsRefreshCooldownTimer.restart();
+                    friendAppendTimer.stop();
                     friendModel.clear();
                     AvatarHub.invalidate("chats");
                     zService.fetchFriends();
@@ -206,6 +207,15 @@ NavigationPane {
                 }
             },
             Timer {
+                id: friendAppendTimer
+                interval: 40
+                repeat: true
+                onTriggered: {
+                    chatsNav.appendPending(100);
+                    if (chatsNav.pendingPos >= chatsNav.pendingRows.length) friendAppendTimer.stop();
+                }
+            },
+            Timer {
                 // Lite: hands avatar requests to zService at a steady pace (see lists/avatarhub.js).
                 id: avatarPaceTimer
                 interval: 300   // = AvatarHub.TICK_MS
@@ -295,7 +305,31 @@ NavigationPane {
 
     property variant lastFriends: []
 
+    // Big lists go into the model in slices (first slice at once, the rest every few ms) so the UI
+    // thread never stalls on a few thousand appends.
+    property variant pendingRows: []
+    property int pendingPos: 0
+    property bool pendingRestore: false
+
+    function appendPending(n) {
+        var rows = chatsNav.pendingRows;
+        var end = Math.min(rows.length, chatsNav.pendingPos + n);
+        for (var j = chatsNav.pendingPos; j < end; j++) {
+            var ff = rows[j];
+            friendModel.append(ff);
+            var furl = ff.avatar || "";
+            var ftid = ff.threadId || ff.uid || "";
+            if (furl.length > 0 && ftid.length > 0 && !(chatsNav.pendingRestore && ff.localAvatar))
+                AvatarHub.enqueue("chats", ftid, furl);
+        }
+        chatsNav.pendingPos = end;
+        if (AvatarHub.pending("chats") && !avatarPaceTimer.running) avatarPaceTimer.start();
+    }
+
     function buildFriends(friends, restoreAvatars) {
+        friendAppendTimer.stop();
+        chatsNav.pendingRows = [];
+        chatsNav.pendingPos = 0;
         chatsLoading.visible = false;
         friendsRetryTimer.stop();
         chatsEmpty.text = "No friends found";
@@ -371,15 +405,11 @@ NavigationPane {
             if (pa !== pb) return pb - pa;
             return (b.sortTs || 0) - (a.sortTs || 0);
         });
-        for (var j = 0; j < outArr.length; j++) {
-            var ff = outArr[j];
-            friendModel.append(ff);
-            var furl = ff.avatar || "";
-            var ftid = ff.threadId || ff.uid || "";
-            if (furl.length > 0 && ftid.length > 0 && !(restoreAvatars && ff.localAvatar))
-                AvatarHub.enqueue("chats", ftid, furl);
-        }
-        if (AvatarHub.pending("chats")) avatarPaceTimer.restart();
+        chatsNav.pendingRows = outArr;
+        chatsNav.pendingPos = 0;
+        chatsNav.pendingRestore = restoreAvatars;
+        chatsNav.appendPending(60);
+        if (chatsNav.pendingPos < outArr.length) friendAppendTimer.restart();
         chatsEmpty.visible = (outArr.length === 0);
 
     }

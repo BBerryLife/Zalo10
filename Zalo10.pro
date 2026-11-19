@@ -66,6 +66,7 @@ SOURCES += \
     src/core/contacts/ZaloService_Contacts_Board.cpp \
     src/core/contacts/ZaloService_Contacts_Conversations.cpp \
     src/core/contacts/ZaloService_Contacts_Friends.cpp \
+    src/core/contacts/ZaloService_Contacts_Feeds.cpp \
     src/core/contacts/ZaloService_Contacts_Media.cpp \
     src/core/contacts/ZaloService_Contacts_Polls.cpp \
     src/core/contacts/ZaloService_Contacts_Profile.cpp \

@@ -16,6 +16,23 @@ NavigationPane {
     property string searchText: ""
     property bool refreshCooldown: false
 
+    // Friends go into the model in slices so a few thousand rows never stall the UI.
+    property variant pendingRows: []
+    property int pendingPos: 0
+
+    function appendPending(n) {
+        var rows = contactsNav.pendingRows;
+        var end = Math.min(rows.length, contactsNav.pendingPos + n);
+        for (var j = contactsNav.pendingPos; j < end; j++) contactModel.append(rows[j]);
+        contactsNav.pendingPos = end;
+    }
+
+    function resetPending() {
+        contactAppendTimer.stop();
+        contactsNav.pendingRows = [];
+        contactsNav.pendingPos = 0;
+    }
+
     function filterList() {
         var q = contactsNav.searchText.toLowerCase().trim();
         searchModel.clear();
@@ -98,6 +115,7 @@ NavigationPane {
                     if (contactsNav.refreshCooldown) return;
                     contactsNav.refreshCooldown = true;
                     refreshCooldownTimer.restart();
+                    contactsNav.resetPending()
                     contactsPage.populated = false
                     contactModel.clear()
                     AvatarHub.invalidate("contacts")
@@ -254,6 +272,15 @@ NavigationPane {
                 id: contactsProfileDef
                 source: "asset:///ProfileView.qml"
             },
+            Timer {
+                id: contactAppendTimer
+                interval: 40
+                repeat: true
+                onTriggered: {
+                    contactsNav.appendPending(100)
+                    if (contactsNav.pendingPos >= contactsNav.pendingRows.length) contactAppendTimer.stop()
+                }
+            },
             Connections {
                 target: zService
 
@@ -267,10 +294,12 @@ NavigationPane {
                     if (contactsPage.populated && contactModel.size() > 0)
                         return
                     contactsPage.populated = true
+                    contactsNav.resetPending()
                     contactModel.clear()
                     AvatarHub.invalidate("contacts")
-                    for (var i = 0; i < friends.length; i++)
-                        contactModel.append(friends[i])
+                    contactsNav.pendingRows = friends
+                    contactsNav.appendPending(60)
+                    if (contactsNav.pendingPos < friends.length) contactAppendTimer.restart()
                     contactsEmpty.visible = (friends.length === 0)
                 }
 
@@ -279,6 +308,7 @@ NavigationPane {
                 }
 
                 onLoginSuccess: {
+                    contactsNav.resetPending()
                     contactsPage.populated = false
                     contactModel.clear()
                     AvatarHub.invalidate("contacts")

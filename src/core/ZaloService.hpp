@@ -168,6 +168,18 @@ public:
     Q_INVOKABLE void cancelPhoneSync();
     Q_INVOKABLE bool isPhoneSyncing() const;
     Q_INVOKABLE QVariantMap getThreadLastMessages() const;
+    // Group list saved by the last complete fetch, so the Groups tab can fill instantly at start.
+    Q_INVOKABLE QVariantList cachedConversations();
+    // Feeds: changes in contacts' profiles (avatar, cover, bio, birthday), found by comparing with
+    // the last stored snapshot. startFeedsWatch() is idempotent and only ever called by the UI.
+    Q_INVOKABLE void startFeedsWatch();
+    Q_INVOKABLE QVariantList getFeedEvents(int limit);
+    Q_INVOKABLE int unseenFeedCount();
+    Q_INVOKABLE void markFeedsSeen();
+    Q_INVOKABLE void clearFeedEvents();
+    Q_INVOKABLE void setFeedsViewing(bool viewing);
+    Q_INVOKABLE bool feedsNotifyEnabled() const;
+    Q_INVOKABLE void setFeedsNotifyEnabled(bool enabled);
 
     Q_INVOKABLE QVariantList getQuickMessages() const;
     Q_INVOKABLE int          addQuickMessage(const QString &name, const QString &content);
@@ -194,6 +206,7 @@ signals:
     void qrExpired();
     void conversationsReady(const QVariantList &threads);
     void friendsReady(const QVariantList &friends);
+    void feedEventsChanged(int unseen);   // feed list changed; unseen = events not yet seen
     void friendsFetchFailed();   // Lite: fetchFriends ended without a usable list (429 / error / empty / network)
     void profileDetailsReady(const QString &uid, const QVariantMap &profile);
     void selfProfileReady(const QString &avatarUrl, const QString &displayName);
@@ -310,6 +323,11 @@ private slots:
     void onAcceptFriendDone();
     void onRejectFriendDone();
     void onGroupDetailsDone();
+    void onGroupChunkNext();
+    void onFriendsNextPage();
+    void onFeedScanTick();
+    void onFeedProfilesDone();
+    void onFeedRequestTimeout();
     void onFetchPhotoDetailDone();
     void onSendMsgDone();
     void onSendMsgQuoteDone();
@@ -619,6 +637,48 @@ private:
 
     QNetworkReply *m_updateReply;
     QString        m_updateDestPath;
+
+    // ---- Scale: friends fetched page by page, groups in chunks (see Contacts_Friends/Conversations) ----
+    QVariantList m_friendsAccum;
+    QSet<QString> m_friendsSeen;
+    int  m_friendsPage;
+    int  m_friendsRetry;
+    bool m_friendsLegacy;      // true: one big request (count=20000), the pre-paging behaviour
+    void requestFriendsPage();
+    void finishFriends();
+
+    QStringList  m_groupQueue;
+    int          m_groupPos;
+    int          m_groupRetry;
+    QVariantList m_groupAccum;
+    bool         m_groupPartialSent;
+    bool         m_groupHadCache;
+    void requestGroupChunk();
+    void finishGroups(bool complete);
+    void saveGroupCache(const QVariantList &threads);
+
+    // ---- Feeds ----
+    QTimer  *m_feedTimer;
+    QTimer  *m_feedWatchdog;
+    QNetworkReply *m_feedReply;
+    bool     m_feedWatching;
+    bool     m_feedBusy;
+    bool     m_feedsViewing;
+    bool     m_feedTablesReady;
+    bool     m_feedBatchProbe;
+    int      m_feedBatch;
+    int      m_feedTickMs;
+    int      m_feedBackoffStep;
+    int      m_feedOkStreak;
+    qint64   m_feedStartAt;
+    qint64   m_feedBackoffUntil;
+    qint64   m_feedCycleStart;
+    QStringList m_feedQueue;
+    void feedsEnsureTables();
+    void feedsOnFriends(const QVariantList &threads, bool complete);
+    void feedsBuildQueue();
+    void feedsBackoff(bool rateLimited);
+    int  feedsApplyProfiles(const QStringList &uids, const QMap<QString, QVariantMap> &profiles, bool force);
 
     static const int API_VERSION = 671;
     static const int API_TYPE = 30;

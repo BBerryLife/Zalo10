@@ -1,5 +1,13 @@
 #include "core/contacts/ContactsCommon.hpp"
 
+// Friends come page by page (FRIENDS_PAGE_SIZE) so a huge list never needs one giant reply to be
+// decrypted and parsed at once. Whether the server really honours page/count is not known, so the
+// loop adapts: a reply bigger than a page means "count ignored" (done), a page that adds no new
+// uid means "page ignored" (done), page 0 is probed once in case pages start at 0, and a failed
+// first page falls back to the old single request (count 20000).
+static const int FRIENDS_PAGE_SIZE = 500;
+static const int FRIENDS_MAX_PAGES = 60;
+
 void ZaloService::fetchFriends()
 {
     if (!m_loggedIn) return;
@@ -11,12 +19,27 @@ void ZaloService::fetchFriends()
         return;
     }
     m_isFetchingFriends = true;
+    m_friendsAccum.clear();
+    m_friendsSeen.clear();
+    m_friendsPage = 1;
+    m_friendsRetry = 0;
+    m_friendsLegacy = false;
+    requestFriendsPage();
+}
 
+void ZaloService::onFriendsNextPage()
+{
+    if (!m_isFetchingFriends) return;
+    requestFriendsPage();
+}
+
+void ZaloService::requestFriendsPage()
+{
     // zca-js uses GET with params in the query string, not a POST body.
     QVariantMap innerParams;
     innerParams["incInvalid"]  = 1;
-    innerParams["page"]        = 1;
-    innerParams["count"]       = 20000;
+    innerParams["page"]        = m_friendsLegacy ? 1 : m_friendsPage;
+    innerParams["count"]       = m_friendsLegacy ? 20000 : FRIENDS_PAGE_SIZE;
     innerParams["avatar_size"] = 120;
     innerParams["actiontime"]  = 0;
     innerParams["imei"]        = m_imei;
@@ -40,6 +63,12 @@ void ZaloService::onFetchFriendsDone()
 
     // HTTP 429 (rate limit): the body is HTML, not JSON.
     if (raw.contains("429 Too Many Requests") || raw.contains("<html")) {
+        if (m_friendsPage > 1 && !m_friendsLegacy && m_friendsRetry < 2) {
+            ++m_friendsRetry;
+            qWarning() << "[Contacts] fetchFriends page" << m_friendsPage << "got 429, retry" << m_friendsRetry;
+            QTimer::singleShot(3000 * m_friendsRetry, this, SLOT(onFriendsNextPage()));
+            return;
+        }
         qWarning() << "[Contacts] fetchFriends: got 429, backing off for" << (FETCH_COOLDOWN_MS * 3) << "ms";
         m_isFetchingFriends = false;
         m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch() + (FETCH_COOLDOWN_MS * 2);
@@ -50,6 +79,18 @@ void ZaloService::onFetchFriendsDone()
     QVariantMap root = jsonToMap(raw);
     if (root["error_code"].toInt() != 0) {
         qWarning() << "[Contacts] fetchFriends:" << root["error_message"].toString();
+        if (!m_friendsLegacy && m_friendsPage == 1 && m_friendsAccum.isEmpty()) {
+            qWarning() << "[Contacts] fetchFriends: paged request refused, using single request";
+            m_friendsLegacy = true;
+            requestFriendsPage();
+            return;
+        }
+        if (m_friendsPage == 0) {                 // page 0 probe refused: just move on
+            m_friendsPage = 2;
+            QTimer::singleShot(350, this, SLOT(onFriendsNextPage()));
+            return;
+        }
+        if (!m_friendsAccum.isEmpty()) { finishFriends(); return; }
         m_isFetchingFriends = false;
         emit friendsFetchFailed();
         return;
@@ -68,6 +109,54 @@ void ZaloService::onFetchFriendsDone()
         if (!arr.isEmpty())
             friends = arr;
     }
+
+    int added = 0;
+    for (int i = 0; i < friends.size(); ++i) {
+        QVariantMap f = friends[i].toMap();
+        QString uid = f["userId"].toString();
+        if (uid.isEmpty()) uid = f["uid"].toString();
+        if (uid.isEmpty() || m_friendsSeen.contains(uid)) continue;
+        m_friendsSeen.insert(uid);
+        m_friendsAccum.append(f);
+        ++added;
+    }
+    qDebug() << "[Contacts] fetchFriends page" << m_friendsPage << "got" << friends.size()
+             << "new" << added << "total" << m_friendsAccum.size();
+
+    if (m_friendsLegacy || friends.size() > FRIENDS_PAGE_SIZE) {   // one reply held everything
+        finishFriends();
+        return;
+    }
+
+    int next = -1;
+    if (m_friendsPage == 1) {
+        if (friends.size() >= FRIENDS_PAGE_SIZE) next = 0;
+        else if (friends.isEmpty() && m_friendsAccum.isEmpty()) {
+            qWarning() << "[Contacts] fetchFriends: empty first page, trying single request";
+            m_friendsLegacy = true;
+            requestFriendsPage();
+            return;
+        }
+    } else if (m_friendsPage == 0) {
+        next = 2;
+    } else if (friends.size() >= FRIENDS_PAGE_SIZE && added > 0 && m_friendsPage < FRIENDS_MAX_PAGES) {
+        next = m_friendsPage + 1;
+    }
+
+    if (next < 0) {
+        finishFriends();
+        return;
+    }
+    m_friendsPage = next;
+    m_friendsRetry = 0;
+    QTimer::singleShot(350, this, SLOT(onFriendsNextPage()));
+}
+
+void ZaloService::finishFriends()
+{
+    QVariantList friends = m_friendsAccum;
+    m_friendsAccum.clear();
+    m_friendsSeen.clear();
 
     QVariantList threads;
     m_friendUids.clear();
@@ -115,6 +204,7 @@ void ZaloService::onFetchFriendsDone()
     m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch();
 
     if (!threads.isEmpty()) {
+        feedsOnFriends(threads, true);
         emit friendsReady(threads);
         m_isFetchingFriends = false;
     } else {

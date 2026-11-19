@@ -32,6 +32,13 @@ public:
 
     void markThreadRead(const QString &threadId);
 
+    // Feeds: ONE item per account ("Zalo10 Feeds", id FEED_ITEM_ID) in its own category of the Zalo10 account, updated
+    // in place; unread grows by addCount each time. Ids starting with "feed:" are routed to that
+    // category by every method below (mark read/unread/remove), so no caller needs to care.
+    static const char *FEED_ITEM_ID;
+    static bool isFeedId(const QString &id);
+    void upsertFeedItem(const QString &preview, qint64 timestampMs, int addCount);
+
     void removeThreadItem(const QString &threadId);
 
     // Looks up the isGroup saved by the last upsertThreadItem(): the Hub invoke payload only has
@@ -56,6 +63,15 @@ public:
 
 private:
     Q_DISABLE_COPY(HubIntegration)
+
+    void upsertThreadItemN(const QString &threadId, bool isGroup,
+                           const QString &title, const QString &preview,
+                           qint64 timestampMs, int addUnread);
+    bool initFeedsAccount();
+    static long long accountIdFor(const QString &threadId);
+    static long long categoryIdFor(const QString &threadId);
+    static const char *iconFor(const QString &threadId, bool unread);
+    bool m_feedsReady;
 
     // uds_item_updated() REPLACES the whole record: unset fields reset to empty/0 (markThreadRead()
     // once produced an empty name and a 1970 timestamp). Every update must supply all current
@@ -95,6 +111,7 @@ private:
     // register_client returns a NEW service on every build (taps invoked nothing). If taps still
     // fail with a fresh ID, that theory is ruled out.
     static const long long ACCOUNT_ID = 424242006LL;
+
 };
 
 #endif

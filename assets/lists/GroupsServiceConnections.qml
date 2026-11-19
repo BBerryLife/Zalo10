@@ -28,8 +28,11 @@ Connections {
         if (groupModel.size() === 0) {
             groupsNav.refreshCooldown = true;
             groupsRefreshCooldownTimer.restart();
+            // Last complete group list from the DB: shows at once, the fetch then replaces it.
+            var cached = zService.cachedConversations();
+            if (cached.length > 0) groupsNav.buildGroups(cached, false);
+            else groupsLoading.visible = true;
             zService.fetchConversations();
-            groupsLoading.visible = true;
         }
     }
 

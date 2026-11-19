@@ -798,6 +798,7 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Actions.cpp) \
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Board.cpp) \
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Conversations.cpp) \
+        $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Feeds.cpp) \
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Friends.cpp) \
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Media.cpp) \
         $$quote($$BASEDIR/src/core/contacts/ZaloService_Contacts_Polls.cpp) \

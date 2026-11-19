@@ -53,6 +53,7 @@ public slots:
 
 signals:
     void openThreadRequested(const QString &threadId, bool isGroup);
+    void openFeedsRequested();
     void showRecalledMessagesChanged(bool show);
     void darkThemeChanged(bool dark);
     void updateCheckResult(bool isLatest, const QString &latestVersion, const QString &downloadUrl, const QString &error);

@@ -29,6 +29,15 @@ NavigationPane {
         // Lite: the old 0.8 s warm-up (createObject()+destroy() of a whole ChatView at start-up) is
         // gone; the first chat opens a little slower instead of slowing every start.
         Timer {
+            id: groupAppendTimer
+            interval: 40
+            repeat: true
+            onTriggered: {
+                groupsNav.appendPending(100);
+                if (groupsNav.pendingPos >= groupsNav.pendingRows.length) groupAppendTimer.stop();
+            }
+        },
+        Timer {
             // Lite: hands avatar requests to zService at a steady pace (see lists/avatarhub.js).
             id: groupAvatarPaceTimer
             interval: 300   // = AvatarHub.TICK_MS
@@ -41,7 +50,30 @@ NavigationPane {
 
     property variant lastThreads: []
 
+    // Same slice-by-slice append as the Chats tab.
+    property variant pendingRows: []
+    property int pendingPos: 0
+    property bool pendingRestore: false
+
+    function appendPending(n) {
+        var rows = groupsNav.pendingRows;
+        var end = Math.min(rows.length, groupsNav.pendingPos + n);
+        for (var j = groupsNav.pendingPos; j < end; j++) {
+            var gg = rows[j];
+            groupModel.append(gg);
+            var gurl = gg.avatar || "";
+            var gtid = gg.threadId || "";
+            if (gurl.length > 0 && gtid.length > 0 && !(groupsNav.pendingRestore && gg.localAvatar))
+                AvatarHub.enqueue("groups", gtid, gurl);
+        }
+        groupsNav.pendingPos = end;
+        if (AvatarHub.pending("groups") && !groupAvatarPaceTimer.running) groupAvatarPaceTimer.start();
+    }
+
     function buildGroups(threads, restoreAvatars) {
+        groupAppendTimer.stop();
+        groupsNav.pendingRows = [];
+        groupsNav.pendingPos = 0;
         groupsLoading.visible = false;
         AvatarHub.reset("groups");
         AvatarHub.invalidate("groups");
@@ -109,15 +141,11 @@ NavigationPane {
             if (pa !== pb) return pb - pa;
             return (b.sortTs || 0) - (a.sortTs || 0);
         });
-        for (var j = 0; j < arr.length; j++) {
-            var gg = arr[j];
-            groupModel.append(gg);
-            var gurl = gg.avatar || "";
-            var gtid = gg.threadId || "";
-            if (gurl.length > 0 && gtid.length > 0 && !(restoreAvatars && gg.localAvatar))
-                AvatarHub.enqueue("groups", gtid, gurl);
-        }
-        if (AvatarHub.pending("groups")) groupAvatarPaceTimer.restart();
+        groupsNav.pendingRows = arr;
+        groupsNav.pendingPos = 0;
+        groupsNav.pendingRestore = restoreAvatars;
+        groupsNav.appendPending(60);
+        if (groupsNav.pendingPos < arr.length) groupAppendTimer.restart();
         groupsNav.allGroups = arr;
     }
 
@@ -268,6 +296,7 @@ NavigationPane {
                     if (groupsNav.refreshCooldown) return;
                     groupsNav.refreshCooldown = true;
                     groupsRefreshCooldownTimer.restart();
+                    groupAppendTimer.stop();
                     groupModel.clear();
                     AvatarHub.invalidate("groups");
                     zService.fetchConversations();

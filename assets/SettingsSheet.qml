@@ -42,6 +42,7 @@ Sheet {
         onCreationCompleted: {
             darkToggle.checked = app.getDarkTheme();
             showRecalledToggle.checked = app.getShowRecalledMessages();
+            feedsNotifyToggle.checked = zService.feedsNotifyEnabled();
         }
 
         function doExport() {
@@ -118,6 +119,36 @@ Sheet {
 
                 Label {
                     text: "Zalo10 exclusive: when someone recalls a message, keep showing what they originally sent with a \"(This message was recalled)\" tag instead of hiding it."
+                    multiline: true
+                    textStyle.color: Color.Gray
+                    topMargin: 6
+                }
+
+                Divider { topMargin: 30; bottomMargin: 20 }
+
+                Label {
+                    text: "Feeds"
+                    textStyle.base: SystemDefaults.TextStyles.TitleText
+                }
+
+                Container {
+                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+                    topMargin: 20
+                    Label {
+                        text: "Feeds Notifications"
+                        layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                        verticalAlignment: VerticalAlignment.Center
+                    }
+                    ToggleButton {
+                        id: feedsNotifyToggle
+                        onCheckedChanged: {
+                            zService.setFeedsNotifyEnabled(checked);
+                        }
+                    }
+                }
+
+                Label {
+                    text: "Show a \"Zalo10 Feeds\" notification in BlackBerry Hub when a contact changes their profile picture, cover photo, bio or birthday. Changes still appear in the Feeds tab when this is off."
                     multiline: true
                     textStyle.color: Color.Gray
                     topMargin: 6

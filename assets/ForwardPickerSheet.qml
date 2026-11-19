@@ -25,7 +25,20 @@ Sheet {
         pickModel.clear();
         forwardSheet.selectedIds = [];
         sendAction.enabled = false;
-        if (forwardSheet.pickingGroups) zService.fetchConversations();
+        if (forwardSheet.pickingGroups) {
+            // Saved group list first: refetching thousands of groups every time would be slow.
+            var cached = zService.cachedConversations();
+            if (cached.length > 0) {
+                for (var c = 0; c < cached.length; c++) {
+                    pickModel.append({
+                        threadId: cached[c].threadId || "", name: cached[c].name || "Unknown Group",
+                        localAvatar: cached[c].avatar || "", checked: false
+                    });
+                }
+            } else {
+                zService.fetchConversations();
+            }
+        }
         else zService.fetchFriends();
     }
 

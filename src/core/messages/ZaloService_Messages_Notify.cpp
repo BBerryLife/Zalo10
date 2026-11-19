@@ -248,6 +248,14 @@ bool ZaloService::handleHubAction(const QString &action, const QString &threadId
 {
     if (!m_hub || threadId.isEmpty() || !HubIntegration::isItemAction(action)) return false;
 
+    if (HubIntegration::isFeedId(threadId)) {
+        // Feed item: local Hub state only, nothing to tell Zalo.
+        if (action == QLatin1String(HubIntegration::ACTION_MARK_READ))        m_hub->markThreadRead(threadId);
+        else if (action == QLatin1String(HubIntegration::ACTION_MARK_UNREAD)) m_hub->markThreadUnread(threadId);
+        else if (action == QLatin1String(HubIntegration::ACTION_DELETE))      m_hub->removeThreadItem(threadId);
+        return true;
+    }
+
     if (action == QLatin1String(HubIntegration::ACTION_MARK_READ)) {
         m_hub->markThreadRead(threadId);
         setThreadUnread(threadId, false);

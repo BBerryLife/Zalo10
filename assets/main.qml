@@ -13,6 +13,7 @@ TabbedPane {
     property string selfAvatar: ""
     property int chatsUnreadCount: 0
     property int groupsUnreadCount: 0
+    property int feedsUnreadCount: 0
     // Last tab that really has a page; Shop has none yet and bounces back to it.
     property variant lastRealTab: null
     
@@ -26,7 +27,13 @@ TabbedPane {
         ? "Groups (" + groupsUnreadCount + ")"
         : "Groups";
     }
+    onFeedsUnreadCountChanged: {
+        feedsTab.title = feedsUnreadCount > 0
+        ? "Feeds (" + feedsUnreadCount + ")"
+        : "Feeds";
+    }
     onActiveTabChanged: {
+        zService.setFeedsViewing(activeTab === feedsTab);
         if (activeTab === shopTab) {
             // Under development: show the dialog and return to the tab we came from.
             devTabDialog.show();
@@ -194,7 +201,10 @@ TabbedPane {
                     contactsTabContent.selfName = displayName;
                 }
                 zService.fetchSelfProfile();
+                zService.startFeedsWatch();
+                root.feedsUnreadCount = zService.unseenFeedCount();
             }
+            onFeedEventsChanged: { root.feedsUnreadCount = unseen; }
             // Own avatar: me-v2 gives the link, the normal avatar downloader caches it under the id "self".
             onSelfProfileReady: {
                 if (displayName.length > 0) {
@@ -217,6 +227,7 @@ TabbedPane {
 
         Connections {
             target: app
+            onOpenFeedsRequested: { root.activeTab = feedsTab; }
             onOpenThreadRequested: {
                 if (isGroup) {
                     root.activeTab = groupsTab;

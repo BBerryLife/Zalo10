@@ -84,6 +84,18 @@ ZaloService::ZaloService(QObject *parent)
     m_activeAvatarDownloads = 0;
     m_realtimeSuspended = false;
     m_appForeground = true;
+    m_friendsPage = 1; m_friendsRetry = 0; m_friendsLegacy = false;
+    m_groupPos = 0; m_groupRetry = 0; m_groupPartialSent = false; m_groupHadCache = false;
+    m_feedReply = 0;
+    m_feedWatching = false; m_feedBusy = false; m_feedsViewing = false; m_feedTablesReady = false;
+    m_feedBatchProbe = true; m_feedBatch = 15; m_feedTickMs = 15000;
+    m_feedBackoffStep = 0; m_feedOkStreak = 0;
+    m_feedStartAt = 0; m_feedBackoffUntil = 0; m_feedCycleStart = 0;
+    m_feedTimer = new QTimer(this);
+    m_feedWatchdog = new QTimer(this);
+    m_feedWatchdog->setSingleShot(true);
+    connect(m_feedTimer,    SIGNAL(timeout()), this, SLOT(onFeedScanTick()));
+    connect(m_feedWatchdog, SIGNAL(timeout()), this, SLOT(onFeedRequestTimeout()));
     m_qrExpireTimer->setSingleShot(true);
     m_wsReconnectTimer->setSingleShot(true);
     connect(m_qrExpireTimer,    SIGNAL(timeout()), this, SLOT(onQRExpired()));

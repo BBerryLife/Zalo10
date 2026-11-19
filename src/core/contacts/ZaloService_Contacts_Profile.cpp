@@ -102,6 +102,12 @@ void ZaloService::onProfileDetailsDone()
         return;
     }
     emit profileDetailsReady(uid, profile);
+    {
+        // Feeds: a profile we just read anyway is compared with the snapshot for free.
+        QMap<QString, QVariantMap> one;
+        one.insert(stripUid0(uid), profile);
+        feedsApplyProfiles(QStringList() << stripUid0(uid), one, false);
+    }
 }
 
 // Own profile (avatar link + display name). Same endpoint zca-js uses in fetchAccountInfo():

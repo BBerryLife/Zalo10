@@ -16,6 +16,7 @@ static const char *HUB_ICON_FILE = "ic_hub.png";
 // silently shows an empty icon.
 static const char *HUB_ICON_UNREAD_FILE = "ic_hub_unread.png";
 static const char *HUB_ICON_READ_FILE   = "ic_hub_read.png";
+static const char *HUB_ICON_REPLY_FILE         = "ic_reply.png";
 static const char *HUB_ICON_MARK_OPENED_FILE   = "ic_mark_opened.png";
 static const char *HUB_ICON_MARK_UNOPENED_FILE = "ic_mark_unopened.png";
 static const char *HUB_SERVICE_TARGET = "com.BerryLife.Zalo10.service";
@@ -30,7 +31,7 @@ static const char *HUB_INVOKE_TARGET = "com.BerryLife.Zalo10.invoke";
 // Must match bar-descriptor.xml (<mime-type> and pim: uris).
 static const char *HUB_MIME_TYPE_MESSAGE = "application/vnd.zalo10.hub.chat";
 
-// Context state bit; must match the context_mask of the "Open in Zalo10" action. Without
+// Context state bit; must match the context_mask of the "Reply" (open thread) action. Without
 // uds_inbox_item_data_set_context_state() Hub finds no action for the item (suspected cause of
 // taps doing nothing).
 static const unsigned int HUB_CONTEXT_STATE_READ   = 0x01;
@@ -76,9 +77,35 @@ static int registerItemAction(void *udsHandle, long long accountId, const char *
 // category_id = 1 (a single category for all items). It was the only field missing compared to
 // the official sample; a guess, NOT a confirmed cause of the short-tap bug.
 static const long long HUB_CATEGORY_ID = 1;
+// Own category for feed items (same account as chats).
+static const long long HUB_CATEGORY_FEEDS_ID = 2;
+
+const char *HubIntegration::FEED_ITEM_ID = "feed:updates";
+
+bool HubIntegration::isFeedId(const QString &id)
+{
+    return id.startsWith(QLatin1String("feed:"));
+}
+
+long long HubIntegration::accountIdFor(const QString &threadId)
+{
+    Q_UNUSED(threadId);
+    return ACCOUNT_ID;
+}
+
+long long HubIntegration::categoryIdFor(const QString &threadId)
+{
+    return isFeedId(threadId) ? HUB_CATEGORY_FEEDS_ID : HUB_CATEGORY_ID;
+}
+
+const char *HubIntegration::iconFor(const QString &threadId, bool unread)
+{
+    Q_UNUSED(threadId);
+    return unread ? HUB_ICON_UNREAD_FILE : HUB_ICON_READ_FILE;
+}
 
 HubIntegration::HubIntegration(QObject *parent)
-    : QObject(parent), m_udsHandle(0), m_ready(false), m_initAttempted(false)
+    : QObject(parent), m_feedsReady(false), m_udsHandle(0), m_ready(false), m_initAttempted(false)
 {
 }
 
@@ -197,14 +224,14 @@ bool HubIntegration::init()
         uds_category_data_destroy(category);
     }
 
-    // "Open in Zalo10" item context action (long-press), registered once for the account.
+    // "Reply" item context action (long-press), registered once for the account.
     // Mime type/placement/target must follow the setup described at the top of this file.
     uds_item_action_data_t *openAction = uds_item_action_data_create();
     uds_item_action_data_set_action(openAction, "bb.action.OPEN");
     uds_item_action_data_set_target(openAction, HUB_INVOKE_TARGET);
     uds_item_action_data_set_type(openAction, "service");
-    uds_item_action_data_set_title(openAction, "Open in Zalo10");
-    uds_item_action_data_set_image_source(openAction, HUB_ICON_FILE);
+    uds_item_action_data_set_title(openAction, "Reply");
+    uds_item_action_data_set_image_source(openAction, HUB_ICON_REPLY_FILE);
     uds_item_action_data_set_mime_type(openAction, HUB_MIME_TYPE_MESSAGE);
     uds_item_action_data_set_placement(openAction, UDS_PLACEMENT_DEFAULT);
     uds_item_action_data_set_context_mask(openAction, HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD);
@@ -224,20 +251,58 @@ bool HubIntegration::init()
                        HUB_ICON_MARK_UNOPENED_FILE, "Mark Unread",
                        HUB_CONTEXT_STATE_READ, UDS_PLACEMENT_DEFAULT);
 
+    // Never fatal: a problem here must not take the chat account down with it.
+    initFeedsAccount();
+
     return true;
+}
+
+// Feed notifications live in the same Hub account as chats, in their own category. The item
+// context actions registered for the account (Reply, Mark Read/Unread) apply to them too.
+bool HubIntegration::initFeedsAccount()
+{
+    if (m_feedsReady) return true;
+    if (!m_udsHandle) return false;
+
+    uds_category_data_t *category = uds_category_data_create();
+    uds_category_data_set_id(category, HUB_CATEGORY_FEEDS_ID);
+    uds_category_data_set_account_id(category, ACCOUNT_ID);
+    uds_category_data_set_name(category, "Zalo10 Feeds");
+    int rc = uds_category_added(m_udsHandle, category);
+    if (rc != UDS_SUCCESS) rc = uds_category_updated(m_udsHandle, category);
+    uds_category_data_destroy(category);
+    if (rc != UDS_SUCCESS) qWarning() << "[Hub] feeds category failed, rc=" << rc;
+
+    m_feedsReady = true;
+    return true;
+}
+
+void HubIntegration::upsertFeedItem(const QString &preview, qint64 timestampMs, int addCount)
+{
+    if (addCount < 1) addCount = 1;
+    upsertThreadItemN(QString::fromLatin1(FEED_ITEM_ID), false,
+                      QString::fromLatin1("Zalo10 Feeds"), preview, timestampMs, addCount);
 }
 
 void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
                                        const QString &title, const QString &preview,
                                        qint64 timestampMs)
 {
+    upsertThreadItemN(threadId, isGroup, title, preview, timestampMs, 1);
+}
+
+void HubIntegration::upsertThreadItemN(const QString &threadId, bool isGroup,
+                                        const QString &title, const QString &preview,
+                                        qint64 timestampMs, int addUnread)
+{
     if (threadId.isEmpty()) return;
     if (!init()) return;
+    if (isFeedId(threadId) && !m_feedsReady) return;
 
     m_threadItemState.remove(threadId);
     m_unreadCounts.remove(threadId);
     ensureState(threadId);
-    int unread = m_unreadCounts.value(threadId, 0) + 1;
+    int unread = m_unreadCounts.value(threadId, 0) + addUnread;
     m_unreadCounts[threadId] = unread;
 
     QByteArray threadIdUtf8 = threadId.toUtf8();
@@ -245,13 +310,13 @@ void HubIntegration::upsertThreadItem(const QString &threadId, bool isGroup,
     QByteArray previewUtf8  = preview.toUtf8();
 
     uds_inbox_item_data_t *item = uds_inbox_item_data_create();
-    uds_inbox_item_data_set_account_id(item, ACCOUNT_ID);
+    uds_inbox_item_data_set_account_id(item, accountIdFor(threadId));
     uds_inbox_item_data_set_source_id(item, const_cast<char*>(threadIdUtf8.constData()));
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
-    uds_inbox_item_data_set_icon(item, HUB_ICON_UNREAD_FILE);
+    uds_inbox_item_data_set_icon(item, iconFor(threadId, true));
     uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
-    uds_inbox_item_data_set_category_id(item, HUB_CATEGORY_ID);
+    uds_inbox_item_data_set_category_id(item, categoryIdFor(threadId));
     uds_inbox_item_data_set_timestamp(item, timestampMs);
     uds_inbox_item_data_set_unread_count(item, unread);
     uds_inbox_item_data_set_total_count(item, unread);
@@ -373,13 +438,13 @@ bool HubIntegration::publishState(const QString &threadId, bool notify, bool all
     QByteArray previewUtf8  = st.preview.toUtf8();
 
     uds_inbox_item_data_t *item = uds_inbox_item_data_create();
-    uds_inbox_item_data_set_account_id(item, ACCOUNT_ID);
+    uds_inbox_item_data_set_account_id(item, accountIdFor(threadId));
     uds_inbox_item_data_set_source_id(item, const_cast<char*>(threadIdUtf8.constData()));
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
-    uds_inbox_item_data_set_icon(item, st.unread > 0 ? HUB_ICON_UNREAD_FILE : HUB_ICON_READ_FILE);
+    uds_inbox_item_data_set_icon(item, iconFor(threadId, st.unread > 0));
     uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
-    uds_inbox_item_data_set_category_id(item, HUB_CATEGORY_ID);
+    uds_inbox_item_data_set_category_id(item, categoryIdFor(threadId));
     uds_inbox_item_data_set_timestamp(item, st.timestampMs);
     uds_inbox_item_data_set_unread_count(item, st.unread);
     uds_inbox_item_data_set_total_count(item, qMax(st.total, qMax(st.unread, 1)));
@@ -400,7 +465,7 @@ void HubIntegration::removeThreadItem(const QString &threadId)
 
     if (m_ready) {
         QByteArray threadIdUtf8 = threadId.toUtf8();
-        int rc = uds_item_removed(m_udsHandle, ACCOUNT_ID, const_cast<char*>(threadIdUtf8.constData()));
+        int rc = uds_item_removed(m_udsHandle, accountIdFor(threadId), const_cast<char*>(threadIdUtf8.constData()));
         if (rc != UDS_SUCCESS) {
             // The item may already be gone in Hub (account recreated at startup); still clear the saved state.
         }

@@ -159,7 +159,7 @@
     <env var="LD_LIBRARY_PATH" value="app/native/lib:/usr/lib/qt4/lib"/>
     <env var="CASCADES_THEME" value="default"/>
 
-    <!-- Invoke target for Hub (short-tap + long-press "Open in Zalo10"), modeled on BBCord/Beeper10
+    <!-- Invoke target for Hub (short-tap + long-press "Reply"), modeled on BBCord/Beeper10
          (short-tap confirmed on 10.3.1): an app-specific mime type (application/vnd.zalo10.hub.chat;
          generic mimes made Hub fail silently) and <property var="uris" value="pim:<mime>"/> in the
          filter. Must match HUB_MIME_TYPE_MESSAGE in HubIntegration.cpp for items and item actions. -->
