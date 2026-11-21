@@ -62,6 +62,8 @@ public:
     // Own avatar from a file on the device (zca-js changeAccountAvatar: profile/upavatar). The picture is
     // squared, oriented and shrunk first. Result: selfAvatarChanged().
     Q_INVOKABLE void changeSelfAvatar(const QString &localFilePath);
+    // Own bio / status line (zca-js updateProfileBio: profile/status). Result: selfBioChanged().
+    Q_INVOKABLE void updateProfileBio(const QString &status);
     Q_INVOKABLE void fetchSelfProfile();   // own avatar URL + display name (profile/me-v2)
     Q_INVOKABLE void fetchBizAccount(const QString &uid);
     Q_INVOKABLE void fetchFullAvatar(const QString &uid);
@@ -146,6 +148,11 @@ public:
     // Marks every thread with a yellow pellet as read locally, in the Hub and on Zalo's servers.
     // Returns how many threads were marked.
     Q_INVOKABLE int markAllThreadsRead();
+    // Long-press "Mark as Read / Unread" in the Chats and Groups lists: same as the Hub actions (Hub item, in-app
+    // pellet, official Zalo). syncUnreadMarks() pulls Zalo's own "marked unread" list (zca-js getUnreadMark).
+    Q_INVOKABLE void markThreadReadUser(const QString &threadId, bool isGroup);
+    Q_INVOKABLE void markThreadUnreadUser(const QString &threadId, bool isGroup);
+    Q_INVOKABLE void syncUnreadMarks();
     Q_INVOKABLE bool isActiveThread(const QString &threadId) const
         { return !threadId.isEmpty() && m_activeThreadId == threadId; }
     Q_INVOKABLE void blockUser(const QString &userId);
@@ -155,10 +162,19 @@ public:
     Q_INVOKABLE bool isMutedThread(const QString &threadId) const { return m_mutedThreads.contains(threadId); }
     Q_INVOKABLE void clearHistory(const QString &threadId, bool isGroup);
     Q_INVOKABLE void leaveGroup(const QString &groupId);
+    // Group management (zca-js createGroup / addUserToGroup / changeGroupName / changeGroupAvatar).
+    // Results come back on createGroupDone / addGroupMembersDone / changeGroupNameDone / changeGroupAvatarDone.
+    Q_INVOKABLE void createGroup(const QString &name, const QStringList &memberIds);
+    Q_INVOKABLE void addGroupMembers(const QString &groupId, const QStringList &memberIds);
+    Q_INVOKABLE void changeGroupName(const QString &groupId, const QString &name);
+    Q_INVOKABLE void changeGroupAvatar(const QString &groupId, const QString &localFilePath);
     Q_INVOKABLE void sendHubNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
     // Banner shown even while the app is in the foreground (Hub banners only show when inactive).
     Q_INVOKABLE void sendBannerNotification(const QString &title, const QString &body, const QString &threadId, bool isGroup = false);
-    void setAppForeground(bool foreground) { m_appForeground = foreground; }
+    void setAppForeground(bool foreground) {
+        m_appForeground = foreground;
+        if (foreground) QTimer::singleShot(800, this, SLOT(onUnreadMarkTick()));
+    }
 
     // UI <-> headless service handoff: Zalo allows one WebSocket per account, so only one process
     // holds realtime at a time. The UI process never calls these.
@@ -270,6 +286,11 @@ signals:
     void muteDone(const QString &threadId, bool muted, bool success);
     void clearHistoryDone(const QString &threadId, bool success);
     void leaveGroupDone(const QString &groupId, bool success);
+    void createGroupDone(bool ok, const QString &groupId, const QString &error);
+    void addGroupMembersDone(const QString &groupId, bool ok, int failedCount, const QString &error);
+    void changeGroupNameDone(const QString &groupId, bool ok, const QString &error);
+    void changeGroupAvatarDone(const QString &groupId, bool ok, const QString &error);
+    void selfBioChanged(bool ok, const QString &error);
     void serverQuickMessagesReady(int imported, int skipped, const QString &error);
     void updateDownloadProgress(int percent);
     void updateDownloadFinished(const QString &localPath);
@@ -288,6 +309,8 @@ private:
     // official app shows it as read too. Fire-and-forget.
     void sendThreadSeenRemote(const QString &threadId, bool isGroupFallback = false);
     void sendRemoveUnreadMark(const QStringList &userIds, const QStringList &groupIds);
+    void sendAddUnreadMark(const QString &threadId, bool isGroup);   // zca-js addUnreadMark
+    void applyRemoteUnreadMarks(const QStringList &ids);
     bool dbLastIncomingMessage(const QString &threadId, QVariantMap &out) const;
     QString dbOldestMsgId(const QString &threadId) const;
 
@@ -376,6 +399,9 @@ private slots:
     void onSetMuteDone();
     void onClearHistoryDone();
     void onLeaveGroupDone();
+    void onGroupManageDone();   // createGroup / addGroupMembers / changeGroupName / changeGroupAvatar / updateProfileBio
+    void onUnreadMarksDone();   // getUnreadMark reply
+    void onUnreadMarkTick();    // periodic pull while the app is in the foreground
 
     void onQRExpired();
     void onListenTimer();
@@ -466,6 +492,7 @@ private:
     QTimer *m_listenTimer;
     QTimer *m_wsReconnectTimer;
     QTimer *m_keepAliveTimer;
+    QTimer *m_unreadMarkTimer;
 
     // WebSocket TLS is built by hand: QSslSocket on BB10 always fails the handshake (error:1407742E)
     // and Qt 4.8's QSsl has no TlsV1_1/1_2. m_webSocket is a plain QTcpSocket with TLS run through

@@ -191,6 +191,154 @@ void ZaloService::sendRemoveUnreadMark(const QStringList &userIds, const QString
     connect(reply, SIGNAL(finished()), reply, SLOT(deleteLater()));
 }
 
+// Threads the user just marked: the pull below ignores them for a while, because Zalo needs a moment to
+// apply our request and would otherwise hand the old state straight back.
+static QMap<QString, qint64> s_unreadHold;
+static bool s_unreadSyncing = false;
+
+static void holdUnreadSync(const QString &threadId)
+{
+    s_unreadHold[threadId] = QDateTime::currentMSecsSinceEpoch() + 20000;
+}
+
+// One place for "read": the Hub item, the in-app pellet, the stored flag and the official Zalo.
+void ZaloService::markThreadReadUser(const QString &threadId, bool isGroup)
+{
+    if (threadId.isEmpty()) return;
+    holdUnreadSync(threadId);
+    m_hub->markThreadRead(threadId);
+    setThreadUnread(threadId, false);
+    emit threadRead(threadId);
+    sendThreadSeenRemote(threadId, isGroup);
+}
+
+void ZaloService::markThreadUnreadUser(const QString &threadId, bool isGroup)
+{
+    if (threadId.isEmpty()) return;
+    holdUnreadSync(threadId);
+    m_hub->markThreadUnread(threadId);
+    setThreadUnread(threadId, true);
+    emit threadMarkedUnread(threadId);
+    sendAddUnreadMark(threadId, isGroup);
+}
+
+// zca-js addUnreadMark: POST conversation /api/conv/addUnreadMark.
+void ZaloService::sendAddUnreadMark(const QString &threadId, bool isGroup)
+{
+    if (!m_loggedIn || m_conversationServiceUrl.isEmpty() || threadId.isEmpty()) return;
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const QString ts = QString::number(now);
+    const QString entry = QString("{\"id\":%1,\"cliMsgId\":%2,\"fromUid\":\"0\",\"ts\":%3}")
+        .arg(jsonQuote(threadId)).arg(jsonQuote(ts)).arg(ts);
+    QString inner = QString("{\"convsGroup\":[%1],\"convsUser\":[%2],\"imei\":%3}")
+        .arg(isGroup ? entry : QString(), isGroup ? QString() : entry, jsonQuote(m_imei));
+
+    QVariantMap params;
+    params["param"] = inner;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(params)));
+    QByteArray body   = "params=" + QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_conversationServiceUrl + "/api/conv/addUnreadMark"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE);
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    QNetworkReply *reply = m_manager->post(req, body);
+    connect(reply, SIGNAL(finished()), reply, SLOT(deleteLater()));
+}
+
+// zca-js getUnreadMark: GET conversation /api/conv/getUnreadMark. Zalo's list of conversations that were
+// marked unread (in the official app, or by sendAddUnreadMark above).
+void ZaloService::syncUnreadMarks()
+{
+    if (!m_loggedIn || m_secretKey.isEmpty() || m_conversationServiceUrl.isEmpty() || s_unreadSyncing) return;
+    s_unreadSyncing = true;
+
+    QString encParams = aesEncryptBase64(m_secretKey, QString("{}"));
+    QString urlStr = m_conversationServiceUrl + "/api/conv/getUnreadMark"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    QNetworkReply *reply = m_manager->get(req);
+    connect(reply, SIGNAL(finished()), this, SLOT(onUnreadMarksDone()));
+}
+
+void ZaloService::onUnreadMarkTick()
+{
+    if (!m_loggedIn || !m_appForeground) return;
+    syncUnreadMarks();
+}
+
+void ZaloService::onUnreadMarksDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    s_unreadSyncing = false;
+    if (!reply) return;
+    const bool ok = (reply->error() == QNetworkReply::NoError);
+    const QByteArray raw = reply->readAll();
+    reply->deleteLater();
+    if (!ok || raw.isEmpty()) return;
+
+    QVariantMap outer = jsonToMap(raw);
+    if (!outer.contains("error_code") || outer["error_code"].toInt() != 0) return;
+    QString dec = aesDecryptBase64(m_secretKey, outer["data"].toString());
+    if (dec.isEmpty()) return;
+    QVariantMap inner = jsonToMap(dec.toUtf8());
+    if (inner.contains("error_code") && inner["error_code"].toInt() != 0) return;
+
+    // zca-js: "data" is either a JSON string or the object itself.
+    QVariant dv = inner.value("data");
+    QVariantMap d = (dv.type() == QVariant::String) ? jsonToMap(dv.toString().toUtf8()) : dv.toMap();
+    if (d.isEmpty()) d = inner;
+
+    QStringList ids;
+    QVariantList lists[2];
+    lists[0] = d["convsUser"].toList();
+    lists[1] = d["convsGroup"].toList();
+    for (int k = 0; k < 2; ++k) {
+        for (int i = 0; i < lists[k].size(); ++i) {
+            QVariant idv = lists[k][i].toMap().value("id");
+            QString id = (idv.type() == QVariant::String) ? idv.toString() : QString::number(idv.toLongLong());
+            if (!id.isEmpty() && id != QLatin1String("0")) ids << id;
+        }
+    }
+    applyRemoteUnreadMarks(ids);
+}
+
+// What the pull changes here: a thread Zalo lists as unread becomes unread, and a thread that we made unread
+// because of that list becomes read again once Zalo no longer lists it. Unread state from real incoming
+// messages is never cleared by this, only the marks that came from Zalo.
+void ZaloService::applyRemoteUnreadMarks(const QStringList &ids)
+{
+    QSettings s("BerryLife", "Zalo10");
+    const QStringList prev = s.value("remoteUnreadMarks").toStringList();
+    const QStringList local = unreadThreadIds();
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+    for (int i = 0; i < ids.size(); ++i) {
+        const QString &id = ids[i];
+        if (s_unreadHold.value(id, 0) > now || isActiveThread(id)) continue;
+        if (local.contains(id)) continue;
+        setThreadUnread(id, true);
+        m_hub->markThreadUnread(id);
+        emit threadMarkedUnread(id);
+    }
+    QStringList keep = ids;
+    for (int i = 0; i < prev.size(); ++i) {
+        const QString &id = prev[i];
+        if (ids.contains(id)) continue;
+        if (s_unreadHold.value(id, 0) > now) { keep << id; continue; }
+        if (local.contains(id)) {
+            setThreadUnread(id, false);
+            m_hub->markThreadRead(id);
+            emit threadRead(id);
+        }
+    }
+    s.setValue("remoteUnreadMarks", keep);
+}
+
 int ZaloService::markAllThreadsRead()
 {
     QStringList ids = unreadThreadIds();
@@ -257,14 +405,9 @@ bool ZaloService::handleHubAction(const QString &action, const QString &threadId
     }
 
     if (action == QLatin1String(HubIntegration::ACTION_MARK_READ)) {
-        m_hub->markThreadRead(threadId);
-        setThreadUnread(threadId, false);
-        emit threadRead(threadId);
-        sendThreadSeenRemote(threadId);
+        markThreadReadUser(threadId, isGroupHubThread(threadId));
     } else if (action == QLatin1String(HubIntegration::ACTION_MARK_UNREAD)) {
-        m_hub->markThreadUnread(threadId);
-        setThreadUnread(threadId, true);
-        emit threadMarkedUnread(threadId);
+        markThreadUnreadUser(threadId, isGroupHubThread(threadId));
     } else if (action == QLatin1String(HubIntegration::ACTION_DELETE)) {
         m_hub->removeThreadItem(threadId);
     }

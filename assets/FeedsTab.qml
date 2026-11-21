@@ -17,6 +17,10 @@ NavigationPane {
     property string selfAvatar: ""
     property int filterIndex: 0              // 0 = All, 1 = Info (bio, birthday), 2 = Photos
     property variant allPosts: []
+    // Downloaded pictures: "p:<eventId>" (photo of a picture/cover event) and "a:<uid>" (the contact's avatar).
+    // They live here, not inside allPosts: a `variant` property hands out a copy of its array, so
+    // writing a path into allPosts[i] was lost and the next tab switch rebuilt the rows without pictures.
+    property variant picMap: ({})
 
     function pad(n) { return n < 10 ? "0" + n : "" + n; }
 
@@ -86,6 +90,18 @@ NavigationPane {
         }
     }
 
+    // Fills a row's picture fields from picMap. Returns true when something changed.
+    function decorate(p) {
+        var photo = feedsNav.picMap["p:" + p.id] || "";
+        var ava   = feedsNav.picMap["a:" + p.uid] || "";
+        var nAvatar = (p.kind === "avatar") ? photo : ava;
+        var changed = (p.localPhoto !== photo) || (p.localAvatar !== nAvatar) || (p.hasPhoto !== (photo.length > 0));
+        p.localPhoto  = photo;
+        p.hasPhoto    = photo.length > 0;
+        p.localAvatar = nAvatar;
+        return changed;
+    }
+
     function applyFilter() {
         feedModel.clear();
         var list = feedsNav.allPosts;
@@ -94,8 +110,12 @@ NavigationPane {
             var isPhoto = (p.kind === "avatar" || p.kind === "cover");
             if (feedsNav.filterIndex === 0
                     || (feedsNav.filterIndex === 1 && !isPhoto)
-                    || (feedsNav.filterIndex === 2 && isPhoto))
-                feedModel.append(p);
+                    || (feedsNav.filterIndex === 2 && isPhoto)) {
+                var row = {};
+                for (var k in p) row[k] = p[k];
+                feedsNav.decorate(row);
+                feedModel.append(row);
+            }
         }
         feedEmpty.visible = (feedModel.size() === 0);
     }
@@ -107,29 +127,15 @@ NavigationPane {
         var isPhoto = (id.indexOf("feedimg_") === 0);
         var isAva = (id.indexOf("feedava_") === 0);
         if (!isPhoto && !isAva) return;
-        var key = isPhoto ? id.substring(8) : id.substring(8);
-        var i;
-        var list = feedsNav.allPosts;
-        for (i = 0; i < list.length; i++) {
-            if (isPhoto && list[i].id === key) {
-                list[i].localPhoto = path; list[i].hasPhoto = true;
-                if (list[i].kind === "avatar") list[i].localAvatar = path;
-            } else if (isAva && list[i].uid === key && list[i].kind !== "avatar") {
-                list[i].localAvatar = path;
-            }
-        }
-        for (i = 0; i < feedModel.size(); i++) {
+        var mapKey = (isPhoto ? "p:" : "a:") + id.substring(8);
+        if (feedsNav.picMap[mapKey] === path) return;
+        var m = {};
+        for (var k in feedsNav.picMap) m[k] = feedsNav.picMap[k];
+        m[mapKey] = path;
+        feedsNav.picMap = m;
+        for (var i = 0; i < feedModel.size(); i++) {
             var item = feedModel.value(i);
-            var hit = false;
-            if (isPhoto && item.id === key) {
-                item.localPhoto = path; item.hasPhoto = true;
-                if (item.kind === "avatar") item.localAvatar = path;
-                hit = true;
-            } else if (isAva && item.uid === key && item.kind !== "avatar") {
-                item.localAvatar = path;
-                hit = true;
-            }
-            if (hit) feedModel.replace(i, item);
+            if (feedsNav.decorate(item)) feedModel.replace(i, item);
         }
     }
 

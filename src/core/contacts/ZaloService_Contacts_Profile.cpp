@@ -350,6 +350,88 @@ void ZaloService::onChangeAvatarDone()
     emit selfAvatarChanged(true, QString());
 }
 
+// Group picture (zca-js changeGroupAvatar: file service /api/group/upavatar). Same squared JPEG as the
+// own avatar; the group id and a "HH:mm dd/MM/yyyy" stamp make up the clientId. Result: changeGroupAvatarDone().
+void ZaloService::changeGroupAvatar(const QString &groupId, const QString &localFilePath)
+{
+    if (!m_loggedIn) { emit changeGroupAvatarDone(groupId, false, "Not logged in"); return; }
+    QString path = localFilePath;
+    if (path.startsWith("file://")) path = path.mid(7);
+    if (groupId.isEmpty() || path.isEmpty() || !QFile::exists(path)) {
+        emit changeGroupAvatarDone(groupId, false, "Photo not found");
+        return;
+    }
+
+    QByteArray jpeg;
+    int side = 0;
+    if (!prepareAvatarJpeg(path, jpeg, side)) {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) { emit changeGroupAvatarDone(groupId, false, "Cannot read the photo"); return; }
+        jpeg = f.readAll();
+        f.close();
+        side = 1080;
+    }
+
+    QString fileBase = m_fileServiceUrl;
+    if (fileBase.isEmpty()) {
+        fileBase = m_chatServiceUrl;
+        QRegExp rx("tt-chat\\d+-wpa");
+        fileBase.replace(rx, "tt-files-wpa");
+    }
+
+    QVariantMap p;
+    p["grid"]         = groupId;
+    p["avatarSize"]   = 120;
+    p["clientId"]     = "g" + groupId + QDateTime::currentDateTime().toString("HH:mm dd/MM/yyyy");
+    p["imei"]         = m_imei;
+    p["originWidth"]  = side;
+    p["originHeight"] = side;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(variantToJsonCompact(p)));
+
+    QString urlStr = fileBase + "/api/group/upavatar"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
+
+    QString boundary = "----ZaloBoundary" + QString::number(QDateTime::currentMSecsSinceEpoch());
+    QByteArray body;
+    body += (QString("--") + boundary + "\r\n").toUtf8();
+    body += QByteArray("Content-Disposition: form-data; name=\"fileContent\"; filename=\"blob\"\r\n");
+    body += QByteArray("Content-Type: image/jpeg\r\n\r\n");
+    body += jpeg;
+    body += QByteArray("\r\n");
+    body += (QString("--") + boundary + "--\r\n").toUtf8();
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "multipart/form-data; boundary=" + boundary);
+    QNetworkReply *reply = m_manager->post(req, body);
+    reply->setProperty("op", "gavatar");
+    reply->setProperty("groupId", groupId);
+    connect(reply, SIGNAL(finished()), this, SLOT(onGroupManageDone()));
+}
+
+// Own bio (zca-js updateProfileBio: profile service /api/social/profile/status). Like zca-js the
+// encrypted params go both in the query and in the body. Result: selfBioChanged().
+void ZaloService::updateProfileBio(const QString &status)
+{
+    if (!m_loggedIn || m_profileServiceUrl.isEmpty()) { emit selfBioChanged(false, "Not logged in"); return; }
+
+    QVariantMap p;
+    p["status"] = status;
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(variantToJsonCompact(p)));
+    QByteArray enc = QUrl::toPercentEncoding(encParams);
+
+    QString urlStr = m_profileServiceUrl + "/api/social/profile/status"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QString::fromLatin1(enc.constData(), enc.size());
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    QNetworkReply *reply = m_manager->post(req, "params=" + enc);
+    reply->setProperty("op", "bio");
+    connect(reply, SIGNAL(finished()), this, SLOT(onGroupManageDone()));
+}
+
 void ZaloService::fetchBizAccount(const QString &uid)
 {
     if (!m_loggedIn || uid.isEmpty()) return;

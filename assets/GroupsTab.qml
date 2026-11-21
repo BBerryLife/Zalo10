@@ -20,6 +20,10 @@ NavigationPane {
     property variant allGroups: []
     property bool refreshCooldown: false
     property bool isDark: app.getDarkTheme()
+    // The group that was just created, opened by openNewGroupTimer.
+    property string pendingGroupId: ""
+    property string pendingGroupName: ""
+    property string pendingGroupAvatar: ""
     // Number of groups, shown as the Groups tab subtitle ("N Groups") by main.qml.
     property int groupCount: 0
     // Groups that still have unread messages (yellow pellet). main.qml shows the tab's red spark
@@ -140,7 +144,7 @@ NavigationPane {
                 g.lastTime       = lm.ts || "";
             }
             g.hasUnread = (unreadMap[g.threadId || ""] === true)
-                          && (g.lastMessage || "").length > 0 && !g.lastMsgIsMine;
+                          && (g.lastMessage || "").length > 0;
             if (g.lastTime && g.lastTime !== "") {
                 var ts = parseInt(g.lastTime);
                 if (!isNaN(ts)) {
@@ -294,6 +298,8 @@ NavigationPane {
             onProfileClicked: groupsNav.myProfileRequested()
             addIcon: "asset:///images/GroupsTab/ic_create_group_disabled.png"
             addDialogTitle: "Create Group"
+            addHandled: true
+            onAddClicked: groupsNav.openCreateGroup()
         }
 
         shortcuts: [
@@ -377,6 +383,16 @@ NavigationPane {
                 property bool isDark: app.getDarkTheme()   // read by rows through ListItem.view
                 function itemType(data, indexPath) { return "item"; }
 
+                // Long-press "Mark as Read / Unread": Hub item, pellet and official Zalo all follow (ZaloService).
+                function toggleUnread(indexPath) {
+                    var d = dataModel.data(indexPath);
+                    if (!d) return;
+                    var tid = d.threadId || "";
+                    if (tid.length === 0) return;
+                    if (d.hasUnread === true) zService.markThreadReadUser(tid, true);
+                    else zService.markThreadUnreadUser(tid, true);
+                }
+
                 // Proxy: delegates can't resolve groupsNav (ReferenceError); they go through
                 // ListItem.view.lastMessagePreview().
                 function lastMessagePreview(lastMessage, lastMsgIsMine, lastSenderName) {
@@ -424,6 +440,25 @@ NavigationPane {
         }
 
         attachedObjects: [
+            // Create Group (same sheet as Invite More in a one-to-one chat, started with nobody ticked).
+            GroupInviteSheet {
+                id: groupCreateSheet
+                isDark: groupsNav.isDark
+                onGroupCreated: {
+                    groupsNav.pendingGroupId     = newGroupId;
+                    groupsNav.pendingGroupName   = newName;
+                    groupsNav.pendingGroupAvatar = newAvatar;
+                    zService.fetchConversations();
+                    openNewGroupTimer.restart();
+                }
+            },
+            Timer {
+                // Opens the new group a moment after the sheet has closed, not from inside its own signal.
+                id: openNewGroupTimer
+                interval: 200
+                repeat: false
+                onTriggered: groupsNav.openThread(groupsNav.pendingGroupId, true, groupsNav.pendingGroupName, groupsNav.pendingGroupAvatar)
+            },
             ArrayDataModel {
                 id: groupModel
                 onItemAdded:    { unreadRecountTimer.restart(); }
@@ -528,7 +563,12 @@ NavigationPane {
         ]
     }
 
-    function openThread(threadId, isGroup) {
+    function openCreateGroup() {
+        groupCreateSheet.openCreate("", "", "", "");
+    }
+
+    // nameOverride / avatarOverride: a group that was just created is not in groupModel yet.
+    function openThread(threadId, isGroup, nameOverride, avatarOverride) {
         while (groupsNav.count() > 1) {
             groupsNav.pop();
         }
@@ -545,6 +585,8 @@ NavigationPane {
                 break;
             }
         }
+        if (threadName === "Group" && nameOverride && nameOverride.length > 0) threadName = nameOverride;
+        if (avatarOverride && avatarOverride.length > 0 && avatarUrl.indexOf("asset:") === 0) avatarUrl = avatarOverride;
         page.threadId   = threadId;
         page.threadName = threadName;
         page.isGroup    = true;

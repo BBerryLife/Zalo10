@@ -37,6 +37,11 @@ Page {
     // Same flip-a-bool contract as qmRequested: the owning NavigationPane pushes the page.
     property bool   stickerShopRequested: false
     property bool   stickerSettingsRequested: false
+    // A group was created from this one-to-one chat: the owning Nav (Chats tab) opens it, same flip-a-bool contract.
+    property bool   openGroupRequested: false
+    property string createdGroupId:     ""
+    property string createdGroupName:   ""
+    property string createdGroupAvatar: ""
     // Flip a bool and let the owning Nav react (same as qmRequested): ChatView can't push into its
     // own NavigationPane.
     property bool   groupBoardRequested: false
@@ -69,6 +74,18 @@ Page {
     property bool clockOffsetSet: false
 
     titleBar: ChatTitleBar {}
+
+    // Invite More: in a one-to-one chat it makes a new group (this person already ticked), in a group it adds people.
+    function openInviteMore() {
+        if (chatViewPage.isGroup) {
+            groupInviteSheet.openInvite(chatViewPage.threadId, chatViewPage.threadName, chatViewPage.avatarUrl);
+        } else {
+            var av = chatViewPage.avatarUrl;
+            var isLink = (av.indexOf("http") === 0);
+            groupInviteSheet.openCreate(chatViewPage.threadId, chatViewPage.threadName,
+                                        isLink ? av : "", (!isLink && av.indexOf("asset:") !== 0) ? av : "");
+        }
+    }
 
     function applyImageUpdate(msgId, localPath, imgWidth, imgHeight) {
         chatViewPage.flushPendingRebuild();
@@ -882,7 +899,7 @@ Page {
             title: "Invite More"
             imageSource: "asset:///images/ChatView/ic_invite_to_bbm.png"
             ActionBar.placement: ActionBarPlacement.OnBar
-            onTriggered: { inviteMoreUnderDevDialog.show(); }
+            onTriggered: { chatViewPage.openInviteMore(); }
         },
         ActionItem {
             id: sendAction
@@ -1808,10 +1825,18 @@ Page {
             onOpened: { shareDimFadeIn.play(); }
         },
 
-        InfoDialog {
-            id: inviteMoreUnderDevDialog
-            title: "Invite More"
-            body: "This feature is still under development."
+        GroupInviteSheet {
+            id: groupInviteSheet
+            isDark: chatViewPage.isDark
+            onGroupCreated: {
+                chatViewPage.createdGroupId     = newGroupId;
+                chatViewPage.createdGroupName   = newName;
+                chatViewPage.createdGroupAvatar = newAvatar;
+                chatViewPage.openGroupRequested = true;
+                zService.fetchConversations();
+            }
+            onGroupRenamed: { chatViewPage.threadName = newName; }
+            onGroupAvatarUpdated: { chatViewPage.avatarUrl = newAvatar; }
         },
 
         InfoDialog {

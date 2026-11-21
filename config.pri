@@ -51,6 +51,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/FocusSink.qml) \
         $$quote($$BASEDIR/assets/ForwardPickerSheet.qml) \
         $$quote($$BASEDIR/assets/GroupBoardSheet.qml) \
+        $$quote($$BASEDIR/assets/GroupInviteSheet.qml) \
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
@@ -105,6 +106,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ActiveFrame/activeframe_zl10_big.png) \
         $$quote($$BASEDIR/assets/images/ActiveFrame/activeframe_zl10_medium.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ConversationPaneSend.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/PromotionSplashBackground.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/PromotionSplashBackground_2.png) \
         $$quote($$BASEDIR/assets/images/ChatView/action_delete.png) \
         $$quote($$BASEDIR/assets/images/ChatView/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatView/add.png) \
@@ -739,18 +742,26 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ChatsTab/edit.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_chat_multiperson.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/ic_mark_opened.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/ic_mark_unopened.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_start_chat.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/online_dot.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ProfileView/BB_Pattern_Vivid.jpg) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ProfileView/ic_bbm.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/Profile_Star_icon.png) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/avatar_default.png) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/badging.png) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_add_contact.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_start_chat.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/default_group.png) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/GroupsTab/ic_create_group_disabled.png) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/ic_mark_opened.png) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/ic_mark_unopened.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ai_add_task.png) \

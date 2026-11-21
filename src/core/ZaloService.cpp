@@ -91,6 +91,9 @@ ZaloService::ZaloService(QObject *parent)
     m_feedBatchProbe = true; m_feedBatch = 15; m_feedTickMs = 15000;
     m_feedBackoffStep = 0; m_feedOkStreak = 0;
     m_feedStartAt = 0; m_feedBackoffUntil = 0; m_feedCycleStart = 0;
+    m_unreadMarkTimer = new QTimer(this);
+    connect(m_unreadMarkTimer, SIGNAL(timeout()), this, SLOT(onUnreadMarkTick()));
+    m_unreadMarkTimer->start(30000);
     m_feedTimer = new QTimer(this);
     m_feedWatchdog = new QTimer(this);
     m_feedWatchdog->setSingleShot(true);

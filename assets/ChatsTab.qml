@@ -90,7 +90,10 @@ NavigationPane {
                 title: "Edit Status"
                 imageSource: "asset:///images/ChatsTab/edit.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: { editStatusDialog.show() }
+                onTriggered: {
+                    editStatusDialog.inputField.defaultText = chatsNav.selfBio;
+                    editStatusDialog.show();
+                }
             }
         ]
 
@@ -137,6 +140,16 @@ NavigationPane {
 
                 function itemType(data, indexPath) { return "item"; }
 
+                // Long-press "Mark as Read / Unread": Hub item, pellet and official Zalo all follow (ZaloService).
+                function toggleUnread(indexPath) {
+                    var d = dataModel.data(indexPath);
+                    if (!d) return;
+                    var tid = d.threadId || d.uid || "";
+                    if (tid.length === 0) return;
+                    if (d.hasUnread === true) zService.markThreadReadUser(tid, false);
+                    else zService.markThreadUnreadUser(tid, false);
+                }
+
                 // Proxy: ListItemComponent delegates can't resolve the parent Page/NavigationPane id (calling
                 // chatsNav.lastMessagePreview threw "Can't find variable: chatsNav" and hid the preview).
                 // Delegates call ListItem.view.lastMessagePreview(...) instead.
@@ -156,14 +169,26 @@ NavigationPane {
                 }
             }
 
-            Label {
+            // Same look as the Feeds tab's "No updates yet": big title, grey sentence under it, a little above centre.
+            Container {
                 id: chatsEmpty
-                text: "No conversations yet.\nTap the new chat button to start one."
-                multiline: true
                 visible: false
-                textStyle.textAlign: TextAlign.Center
-                horizontalAlignment: HorizontalAlignment.Center
+                horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Center
+                leftPadding: ui.du(5); rightPadding: ui.du(5)
+                bottomPadding: ui.du(14)
+                Label {
+                    text: "No conversations yet"
+                    horizontalAlignment: HorizontalAlignment.Center
+                    textStyle.base: SystemDefaults.TextStyles.BigText
+                }
+                Label {
+                    text: "Tap the new chat button to start one."
+                    multiline: true
+                    horizontalAlignment: HorizontalAlignment.Center
+                    textStyle.textAlign: TextAlign.Center
+                    textStyle.color: Color.create("#7a7a7a")
+                }
             }
         }
 
@@ -232,13 +257,44 @@ NavigationPane {
                 confirmLabel: "Mark all"
                 onConfirmed: { zService.markAllThreadsRead(); }
             },
-            SystemDialog {
+            SystemPrompt {
+                // Own bio (zca-js updateProfileBio). The current text is filled in by the action below.
                 id: editStatusDialog
                 title: "Edit Status"
-                body: "This feature is still under development."
-                confirmButton.label: "OK"
-                cancelButton.label: ""
-                cancelButton.enabled: false
+                body: "Your status is shown on your Zalo profile."
+                confirmButton.label: "Save"
+                cancelButton.label: "Cancel"
+                inputField.emptyText: "Status"
+                onFinished: {
+                    if (result !== SystemUiResult.ConfirmButtonSelection) return;
+                    var t = editStatusDialog.inputFieldTextEntry().replace(/^\s+|\s+$/g, "");
+                    chatsNav.pendingBio = t;
+                    chatsNav.bioSaving = true;
+                    zService.updateProfileBio(t);
+                }
+            },
+            SystemToast { id: statusToast },
+            Timer {
+                // The new group opens a moment after its sheet has closed, not from inside the sheet's own signal.
+                id: openGroupTimer
+                interval: 200
+                repeat: false
+                onTriggered: chatsNav.openThread(chatsNav.pendingGroupId, true, chatsNav.pendingGroupName, chatsNav.pendingGroupAvatar)
+            },
+            Connections {
+                target: zService
+                onSelfProfileDetails: { chatsNav.selfBio = (profile.status || "").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, ""); }
+                onSelfBioChanged: {
+                    if (!chatsNav.bioSaving) return;
+                    chatsNav.bioSaving = false;
+                    if (ok) {
+                        chatsNav.selfBio = chatsNav.pendingBio;
+                        statusToast.body = "Status updated";
+                    } else {
+                        statusToast.body = "Could not update status" + (error.length > 0 ? ": " + error : "");
+                    }
+                    statusToast.show();
+                }
             },
             ArrayDataModel { id: searchModel },
             ComponentDefinition {
@@ -281,6 +337,15 @@ NavigationPane {
                     chatsNav.activeGroupBoardPage = boardPage;
                     chatsNav.push(boardPage);
                 }
+                onOpenGroupRequestedChanged: {
+                    if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.openGroupRequested) return;
+                    var cp = chatsNav.activeChatPage;
+                    cp.openGroupRequested = false;
+                    chatsNav.pendingGroupId     = cp.createdGroupId;
+                    chatsNav.pendingGroupName   = cp.createdGroupName;
+                    chatsNav.pendingGroupAvatar = cp.createdGroupAvatar;
+                    if (chatsNav.pendingGroupId.length > 0) openGroupTimer.restart();
+                }
                 onStickerShopRequestedChanged: {
                     if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.stickerShopRequested) return;
                     chatsNav.activeChatPage.stickerShopRequested = false;
@@ -320,6 +385,14 @@ NavigationPane {
     property string selfName: ""
     property string selfAvatar: ""
     signal onUnreadMessage()
+    // Own status line, read from the profile; the text being saved while updateProfileBio() is under way.
+    property string selfBio: ""
+    property string pendingBio: ""
+    property bool   bioSaving: false
+    // The group that was just created from a chat, opened by openGroupTimer.
+    property string pendingGroupId: ""
+    property string pendingGroupName: ""
+    property string pendingGroupAvatar: ""
 
     // People opened from the New Chat sheet (or a Hub link) before their first message: the row that
     // the first message creates takes the name / picture from here. threadId -> {name, avatar, localAvatar}.
@@ -416,7 +489,7 @@ NavigationPane {
             out.lastMsgState   = isMine ? (lm.state || 1) : 0;
             out.lastSenderName = lm.dName || "";
             out.lastTime       = lm.ts || "";
-            out.hasUnread = (unreadMap[tid] === true) && !isMine;
+            out.hasUnread = (unreadMap[tid] === true);   // also when the last message is mine: "Mark as Unread" can be done on any chat
             if (out.lastTime && out.lastTime !== "") {
                 var ts = parseInt(out.lastTime);
                 if (!isNaN(ts)) {

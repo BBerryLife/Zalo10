@@ -5,6 +5,20 @@ import QtQuick 1.0
 CustomListItem {
     id: groupRow
     dividerVisible: true
+    // Long-press menu. Read by the actions below (ListItemData is only safe here, at the row's top level).
+    property bool   rowUnread: ListItemData.hasUnread === true
+    property string rowTitle:  ListItemData.name || "Group"
+    contextActions: [
+        ActionSet {
+            title: groupRow.rowTitle
+            ActionItem {
+                title: groupRow.rowUnread ? "Mark as Read" : "Mark as Unread"
+                imageSource: groupRow.rowUnread ? "asset:///images/GroupsTab/ic_mark_opened.png"
+                                          : "asset:///images/GroupsTab/ic_mark_unopened.png"
+                onTriggered: { groupRow.ListItem.view.toggleUnread(groupRow.ListItem.indexPath); }
+            }
+        }
+    ]
     property int outState: ListItemData.lastMsgIsMine === true
         ? (ListItemData.lastMsgState || 1) : -1
     Container {
@@ -68,7 +82,7 @@ CustomListItem {
                     verticalAlignment: VerticalAlignment.Center
                     horizontalAlignment: HorizontalAlignment.Left
                     ImageView {
-                        visible: groupRow.outState === -1 && ListItemData.hasUnread === true
+                        visible: ListItemData.hasUnread === true
                         imageSource: "asset:///images/ChatView/bubble/message_states/yellow_pellet.png"
                         horizontalAlignment: HorizontalAlignment.Fill
                         verticalAlignment: VerticalAlignment.Fill
@@ -82,35 +96,35 @@ CustomListItem {
                         scalingMethod: ScalingMethod.AspectFit
                     }
                     ImageView {
-                        visible: groupRow.outState === 0
+                        visible: groupRow.outState === 0 && ListItemData.hasUnread !== true
                         imageSource: "asset:///images/ChatView/bubble/message_states/sending.png"
                         horizontalAlignment: HorizontalAlignment.Fill
                         verticalAlignment: VerticalAlignment.Fill
                         scalingMethod: ScalingMethod.AspectFit
                     }
                     ImageView {
-                        visible: groupRow.outState === 1
+                        visible: groupRow.outState === 1 && ListItemData.hasUnread !== true
                         imageSource: "asset:///images/ChatView/bubble/message_states/sent.png"
                         horizontalAlignment: HorizontalAlignment.Fill
                         verticalAlignment: VerticalAlignment.Fill
                         scalingMethod: ScalingMethod.AspectFit
                     }
                     ImageView {
-                        visible: groupRow.outState === 2
+                        visible: groupRow.outState === 2 && ListItemData.hasUnread !== true
                         imageSource: "asset:///images/ChatView/bubble/message_states/delivered.png"
                         horizontalAlignment: HorizontalAlignment.Fill
                         verticalAlignment: VerticalAlignment.Fill
                         scalingMethod: ScalingMethod.AspectFit
                     }
                     ImageView {
-                        visible: groupRow.outState === 3
+                        visible: groupRow.outState === 3 && ListItemData.hasUnread !== true
                         imageSource: "asset:///images/ChatView/bubble/message_states/read.png"
                         horizontalAlignment: HorizontalAlignment.Fill
                         verticalAlignment: VerticalAlignment.Fill
                         scalingMethod: ScalingMethod.AspectFit
                     }
                     ImageView {
-                        visible: groupRow.outState === 4
+                        visible: groupRow.outState === 4 && ListItemData.hasUnread !== true
                         imageSource: "asset:///images/ChatView/bubble/message_states/failed.png"
                         horizontalAlignment: HorizontalAlignment.Fill
                         verticalAlignment: VerticalAlignment.Fill
