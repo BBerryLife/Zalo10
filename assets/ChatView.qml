@@ -34,6 +34,9 @@ Page {
     property bool   isBlocked: false
     property bool   popRequested: false
     property bool   qmRequested: false
+    // Same flip-a-bool contract as qmRequested: the owning NavigationPane pushes the page.
+    property bool   stickerShopRequested: false
+    property bool   stickerSettingsRequested: false
     // Flip a bool and let the owning Nav react (same as qmRequested): ChatView can't push into its
     // own NavigationPane.
     property bool   groupBoardRequested: false
@@ -858,8 +861,9 @@ Page {
                         var ep = emojiPanelDef.createObject();
                         ep.isDark = chatViewPage.isDark;
                         ep.horizontalAlignment = HorizontalAlignment.Fill;
-                        ep.preferredHeight = ui.du(23);
-                        ep.minHeight = ui.du(16);
+                        // 23 du for the emoji grid + category bar, plus the 7.5 du sticker bar.
+                        ep.preferredHeight = ui.du(31);
+                        ep.minHeight = ui.du(24);
                         emojiPanelSlot.add(ep);
                         emojiSignalCon.target = ep;
                         chatViewPage.emojiPanelRef = ep;
@@ -1524,6 +1528,34 @@ Page {
         }
     }
 
+    // Sends a sticker file from an installed pack. It shows up as an image bubble with the same
+    // "local_img_" placeholder the photo flow uses, so the WS echo / messageSent replace it the same way.
+    function sendStickerFile(path) {
+        if (!chatViewPage.threadId || chatViewPage.threadId === "") return;
+        if (chatViewPage.isBlocked) return;
+        var sysPath = String(path).replace(/^file:\/\//, "");
+        var dim = zService.getImageDimensions(sysPath);
+        var fsize = zService.getFileSize(sysPath);
+        var name = sysPath.substring(sysPath.lastIndexOf("/") + 1);
+        var content = '{"fileSize":' + fsize + ',"fileName":' + JSON.stringify(name) + '}';
+        msgModel.append({
+            msgId:      "local_img_" + new Date().getTime(),
+            content:    content,
+            msgType:    2,
+            localImage: "file://" + sysPath,
+            imgWidth:   dim.width  || 0,
+            imgHeight:  dim.height || 0,
+            isMine:     true,
+            isGroup:    chatViewPage.isGroup,
+            senderId:   "self",
+            dName:      chatViewPage.selfName,
+            ts:         String(new Date().getTime()),
+            selfName:   chatViewPage.selfName
+        });
+        chatViewPage.rebuildGroups(true);
+        zService.sendSticker(chatViewPage.threadId, sysPath, chatViewPage.isGroup);
+    }
+
     function removeLocalImagePlaceholder() {
         for (var k = msgModel.size() - 1; k >= 0; k--) {
             var item = msgModel.value(k);
@@ -1550,6 +1582,9 @@ Page {
             onEmojiPicked: {
                 inputField.text = inputField.text + charStr
             }
+            onStickerPicked: { chatViewPage.sendStickerFile(path); }
+            onStickerShopRequested:     { chatViewPage.stickerShopRequested = true; }
+            onStickerSettingsRequested: { chatViewPage.stickerSettingsRequested = true; }
         },
 
         SystemToast {

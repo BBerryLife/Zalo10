@@ -94,7 +94,7 @@ void ZaloService::processOldDmBatch(const QVariantList &rawMsgs, const QString &
             if (mtH == 0) {
                 QString mtStr = m["msgType"].toString().toLower();
                 if (mtStr.isEmpty()) mtStr = m["msgtype"].toString().toLower();
-                if (mtStr.contains("photo") || mtStr.contains("image") || mtStr == "2")
+                if (mtStr.contains("photo") || mtStr.contains("image") || mtStr.contains("chat.gif") || mtStr == "2")
                     mtH = 2;
                 // The history path must map share.file -> mt=3 like the realtime path; otherwise a re-polled
                 // video (periodic cmd=510 poll) fell into the nested-content branch (mt=2) and permanently

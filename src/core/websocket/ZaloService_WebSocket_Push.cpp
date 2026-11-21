@@ -139,7 +139,7 @@ void ZaloService::handleWsPushedMessage(QVariantMap m, bool isGroup)
     if (mt == 0) {
         QString mtStr = m["msgType"].toString().toLower();
         if (mtStr.isEmpty()) mtStr = m["msgtype"].toString().toLower();
-        if (mtStr.contains("photo") || mtStr.contains("image") || mtStr == "2")
+        if (mtStr.contains("photo") || mtStr.contains("image") || mtStr.contains("chat.gif") || mtStr == "2")
             mt = 2;
         else if (mtStr.contains("share.file") || mtStr.contains("sharefile"))
             mt = 3;

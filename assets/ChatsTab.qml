@@ -292,6 +292,14 @@ NavigationPane {
                 id: groupBoardPageDef
                 source: "asset:///GroupBoardSheet.qml"
             },
+            ComponentDefinition {
+                id: stickerShopPageDef
+                source: "asset:///sticker/StickerShopPage.qml"
+            },
+            ComponentDefinition {
+                id: stickerSettingsPageDef
+                source: "asset:///sticker/StickerSettingsPage.qml"
+            },
             Connections {
                 target: app
                 onDarkThemeChanged: { friendList.isDark = dark; }
@@ -311,6 +319,18 @@ NavigationPane {
                     boardPage.groupsNavRef = chatsNav;
                     chatsNav.activeGroupBoardPage = boardPage;
                     chatsNav.push(boardPage);
+                }
+                onStickerShopRequestedChanged: {
+                    if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.stickerShopRequested) return;
+                    chatsNav.activeChatPage.stickerShopRequested = false;
+                    var shopPage = stickerShopPageDef.createObject();
+                    if (shopPage) chatsNav.push(shopPage);
+                }
+                onStickerSettingsRequestedChanged: {
+                    if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.stickerSettingsRequested) return;
+                    chatsNav.activeChatPage.stickerSettingsRequested = false;
+                    var stPage = stickerSettingsPageDef.createObject();
+                    if (stPage) chatsNav.push(stPage);
                 }
                 onQmRequestedChanged: {
                     if (!chatsNav.activeChatPage || !chatsNav.activeChatPage.qmRequested) return;

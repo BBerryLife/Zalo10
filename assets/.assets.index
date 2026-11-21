@@ -1,5 +1,5 @@
 1
-745
+753
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -667,6 +667,7 @@ images/ChatView/ic_forward_message.png
 images/ChatView/ic_invite_to_bbm.png
 images/ChatView/ic_keyboard_enabled.png
 images/ChatView/ic_list.png
+images/ChatView/ic_menu.png
 images/ChatView/ic_microphone.png
 images/ChatView/ic_notifications_off.png
 images/ChatView/ic_open.png
@@ -674,6 +675,7 @@ images/ChatView/ic_pin.png
 images/ChatView/ic_pin_dark.png
 images/ChatView/ic_quote_message.png
 images/ChatView/ic_recall.png
+images/ChatView/ic_reorder.png
 images/ChatView/ic_replace_message.png
 images/ChatView/ic_resend.png
 images/ChatView/ic_retract_message.png
@@ -712,6 +714,8 @@ images/InvitesTab/action_icon_search.png
 images/InvitesTab/ai_add_task.png
 images/InvitesTab/ic_sync.png
 images/SettingsSheet/ca_bugreport.png
+images/SettingsSheet/ca_data_management.png
+images/SettingsSheet/ca_diagnostics.png
 images/SettingsSheet/ca_notification.png
 images/SettingsSheet/ca_security_wipe.png
 images/SettingsSheet/ca_softwarelogtool.png
@@ -744,4 +748,8 @@ QuickMessagesSheet.qml
 ReactionPickerSheet.qml
 SettingsSheet.qml
 SharePickerSheet.qml
+sticker/StickerBar.qml
+sticker/StickerGrid.qml
+sticker/StickerSettingsPage.qml
+sticker/StickerShopPage.qml
 VoiceNoteSheet.qml

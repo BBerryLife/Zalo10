@@ -50,6 +50,7 @@ HEADERS += \
     src/core/PhoneSyncCore.hpp \
     src/applicationui.hpp \
     src/core/ZaloService.hpp \
+    src/core/stickers/StickerManager.hpp \
     src/utils/ZaloServiceUtils.hpp \
     src/ui/ActiveFrameCover.hpp \
     src/core/HubIntegration.hpp
@@ -78,6 +79,8 @@ SOURCES += \
     src/core/messages/ZaloService_Messages_FileVideo.cpp \
     src/core/messages/ZaloService_Messages_Notify.cpp \
     src/core/messages/ZaloService_Messages_Photo.cpp \
+    src/core/messages/ZaloService_Messages_Gif.cpp \
+    src/core/stickers/StickerManager.cpp \
     src/core/messages/ZaloService_Messages_PhotoFetch.cpp \
     src/core/messages/ZaloService_Messages_Send.cpp \
     src/core/network/ZaloService_Network_Download.cpp \
@@ -122,6 +125,10 @@ OTHER_FILES += \
     assets/emoji/EmojiObjectsPage.qml \
     assets/emoji/EmojiPlacesPage.qml \
     assets/emoji/EmojiSymbolsPage.qml \
+    assets/sticker/StickerBar.qml \
+    assets/sticker/StickerGrid.qml \
+    assets/sticker/StickerSettingsPage.qml \
+    assets/sticker/StickerShopPage.qml \
     assets/emoji/EmojiButton.qml \
     assets/ContactsTab.qml \
     assets/LoginView.qml \

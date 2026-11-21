@@ -276,7 +276,9 @@ protected:
         }
         bool wrap = (op == GetOperation || op == PostOperation) && u.scheme() == "https"
                  && (u.host().endsWith(".zalo.me") || u.host() == "zalo.me"
-                     || u.host().endsWith(".zaloapp.com") || u.host() == "zaloapp.com");
+                     || u.host().endsWith(".zaloapp.com") || u.host() == "zaloapp.com"
+                     // Sticker packs (StickerManager): GitHub's CDN fails the Qt handshake too.
+                     || u.host() == "raw.githubusercontent.com");
         QByteArray body;
         if (wrap && outgoing) {
             if (outgoing->isSequential()) {

@@ -707,6 +707,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_invite_to_bbm.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_list.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_menu.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_microphone.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_open.png) \
@@ -714,6 +715,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_pin_dark.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_quote_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_recall.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_reorder.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_replace_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_resend.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_retract_message.png) \
@@ -750,6 +752,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/InvitesTab/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_bugreport.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ca_data_management.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ca_diagnostics.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_notification.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_security_wipe.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_softwarelogtool.png) \
@@ -780,7 +784,11 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/lists/GroupsTitleBar.qml) \
         $$quote($$BASEDIR/assets/lists/ProfileTitleBar.qml) \
         $$quote($$BASEDIR/assets/lists/avatarhub.js) \
-        $$quote($$BASEDIR/assets/main.qml)
+        $$quote($$BASEDIR/assets/main.qml) \
+        $$quote($$BASEDIR/assets/sticker/StickerBar.qml) \
+        $$quote($$BASEDIR/assets/sticker/StickerGrid.qml) \
+        $$quote($$BASEDIR/assets/sticker/StickerSettingsPage.qml) \
+        $$quote($$BASEDIR/assets/sticker/StickerShopPage.qml)
 }
 
 config_pri_source_group1 {
@@ -811,6 +819,7 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Download.cpp) \
         $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Fetch.cpp) \
         $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_FileVideo.cpp) \
+        $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Gif.cpp) \
         $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Notify.cpp) \
         $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_Photo.cpp) \
         $$quote($$BASEDIR/src/core/messages/ZaloService_Messages_PhotoFetch.cpp) \
@@ -820,6 +829,7 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/core/network/ZaloService_Network_SessionKey.cpp) \
         $$quote($$BASEDIR/src/core/phonesync/ZaloService_PhoneSync_Flow.cpp) \
         $$quote($$BASEDIR/src/core/phonesync/ZaloService_PhoneSync_Tick.cpp) \
+        $$quote($$BASEDIR/src/core/stickers/StickerManager.cpp) \
         $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Dispatch.cpp) \
         $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Events.cpp) \
         $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Frames.cpp) \
@@ -846,6 +856,7 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/core/messages/MessagesCommon.hpp) \
         $$quote($$BASEDIR/src/core/network/NetworkCommon.hpp) \
         $$quote($$BASEDIR/src/core/phonesync/PhoneSyncCommon.hpp) \
+        $$quote($$BASEDIR/src/core/stickers/StickerManager.hpp) \
         $$quote($$BASEDIR/src/core/websocket/WebSocketCommon.hpp) \
         $$quote($$BASEDIR/src/third_party/prebuilt/device/openssl/include/openssl/aes.h) \
         $$quote($$BASEDIR/src/third_party/prebuilt/device/openssl/include/openssl/asn1.h) \
@@ -1123,6 +1134,11 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../src/core/phonesync/*.cc) \
         $$quote($$BASEDIR/../src/core/phonesync/*.cpp) \
         $$quote($$BASEDIR/../src/core/phonesync/*.cxx) \
+        $$quote($$BASEDIR/../src/core/stickers/*.c) \
+        $$quote($$BASEDIR/../src/core/stickers/*.c++) \
+        $$quote($$BASEDIR/../src/core/stickers/*.cc) \
+        $$quote($$BASEDIR/../src/core/stickers/*.cpp) \
+        $$quote($$BASEDIR/../src/core/stickers/*.cxx) \
         $$quote($$BASEDIR/../src/core/websocket/*.c) \
         $$quote($$BASEDIR/../src/core/websocket/*.c++) \
         $$quote($$BASEDIR/../src/core/websocket/*.cc) \
@@ -1305,7 +1321,10 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/images/SettingsSheet/*.qs) \
         $$quote($$BASEDIR/../assets/lists/*.qml) \
         $$quote($$BASEDIR/../assets/lists/*.js) \
-        $$quote($$BASEDIR/../assets/lists/*.qs)
+        $$quote($$BASEDIR/../assets/lists/*.qs) \
+        $$quote($$BASEDIR/../assets/sticker/*.qml) \
+        $$quote($$BASEDIR/../assets/sticker/*.js) \
+        $$quote($$BASEDIR/../assets/sticker/*.qs)
 
     HEADERS += \
         $$quote($$BASEDIR/../src/*.h) \

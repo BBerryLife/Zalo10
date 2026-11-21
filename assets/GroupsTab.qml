@@ -447,6 +447,14 @@ NavigationPane {
                 id: groupBoardPageDef
                 source: "asset:///GroupBoardSheet.qml"
             },
+            ComponentDefinition {
+                id: stickerShopPageDef
+                source: "asset:///sticker/StickerShopPage.qml"
+            },
+            ComponentDefinition {
+                id: stickerSettingsPageDef
+                source: "asset:///sticker/StickerSettingsPage.qml"
+            },
             Connections {
                 target: app
                 onDarkThemeChanged: { groupsNav.isDark = dark; groupList.isDark = dark; }
@@ -471,6 +479,18 @@ NavigationPane {
                 // while it is null.
                 id: groupQmTriggerConn
                 target: null
+                onStickerShopRequestedChanged: {
+                    if (!groupsNav.currentPage || !groupsNav.currentPage.stickerShopRequested) return;
+                    groupsNav.currentPage.stickerShopRequested = false;
+                    var shopPage = stickerShopPageDef.createObject();
+                    if (shopPage) groupsNav.push(shopPage);
+                }
+                onStickerSettingsRequestedChanged: {
+                    if (!groupsNav.currentPage || !groupsNav.currentPage.stickerSettingsRequested) return;
+                    groupsNav.currentPage.stickerSettingsRequested = false;
+                    var stPage = stickerSettingsPageDef.createObject();
+                    if (stPage) groupsNav.push(stPage);
+                }
                 onQmRequestedChanged: {
                     if (!groupsNav.currentPage || !groupsNav.currentPage.qmRequested) return;
                     groupsNav.currentPage.qmRequested = false;

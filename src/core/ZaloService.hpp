@@ -109,6 +109,9 @@ public:
     Q_INVOKABLE QVariantMap dbLoadThreadReactions(const QString &threadId);
     Q_INVOKABLE QVariantMap getThreadMessageStates(const QString &threadId);
     Q_INVOKABLE void sendPhoto(const QString &threadId, const QString &localFilePath, bool isGroup, const QString &caption = QString());
+    // Sends a local sticker image from an installed pack (see StickerManager). GIFs use the zca-js
+    // `gif` upload path (sendGif); png/jpg/webp reuse sendPhoto.
+    Q_INVOKABLE void sendSticker(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE QString cacheLocalImage(const QString &sourcePath);
     Q_INVOKABLE void sendFile(const QString &threadId, const QString &localFilePath, bool isGroup);
     Q_INVOKABLE void deleteLocalFile(const QString &path);
@@ -345,6 +348,8 @@ private slots:
     void onReactMsgDone();
     void onSendPhotoDone();
     void onSendPhotoMsgDone();
+    void onSendGifThumbDone();
+    void onSendGifDone();
     void onSendVideoChunkUploadDone();
     void onSendVideoMsgDone();
     // ContactPicker emits exactly one of canceled/error/contactSelected per open() (single-select).
@@ -412,6 +417,7 @@ private:
     bool dbAdvanceMessageStates(const QString &threadId, int state,
                                 const QString &msgId, const QString &altMsgId);
     QSize imageDimensions(const QString &localFileUrlOrPath) const;
+    void sendGif(const QString &threadId, const QString &localPath, bool isGroup);
     void markMessageRecalled(const QString &threadId, const QString &msgId);
     void markMessageDeletedForMe(const QString &threadId, const QString &msgId);
     bool isMessageDeletedForMe(const QString &msgId) const;

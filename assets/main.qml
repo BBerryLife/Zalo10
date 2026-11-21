@@ -1,6 +1,7 @@
 import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
+import "sticker"
 
 TabbedPane {
     id: root
@@ -12,18 +13,9 @@ TabbedPane {
     property string selfName: "Me"
     property string selfAvatar: ""
     property int feedsUnreadCount: 0
-    // Last tab that really has a page; Shop has none yet and bounces back to it.
-    property variant lastRealTab: null
 
     onActiveTabChanged: {
         zService.setFeedsViewing(activeTab === feedsTab);
-        if (activeTab === shopTab) {
-            // Under development: show the dialog and return to the tab we came from.
-            devTabDialog.show();
-            devTabRevertTimer.restart();
-            return;
-        }
-        root.lastRealTab = activeTab;
     }
     
     Menu.definition: MenuDefinition {
@@ -70,7 +62,6 @@ TabbedPane {
     }
 
     onCreationCompleted: {
-        root.lastRealTab = chatsTab;
         aboutSheet.zService = zService;
         if (app.getTosAccepted()) {
             startLogin();
@@ -143,12 +134,15 @@ TabbedPane {
         }
     }
     
-    // No page yet: selecting it only shows the "under development" dialog (see onActiveTabChanged).
+    // Sticker Shop (free sticker packs from BBerryLife.github.io).
     Tab {
         id: shopTab
         title: "Shop"
         description: "Store"
         imageSource: "asset:///images/ic_buy.png"
+        StickerShopPage {
+            id: shopTabContent
+        }
     }
 
     attachedObjects: [
@@ -229,19 +223,6 @@ TabbedPane {
                     : ("Cannot create event: " + error);
                 eventResultDialog.show();
             }
-        },
-
-        Timer {
-            id: devTabRevertTimer
-            interval: 1
-            repeat: false
-            onTriggered: { root.activeTab = root.lastRealTab ? root.lastRealTab : chatsTab; }
-        },
-
-        InfoDialog {
-            id: devTabDialog
-            title: "Shop"
-            body: "This feature is still under development."
         },
 
         Timer {

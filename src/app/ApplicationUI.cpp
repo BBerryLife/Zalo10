@@ -1,5 +1,6 @@
 #include "app/ApplicationUICommon.hpp"
 #include "core/HubIntegration.hpp"
+#include "core/stickers/StickerManager.hpp"
 
 ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain")
 {
@@ -43,6 +44,7 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     QmlDocument *qml = QmlDocument::create("asset:///main.qml").parent(this);
     qml->setContextProperty("app",      this);
     qml->setContextProperty("zService", zService);
+    qml->setContextProperty("stickerManager", new StickerManager(this));
 
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
