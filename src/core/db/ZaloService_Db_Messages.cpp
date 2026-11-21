@@ -421,3 +421,55 @@ QVariantMap ZaloService::getThreadLastMessages() const
     sqlite3_finalize(stmt);
     return result;
 }
+
+static QString dbColText(sqlite3_stmt *st, int i)
+{
+    const unsigned char *t = sqlite3_column_text(st, i);
+    return t ? QString::fromUtf8(reinterpret_cast<const char*>(t)) : QString();
+}
+
+// Chats tab source: every 1-1 thread that still has a stored message. The name comes from the member
+// names (friends / group members / profiles we read), then the contact snapshot, then the name the
+// sender carried on her last incoming message. The avatar link comes from the contact snapshot and the
+// picture on disk from avatar_meta, so a known person shows her picture with no request at all.
+QVariantList ZaloService::cachedChatThreads()
+{
+    QVariantList out;
+    if (!m_db) return out;
+    if (!m_memberDbLoaded) loadMemberNamesFromDb();
+    feedsEnsureTables();
+
+    const char *sql =
+        "SELECT m.threadId, "
+        "  (SELECT x.dName FROM messages x WHERE x.threadId=m.threadId AND x.isMine=0 "
+        "     AND x.dName IS NOT NULL AND x.dName<>'' ORDER BY CAST(x.ts AS INTEGER) DESC LIMIT 1), "
+        "  cs.name, cs.avatarUrl, am.localPath "
+        "FROM messages m "
+        "LEFT JOIN contact_snapshot cs ON cs.uid = m.threadId "
+        "LEFT JOIN avatar_meta am ON am.threadId = m.threadId "
+        "GROUP BY m.threadId HAVING MAX(m.isGroup) = 0;";
+    sqlite3_stmt *st = 0;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &st, 0) != SQLITE_OK) return out;
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        QString tid = dbColText(st, 0);
+        if (tid.isEmpty() || tid == m_uid) continue;
+
+        QString name = m_memberNames.value(tid);
+        if (name.isEmpty()) name = dbColText(st, 2);
+        if (name.isEmpty()) name = dbColText(st, 1);
+
+        QString localAvatar = dbColText(st, 4);
+        QString fsPath = localAvatar.startsWith("file://") ? localAvatar.mid(7) : localAvatar;
+        if (fsPath.isEmpty() || !QFile::exists(fsPath)) localAvatar.clear();
+
+        QVariantMap t;
+        t["threadId"]    = tid;
+        t["name"]        = name;
+        t["isGroup"]     = false;
+        t["avatar"]      = dbColText(st, 3);
+        t["localAvatar"] = localAvatar;
+        out.append(t);
+    }
+    sqlite3_finalize(st);
+    return out;
+}

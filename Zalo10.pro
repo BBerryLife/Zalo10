@@ -147,6 +147,7 @@ OTHER_FILES += \
     assets/ForwardPickerSheet.qml \
     assets/GroupBoardSheet.qml \
     assets/GroupsTab.qml \
+    assets/NewChatSheet.qml \
     assets/InvitesTab.qml \
     assets/NoteViewerSheet.qml \
     assets/PinboardBar.qml \

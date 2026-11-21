@@ -177,6 +177,11 @@ public:
     Q_INVOKABLE void cancelPhoneSync();
     Q_INVOKABLE bool isPhoneSyncing() const;
     Q_INVOKABLE QVariantMap getThreadLastMessages() const;
+    // Chats tab: one entry per 1-1 conversation that has at least one stored message (threadId, name,
+    // avatar url, localAvatar). Read from the local database only, no network.
+    Q_INVOKABLE QVariantList cachedChatThreads();
+    // New Chat sheet: the friend list of the last successful fetchFriends() (empty before the first one).
+    Q_INVOKABLE QVariantList cachedFriends() const { return m_lastFriendThreads; }
     // Group list saved by the last complete fetch, so the Groups tab can fill instantly at start.
     Q_INVOKABLE QVariantList cachedConversations();
     // Feeds: changes in contacts' profiles (avatar, cover, bio, birthday), found by comparing with
@@ -599,6 +604,7 @@ private:
     PsHandle m_psh;
     void handlePhoneSyncEvent(const QString &act, const QVariantMap &data);
     QStringList m_friendUids;
+    QVariantList m_lastFriendThreads;   // last complete friend list, kept for the New Chat sheet
     void phoneSyncBeginDownload(const QVariantMap &d);
     void phoneSyncStartDownload();
     void phoneSyncDownloadSucceeded(const QByteArray &data);

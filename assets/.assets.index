@@ -1,5 +1,5 @@
 1
-753
+754
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -738,6 +738,7 @@ lists/GroupsTitleBar.qml
 lists/ProfileTitleBar.qml
 LoginView.qml
 main.qml
+NewChatSheet.qml
 NoteViewerSheet.qml
 PinboardBar.qml
 PollVotersSheet.qml

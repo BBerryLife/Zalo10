@@ -209,6 +209,7 @@ void ZaloService::finishFriends()
     m_lastFetchFriendsTime = QDateTime::currentMSecsSinceEpoch();
 
     if (!threads.isEmpty()) {
+        m_lastFriendThreads = threads;
         feedsOnFriends(threads, true);
         emit friendsReady(threads);
         m_isFetchingFriends = false;

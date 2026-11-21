@@ -55,6 +55,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
+        $$quote($$BASEDIR/assets/NewChatSheet.qml) \
         $$quote($$BASEDIR/assets/NoteViewerSheet.qml) \
         $$quote($$BASEDIR/assets/PinboardBar.qml) \
         $$quote($$BASEDIR/assets/PollVoteSheet.qml) \

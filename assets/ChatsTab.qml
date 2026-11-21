@@ -21,7 +21,6 @@ NavigationPane {
 
     property bool searchVisible: false
     property string searchText: ""
-    property bool refreshCooldown: false
     // Chats whose online dot is lit, shown as the Chats tab subtitle ("N Active Chats") by main.qml.
     // Maintained by friendList.setOnline() / startPresence().
     property int onlineChatCount: 0
@@ -40,12 +39,6 @@ NavigationPane {
     property variant activeGroupBoardPage: null
 
     attachedObjects: [
-        Timer {
-            id: chatsRefreshCooldownTimer
-            interval: 11000
-            repeat: false
-            onTriggered: chatsNav.refreshCooldown = false
-        }
         // No warm-up Timer pre-parsing ChatView.qml via createObject()+destroy(): creating and
         // destroying a parentless Page UIObject caused SIGSEGV on this runtime.
     ]
@@ -61,6 +54,8 @@ NavigationPane {
             showSearchButton: true
             addIcon: "asset:///images/ChatsTab/ic_start_chat.png"
             addDialogTitle: "New Chat"
+            addHandled: true
+            onAddClicked: chatsNav.openNewChat()
             onSearchOpened: { chatsNav.searchVisible = true; focusSearch(); }
             onSearchChanged: { chatsNav.searchText = text; chatsNav.filterList(); }
             onSearchClosed: {
@@ -84,23 +79,6 @@ NavigationPane {
         ]
 
         actions: [
-            ActionItem {
-                title: chatsNav.refreshCooldown ? "Please wait..." : "Refresh"
-                enabled: !chatsNav.refreshCooldown
-                imageSource: "asset:///images/ChatsTab/ic_sync.png"
-                ActionBar.placement: ActionBarPlacement.InOverflow
-                onTriggered: {
-                    if (chatsNav.refreshCooldown) return;
-                    chatsNav.refreshCooldown = true;
-                    chatsRefreshCooldownTimer.restart();
-                    friendAppendTimer.stop();
-                    friendModel.clear();
-                    AvatarHub.invalidate("chats");
-                    zService.fetchFriends();
-                    chatsLoading.visible = true;
-                    chatsNav.startFriendsWatch();
-                }
-            },
             ActionItem {
                 title: "Mark All as Read"
                 imageSource: "asset:///images/ChatsTab/ai_add_task.png"
@@ -173,40 +151,16 @@ NavigationPane {
                 ]
 
                 onTriggered: {
-                    var t0 = Date.now();
-                    var item = dataModel.data(indexPath);
-                    var page = chatsDef.createObject();
-                    if (!page) return;
-                    page.threadId   = item.threadId || item.uid || "";
-                    page.threadName = item.name || "Chat";
-                    page.isGroup    = false;
-                    page.avatarUrl  = item.localAvatar || item.avatar || "";
-                    page.selfName   = chatsNav.selfName;
-                    var idx = indexPath[0];
-                    var d = friendModel.value(idx);
-                    if (d) { d.hasUnread = false; friendModel.replace(idx, d); }
-                    chatsNav.activeChatPage = page;
-                    chatPageConn.target = page;
-                    var t1 = Date.now();
-                    chatsNav.push(page);
-                    page.startChat();
+                    chatsNav.openRow(dataModel.data(indexPath));
                 }
-            }
-
-            ActivityIndicator {
-                id: chatsLoading
-                horizontalAlignment: HorizontalAlignment.Center
-                verticalAlignment: VerticalAlignment.Center
-                preferredWidth: ui.du(12)
-                preferredHeight: ui.du(12)
-                running: visible
-                visible: false
             }
 
             Label {
                 id: chatsEmpty
-                text: "No friends found"
+                text: "No conversations yet.\nTap the new chat button to start one."
+                multiline: true
                 visible: false
+                textStyle.textAlign: TextAlign.Center
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
             }
@@ -258,11 +212,17 @@ NavigationPane {
                 }
             },
             Timer {
-                // Lite: friend list never arrived (error / 429 / network) -> retry, then tell the user.
-                id: friendsRetryTimer
-                interval: 15000
+                // Fills in the name / picture of chats that have none yet (people who are not friends),
+                // one profile request at a time.
+                id: profileFillTimer
+                interval: 1200
                 repeat: true
-                onTriggered: chatsNav.checkFriendsLoad()
+                onTriggered: chatsNav.fillNextProfile()
+            },
+            NewChatSheet {
+                id: newChatSheet
+                isDark: friendList.isDark
+                onChatRequested: chatsNav.startNewChat(threadId, name, avatar, localAvatar)
             },
             ConfirmDialog {
                 id: markAllReadDialog
@@ -360,7 +320,12 @@ NavigationPane {
     property string selfAvatar: ""
     signal onUnreadMessage()
 
-    property variant lastFriends: []
+    // People opened from the New Chat sheet (or a Hub link) before their first message: the row that
+    // the first message creates takes the name / picture from here. threadId -> {name, avatar, localAvatar}.
+    property variant knownPeople: ({})
+    // uids whose profile (name / picture) still has to be read, and the ones already asked this session.
+    property variant profileQueue: []
+    property variant profileAsked: ({})
 
     // Big lists go into the model in slices (first slice at once, the rest every few ms) so the UI
     // thread never stalls on a few thousand appends.
@@ -383,13 +348,17 @@ NavigationPane {
         if (AvatarHub.pending("chats") && !avatarPaceTimer.running) avatarPaceTimer.start();
     }
 
-    function buildFriends(friends, restoreAvatars) {
+    // Chats are the 1-1 threads that have stored messages (zService.cachedChatThreads(), local database
+    // only). Nobody is listed just for being a friend, and no friend list is fetched here.
+    function loadChats(restoreAvatars) {
+        chatsNav.buildChats(zService.cachedChatThreads(), restoreAvatars);
+        friendList.startPresence();
+    }
+
+    function buildChats(threads, restoreAvatars) {
         friendAppendTimer.stop();
         chatsNav.pendingRows = [];
         chatsNav.pendingPos = 0;
-        chatsLoading.visible = false;
-        friendsRetryTimer.stop();
-        chatsEmpty.text = "No friends found";
         AvatarHub.reset("chats");
         AvatarHub.invalidate("chats");
         var avatarByTid = {};
@@ -408,46 +377,45 @@ NavigationPane {
         var unreadIds = zService.unreadThreadIds();
         var unreadMap = {};
         for (var u = 0; u < unreadIds.length; u++) unreadMap[unreadIds[u]] = true;
-        // Build a fresh array: `friends` is a QVariantList from a C++ signal and in-place writes
+        // Build a fresh array: `threads` is a QVariantList from C++ and in-place writes
         // silently no-op on this runtime.
         var outArr = [];
-        for (var i = 0; i < friends.length; i++) {
-            var f = friends[i];
+        var needProfile = [];
+        for (var i = 0; i < threads.length; i++) {
+            var f = threads[i];
+            var tid = f.threadId || f.uid || "";
+            var lm = lastMsgs[tid];
+            if (!lm) continue;   // a conversation is listed only when it has a message
             var out = {};
             for (var key in f) out[key] = f[key];
-            out.localAvatar    = "";
-            out.isPinned       = false;
+            out.threadId       = tid;
+            out.isPinned       = (pinMap[tid] === true);
             out.hasUnread      = false;
             out.lastMsgIsMine  = false;
             out.lastMsgId      = "";
             out.lastMsgState   = 0;
             out.lastSenderName = "";
-            out.lastMessage    = f.lastMessage || f.lastMsg || "";
+            out.lastMessage    = "";
             out.sortTs         = 0;
-            var tid = out.threadId || out.uid || "";
-            out.isPinned = (pinMap[tid] === true);
+            if (!out.localAvatar) out.localAvatar = "";
             if (restoreAvatars && avatarByTid[tid]) out.localAvatar = avatarByTid[tid];
-            var lm = lastMsgs[tid];
-            if (lm) {
-                var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
-                var mt = lm.msgType;
-                var snippet;
-                if (mt === 99 || mt === "99") {
-                    snippet = isMine ? "You recalled a message" : "This message was recalled";
-                } else if (mt === 2 || mt === "2") {
-                    snippet = "[Photo]";
-                } else {
-                    snippet = chatsNav.msgSnippet(mt, lm.content);
-                }
-                out.lastMessage    = snippet;
-                out.lastMsgIsMine  = isMine;
-                out.lastMsgId      = lm.msgId || "";
-                out.lastMsgState   = isMine ? (lm.state || 1) : 0;
-                out.lastSenderName = lm.dName || "";
-                out.lastTime       = lm.ts || "";
+            var isMine = (lm.isMine === true || lm.isMine === "true" || lm.isMine === 1);
+            var mt = lm.msgType;
+            var snippet;
+            if (mt === 99 || mt === "99") {
+                snippet = isMine ? "You recalled a message" : "This message was recalled";
+            } else if (mt === 2 || mt === "2") {
+                snippet = "[Photo]";
+            } else {
+                snippet = chatsNav.msgSnippet(mt, lm.content);
             }
-            out.hasUnread = (unreadMap[tid] === true) && (out.lastMessage.length > 0)
-                            && !out.lastMsgIsMine;
+            out.lastMessage    = snippet;
+            out.lastMsgIsMine  = isMine;
+            out.lastMsgId      = lm.msgId || "";
+            out.lastMsgState   = isMine ? (lm.state || 1) : 0;
+            out.lastSenderName = lm.dName || "";
+            out.lastTime       = lm.ts || "";
+            out.hasUnread = (unreadMap[tid] === true) && !isMine;
             if (out.lastTime && out.lastTime !== "") {
                 var ts = parseInt(out.lastTime);
                 if (!isNaN(ts)) {
@@ -456,6 +424,8 @@ NavigationPane {
                     out.lastTime = chatsNav.formatTime(ts);
                 }
             }
+            if (!out.name || out.name.length === 0 || (!out.avatar && !out.localAvatar))
+                needProfile.push(tid);
             outArr.push(out);
         }
         outArr.sort(function(a, b) {
@@ -469,7 +439,81 @@ NavigationPane {
         chatsNav.appendPending(60);
         if (chatsNav.pendingPos < outArr.length) friendAppendTimer.restart();
         chatsEmpty.visible = (outArr.length === 0);
+        for (var np = 0; np < needProfile.length && np < 40; np++) chatsNav.queueProfile(needProfile[np]);
+    }
 
+    // ---- Names / pictures of people who are not in a friend list ----
+    function queueProfile(uid) {
+        if (!uid || uid.length === 0 || chatsNav.profileAsked[uid] === true) return;
+        var asked = {};
+        for (var k in chatsNav.profileAsked) asked[k] = true;
+        asked[uid] = true;
+        chatsNav.profileAsked = asked;
+        chatsNav.profileQueue = chatsNav.profileQueue.concat([uid]);
+        if (!profileFillTimer.running) profileFillTimer.start();
+    }
+    function fillNextProfile() {
+        var q = chatsNav.profileQueue;
+        if (q.length === 0) { profileFillTimer.stop(); return; }
+        chatsNav.profileQueue = q.slice(1);
+        zService.fetchProfileDetails(q[0]);
+    }
+    function applyProfile(uid, profile) {
+        var hit = AvatarHub.find("chats", friendModel, uid);
+        if (!hit) return;
+        var row = hit.row;
+        var changed = false;
+        var nm = profile.zaloName || profile.displayName || "";
+        if (nm.length > 0 && (!row.name || row.name.length === 0)) { row.name = nm; changed = true; }
+        var av = profile.avatar || "";
+        var wantAvatar = (av.length > 0 && !row.avatar && !row.localAvatar);
+        if (wantAvatar) { row.avatar = av; changed = true; }
+        if (changed) friendModel.replace(hit.i, row);
+        if (wantAvatar) {
+            AvatarHub.enqueue("chats", uid, av);
+            if (!avatarPaceTimer.running) avatarPaceTimer.start();
+        }
+    }
+
+    function requestAvatar(tid, url) {
+        AvatarHub.enqueue("chats", tid, url);
+        if (!avatarPaceTimer.running) avatarPaceTimer.start();
+    }
+    // The model's membership changed (row added / removed): the avatar index and the empty hint follow.
+    function rowsChanged() {
+        AvatarHub.invalidate("chats");
+        chatsEmpty.visible = (friendModel.size() === 0);
+        if (chatsNav.searchVisible) chatsNav.filterList();
+    }
+    function removeThread(tid) {
+        for (var i = 0; i < friendModel.size(); i++) {
+            var d = friendModel.value(i);
+            if ((d.threadId || d.uid || "") === tid) {
+                friendModel.removeAt(i);
+                chatsNav.rowsChanged();
+                return;
+            }
+        }
+    }
+
+    function rememberPerson(tid, name, avatar, localAvatar) {
+        if (!tid || tid.length === 0) return;
+        var m = {};
+        for (var k in chatsNav.knownPeople) m[k] = chatsNav.knownPeople[k];
+        m[tid] = { name: name || "", avatar: avatar || "", localAvatar: localAvatar || "" };
+        chatsNav.knownPeople = m;
+    }
+    // Name / picture for a thread that has no row yet (first message of a new chat).
+    function personFor(tid, fallbackName) {
+        var kp = chatsNav.knownPeople[tid];
+        var name = (kp && kp.name) ? kp.name : "";
+        if (name.length === 0) name = zService.memberDisplayName(tid) || "";
+        if (name.length === 0) name = fallbackName || "";
+        return {
+            name: name,
+            avatar: kp ? kp.avatar : "",
+            localAvatar: kp ? kp.localAvatar : ""
+        };
     }
 
     // ---- Lite: avatar updates in O(1) instead of scanning the whole list ----
@@ -487,34 +531,6 @@ NavigationPane {
                 searchModel.replace(sh.i, sh.row);
             }
         }
-    }
-
-    // ---- Lite: retry when the friend list does not arrive ----
-    property int friendsRetries: 0
-    function startFriendsWatch() {
-        chatsNav.friendsRetries = 0;
-        chatsEmpty.visible = false;
-        friendsRetryTimer.interval = 15000;   // fallback watchdog if no signal ever comes
-        friendsRetryTimer.restart();
-    }
-    // C++ told us the fetch failed (429 / error / empty / network): retry soon instead of waiting 15 s.
-    // 11 s is just past the 10 s fetch cooldown in ZaloService, so the retry is not ignored.
-    function friendsFetchFailedHandler() {
-        if (!chatsLoading.visible) return;
-        friendsRetryTimer.interval = 11000;
-        friendsRetryTimer.restart();
-    }
-    function checkFriendsLoad() {
-        if (!chatsLoading.visible) { friendsRetryTimer.stop(); return; }
-        if (chatsNav.friendsRetries >= 3) {
-            friendsRetryTimer.stop();
-            chatsLoading.visible = false;
-            chatsEmpty.text = "Could not load your friends. Check the connection, then tap Refresh.";
-            chatsEmpty.visible = true;
-            return;
-        }
-        chatsNav.friendsRetries++;
-        zService.fetchFriends();
     }
 
     function firstUnpinnedIndex() {
@@ -544,23 +560,55 @@ NavigationPane {
         chatsEmpty.visible = (friendModel.size() === 0);
     }
 
-    function openThread(threadId, isGroup) {
+    function openNewChat() {
+        newChatSheet.openSheet();
+    }
+
+    // A person picked in the New Chat sheet: open an empty chat. She is listed in Chats only once the
+    // first message exists (the new-message handler creates the row).
+    function startNewChat(threadId, name, avatar, localAvatar) {
+        chatsNav.rememberPerson(threadId, name, avatar, localAvatar);
+        newChatSheet.close();
+        chatsNav.openThread(threadId, false, name, localAvatar || avatar);
+    }
+
+    function openRow(item) {
+        if (!item) return;
+        var page = chatsDef.createObject();
+        if (!page) return;
+        var tid = item.threadId || item.uid || "";
+        page.threadId   = tid;
+        page.threadName = item.name || "Chat";
+        page.isGroup    = false;
+        page.avatarUrl  = item.localAvatar || item.avatar || "";
+        page.selfName   = chatsNav.selfName;
+        var hit = AvatarHub.find("chats", friendModel, tid);
+        if (hit && hit.row.hasUnread) { hit.row.hasUnread = false; friendModel.replace(hit.i, hit.row); }
+        chatsNav.activeChatPage = page;
+        chatPageConn.target = page;
+        chatsNav.push(page);
+        page.startChat();
+    }
+
+    function openThread(threadId, isGroup, nameHint, avatarHint) {
         while (chatsNav.count() > 1) {
             chatsNav.pop();
         }
         var page = chatsDef.createObject();
         if (!page) return;
-        var threadName = "Chat";
+        var threadName = "";
         var avatarUrl  = "";
-        for (var i = 0; i < friendModel.size(); i++) {
-            var d = friendModel.value(i);
-            var tid = d.threadId || d.uid || "";
-            if (tid === threadId) {
-                threadName = d.name || d.displayName || "Chat";
-                avatarUrl  = d.localAvatar || d.avatar || "";
-                break;
-            }
+        var hit = AvatarHub.find("chats", friendModel, threadId);
+        if (hit) {
+            threadName = hit.row.name || hit.row.displayName || "";
+            avatarUrl  = hit.row.localAvatar || hit.row.avatar || "";
         }
+        if (threadName.length === 0 || avatarUrl.length === 0) {
+            var pf = chatsNav.personFor(threadId, nameHint || "");
+            if (threadName.length === 0) threadName = pf.name;
+            if (avatarUrl.length === 0)  avatarUrl  = pf.localAvatar || pf.avatar || avatarHint || "";
+        }
+        if (threadName.length === 0) threadName = "Chat";
         page.threadId   = threadId;
         page.threadName = threadName;
         page.isGroup    = isGroup;

@@ -103,6 +103,16 @@ void ZaloService::onProfileDetailsDone()
     }
     emit profileDetailsReady(uid, profile);
     {
+        // Chats are built from stored messages now (no friend list), so a person who is not a friend
+        // gets her name from here: keep it so the next start does not ask again.
+        QString pn = profile["zaloName"].toString();
+        if (pn.isEmpty()) pn = profile["displayName"].toString();
+        if (!pn.isEmpty()) {
+            if (!m_memberDbLoaded) loadMemberNamesFromDb();
+            rememberMemberName(stripUid0(uid), pn, false);
+        }
+    }
+    {
         // Feeds: a profile we just read anyway is compared with the snapshot for free.
         QMap<QString, QVariantMap> one;
         one.insert(stripUid0(uid), profile);

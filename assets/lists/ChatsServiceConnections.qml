@@ -5,27 +5,16 @@ import QtQuick 1.0
 Connections {
     target: zService
 
-    onFriendsReady: {
-        chatsNav.lastFriends = friends;
-        chatsNav.buildFriends(friends, false);
-        friendList.startPresence();
-    }
-
-    onFriendsFetchFailed: {
-        chatsNav.friendsFetchFailedHandler();
-    }
-
     onProfileDetailsReady: {
         friendList.setOnline(uid, profile.lastActionTime);
+        chatsNav.applyProfile(uid, profile);
     }
 
     onHistorySynced: {
-        if (chatsNav.lastFriends && chatsNav.lastFriends.length > 0)
-            chatsNav.buildFriends(chatsNav.lastFriends, true);
+        chatsNav.loadChats(true);
     }
     onPinnedChanged: {
-        if (chatsNav.lastFriends && chatsNav.lastFriends.length > 0)
-            chatsNav.buildFriends(chatsNav.lastFriends, true);
+        chatsNav.loadChats(true);
     }
 
     onAvatarReady: {
@@ -36,13 +25,8 @@ Connections {
     onLoginSuccess: {
         if (typeof displayName !== "undefined" && displayName.length > 0)
             chatsNav.selfName = displayName;
-        if (friendModel.size() === 0) {
-            chatsNav.refreshCooldown = true;
-            chatsRefreshCooldownTimer.restart();
-            zService.fetchFriends();
-            chatsLoading.visible = true;
-            chatsNav.startFriendsWatch();
-        }
+        // The list comes from the stored messages: no friend list is fetched for this tab.
+        if (friendModel.size() === 0) chatsNav.loadChats(false);
     }
 
     onNewMessage: {
@@ -80,21 +64,28 @@ Connections {
             }
         }
 
-        // A chat with someone who is not in the friend list (opened from the Hub, a stranger...) had
-        // no row at all, so nothing could move up. Give it one. Skipped while the list is still being
-        // filled slice by slice: that build already reads the message from the database.
-        if (!found && !isMine && tid.length > 0 && chatsNav.pendingPos >= chatsNav.pendingRows.length) {
+        // A thread is listed only once it has a message, so the first message of a new chat (sent by us
+        // from the New Chat sheet, or received from a stranger / opened from the Hub) creates its row.
+        // Skipped while the list is still being filled slice by slice: that build already reads the
+        // message from the database.
+        if (!found && tid.length > 0 && chatsNav.pendingPos >= chatsNav.pendingRows.length) {
+            var who = chatsNav.personFor(tid, isMine ? "" : senderName);
             var nr = {
                 threadId: tid, uid: tid,
-                name: senderName.length > 0 ? senderName : "Unknown User",
-                avatar: "", localAvatar: "",
+                name: who.name,
+                avatar: who.avatar, localAvatar: who.localAvatar,
                 isPinned: false, hasUnread: unread,
-                lastMessage: snippet, lastMsgIsMine: false,
-                lastMsgId: message.msgId || "", lastMsgState: 0,
+                lastMessage: snippet, lastMsgIsMine: isMine,
+                lastMsgId: message.msgId || "", lastMsgState: isMine ? 1 : 0,
                 lastSenderName: senderName,
                 sortTs: tsNum, lastTime: chatsNav.formatTime(tsNum)
             };
             friendModel.insert(chatsNav.firstUnpinnedIndex(), nr);
+            chatsNav.rowsChanged();
+            if (who.avatar.length > 0 && who.localAvatar.length === 0)
+                chatsNav.requestAvatar(tid, who.avatar);
+            if (who.name.length === 0 || (who.avatar.length === 0 && who.localAvatar.length === 0))
+                chatsNav.queueProfile(tid);
         }
 
         // Search results show their own copy of the row: keep it in step.
@@ -185,19 +176,7 @@ Connections {
 
     onClearHistoryDone: {
         if (!success) return;
-        for (var i = 0; i < friendModel.size(); i++) {
-            var d = friendModel.value(i);
-            if ((d.threadId || d.uid || "") === threadId) {
-                d.lastMessage    = "";
-                d.lastMsgIsMine  = false;
-                d.lastMsgId      = "";
-                d.lastMsgState   = 0;
-                d.lastSenderName = "";
-                d.hasUnread      = false;
-                zService.setThreadUnread(threadId, false);
-                friendModel.replace(i, d);
-                return;
-            }
-        }
+        zService.setThreadUnread(threadId, false);
+        chatsNav.removeThread(threadId);
     }
 }

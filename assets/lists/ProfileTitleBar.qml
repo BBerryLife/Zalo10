@@ -16,10 +16,12 @@ TitleBar {
     property bool   showSearchButton: false    // magnifier on the right (opens header search mode)
     property string addIcon: ""                // asset path of the add button; empty = no button
     property string addDialogTitle: ""         // "under development" dialog shown by the add button
+    property bool   addHandled: false          // true: the add button emits addClicked() instead of the dialog
 
     signal searchOpened()
     signal searchChanged(string text)
     signal searchClosed()
+    signal addClicked()
 
     function focusSearch() { profileSearchField.requestFocus(); }
     function clearSearch()  { profileSearchField.text = ""; }
@@ -110,7 +112,10 @@ TitleBar {
                     defaultImageSource: profileBar.addIcon
                     preferredWidth: ui.du(8)
                     preferredHeight: ui.du(8)
-                    onClicked: addDevDialog.show()
+                    onClicked: {
+                        if (profileBar.addHandled) profileBar.addClicked();
+                        else addDevDialog.show();
+                    }
                 }
                 Container { preferredWidth: ui.du(1.2) }
             }
