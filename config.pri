@@ -55,11 +55,14 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
+        $$quote($$BASEDIR/assets/MyProfilePage.qml) \
+        $$quote($$BASEDIR/assets/MyProfileSheet.qml) \
         $$quote($$BASEDIR/assets/NewChatSheet.qml) \
         $$quote($$BASEDIR/assets/NoteViewerSheet.qml) \
         $$quote($$BASEDIR/assets/PinboardBar.qml) \
         $$quote($$BASEDIR/assets/PollVoteSheet.qml) \
         $$quote($$BASEDIR/assets/PollVotersSheet.qml) \
+        $$quote($$BASEDIR/assets/ProfileInfoRow.qml) \
         $$quote($$BASEDIR/assets/ProfileView.qml) \
         $$quote($$BASEDIR/assets/QuickMessageEditSheet.qml) \
         $$quote($$BASEDIR/assets/QuickMessagesSheet.qml) \

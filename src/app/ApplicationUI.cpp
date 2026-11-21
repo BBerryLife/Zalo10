@@ -2,12 +2,15 @@
 #include "core/HubIntegration.hpp"
 #include "core/stickers/StickerManager.hpp"
 
-ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain")
+ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain"), m_waitingCameraPhoto(false)
 {
     m_pInvokeManager = new InvokeManager(this);
     bool invokeConnectOk = QObject::connect(
         m_pInvokeManager, SIGNAL(invoked(const bb::system::InvokeRequest&)),
         this,             SLOT(onInvoked(const bb::system::InvokeRequest&)));
+    QObject::connect(
+        m_pInvokeManager, SIGNAL(childCardDone(const bb::system::CardDoneMessage&)),
+        this,             SLOT(onChildCardDone(const bb::system::CardDoneMessage&)));
     m_pTranslator    = new QTranslator(this);
     m_pLocaleHandler = new LocaleHandler(this);
 

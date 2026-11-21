@@ -6,6 +6,7 @@ import "lists/avatarhub.js" as AvatarHub
 
 NavigationPane {
     id: chatsNav
+    signal myProfileRequested()
     peekEnabled: false
 
     onPopTransitionEnded: {
@@ -38,10 +39,8 @@ NavigationPane {
     property variant activeQmPage: null
     property variant activeGroupBoardPage: null
 
-    attachedObjects: [
-        // No warm-up Timer pre-parsing ChatView.qml via createObject()+destroy(): creating and
-        // destroying a parentless Page UIObject caused SIGSEGV on this runtime.
-    ]
+    // No warm-up Timer pre-parsing ChatView.qml via createObject()+destroy(): creating and
+    // destroying a parentless Page UIObject caused SIGSEGV on this runtime.
 
     Page {
         id: chatsPage
@@ -49,6 +48,8 @@ NavigationPane {
         titleBar: ProfileTitleBar {
             selfName:   chatsNav.selfName
             selfAvatar: chatsNav.selfAvatar
+            profileHandled: true
+            onProfileClicked: chatsNav.myProfileRequested()
             searchHint: "Search chats..."
             searchMode: chatsNav.searchVisible
             showSearchButton: true

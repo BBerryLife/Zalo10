@@ -4,6 +4,7 @@ import "lists"
 
 NavigationPane {
     id: invitesNav
+    signal myProfileRequested()
     peekEnabled: false
 
     property string selfName: ""
@@ -35,6 +36,8 @@ NavigationPane {
             id: invitesBar
             selfName:   invitesNav.selfName
             selfAvatar: invitesNav.selfAvatar
+            profileHandled: true
+            onProfileClicked: invitesNav.myProfileRequested()
             searchHint: "Search requests..."
             searchMode: invitesNav.searchVisible
             onSearchChanged: { invitesNav.searchText = text; invitesNav.filterList(); }

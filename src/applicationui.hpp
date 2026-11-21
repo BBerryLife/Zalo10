@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QNetworkAccessManager>
 #include <bb/system/InvokeManager>
+#include <bb/system/CardDoneMessage>
 #include <bb/cascades/ThemeSupport>
 
 namespace bb { namespace cascades { class LocaleHandler; class AbstractPane; } }
@@ -48,6 +49,8 @@ public slots:
     Q_INVOKABLE void queryShareTargetsForImage(const QString &localPath);
     Q_INVOKABLE void invokeShareTargetForImage(const QString &target, const QString &action, const QString &localPath);
     Q_INVOKABLE void openLocalFile(const QString &localPath);
+    // Camera card (sys.camera.card): one photo; the file comes back through cameraPhotoCaptured().
+    Q_INVOKABLE void captureCameraPhoto();
 
     Q_INVOKABLE void createTodayEvent(const QString &subject, const QString &body, int durationMinutes);
 
@@ -60,6 +63,7 @@ signals:
     void changelogReady(const QString &html, const QString &error);
     void shareTargetsReady(const QVariantList &targets);
     void eventCreated(bool success, const QString &error);
+    void cameraPhotoCaptured(const QString &path);
 
 private slots:
     void onSystemLanguageChanged();
@@ -73,6 +77,7 @@ private slots:
     void onChangelogFetchDone();
     void onManifestSslErrors(const QList<QSslError> &errors);
     void onQueryTargetsFinished();
+    void onChildCardDone(const bb::system::CardDoneMessage &message);
 
 private:
     QString buildChangelogHtml(const QVariantList &versions) const;
@@ -84,6 +89,7 @@ private:
     QNetworkAccessManager*        m_updateManager;
     bool                          m_exitHandled;
     QString                       m_pendingShareMimeType;
+    bool                          m_waitingCameraPhoto;
 };
 
 #endif

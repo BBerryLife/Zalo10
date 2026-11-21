@@ -61,6 +61,16 @@ TabbedPane {
         }
     }
 
+    // My Profile goes on the NavigationPane of the tab whose title bar was tapped.
+    function openMyProfile(nav) {
+        var page = myProfileDef.createObject();
+        if (!page) return;
+        page.navigationPane = nav;
+        page.selfName   = root.selfName;
+        page.selfAvatar = root.selfAvatar;
+        nav.push(page);
+    }
+
     onCreationCompleted: {
         aboutSheet.zService = zService;
         if (app.getTosAccepted()) {
@@ -81,6 +91,7 @@ TabbedPane {
         newContentAvailable: chatsTabContent.unreadCount > 0
         ChatsTab {
             id: chatsTabContent
+            onMyProfileRequested: root.openMyProfile(chatsTabContent)
             selfAvatar: root.selfAvatar
         }
     }
@@ -93,6 +104,7 @@ TabbedPane {
         newContentAvailable: root.feedsUnreadCount > 0
         FeedsTab {
             id: feedsTabContent
+            onMyProfileRequested: root.openMyProfile(feedsTabContent)
             selfName: root.selfName
             selfAvatar: root.selfAvatar
         }
@@ -105,6 +117,7 @@ TabbedPane {
         imageSource: "asset:///images/ic_contact.png"
         ContactsTab {
             id: contactsTabContent
+            onMyProfileRequested: root.openMyProfile(contactsTabContent)
             selfAvatar: root.selfAvatar
         }
     }
@@ -117,6 +130,7 @@ TabbedPane {
         newContentAvailable: groupsTabContent.unreadCount > 0
         GroupsTab {
             id: groupsTabContent
+            onMyProfileRequested: root.openMyProfile(groupsTabContent)
             selfAvatar: root.selfAvatar
         }
     }
@@ -129,6 +143,7 @@ TabbedPane {
         newContentAvailable: invitesTabContent.inviteCount > 0
         InvitesTab {
             id: invitesTabContent
+            onMyProfileRequested: root.openMyProfile(invitesTabContent)
             selfName: root.selfName
             selfAvatar: root.selfAvatar
         }
@@ -161,6 +176,10 @@ TabbedPane {
         },
         
         SettingsSheet { id: settingsSheet },
+        ComponentDefinition {
+            id: myProfileDef
+            source: "asset:///MyProfilePage.qml"
+        },
         AboutSheet    { id: aboutSheet },
         
         Connections {

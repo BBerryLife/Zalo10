@@ -10,6 +10,7 @@ import "lists"
 // ts, seen, avatar } with kind = avatar | cover | bio | dob.
 NavigationPane {
     id: feedsNav
+    signal myProfileRequested()
     peekEnabled: false
 
     property string selfName: ""
@@ -148,6 +149,8 @@ NavigationPane {
         titleBar: ProfileTitleBar {
             selfName:   feedsNav.selfName
             selfAvatar: feedsNav.selfAvatar
+            profileHandled: true
+            onProfileClicked: feedsNav.myProfileRequested()
         }
 
         content: Container {

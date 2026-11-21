@@ -6,6 +6,7 @@ import "lists/avatarhub.js" as AvatarHub
 
 NavigationPane {
     id: groupsNav
+    signal myProfileRequested()
     peekEnabled: false
 
     property string selfName: ""
@@ -289,6 +290,8 @@ NavigationPane {
         titleBar: ProfileTitleBar {
             selfName:   groupsNav.selfName
             selfAvatar: groupsNav.selfAvatar
+            profileHandled: true
+            onProfileClicked: groupsNav.myProfileRequested()
             addIcon: "asset:///images/GroupsTab/ic_create_group_disabled.png"
             addDialogTitle: "Create Group"
         }

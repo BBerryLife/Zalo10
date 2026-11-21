@@ -1,4 +1,7 @@
 #include "core/contacts/ContactsCommon.hpp"
+#include <QBuffer>
+#include <QImageReader>
+#include <QTransform>
 
 static QString stripUid0(const QString &s)
 {
@@ -150,6 +153,7 @@ void ZaloService::onSelfProfileDone()
     QVariantMap profile = outer["data"].toMap()["profile"].toMap();
     if (profile.isEmpty()) profile = outer["profile"].toMap();
     if (profile.isEmpty()) profile = findProfileMap(outer, m_uid, 0);
+    if (!profile.isEmpty()) emit selfProfileDetails(profile);
     QString avatar = profile["avatar"].toString();
     if (avatar.isEmpty()) {
         qWarning() << "[Contacts] fetchSelfProfile: no avatar in response";
@@ -159,6 +163,191 @@ void ZaloService::onSelfProfileDone()
     QString name = profile["displayName"].toString();
     if (name.isEmpty()) name = profile["zaloName"].toString();
     emit selfProfileReady(avatar, name.isEmpty() ? m_displayName : name);
+}
+
+// ---- Own profile picture (zca-js changeAccountAvatar) ----
+
+static quint32 readUInt(const uchar *p, int bytes, bool littleEndian)
+{
+    quint32 v = 0;
+    for (int k = 0; k < bytes; ++k)
+        v |= (quint32)p[littleEndian ? k : bytes - 1 - k] << (8 * k);
+    return v;
+}
+
+// EXIF orientation (1..8) of a JPEG; 1 when there is none. Qt4 does not apply it by itself.
+static int jpegOrientation(const QByteArray &d)
+{
+    const uchar *p = reinterpret_cast<const uchar*>(d.constData());
+    const int n = d.size();
+    if (n < 4 || p[0] != 0xFF || p[1] != 0xD8) return 1;
+    int i = 2;
+    while (i + 4 <= n) {
+        if (p[i] != 0xFF) return 1;
+        const uchar marker = p[i + 1];
+        if (marker == 0xDA || marker == 0xD9) return 1;   // image data / end: no EXIF before it
+        const int len = (p[i + 2] << 8) | p[i + 3];
+        if (len < 2) return 1;
+        if (marker == 0xE1 && len >= 16 && i + 10 <= n && memcmp(p + i + 4, "Exif\0\0", 6) == 0) {
+            const uchar *t = p + i + 10;                  // TIFF header
+            const int tl = qMin(len - 8, n - (i + 10));
+            if (tl < 8) return 1;
+            const bool le = (t[0] == 'I');
+            const quint32 ifd = readUInt(t + 4, 4, le);
+            if (ifd + 2 > (quint32)tl) return 1;
+            const int count = (int)readUInt(t + ifd, 2, le);
+            for (int k = 0; k < count; ++k) {
+                const quint32 e = ifd + 2 + 12 * k;
+                if (e + 12 > (quint32)tl) return 1;
+                if (readUInt(t + e, 2, le) == 0x0112) {
+                    int o = (int)readUInt(t + e + 8, 2, le);
+                    return (o >= 1 && o <= 8) ? o : 1;
+                }
+            }
+            return 1;
+        }
+        i += 2 + len;
+    }
+    return 1;
+}
+
+// What upavatar gets: a square JPEG, upright, at most 1080 px.
+static bool prepareAvatarJpeg(const QString &path, QByteArray &out, int &side)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    QByteArray raw = f.readAll();
+    f.close();
+    if (raw.isEmpty()) return false;
+
+    const int orient = jpegOrientation(raw);
+    QBuffer inBuf(&raw);
+    inBuf.open(QIODevice::ReadOnly);
+    QImageReader reader(&inBuf);
+    const QSize sz = reader.size();
+    // A camera photo is 8 MP or more: decode it smaller instead of holding the whole bitmap.
+    if (sz.isValid() && (sz.width() > 2000 || sz.height() > 2000)) {
+        // Qt4 has no QSize::scaled(): fit the long side to 1600 by hand.
+        const int longSide = qMax(sz.width(), sz.height());
+        const int w = qMax(1, (int)((qint64)sz.width()  * 1600 / longSide));
+        const int h = qMax(1, (int)((qint64)sz.height() * 1600 / longSide));
+        reader.setScaledSize(QSize(w, h));
+    }
+    QImage img = reader.read();
+    if (img.isNull()) return false;
+
+    switch (orient) {
+    case 2: img = img.mirrored(true, false); break;
+    case 3: img = img.transformed(QTransform().rotate(180)); break;
+    case 4: img = img.mirrored(false, true); break;
+    case 5: img = img.mirrored(true, false).transformed(QTransform().rotate(270)); break;
+    case 6: img = img.transformed(QTransform().rotate(90)); break;
+    case 7: img = img.mirrored(true, false).transformed(QTransform().rotate(90)); break;
+    case 8: img = img.transformed(QTransform().rotate(270)); break;
+    default: break;
+    }
+
+    int sq = qMin(img.width(), img.height());
+    if (sq <= 0) return false;
+    img = img.copy((img.width() - sq) / 2, (img.height() - sq) / 2, sq, sq);
+    if (sq > 1080) { img = img.scaled(1080, 1080, Qt::IgnoreAspectRatio, Qt::SmoothTransformation); sq = 1080; }
+
+    out.clear();
+    QBuffer outBuf(&out);
+    outBuf.open(QIODevice::WriteOnly);
+    if (!img.save(&outBuf, "JPEG", 90)) return false;
+    side = sq;
+    return true;
+}
+
+void ZaloService::changeSelfAvatar(const QString &localFilePath)
+{
+    if (!m_loggedIn) { emit selfAvatarChanged(false, "Not logged in"); return; }
+    QString path = localFilePath;
+    if (path.startsWith("file://")) path = path.mid(7);
+    if (path.isEmpty() || !QFile::exists(path)) { emit selfAvatarChanged(false, "Photo not found"); return; }
+
+    QByteArray jpeg;
+    int side = 0;
+    if (!prepareAvatarJpeg(path, jpeg, side)) {
+        // Could not decode / re-encode here: send the file as it is.
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) { emit selfAvatarChanged(false, "Cannot read the photo"); return; }
+        jpeg = f.readAll();
+        f.close();
+        side = 1080;
+    }
+
+    QString fileBase = m_fileServiceUrl;
+    if (fileBase.isEmpty()) {
+        fileBase = m_chatServiceUrl;
+        QRegExp rx("tt-chat\\d+-wpa");
+        fileBase.replace(rx, "tt-files-wpa");
+    }
+
+    qint64 ts = QDateTime::currentMSecsSinceEpoch();
+    QVariantMap origin;    origin["width"] = side; origin["height"] = side;
+    QVariantMap processed; processed["width"] = side; processed["height"] = side; processed["size"] = (int)jpeg.size();
+    QVariantMap meta;      meta["origin"] = origin; meta["processed"] = processed;
+
+    QVariantMap p;
+    p["avatarSize"] = 120;
+    // zca-js: uid + "HH:mm dd/MM/yyyy"
+    p["clientId"]   = m_uid + QDateTime::currentDateTime().toString("HH:mm dd/MM/yyyy");
+    p["language"]   = "vi";
+    // mapToJson() is flat (a nested map would become ""), so metaData goes through the recursive writer.
+    p["metaData"]   = QString::fromUtf8(variantToJsonCompact(QVariant(meta)));
+    QString encParams = aesEncryptBase64(m_secretKey, QString::fromUtf8(mapToJson(p)));
+
+    QString urlStr = fileBase + "/api/profile/upavatar"
+                   + "?zpw_ver=" + QString::number(API_VERSION)
+                   + "&zpw_type=" + QString::number(API_TYPE)
+                   + "&params=" + QUrl::toPercentEncoding(encParams);
+
+    QString boundary = "----ZaloBoundary" + QString::number(ts);
+    QByteArray body;
+    body += (QString("--") + boundary + "\r\n").toUtf8();
+    body += QByteArray("Content-Disposition: form-data; name=\"fileContent\"; filename=\"blob\"\r\n");
+    body += QByteArray("Content-Type: image/jpeg\r\n\r\n");
+    body += jpeg;
+    body += QByteArray("\r\n");
+    body += (QString("--") + boundary + "--\r\n").toUtf8();
+
+    QNetworkRequest req = buildRequest(urlStr, "https://chat.zalo.me/");
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "multipart/form-data; boundary=" + boundary);
+    QNetworkReply *reply = m_manager->post(req, body);
+    connect(reply, SIGNAL(finished()), this, SLOT(onChangeAvatarDone()));
+}
+
+void ZaloService::onChangeAvatarDone()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) return;
+    bool netOk = (reply->error() == QNetworkReply::NoError);
+    QString netErr = reply->errorString();
+    QByteArray raw = reply->readAll();
+    reply->deleteLater();
+    if (!netOk) { emit selfAvatarChanged(false, netErr); return; }
+
+    QVariantMap root = jsonToMap(raw);
+    if (root["error_code"].toInt() != 0) {
+        QString msg = root["error_message"].toString();
+        qWarning() << "[Contacts] changeSelfAvatar:" << root["error_code"].toInt() << msg;
+        emit selfAvatarChanged(false, msg.isEmpty() ? QString("Zalo refused the picture") : msg);
+        return;
+    }
+    // The inner envelope can carry its own error code.
+    QString dec = aesDecryptBase64(m_secretKey, root["data"].toString());
+    if (!dec.isEmpty()) {
+        QVariantMap inner = jsonToMap(dec.toUtf8());
+        if (inner.contains("error_code") && inner["error_code"].toInt() != 0) {
+            QString msg = inner["error_message"].toString();
+            qWarning() << "[Contacts] changeSelfAvatar inner:" << inner["error_code"].toInt() << msg;
+            emit selfAvatarChanged(false, msg.isEmpty() ? QString("Zalo refused the picture") : msg);
+            return;
+        }
+    }
+    emit selfAvatarChanged(true, QString());
 }
 
 void ZaloService::fetchBizAccount(const QString &uid)

@@ -6,6 +6,7 @@ import "lists/avatarhub.js" as AvatarHub
 
 NavigationPane {
     id: contactsNav
+    signal myProfileRequested()
     peekEnabled: false
 
     property string selfName: ""
@@ -15,6 +16,7 @@ NavigationPane {
     property bool searchVisible: false
     property string searchText: ""
     property bool refreshCooldown: false
+    property int  friendsRetries: 0
     property bool isDark: app.getDarkTheme()
     // Number of contacts, shown as the Contacts tab subtitle ("N Contacts") by main.qml.
     property int contactCount: 0
@@ -26,12 +28,23 @@ NavigationPane {
     function appendPending(n) {
         var rows = contactsNav.pendingRows;
         var end = Math.min(rows.length, contactsNav.pendingPos + n);
-        for (var j = contactsNav.pendingPos; j < end; j++) contactModel.append(rows[j]);
+        for (var j = contactsNav.pendingPos; j < end; j++) {
+            var cf = rows[j];
+            contactModel.append(cf);
+            // This tab asks for its own avatars (paced, see lists/avatarhub.js); the Chats tab no
+            // longer has the friend list, so nobody else does it.
+            var curl = cf.avatar || "";
+            var cid  = cf.threadId || cf.uid || "";
+            if (curl.length > 0 && cid.length > 0 && !cf.localAvatar)
+                AvatarHub.enqueue("contacts", cid, curl);
+        }
         contactsNav.pendingPos = end;
+        if (AvatarHub.pending("contacts") && !contactsAvatarTimer.running) contactsAvatarTimer.start();
     }
 
     function resetPending() {
         contactAppendTimer.stop();
+        AvatarHub.reset("contacts");
         contactsNav.pendingRows = [];
         contactsNav.pendingPos = 0;
     }
@@ -53,12 +66,13 @@ NavigationPane {
     }
 
     // ---- Lite: avatar updates in O(1) instead of scanning the whole grid ----
-    // Avatar requests themselves are paced by the Chats tab (same friend list); this tab only
-    // receives avatarReady. Cover images ("bg_<id>") are no longer fetched for every friend at
+    // Avatar requests are paced by this tab's own queue (contactsAvatarTimer); avatarReady lands here.
+    // Cover images ("bg_<id>") are no longer fetched for every friend at
     // start-up: ProfileView downloads the cover when that profile is opened.
     function applyAvatar(threadId, localPath) {
         var isBg = (threadId.indexOf("bg_") === 0);
         var id   = isBg ? threadId.substring(3) : threadId;
+        if (!isBg) AvatarHub.arrived("contacts", id);   // frees its download slot
         var hit = AvatarHub.find("contacts", contactModel, id);
         if (hit) {
             if (isBg) {
@@ -85,6 +99,19 @@ NavigationPane {
             interval: 11000
             repeat: false
             onTriggered: contactsNav.refreshCooldown = false
+        },
+        Timer {
+            // The Chats tab no longer fetches friends, so this tab fetches its own list and retries
+            // (a few times) when the fetch ends without a usable list.
+            id: friendsRetryTimer
+            interval: 20000
+            repeat: false
+            onTriggered: {
+                if (contactsPage.populated || contactsNav.friendsRetries >= 3) return;
+                contactsNav.friendsRetries++;
+                contactsLoading.visible = true;
+                zService.fetchFriends();
+            }
         }
     ]
 
@@ -96,6 +123,8 @@ NavigationPane {
         titleBar: ProfileTitleBar {
             selfName:   contactsNav.selfName
             selfAvatar: contactsNav.selfAvatar
+            profileHandled: true
+            onProfileClicked: contactsNav.myProfileRequested()
             addIcon: "asset:///images/ContactsTab/ic_add_contact.png"
             addDialogTitle: "Add Contact"
         }
@@ -275,6 +304,15 @@ NavigationPane {
         }
 
         attachedObjects: [
+            Timer {
+                // Hands avatar requests to zService at a steady pace (see lists/avatarhub.js).
+                id: contactsAvatarTimer
+                interval: 300   // = AvatarHub.TICK_MS
+                repeat: true
+                onTriggered: {
+                    if (AvatarHub.drain("contacts", zService, Date.now()) === 0) contactsAvatarTimer.stop();
+                }
+            },
             ArrayDataModel { id: contactModel },
             ArrayDataModel { id: searchModel },
             ComponentDefinition {
@@ -298,8 +336,8 @@ NavigationPane {
                 target: zService
 
                 onFriendsFetchFailed: {
-                    // Lite: the Chats tab retries the fetch; do not leave this spinner running forever.
                     contactsLoading.visible = false
+                    if (!contactsPage.populated) friendsRetryTimer.restart()
                 }
 
                 onFriendsReady: {
@@ -327,6 +365,9 @@ NavigationPane {
                     contactsPage.populated = false
                     contactModel.clear()
                     AvatarHub.invalidate("contacts")
+                    contactsNav.friendsRetries = 0
+                    contactsLoading.visible = true
+                    zService.fetchFriends()
                 }
             }
         ]

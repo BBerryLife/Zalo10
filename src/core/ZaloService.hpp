@@ -59,6 +59,9 @@ public:
     Q_INVOKABLE void fetchConversations();
     Q_INVOKABLE void fetchFriends();
     Q_INVOKABLE void fetchProfileDetails(const QString &uid);
+    // Own avatar from a file on the device (zca-js changeAccountAvatar: profile/upavatar). The picture is
+    // squared, oriented and shrunk first. Result: selfAvatarChanged().
+    Q_INVOKABLE void changeSelfAvatar(const QString &localFilePath);
     Q_INVOKABLE void fetchSelfProfile();   // own avatar URL + display name (profile/me-v2)
     Q_INVOKABLE void fetchBizAccount(const QString &uid);
     Q_INVOKABLE void fetchFullAvatar(const QString &uid);
@@ -225,6 +228,8 @@ signals:
     void friendsFetchFailed();   // Lite: fetchFriends ended without a usable list (429 / error / empty / network)
     void profileDetailsReady(const QString &uid, const QVariantMap &profile);
     void selfProfileReady(const QString &avatarUrl, const QString &displayName);
+    void selfProfileDetails(const QVariantMap &profile);   // whole me-v2 profile (zca-js fetchAccountInfo)
+    void selfAvatarChanged(bool ok, const QString &error);
     void bizAccountReady(const QString &uid, const QVariantMap &biz);
     void fullAvatarReady(const QString &uid, const QString &url);
     void pinnedChanged();
@@ -324,6 +329,7 @@ private slots:
     void onFetchFriendsDone();
     void onProfileDetailsDone();
     void onSelfProfileDone();
+    void onChangeAvatarDone();
     void onBizAccountDone();
     void onFullAvatarDone();
     void onFetchServerQuickMessagesDone();

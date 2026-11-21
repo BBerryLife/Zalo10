@@ -148,6 +148,8 @@ OTHER_FILES += \
     assets/GroupBoardSheet.qml \
     assets/GroupsTab.qml \
     assets/NewChatSheet.qml \
+    assets/MyProfilePage.qml \
+    assets/ProfileInfoRow.qml \
     assets/InvitesTab.qml \
     assets/NoteViewerSheet.qml \
     assets/PinboardBar.qml \

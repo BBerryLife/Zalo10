@@ -1,5 +1,5 @@
 1
-754
+757
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -738,11 +738,14 @@ lists/GroupsTitleBar.qml
 lists/ProfileTitleBar.qml
 LoginView.qml
 main.qml
+MyProfilePage.qml
+MyProfileSheet.qml
 NewChatSheet.qml
 NoteViewerSheet.qml
 PinboardBar.qml
 PollVotersSheet.qml
 PollVoteSheet.qml
+ProfileInfoRow.qml
 ProfileView.qml
 QuickMessageEditSheet.qml
 QuickMessagesSheet.qml

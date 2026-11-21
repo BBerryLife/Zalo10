@@ -16,12 +16,14 @@ TitleBar {
     property bool   showSearchButton: false    // magnifier on the right (opens header search mode)
     property string addIcon: ""                // asset path of the add button; empty = no button
     property string addDialogTitle: ""         // "under development" dialog shown by the add button
+    property bool   profileHandled: false      // true: tapping avatar / name emits profileClicked()
     property bool   addHandled: false          // true: the add button emits addClicked() instead of the dialog
 
     signal searchOpened()
     signal searchChanged(string text)
     signal searchClosed()
     signal addClicked()
+    signal profileClicked()
 
     function focusSearch() { profileSearchField.requestFocus(); }
     function clearSearch()  { profileSearchField.text = ""; }
@@ -92,7 +94,10 @@ TitleBar {
                     }
 
                     onTouch: {
-                        if (event.isUp()) profileDevDialog.show();
+                        if (event.isUp()) {
+                            if (profileBar.profileHandled) profileBar.profileClicked();
+                            else profileDevDialog.show();
+                        }
                     }
                 }
 

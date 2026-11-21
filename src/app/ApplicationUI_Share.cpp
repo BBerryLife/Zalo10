@@ -251,3 +251,29 @@ void ApplicationUI::openLocalFile(const QString &localPath)
     req.setUri("file://" + path);
     m_pInvokeManager->invoke(req);
 }
+
+void ApplicationUI::captureCameraPhoto()
+{
+    InvokeRequest req;
+    req.setTarget("sys.camera.card");
+    req.setAction("bb.action.CAPTURE");
+    req.setData("photo");
+    m_waitingCameraPhoto = true;
+    m_pInvokeManager->invoke(req);
+}
+
+void ApplicationUI::onChildCardDone(const bb::system::CardDoneMessage &message)
+{
+    if (!m_waitingCameraPhoto) return;   // some other card (share, ...) ended
+    // The camera card answers with the saved file's path (reason "save"), nothing when it is cancelled.
+    QString path = message.data();
+    if (path.startsWith("file://")) path = path.mid(7);
+    const QString lower = path.toLower();
+    const bool isImage = lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png");
+    if (path.isEmpty() || !isImage || !QFile::exists(path)) {
+        if (message.reason() != "save") m_waitingCameraPhoto = false;   // cancelled / closed
+        return;
+    }
+    m_waitingCameraPhoto = false;
+    emit cameraPhotoCaptured(path);
+}
