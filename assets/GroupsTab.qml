@@ -390,7 +390,7 @@ NavigationPane {
                     var tid = d.threadId || "";
                     if (tid.length === 0) return;
                     if (d.hasUnread === true) zService.markThreadReadUser(tid, true);
-                    else zService.markThreadUnreadUser(tid, true);
+                    else zService.markThreadUnreadUser(tid, true, d.name || "", d.lastMessage || "", String(d.sortTs || 0));
                 }
 
                 // Proxy: delegates can't resolve groupsNav (ReferenceError); they go through

@@ -17,6 +17,11 @@ CustomListItem {
                                           : "asset:///images/ChatsTab/ic_mark_unopened.png"
                 onTriggered: { friendRow.ListItem.view.toggleUnread(friendRow.ListItem.indexPath); }
             }
+            DeleteActionItem {
+                title: "Delete"
+                imageSource: "asset:///images/ChatsTab/ic_delete.png"
+                onTriggered: { friendRow.ListItem.view.deleteChat(friendRow.ListItem.indexPath); }
+            }
         }
     ]
     property int outState: ListItemData.lastMsgIsMine === true

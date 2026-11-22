@@ -140,6 +140,17 @@ NavigationPane {
 
                 function itemType(data, indexPath) { return "item"; }
 
+                // Long-press "Delete": same as Clear history inside the chat (messages gone, row removed).
+                function deleteChat(indexPath) {
+                    var d = dataModel.data(indexPath);
+                    if (!d) return;
+                    var tid = d.threadId || d.uid || "";
+                    if (tid.length === 0) return;
+                    chatsNav.pendingDeleteTid = tid;
+                    deleteChatDialog.body = "Delete all messages with " + (d.name || d.displayName || "this chat") + "? This only removes them for you.";
+                    deleteChatDialog.show();
+                }
+
                 // Long-press "Mark as Read / Unread": Hub item, pellet and official Zalo all follow (ZaloService).
                 function toggleUnread(indexPath) {
                     var d = dataModel.data(indexPath);
@@ -147,7 +158,7 @@ NavigationPane {
                     var tid = d.threadId || d.uid || "";
                     if (tid.length === 0) return;
                     if (d.hasUnread === true) zService.markThreadReadUser(tid, false);
-                    else zService.markThreadUnreadUser(tid, false);
+                    else zService.markThreadUnreadUser(tid, false, d.name || d.displayName || "", d.lastMessage || "", String(d.sortTs || 0));
                 }
 
                 // Proxy: ListItemComponent delegates can't resolve the parent Page/NavigationPane id (calling
@@ -249,6 +260,12 @@ NavigationPane {
                 id: newChatSheet
                 isDark: friendList.isDark
                 onChatRequested: chatsNav.startNewChat(threadId, name, avatar, localAvatar)
+            },
+            ConfirmDialog {
+                id: deleteChatDialog
+                title: "Delete conversation"
+                confirmLabel: "Delete"
+                onConfirmed: { zService.clearHistory(chatsNav.pendingDeleteTid, false); }
             },
             ConfirmDialog {
                 id: markAllReadDialog
@@ -387,6 +404,7 @@ NavigationPane {
     signal onUnreadMessage()
     // Own status line, read from the profile; the text being saved while updateProfileBio() is under way.
     property string selfBio: ""
+    property string pendingDeleteTid: ""
     property string pendingBio: ""
     property bool   bioSaving: false
     // The group that was just created from a chat, opened by openGroupTimer.

@@ -39,6 +39,12 @@ public:
     Q_INVOKABLE QVariantList stickersOf(const QString &packId) const;
     Q_INVOKABLE void setPackEnabled(const QString &packId, bool enabled);
     Q_INVOKABLE void savePackOrder(const QVariantList &orderedIds);
+    // Pack viewer: the stickers of any catalog pack. Installed packs list their files; for a pack that is not
+    // installed browsePack() downloads the stickers one by one into a temporary folder (browseReady() per file,
+    // cancelBrowse() drops what is still queued). Installing the pack deletes that temporary copy.
+    Q_INVOKABLE QVariantList packStickers(const QString &packId) const;
+    Q_INVOKABLE void browsePack(const QString &packId);
+    Q_INVOKABLE void cancelBrowse(const QString &packId);
 
 signals:
     void catalogReady();
@@ -50,13 +56,14 @@ signals:
     void packRemoved(const QString &packId);
     // Anything that changes the installed list, its order or the enabled flags.
     void installedChanged();
+    void browseReady(const QString &packId, const QString &file, const QString &url);
 
 private slots:
     void onJobFinished();
     void onSslErrors(const QList<QSslError> &errors);
 
 private:
-    enum JobKind { JobCatalog = 0, JobInstall = 1, JobPreview = 2 };
+    enum JobKind { JobCatalog = 0, JobInstall = 1, JobPreview = 2, JobBrowse = 3 };
 
     struct Job {
         int     kind;
@@ -69,6 +76,7 @@ private:
     static QString rootDir();
     static QString packDir(const QString &packId);
     static QString previewDir();
+    static QString browseDir(const QString &packId);
     static bool    isSafeName(const QString &name);
     static bool    isGifName(const QString &name);
     static QString urlFor(const QString &relPath, bool mirror);

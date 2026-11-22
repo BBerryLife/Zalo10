@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QStringList>
 #include <QSettings>
+#include <QDateTime>
 
 // Account icon (Hub tab). Must live in the asset dir passed to uds_register_client()
 // (see publicAssetPath()) and be declared public="true" in bar-descriptor.xml.
@@ -105,7 +106,7 @@ const char *HubIntegration::iconFor(const QString &threadId, bool unread)
 }
 
 HubIntegration::HubIntegration(QObject *parent)
-    : QObject(parent), m_feedsReady(false), m_udsHandle(0), m_ready(false), m_initAttempted(false)
+    : QObject(parent), m_feedsReady(false), m_accountUnread(false), m_udsHandle(0), m_ready(false), m_initAttempted(false)
 {
 }
 
@@ -188,6 +189,10 @@ bool HubIntegration::init()
 
     // Keep the 72x72 icons: the 81x81 recommended in the UDS header looked off-size on device.
 
+    // Hub keeps its own database (it survives uninstall/reinstall), including the cached account icon. The
+    // account id was bumped to get a clean record; the earlier ids are removed so they do not linger as
+    // duplicate "Zalo10" accounts.
+    for (long long oldId = 424242001LL; oldId < ACCOUNT_ID; ++oldId) uds_account_removed(m_udsHandle, oldId);
     int removeRc = uds_account_removed(m_udsHandle, ACCOUNT_ID);
 
     uds_account_data_t *account = uds_account_data_create();
@@ -211,6 +216,13 @@ bool HubIntegration::init()
 
     qDebug() << "[Hub] account registered";
     m_ready = true;
+
+    // The account was just re-created, so Hub has no items any more: drop the saved item state too, or a stale
+    // "unread" would keep the account icon on its unread variant.
+    {
+        QSettings stale("BerryLife", "Zalo10");
+        stale.remove("hubItems");
+    }
 
     // uds_category_added() must run after account_added() and before any uds_item_added() that
     // uses this category_id.
@@ -299,6 +311,7 @@ void HubIntegration::upsertThreadItemN(const QString &threadId, bool isGroup,
     if (!init()) return;
     if (isFeedId(threadId) && !m_feedsReady) return;
 
+    setAccountUnread(true);   // before the item, so the instant preview already shows ic_hub_unread.png
     m_threadItemState.remove(threadId);
     m_unreadCounts.remove(threadId);
     ensureState(threadId);
@@ -354,6 +367,38 @@ void HubIntegration::upsertThreadItemN(const QString &threadId, bool isGroup,
     }
 }
 
+void HubIntegration::setAccountUnread(bool unread)
+{
+    if (!m_ready || m_accountUnread == unread) return;
+    uds_account_data_t *account = uds_account_data_create();
+    uds_account_data_set_id(account, ACCOUNT_ID);
+    uds_account_data_set_name(account, "Zalo10");
+    uds_account_data_set_description(account, "");
+    uds_account_data_set_icon(account, unread ? HUB_ICON_UNREAD_FILE : HUB_ICON_FILE);
+    uds_account_data_set_target_name(account, HUB_SERVICE_TARGET);
+    uds_account_data_set_supports_compose(account, false);
+    uds_account_data_set_type(account, UDS_ACCOUNT_TYPE_IM);
+    int rc = uds_account_updated(m_udsHandle, account);
+    uds_account_data_destroy(account);
+    qDebug() << "[Hub] account icon" << (unread ? "unread" : "normal") << "rc=" << rc;
+    if (rc == UDS_SUCCESS) m_accountUnread = unread;
+}
+
+bool HubIntegration::anyUnread()
+{
+    for (QMap<QString, int>::const_iterator it = m_unreadCounts.constBegin(); it != m_unreadCounts.constEnd(); ++it) {
+        if (it.value() > 0) return true;
+    }
+    QSettings s("BerryLife", "Zalo10");
+    s.sync();
+    s.beginGroup("hubItems");
+    const QStringList ids = s.childGroups();
+    for (int i = 0; i < ids.size(); ++i) {
+        if (s.value(ids.at(i) + "/unread", 0).toInt() > 0) return true;
+    }
+    return false;
+}
+
 void HubIntegration::markThreadRead(const QString &threadId)
 {
     if (threadId.isEmpty() || !m_ready) return;
@@ -365,21 +410,31 @@ void HubIntegration::markThreadRead(const QString &threadId)
     m_threadItemState[threadId].unread = 0;
     saveState(threadId);
 
-    if (!publishState(threadId, false , false )) {
-    }
+    bool ok = publishState(threadId, false , false );
+    qDebug() << "[Hub] mark read" << (ok ? "ok" : "no item in Hub");
+    if (!anyUnread()) setAccountUnread(false);
 }
 
-void HubIntegration::markThreadUnread(const QString &threadId)
+void HubIntegration::markThreadUnread(const QString &threadId, const QString &title,
+                                      const QString &preview, qint64 timestampMs, bool isGroup)
 {
     if (threadId.isEmpty()) return;
+    if (!init()) return;
     if (!ensureState(threadId)) {
-        return;
+        if (title.isEmpty()) { qDebug() << "[Hub] mark unread skipped: no item and no title"; return; }
+        ThreadItemState st;
+        st.title = title;
+        st.preview = preview;
+        st.timestampMs = timestampMs > 0 ? timestampMs : QDateTime::currentMSecsSinceEpoch();
+        st.isGroup = isGroup;
+        m_threadItemState[threadId] = st;
     }
     if (m_threadItemState[threadId].unread < 1) m_threadItemState[threadId].unread = 1;
     if (m_threadItemState[threadId].total  < 1) m_threadItemState[threadId].total  = 1;
     m_unreadCounts[threadId] = m_threadItemState[threadId].unread;
     saveState(threadId);
-    publishState(threadId, false , true);
+    bool ok = publishState(threadId, false , true);
+    qDebug() << "[Hub] mark unread" << (ok ? "ok" : "failed");
 }
 
 bool HubIntegration::ensureState(const QString &threadId)
@@ -471,6 +526,7 @@ void HubIntegration::removeThreadItem(const QString &threadId)
         }
     }
     forgetState(threadId);
+    if (!anyUnread()) setAccountUnread(false);
 }
 
 bool HubIntegration::isGroupThread(const QString &threadId) const

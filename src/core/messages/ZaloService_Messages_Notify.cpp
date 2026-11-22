@@ -212,11 +212,13 @@ void ZaloService::markThreadReadUser(const QString &threadId, bool isGroup)
     sendThreadSeenRemote(threadId, isGroup);
 }
 
-void ZaloService::markThreadUnreadUser(const QString &threadId, bool isGroup)
+void ZaloService::markThreadUnreadUser(const QString &threadId, bool isGroup, const QString &title,
+                                       const QString &preview, const QString &timestampMs)
 {
     if (threadId.isEmpty()) return;
     holdUnreadSync(threadId);
-    m_hub->markThreadUnread(threadId);
+    qDebug() << "[Hub] mark unread asked, title" << (title.isEmpty() ? "empty" : "set");
+    m_hub->markThreadUnread(threadId, title, preview, timestampMs.toLongLong(), isGroup);
     setThreadUnread(threadId, true);
     emit threadMarkedUnread(threadId);
     sendAddUnreadMark(threadId, isGroup);

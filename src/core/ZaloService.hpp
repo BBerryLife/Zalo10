@@ -151,7 +151,10 @@ public:
     // Long-press "Mark as Read / Unread" in the Chats and Groups lists: same as the Hub actions (Hub item, in-app
     // pellet, official Zalo). syncUnreadMarks() pulls Zalo's own "marked unread" list (zca-js getUnreadMark).
     Q_INVOKABLE void markThreadReadUser(const QString &threadId, bool isGroup);
-    Q_INVOKABLE void markThreadUnreadUser(const QString &threadId, bool isGroup);
+    // title / preview / timestampMs: used only to create the Hub item when the thread has none yet.
+    // timestampMs is a QString on purpose: a qint64 Q_INVOKABLE parameter breaks the call from QML on Qt 4.8.
+    Q_INVOKABLE void markThreadUnreadUser(const QString &threadId, bool isGroup, const QString &title = QString(),
+                                          const QString &preview = QString(), const QString &timestampMs = QString());
     Q_INVOKABLE void syncUnreadMarks();
     Q_INVOKABLE bool isActiveThread(const QString &threadId) const
         { return !threadId.isEmpty() && m_activeThreadId == threadId; }

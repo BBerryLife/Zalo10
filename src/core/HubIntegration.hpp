@@ -52,7 +52,10 @@ public:
     static const char *ACTION_MARK_UNREAD;
     static const char *ACTION_DELETE;
 
-    void markThreadUnread(const QString &threadId);
+    // title/preview/timestamp/isGroup are only used when the thread has no Hub item yet (never notified, or
+    // wiped when the account was re-registered): Mark as Unread then creates one.
+    void markThreadUnread(const QString &threadId, const QString &title = QString(),
+                          const QString &preview = QString(), qint64 timestampMs = 0, bool isGroup = false);
     static bool isItemAction(const QString &action);
 
     // Absolute path of the app's installed public asset directory, shared by uds_register_client()
@@ -72,6 +75,12 @@ private:
     static long long categoryIdFor(const QString &threadId);
     static const char *iconFor(const QString &threadId, bool unread);
     bool m_feedsReady;
+
+    // The Hub instant preview (banner) shows the ACCOUNT icon, not the item icon. The account therefore
+    // switches to ic_hub_unread.png while something is unread and back to ic_hub.png when all is read.
+    void setAccountUnread(bool unread);
+    bool anyUnread();
+    bool m_accountUnread;
 
     // uds_item_updated() REPLACES the whole record: unset fields reset to empty/0 (markThreadRead()
     // once produced an empty name and a 1970 timestamp). Every update must supply all current
@@ -110,7 +119,7 @@ private:
     // (IM/TEXT_MESSAGE), a newly registered item action, and the theory that the ID is global while
     // register_client returns a NEW service on every build (taps invoked nothing). If taps still
     // fail with a fresh ID, that theory is ruled out.
-    static const long long ACCOUNT_ID = 424242006LL;
+    static const long long ACCOUNT_ID = 424242007LL;
 
 };
 

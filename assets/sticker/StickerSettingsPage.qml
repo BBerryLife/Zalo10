@@ -13,64 +13,87 @@ Page {
     property int  dragIndex: -1
     property real dragLastY: 0
 
+    // The rows are created once and then stay where they are: they are only handed other data (see
+    // StickerPackRow). rowAt(i) is the i-th row from the top.
+    function rowAt(i) { return rowsBox.at(i); }
+
     function reload() {
-        packsModel.clear();
+        rowsBox.removeAll();
         var list = stickerManager.installedPacks();
-        for (var i = 0; i < list.length; i++) packsModel.append(list[i]);
-        settingsPage.packCount = packsModel.size();
+        for (var i = 0; i < list.length; i++) {
+            var r = rowDef.createObject();
+            if (!r) continue;
+            r.host = settingsPage;
+            r.index = i;
+            r.packId = list[i].id;
+            r.packName = list[i].name;
+            r.thumb = list[i].thumb;
+            r.packEnabled = list[i].enabled;
+            r.reorderMode = settingsPage.reorderMode;
+            rowsBox.add(r);
+        }
+        settingsPage.packCount = list.length;
         emptyLabel.visible = (settingsPage.packCount === 0);
     }
     onCreationCompleted: reload()
 
-    function indexOfPack(id) {
-        for (var i = 0; i < packsModel.size(); i++) {
-            if (packsModel.value(i).id === id) return i;
-        }
-        return -1;
+    onReorderModeChanged: {
+        for (var i = 0; i < rowsBox.count(); i++) rowAt(i).reorderMode = settingsPage.reorderMode;
     }
 
-    // Idempotent on purpose: rebinding a recycled ToggleButton fires onCheckedChanged too.
-    function setPackEnabled(id, value) {
-        var i = indexOfPack(id);
-        if (i < 0) return;
-        var it = packsModel.value(i);
-        if (it.enabled === value) return;
-        it.enabled = value;
-        packsModel.replace(i, it);
-        stickerManager.setPackEnabled(id, value);
-    }
+    // Toggles apply immediately (the manager ignores a value it already has).
+    function setPackEnabled(id, value) { stickerManager.setPackEnabled(id, value); }
 
-    function dragBegin(id, y) {
-        settingsPage.dragIndex = indexOfPack(id);
+    function dragBegin(index, y) {
+        settingsPage.dragIndex = index;
         settingsPage.dragLastY = y;
+        // No scrolling while a finger drags a row, or the ScrollView takes the touch over.
+        scroller.scrollViewProperties.scrollMode = ScrollMode.None;
+        rowAt(index).lifted = true;
     }
 
-    // The finger moved a whole row: swap the pack with its neighbour. ArrayDataModel animates the
-    // swap natively; the index is tracked here rather than per delegate because delegates are
-    // recycled while the touch is still on the original handle.
+    // Row `a` (showing the dragged pack) and its neighbour `b` swap their data and both slide into place.
+    function swapRows(a, b) {
+        var ra = rowAt(a);
+        var rb = rowAt(b);
+        var id = ra.packId, name = ra.packName, th = ra.thumb, en = ra.packEnabled;
+        ra.setData(rb.packId, rb.packName, rb.thumb, rb.packEnabled);
+        rb.setData(id, name, th, en);
+        ra.lifted = false;
+        rb.lifted = true;
+        var h = ui.du(10.5);
+        ra.slideFrom(b > a ? h : -h);
+        rb.slideFrom(b > a ? -h : h);
+    }
+
+    // The finger moved a whole row: the dragged pack trades places with its neighbour. dragIndex follows the data.
     function dragMove(y) {
         if (settingsPage.dragIndex < 0) return;
-        var rowH = ui.du(10);
+        var rowH = ui.du(10.5);
         var d = y - settingsPage.dragLastY;
-        while (d >= rowH && settingsPage.dragIndex < packsModel.size() - 1) {
-            packsModel.swap(settingsPage.dragIndex, settingsPage.dragIndex + 1);
+        while (d >= rowH && settingsPage.dragIndex < rowsBox.count() - 1) {
+            settingsPage.swapRows(settingsPage.dragIndex, settingsPage.dragIndex + 1);
             settingsPage.dragIndex++;
             settingsPage.dragLastY += rowH;
             d -= rowH;
         }
         while (d <= -rowH && settingsPage.dragIndex > 0) {
-            packsModel.swap(settingsPage.dragIndex, settingsPage.dragIndex - 1);
+            settingsPage.swapRows(settingsPage.dragIndex, settingsPage.dragIndex - 1);
             settingsPage.dragIndex--;
             settingsPage.dragLastY -= rowH;
             d += rowH;
         }
     }
 
-    function dragEnd() { settingsPage.dragIndex = -1; }
+    function dragEnd() {
+        if (settingsPage.dragIndex >= 0) rowAt(settingsPage.dragIndex).lifted = false;
+        settingsPage.dragIndex = -1;
+        scroller.scrollViewProperties.scrollMode = ScrollMode.Vertical;
+    }
 
     function saveOrder() {
         var ids = [];
-        for (var i = 0; i < packsModel.size(); i++) ids.push(packsModel.value(i).id);
+        for (var i = 0; i < rowsBox.count(); i++) ids.push(rowAt(i).packId);
         stickerManager.savePackOrder(ids);
         settingsPage.reorderMode = false;
     }
@@ -100,8 +123,8 @@ Page {
         ActionItem {
             title: settingsPage.reorderMode ? "Save" : "Reorder"
             imageSource: settingsPage.reorderMode
-                ? "asset:///images/ChatView/ic_save.png"
-                : "asset:///images/ChatView/ic_list.png"
+                ? "asset:///images/ChatView/ic_folder_save.png"
+                : "asset:///images/ChatView/ic_reorder.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             enabled: settingsPage.reorderMode || settingsPage.packCount > 1
             onTriggered: {
@@ -112,6 +135,10 @@ Page {
     ]
 
     attachedObjects: [
+        ComponentDefinition {
+            id: rowDef
+            source: "asset:///sticker/StickerPackRow.qml"
+        },
         Connections {
             target: app
             onDarkThemeChanged: { settingsPage.isDark = dark; }
@@ -121,70 +148,16 @@ Page {
     Container {
         layout: DockLayout {}
 
-        ListView {
-            id: packsList
+        ScrollView {
+            id: scroller
+            scrollViewProperties { scrollMode: ScrollMode.Vertical }
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
-            dataModel: ArrayDataModel { id: packsModel }
-
-            // ListItemComponent delegates only see the ListView, so they call back through these.
-            property bool reorderMode: settingsPage.reorderMode
-            function setPackEnabled(id, value) { settingsPage.setPackEnabled(id, value); }
-            function dragBegin(id, y) { settingsPage.dragBegin(id, y); }
-            function dragMove(y)      { settingsPage.dragMove(y); }
-            function dragEnd()        { settingsPage.dragEnd(); }
-
-            listItemComponents: [
-                ListItemComponent {
-                    type: ""
-                    Container {
-                        id: packRow
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
-
-                        Container {
-                            horizontalAlignment: HorizontalAlignment.Fill
-                            preferredHeight: ui.du(10)
-                            leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
-                            layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-
-                            ImageView {
-                                verticalAlignment: VerticalAlignment.Center
-                                preferredWidth: ui.du(8); preferredHeight: ui.du(8)
-                                scalingMethod: ScalingMethod.AspectFit
-                                imageSource: ListItemData.thumb
-                            }
-                            Label {
-                                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                                verticalAlignment: VerticalAlignment.Center
-                                leftMargin: ui.du(2)
-                                text: ListItemData.name
-                                textStyle.base: SystemDefaults.TextStyles.TitleText
-                            }
-                            ToggleButton {
-                                verticalAlignment: VerticalAlignment.Center
-                                visible: !packRow.ListItem.view.reorderMode
-                                checked: ListItemData.enabled
-                                onCheckedChanged: { packRow.ListItem.view.setPackEnabled(ListItemData.id, checked); }
-                            }
-                            ImageView {
-                                verticalAlignment: VerticalAlignment.Center
-                                visible: packRow.ListItem.view.reorderMode
-                                preferredWidth: ui.du(7); preferredHeight: ui.du(7)
-                                imageSource: "asset:///images/ChatView/ic_menu.png"
-                                // Keep the drag from also scrolling the list.
-                                touchPropagationMode: TouchPropagationMode.None
-                                onTouch: {
-                                    if (event.isDown())      packRow.ListItem.view.dragBegin(ListItemData.id, event.windowY);
-                                    else if (event.isMove()) packRow.ListItem.view.dragMove(event.windowY);
-                                    else if (event.isUp() || event.touchType === TouchType.Cancel) packRow.ListItem.view.dragEnd();
-                                }
-                            }
-                        }
-                        Divider {}
-                    }
-                }
-            ]
+            Container {
+                id: rowsBox
+                horizontalAlignment: HorizontalAlignment.Fill
+                layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+            }
         }
 
         Label {

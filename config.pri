@@ -710,11 +710,13 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_edit.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled_white.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_folder_save.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_forward_message.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_invite_to_bbm.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_keyboard_enabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_list.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_menu.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_menu_white.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_microphone.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_notifications_off.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_open.png) \
@@ -741,7 +743,9 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatsTab/default_avt.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ChatsTab/edit.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/ic_ select_more.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_chat_multiperson.png) \
+        $$quote($$BASEDIR/assets/images/ChatsTab/ic_delete.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_mark_opened.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_mark_unopened.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ic_start_chat.png) \
@@ -753,13 +757,16 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ContactsTab/avatar_default.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/badging.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/desktop.ini) \
+        $$quote($$BASEDIR/assets/images/ContactsTab/ic_ select_more.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_add_contact.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_start_chat.png) \
         $$quote($$BASEDIR/assets/images/ContactsTab/ic_sync.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/default_group.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/desktop.ini) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/ic_ select_more.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/ic_create_group_disabled.png) \
+        $$quote($$BASEDIR/assets/images/GroupsTab/ic_delete.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/ic_mark_opened.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/ic_mark_unopened.png) \
         $$quote($$BASEDIR/assets/images/GroupsTab/ic_sync.png) \
@@ -802,6 +809,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/main.qml) \
         $$quote($$BASEDIR/assets/sticker/StickerBar.qml) \
         $$quote($$BASEDIR/assets/sticker/StickerGrid.qml) \
+        $$quote($$BASEDIR/assets/sticker/StickerPackRow.qml) \
+        $$quote($$BASEDIR/assets/sticker/StickerPackSheet.qml) \
         $$quote($$BASEDIR/assets/sticker/StickerSettingsPage.qml) \
         $$quote($$BASEDIR/assets/sticker/StickerShopPage.qml)
 }

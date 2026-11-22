@@ -82,6 +82,7 @@ StickerManager::StickerManager(QObject *parent)
 QString StickerManager::rootDir()    { return QDir::homePath() + "/stickers"; }
 QString StickerManager::previewDir() { return rootDir() + "/_preview"; }
 QString StickerManager::packDir(const QString &packId) { return rootDir() + "/" + packId; }
+QString StickerManager::browseDir(const QString &packId) { return previewDir() + "/pk_" + packId; }
 
 // Names come from the downloaded manifest: never let them leave the sticker folder.
 bool StickerManager::isSafeName(const QString &name)
@@ -183,6 +184,64 @@ QVariantList StickerManager::stickersOf(const QString &packId) const
         out.append(m);
     }
     return out;
+}
+
+QVariantList StickerManager::packStickers(const QString &packId) const
+{
+    if (!isSafeName(packId)) return QVariantList();
+    if (isInstalled(packId)) return stickersOf(packId);
+
+    QVariantList out;
+    QStringList names = m_files.value(packId);
+    QString dir = browseDir(packId);
+    for (int i = 0; i < names.size(); ++i) {
+        QString path = dir + "/" + names.at(i);
+        QFileInfo fi(path);
+        bool have = fi.exists() && fi.size() > 0;
+        QVariantMap m;
+        m["path"]  = have ? path : QString();
+        m["url"]   = have ? QString("file://" + path) : QString();
+        m["file"]  = names.at(i);
+        m["isGif"] = isGifName(names.at(i));
+        out.append(m);
+    }
+    return out;
+}
+
+void StickerManager::browsePack(const QString &packId)
+{
+    if (!isSafeName(packId) || isInstalled(packId) || !m_files.contains(packId)) return;
+    cancelBrowse(packId);   // never queue a file twice
+
+    QString dir = browseDir(packId);
+    QDir().mkpath(dir);
+    QStringList names = m_files.value(packId);
+    QList<Job> jobs;
+    for (int i = 0; i < names.size(); ++i) {
+        QString dest = dir + "/" + names.at(i);
+        QFileInfo fi(dest);
+        if (fi.exists() && fi.size() > 0) continue;
+        if (m_busy && m_current.kind == JobBrowse && m_current.packId == packId && m_current.file == names.at(i)) continue;
+        Job j;
+        j.kind   = JobBrowse;
+        j.packId = packId;
+        j.file   = names.at(i);
+        j.dest   = dest;
+        j.mirror = false;
+        jobs.append(j);
+    }
+    if (jobs.isEmpty()) return;
+    enqueueFront(jobs);
+    startNext();
+}
+
+void StickerManager::cancelBrowse(const QString &packId)
+{
+    QList<Job> keep;
+    for (int i = 0; i < m_queue.size(); ++i) {
+        if (!(m_queue.at(i).kind == JobBrowse && m_queue.at(i).packId == packId)) keep.append(m_queue.at(i));
+    }
+    m_queue = keep;
 }
 
 QString StickerManager::firstStickerPath(const QString &packId) const
@@ -520,6 +579,8 @@ void StickerManager::finishCurrent(bool ok, const QByteArray &data, const QStrin
         }
     } else if (job.kind == JobPreview) {
         if (ok && writeFileAtomic(job.dest, data)) emit previewReady(job.packId, "file://" + job.dest);
+    } else if (job.kind == JobBrowse) {
+        if (ok && writeFileAtomic(job.dest, data)) emit browseReady(job.packId, job.file, "file://" + job.dest);
     } else if (m_installing.contains(job.packId)) {
         if (!ok) {
             failPack(job.packId, error);
@@ -534,6 +595,7 @@ void StickerManager::finishCurrent(bool ok, const QByteArray &data, const QStrin
                 QFile mark(packDir(job.packId) + "/" + COMPLETE_MARK);
                 if (mark.open(QIODevice::WriteOnly)) mark.close();
                 m_installing.remove(job.packId);
+                removeDirRecursive(browseDir(job.packId));
                 emit packInstalled(job.packId);
                 emit installedChanged();
             }

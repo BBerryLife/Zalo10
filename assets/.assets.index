@@ -1,5 +1,5 @@
 1
-768
+777
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -57,7 +57,9 @@ images/ChatsTab/ai_add_task.png
 images/ChatsTab/default_avt.png
 images/ChatsTab/desktop.ini
 images/ChatsTab/edit.png
+images/ChatsTab/ic_ select_more.png
 images/ChatsTab/ic_chat_multiperson.png
+images/ChatsTab/ic_delete.png
 images/ChatsTab/ic_mark_opened.png
 images/ChatsTab/ic_mark_unopened.png
 images/ChatsTab/ic_start_chat.png
@@ -666,11 +668,13 @@ images/ChatView/ic_download.png
 images/ChatView/ic_edit.png
 images/ChatView/ic_emoticon_enabled.png
 images/ChatView/ic_emoticon_enabled_white.png
+images/ChatView/ic_folder_save.png
 images/ChatView/ic_forward_message.png
 images/ChatView/ic_invite_to_bbm.png
 images/ChatView/ic_keyboard_enabled.png
 images/ChatView/ic_list.png
 images/ChatView/ic_menu.png
+images/ChatView/ic_menu_white.png
 images/ChatView/ic_microphone.png
 images/ChatView/ic_notifications_off.png
 images/ChatView/ic_open.png
@@ -697,6 +701,7 @@ images/ChatView/timemesswhite.png
 images/ContactsTab/avatar_default.png
 images/ContactsTab/badging.png
 images/ContactsTab/desktop.ini
+images/ContactsTab/ic_ select_more.png
 images/ContactsTab/ic_add_contact.png
 images/ContactsTab/ic_start_chat.png
 images/ContactsTab/ic_sync.png
@@ -707,7 +712,9 @@ images/desktop.ini
 images/GroupsTab/action_icon_search.png
 images/GroupsTab/default_group.png
 images/GroupsTab/desktop.ini
+images/GroupsTab/ic_ select_more.png
 images/GroupsTab/ic_create_group_disabled.png
+images/GroupsTab/ic_delete.png
 images/GroupsTab/ic_mark_opened.png
 images/GroupsTab/ic_mark_unopened.png
 images/GroupsTab/ic_sync.png
@@ -765,6 +772,8 @@ SettingsSheet.qml
 SharePickerSheet.qml
 sticker/StickerBar.qml
 sticker/StickerGrid.qml
+sticker/StickerPackRow.qml
+sticker/StickerPackSheet.qml
 sticker/StickerSettingsPage.qml
 sticker/StickerShopPage.qml
 VoiceNoteSheet.qml

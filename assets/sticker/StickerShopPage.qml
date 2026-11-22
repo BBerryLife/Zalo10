@@ -22,10 +22,15 @@ Page {
         if (c.animated) parts.push("Animated");
         var sz = sizeText(c.size);
         if (sz.length > 0) parts.push(sz);
+        var info = [];
+        if (c.animated) info.push("Animated");
+        if (sz.length > 0) info.push(sz);
         return {
             id:         c.id,
             name:       c.name,
             preview:    c.preview,
+            count:      c.count,
+            info:       info.join(" \u00B7 "),
             subtitle:   parts.join(" \u00B7 "),
             installed:  c.installed,
             installing: c.installing,
@@ -103,12 +108,16 @@ Page {
         ActionItem {
             title: "Refresh"
             imageSource: "asset:///images/ChatView/ic_resend.png"
-            ActionBar.placement: ActionBarPlacement.OnBar
+            ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: shopPage.refresh()
         }
     ]
 
     attachedObjects: [
+        StickerPackSheet {
+            id: packSheet
+            isDark: shopPage.isDark
+        },
         Connections {
             target: app
             onDarkThemeChanged: { shopPage.isDark = dark; }
@@ -157,6 +166,12 @@ Page {
             dataModel: ArrayDataModel { id: shopModel }
 
             function packAction(id) { shopPage.packAction(id); }
+
+            // Tapping the row (not its Get / Remove button) opens the pack viewer.
+            onTriggered: {
+                var d = shopModel.data(indexPath);
+                if (d) packSheet.openPack(d);
+            }
 
             listItemComponents: [
                 ListItemComponent {
