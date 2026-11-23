@@ -53,6 +53,8 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/GroupBoardSheet.qml) \
         $$quote($$BASEDIR/assets/GroupInviteSheet.qml) \
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
+        $$quote($$BASEDIR/assets/HubChatSheet.qml) \
+        $$quote($$BASEDIR/assets/HubReplyCard.qml) \
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
@@ -74,6 +76,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/board/BoardListItem.qml) \
         $$quote($$BASEDIR/assets/board/BoardTitleBar.qml) \
         $$quote($$BASEDIR/assets/chat/BubbleActionsAdmin.qml) \
+        $$quote($$BASEDIR/assets/chat/BubbleActionsCard.qml) \
         $$quote($$BASEDIR/assets/chat/BubbleActionsFailed.qml) \
         $$quote($$BASEDIR/assets/chat/BubbleActionsMember.qml) \
         $$quote($$BASEDIR/assets/chat/BubbleCall.qml) \
@@ -773,6 +776,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/InvitesTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/InvitesTab/ic_sync.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ca_accounts.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_bugreport.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_data_management.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ca_diagnostics.png) \
@@ -784,6 +788,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_close_white.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_picture.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_save.png) \
+        $$quote($$BASEDIR/assets/images/SettingsSheet/ic_sb_settings_active.png) \
         $$quote($$BASEDIR/assets/images/SettingsSheet/ic_unhide.png) \
         $$quote($$BASEDIR/assets/images/bbid.png) \
         $$quote($$BASEDIR/assets/images/desktop.ini) \
@@ -807,6 +812,16 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/lists/ProfileTitleBar.qml) \
         $$quote($$BASEDIR/assets/lists/avatarhub.js) \
         $$quote($$BASEDIR/assets/main.qml) \
+        $$quote($$BASEDIR/assets/settings/AccountPage.qml) \
+        $$quote($$BASEDIR/assets/settings/AppearancePage.qml) \
+        $$quote($$BASEDIR/assets/settings/CachePage.qml) \
+        $$quote($$BASEDIR/assets/settings/DataPage.qml) \
+        $$quote($$BASEDIR/assets/settings/GeneralPage.qml) \
+        $$quote($$BASEDIR/assets/settings/NotificationsPage.qml) \
+        $$quote($$BASEDIR/assets/settings/SettingsButtonRow.qml) \
+        $$quote($$BASEDIR/assets/settings/SettingsTitleBar.qml) \
+        $$quote($$BASEDIR/assets/settings/SettingsToggleRow.qml) \
+        $$quote($$BASEDIR/assets/settings/SupportPage.qml) \
         $$quote($$BASEDIR/assets/sticker/StickerBar.qml) \
         $$quote($$BASEDIR/assets/sticker/StickerGrid.qml) \
         $$quote($$BASEDIR/assets/sticker/StickerPackRow.qml) \
@@ -1346,6 +1361,9 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/lists/*.qml) \
         $$quote($$BASEDIR/../assets/lists/*.js) \
         $$quote($$BASEDIR/../assets/lists/*.qs) \
+        $$quote($$BASEDIR/../assets/settings/*.qml) \
+        $$quote($$BASEDIR/../assets/settings/*.js) \
+        $$quote($$BASEDIR/../assets/settings/*.qs) \
         $$quote($$BASEDIR/../assets/sticker/*.qml) \
         $$quote($$BASEDIR/../assets/sticker/*.js) \
         $$quote($$BASEDIR/../assets/sticker/*.qs)

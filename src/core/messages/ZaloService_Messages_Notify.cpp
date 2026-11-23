@@ -10,6 +10,7 @@ void ZaloService::onQRExpired()
 
 void ZaloService::onListenTimer()
 {
+    if (m_cardMode) return;
     if (!m_loggedIn) return;
     if (m_wsConnected) {
         sendWsPing();
@@ -269,6 +270,7 @@ void ZaloService::syncUnreadMarks()
 
 void ZaloService::onUnreadMarkTick()
 {
+    if (m_cardMode) return;
     if (!m_loggedIn || !m_appForeground) return;
     syncUnreadMarks();
 }
@@ -386,6 +388,11 @@ void ZaloService::sendBannerNotification(const QString &title, const QString &bo
             dlg, SLOT(deleteLater()));
 
     dlg->show();
+}
+
+QString ZaloService::hubThreadTitle(const QString &threadId) const
+{
+    return m_hub ? m_hub->titleFor(threadId) : QString();
 }
 
 bool ZaloService::isGroupHubThread(const QString &threadId) const

@@ -29,6 +29,9 @@ static const char *HUB_SERVICE_URL = "com.BerryLife.Zalo10.hub";
 // with <property var="uris" value="pim:<mime type>"/>; (3) item action UDS_PLACEMENT_DEFAULT and
 // account target_name = the invoke-target id (not the app id).
 static const char *HUB_INVOKE_TARGET = "com.BerryLife.Zalo10.invoke";
+// card.composer target (bar-descriptor.xml): the Hub "Reply" action opens it as a card over the Hub, in a second
+// process of this app (InvokeCard startup, ApplicationUI loads HubReplyCard.qml).
+static const char *HUB_REPLY_TARGET  = "com.BerryLife.Zalo10.reply";
 // Must match bar-descriptor.xml (<mime-type> and pim: uris).
 static const char *HUB_MIME_TYPE_MESSAGE = "application/vnd.zalo10.hub.chat";
 
@@ -41,6 +44,7 @@ static const unsigned int HUB_CONTEXT_STATE_UNREAD = 0x02;
 // Action names Hub sends to the invoke-target; must match <action> in bar-descriptor.xml.
 const char *HubIntegration::ACTION_OPEN        = "bb.action.OPEN";
 const char *HubIntegration::ACTION_MARK_READ   = "bb.action.MARKREAD";
+const char *HubIntegration::ACTION_REPLY       = "bb.action.REPLY";
 const char *HubIntegration::ACTION_MARK_UNREAD = "bb.action.MARKUNREAD";
 const char *HubIntegration::ACTION_DELETE      = "bb.action.DELETE";
 
@@ -106,7 +110,7 @@ const char *HubIntegration::iconFor(const QString &threadId, bool unread)
 }
 
 HubIntegration::HubIntegration(QObject *parent)
-    : QObject(parent), m_feedsReady(false), m_accountUnread(false), m_udsHandle(0), m_ready(false), m_initAttempted(false)
+    : QObject(parent), m_feedsReady(false), m_accountUnread(false), m_disabled(false), m_udsHandle(0), m_ready(false), m_initAttempted(false)
 {
 }
 
@@ -158,6 +162,7 @@ QUrl HubIntegration::hubIconUrl()
 
 bool HubIntegration::init()
 {
+    if (m_disabled) return false;
     if (m_ready) return true;
     if (m_initAttempted) return false;
     m_initAttempted = true;
@@ -242,11 +247,15 @@ bool HubIntegration::init()
     uds_item_action_data_set_action(openAction, "bb.action.OPEN");
     uds_item_action_data_set_target(openAction, HUB_INVOKE_TARGET);
     uds_item_action_data_set_type(openAction, "service");
-    uds_item_action_data_set_title(openAction, "Reply");
-    uds_item_action_data_set_image_source(openAction, HUB_ICON_REPLY_FILE);
+    // With the reply card on, "Reply" belongs to the card and this one is plainly "Open in Zalo10".
+    const bool replyCard = QSettings("BerryLife", "Zalo10").value("hubChatSheet", true).toBool();
+    uds_item_action_data_set_title(openAction, replyCard ? "Open in Zalo10" : "Reply");
+    uds_item_action_data_set_image_source(openAction, replyCard ? HUB_ICON_FILE : HUB_ICON_REPLY_FILE);
     uds_item_action_data_set_mime_type(openAction, HUB_MIME_TYPE_MESSAGE);
     uds_item_action_data_set_placement(openAction, UDS_PLACEMENT_DEFAULT);
-    uds_item_action_data_set_context_mask(openAction, HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD);
+    // With the reply card on, the card's own Open button replaces this menu entry: a context mask no item state ever
+    // has keeps it out of the long-press menu while the action stays registered (the Hub tap goes to the app).
+    uds_item_action_data_set_context_mask(openAction, replyCard ? 0x40000000 : (HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD));
 
     int actionRc = uds_register_item_context_action(m_udsHandle, ACCOUNT_ID, openAction);
     uds_item_action_data_destroy(openAction);
@@ -254,6 +263,13 @@ bool HubIntegration::init()
         qWarning() << "[Hub] item action registration failed, rc=" << actionRc;
         // Not fatal: the account is registered, only the "Open" action is missing.
     } else {
+    }
+
+    if (replyCard) {
+        int replyRc = registerItemAction(m_udsHandle, ACCOUNT_ID, ACTION_REPLY, HUB_REPLY_TARGET,
+                                         HUB_ICON_REPLY_FILE, "Reply",
+                                         HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD, UDS_PLACEMENT_DEFAULT);
+        qDebug() << "[Hub] reply card action rc=" << replyRc;
     }
 
     registerItemAction(m_udsHandle, ACCOUNT_ID, ACTION_MARK_READ, HUB_SERVICE_TARGET,
@@ -527,6 +543,14 @@ void HubIntegration::removeThreadItem(const QString &threadId)
     }
     forgetState(threadId);
     if (!anyUnread()) setAccountUnread(false);
+}
+
+QString HubIntegration::titleFor(const QString &threadId) const
+{
+    QSettings s("BerryLife", "Zalo10");
+    s.beginGroup("hubItems");
+    s.beginGroup(threadId);
+    return s.value("title").toString();
 }
 
 bool HubIntegration::isGroupThread(const QString &threadId) const

@@ -30,12 +30,17 @@ Page {
             r.thumb = list[i].thumb;
             r.packEnabled = list[i].enabled;
             r.reorderMode = settingsPage.reorderMode;
+            r.isDark = settingsPage.isDark;
             rowsBox.add(r);
         }
         settingsPage.packCount = list.length;
         emptyLabel.visible = (settingsPage.packCount === 0);
     }
     onCreationCompleted: reload()
+
+    onIsDarkChanged: {
+        for (var i = 0; i < rowsBox.count(); i++) rowAt(i).isDark = settingsPage.isDark;
+    }
 
     onReorderModeChanged: {
         for (var i = 0; i < rowsBox.count(); i++) rowAt(i).reorderMode = settingsPage.reorderMode;

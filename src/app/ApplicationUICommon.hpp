@@ -13,6 +13,8 @@
 #include <bb/cascades/LocaleHandler>
 #include <bb/cascades/ThemeSupport>
 #include <bb/system/InvokeManager>
+#include <bb/system/CardDoneMessage>
+#include <bb/system/ApplicationStartupMode>
 #include <bb/system/InvokeRequest>
 #include <bb/system/InvokeTargetReply>
 #include <bb/system/InvokeQueryTargetsRequest>
@@ -27,6 +29,7 @@
 #include <bb/pim/calendar/Result>
 
 #include <QTranslator>
+#include <QTimer>
 #include <QLocale>
 #include <QCoreApplication>
 #include <QSettings>

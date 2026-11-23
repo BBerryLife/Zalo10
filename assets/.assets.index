@@ -1,5 +1,5 @@
 1
-777
+792
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -7,6 +7,7 @@ board/BoardListItem.qml
 board/BoardTitleBar.qml
 ChangelogPage.qml
 chat/BubbleActionsAdmin.qml
+chat/BubbleActionsCard.qml
 chat/BubbleActionsFailed.qml
 chat/BubbleActionsMember.qml
 chat/BubbleCall.qml
@@ -42,6 +43,8 @@ ForwardPickerSheet.qml
 GroupBoardSheet.qml
 GroupInviteSheet.qml
 GroupsTab.qml
+HubChatSheet.qml
+HubReplyCard.qml
 images/AboutSheet/barcode.png
 images/AboutSheet/berrylife.png
 images/AboutSheet/ic_close_white.png
@@ -731,6 +734,7 @@ images/ic_settings.png
 images/InvitesTab/action_icon_search.png
 images/InvitesTab/ai_add_task.png
 images/InvitesTab/ic_sync.png
+images/SettingsSheet/ca_accounts.png
 images/SettingsSheet/ca_bugreport.png
 images/SettingsSheet/ca_data_management.png
 images/SettingsSheet/ca_diagnostics.png
@@ -742,6 +746,7 @@ images/SettingsSheet/desktop.ini
 images/SettingsSheet/ic_close_white.png
 images/SettingsSheet/ic_picture.png
 images/SettingsSheet/ic_save.png
+images/SettingsSheet/ic_sb_settings_active.png
 images/SettingsSheet/ic_unhide.png
 images/updates.png
 InfoDialog.qml
@@ -768,6 +773,16 @@ ProfileView.qml
 QuickMessageEditSheet.qml
 QuickMessagesSheet.qml
 ReactionPickerSheet.qml
+settings/AccountPage.qml
+settings/AppearancePage.qml
+settings/CachePage.qml
+settings/DataPage.qml
+settings/GeneralPage.qml
+settings/NotificationsPage.qml
+settings/SettingsButtonRow.qml
+settings/SettingsTitleBar.qml
+settings/SettingsToggleRow.qml
+settings/SupportPage.qml
 SettingsSheet.qml
 SharePickerSheet.qml
 sticker/StickerBar.qml

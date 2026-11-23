@@ -61,6 +61,17 @@ TabbedPane {
         }
     }
 
+    // Opens a conversation in its tab (what a Hub tap did before the quick-view sheet).
+    function openConversation(threadId, isGroup) {
+        if (isGroup) {
+            root.activeTab = groupsTab;
+            groupsTabContent.openThread(threadId, isGroup);
+        } else {
+            root.activeTab = chatsTab;
+            chatsTabContent.openThread(threadId, isGroup);
+        }
+    }
+
     // My Profile goes on the NavigationPane of the tab whose title bar was tapped.
     function openMyProfile(nav) {
         var page = myProfileDef.createObject();
@@ -228,13 +239,7 @@ TabbedPane {
                     root.activeTab = feedsTab;
                     return;
                 }
-                if (isGroup) {
-                    root.activeTab = groupsTab;
-                    groupsTabContent.openThread(threadId, isGroup);
-                } else {
-                    root.activeTab = chatsTab;
-                    chatsTabContent.openThread(threadId, isGroup);
-                }
+                root.openConversation(threadId, isGroup);
             }
             onEventCreated: {
                 eventResultDialog.body = success

@@ -246,6 +246,7 @@ bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
 
 void ZaloService::onKeepAliveTimer()
 {
+    if (m_cardMode) return;
     sendKeepAlive();
 }
 

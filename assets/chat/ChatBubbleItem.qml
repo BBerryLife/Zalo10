@@ -79,12 +79,15 @@ CustomListItem {
     // ActionItem/DeleteActionItem has no "visible" property (it extends UIObject, not Control):
     // build two full ActionSets (member vs admin/owner) and pick one. A failed bubble gets its own
     // set with "Resend" under "Reaction".
+    // The Hub reply card (HubReplyCard.qml) shares this item but has its own, shorter menu (ListView.cardMode).
     contextActions: [
-        rowRoot.sendFailed ? bubbleActionsFailed
-            : (rowRoot.isAdminOrOwner ? bubbleActionsAdmin : bubbleActionsMember)
+        ListItem.view.cardMode === true ? bubbleActionsCard
+            : (rowRoot.sendFailed ? bubbleActionsFailed
+                : (rowRoot.isAdminOrOwner ? bubbleActionsAdmin : bubbleActionsMember))
     ]
 
     attachedObjects: [
+        BubbleActionsCard { id: bubbleActionsCard },
         BubbleActionsMember { id: bubbleActionsMember },
         BubbleActionsFailed { id: bubbleActionsFailed },
         BubbleActionsAdmin { id: bubbleActionsAdmin }

@@ -14,6 +14,7 @@ Container {
     property string thumb: ""
     property bool   packEnabled: true
     property bool   reorderMode: false
+    property bool   isDark: false
     property bool   lifted: false       // the row currently showing the pack being dragged
     property bool   syncing: false      // true while setData() writes the switch, so it is not taken for a tap
 
@@ -81,7 +82,7 @@ Container {
             verticalAlignment: VerticalAlignment.Center
             visible: row.reorderMode
             preferredWidth: ui.du(7); preferredHeight: ui.du(7)
-            imageSource: "asset:///images/ChatView/ic_menu.png"
+            imageSource: row.isDark ? "asset:///images/ChatView/ic_menu_white.png" : "asset:///images/ChatView/ic_menu.png"
             touchPropagationMode: TouchPropagationMode.Full
             onTouch: {
                 if (!row.host) return;

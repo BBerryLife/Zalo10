@@ -26,6 +26,10 @@ public:
     // problem never blocks notifications.
     bool init();
 
+    // The card process (InvokeCard startup, see ApplicationUI) must never touch the Hub: init() re-creates the
+    // account, which would delete every Hub item, the one that was just tapped included.
+    void setDisabled(bool disabled) { m_disabled = disabled; }
+
     void upsertThreadItem(const QString &threadId, bool isGroup,
                            const QString &title, const QString &preview,
                            qint64 timestampMs);
@@ -44,11 +48,13 @@ public:
     // Looks up the isGroup saved by the last upsertThreadItem(): the Hub invoke payload only has
     // attributes.sourceId. Returns false (DM) for unknown threads.
     bool isGroupThread(const QString &threadId) const;
+    QString titleFor(const QString &threadId) const;   // the title of the thread's Hub item
 
     // Action names Hub sends to the <invoke-target> (Mark read / Mark unread / Delete); must match
     // <action> in bar-descriptor.xml and the uds_register_item_context_action() calls in init().
     static const char *ACTION_OPEN;
     static const char *ACTION_MARK_READ;
+    static const char *ACTION_REPLY;
     static const char *ACTION_MARK_UNREAD;
     static const char *ACTION_DELETE;
 
@@ -81,6 +87,7 @@ private:
     void setAccountUnread(bool unread);
     bool anyUnread();
     bool m_accountUnread;
+    bool m_disabled;
 
     // uds_item_updated() REPLACES the whole record: unset fields reset to empty/0 (markThreadRead()
     // once produced an empty name and a 1970 timestamp). Every update must supply all current

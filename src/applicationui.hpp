@@ -52,11 +52,18 @@ public slots:
     // Camera card (sys.camera.card): one photo; the file comes back through cameraPhotoCaptured().
     Q_INVOKABLE void captureCameraPhoto();
 
+    // Hub reply card (InvokeCard startup, see the constructor). closeCard() ends the card; openThreadFromCard() hands
+    // the conversation to the main app (a normal bb.action.OPEN invoke) and then closes the card.
+    Q_INVOKABLE bool isCardMode() const { return m_cardMode; }
+    Q_INVOKABLE void closeCard();
+    Q_INVOKABLE void openThreadFromCard(const QString &threadId, bool isGroup);
+
     Q_INVOKABLE void createTodayEvent(const QString &subject, const QString &body, int durationMinutes);
 
 signals:
     void openThreadRequested(const QString &threadId, bool isGroup);
     void openFeedsRequested();
+    void replyCardRequested(const QString &threadId, bool isGroup);
     void showRecalledMessagesChanged(bool show);
     void darkThemeChanged(bool dark);
     void updateCheckResult(bool isLatest, const QString &latestVersion, const QString &downloadUrl, const QString &error);
@@ -78,6 +85,8 @@ private slots:
     void onManifestSslErrors(const QList<QSslError> &errors);
     void onQueryTargetsFinished();
     void onChildCardDone(const bb::system::CardDoneMessage &message);
+    void onCardAboutToQuit();
+    void closeCardLater();
 
 private:
     QString buildChangelogHtml(const QVariantList &versions) const;
@@ -90,6 +99,7 @@ private:
     bool                          m_exitHandled;
     QString                       m_pendingShareMimeType;
     bool                          m_waitingCameraPhoto;
+    bool                          m_cardMode;
 };
 
 #endif

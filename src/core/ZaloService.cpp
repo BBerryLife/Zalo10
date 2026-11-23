@@ -66,7 +66,7 @@ qint64 ZaloService::getFileSize(const QString &localFilePath) const
     return QFileInfo(path).size();
 }
 
-ZaloService::ZaloService(QObject *parent)
+ZaloService::ZaloService(QObject *parent, bool cardMode)
     : QObject(parent), m_manager(new ZaloNetworkAccessManager(this)),
       m_qrExpireTimer(new QTimer(this)), m_listenTimer(new QTimer(this)),
       m_wsReconnectTimer(new QTimer(this)), m_keepAliveTimer(new QTimer(this)),
@@ -78,7 +78,7 @@ ZaloService::ZaloService(QObject *parent)
       m_isFetchingFriends(false), m_isFetchingConversations(false), m_loginEmitted(false),
       m_lastFetchFriendsTime(0), m_lastFetchConvoTime(0), m_db(0),
       m_updateReply(0), m_videoDownloadReply(0), m_contactPicker(0),
-      m_hub(new HubIntegration(this))
+      m_hub(new HubIntegration(this)), m_cardMode(cardMode)
 {
     m_manager->setCookieJar(new ZaloCookieJar(m_manager));
     m_activeAvatarDownloads = 0;
@@ -93,7 +93,7 @@ ZaloService::ZaloService(QObject *parent)
     m_feedStartAt = 0; m_feedBackoffUntil = 0; m_feedCycleStart = 0;
     m_unreadMarkTimer = new QTimer(this);
     connect(m_unreadMarkTimer, SIGNAL(timeout()), this, SLOT(onUnreadMarkTick()));
-    m_unreadMarkTimer->start(30000);
+    if (!m_cardMode) m_unreadMarkTimer->start(30000);
     m_feedTimer = new QTimer(this);
     m_feedWatchdog = new QTimer(this);
     m_feedWatchdog->setSingleShot(true);
@@ -110,11 +110,12 @@ ZaloService::ZaloService(QObject *parent)
     connect(m_wsReconnectTimer, SIGNAL(timeout()), this, SLOT(onWsReconnectTimer()));
     connect(m_keepAliveTimer,   SIGNAL(timeout()), this, SLOT(onKeepAliveTimer()));
     qsrand((uint)QDateTime::currentMSecsSinceEpoch());
-    m_hub->init();
+    if (m_cardMode) m_hub->setDisabled(true);
+    else            m_hub->init();
 
     // Default Instant Preview = Allow so banners can show. apply() only takes effect once
     // and never overrides a user's own setting.
-    {
+    if (!m_cardMode) {
         bb::platform::NotificationDefaultApplicationSettings defaultSettings;
         defaultSettings.setPreview(bb::platform::NotificationPriorityPolicy::Allow);
         defaultSettings.setTonePath(QUrl("file:///usr/share/sounds/notification-tones/bbm/present.m4a"));

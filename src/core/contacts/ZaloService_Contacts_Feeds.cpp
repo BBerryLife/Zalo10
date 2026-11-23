@@ -750,6 +750,18 @@ void ZaloService::clearFeedEvents()
     emit feedEventsChanged(0);
 }
 
+bool ZaloService::hubSheetEnabled() const
+{
+    QSettings s("BerryLife", "Zalo10");
+    return s.value("hubChatSheet", true).toBool();
+}
+
+void ZaloService::setHubSheetEnabled(bool enabled)
+{
+    QSettings s("BerryLife", "Zalo10");
+    s.setValue("hubChatSheet", enabled);
+}
+
 bool ZaloService::feedsNotifyEnabled() const
 {
     QSettings s("BerryLife", "Zalo10");

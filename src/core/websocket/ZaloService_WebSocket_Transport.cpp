@@ -33,6 +33,7 @@ void ZaloService::sendWsPing()
 
 void ZaloService::connectWebSocket()
 {
+    if (m_cardMode) return;   // the card has no WebSocket: it would kick the main app's listener
     if (m_realtimeSuspended) {
         qDebug() << "[WS] connectWebSocket skipped (realtime suspended - UI/service handoff)";
         return;

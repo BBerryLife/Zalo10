@@ -38,7 +38,10 @@ class ZaloService : public QObject
     Q_PROPERTY(QString selfUid READ selfUid CONSTANT)
 
 public:
-    explicit ZaloService(QObject *parent = 0);
+    // cardMode: this process is the Hub reply card (InvokeCard startup). It only restores the saved session and
+    // talks HTTP: no WebSocket (a second listener would kick the main app's), no Hub account, no timers.
+    explicit ZaloService(QObject *parent = 0, bool cardMode = false);
+    bool cardMode() const { return m_cardMode; }
     virtual ~ZaloService();
 
     bool loggedIn() const { return m_loggedIn; }
@@ -185,6 +188,7 @@ public:
     bool resumeRealtime();
     bool realtimeSuspended() const { return m_realtimeSuspended; }
     Q_INVOKABLE bool isGroupHubThread(const QString &threadId) const;
+    Q_INVOKABLE QString hubThreadTitle(const QString &threadId) const;
     bool handleHubAction(const QString &action, const QString &threadId);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);
@@ -216,6 +220,10 @@ public:
     Q_INVOKABLE void setFeedsViewing(bool viewing);
     Q_INVOKABLE bool feedsNotifyEnabled() const;
     Q_INVOKABLE void setFeedsNotifyEnabled(bool enabled);
+    // Hub "Reply" opens the reply card (card.composer, HubReplyCard.qml) instead of the app. Read when the Hub account is
+    // registered at startup, so a change applies from the next launch. Default on.
+    Q_INVOKABLE bool hubSheetEnabled() const;
+    Q_INVOKABLE void setHubSheetEnabled(bool enabled);
 
     Q_INVOKABLE QVariantList getQuickMessages() const;
     Q_INVOKABLE int          addQuickMessage(const QString &name, const QString &content);
@@ -496,6 +504,7 @@ private:
     QTimer *m_wsReconnectTimer;
     QTimer *m_keepAliveTimer;
     QTimer *m_unreadMarkTimer;
+    bool m_cardMode;
 
     // WebSocket TLS is built by hand: QSslSocket on BB10 always fails the handshake (error:1407742E)
     // and Qt 4.8's QSsl has no TlsV1_1/1_2. m_webSocket is a plain QTcpSocket with TLS run through
