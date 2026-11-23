@@ -13,10 +13,17 @@
 // Account icon (Hub tab). Must live in the asset dir passed to uds_register_client()
 // (see publicAssetPath()) and be declared public="true" in bar-descriptor.xml.
 static const char *HUB_ICON_FILE = "ic_hub.png";
-// Per-item read/unread icons; also need public="true" in bar-descriptor.xml, otherwise Hub
-// silently shows an empty icon.
+// Account icon while something is unread (see setAccountUnread()).
 static const char *HUB_ICON_UNREAD_FILE = "ic_hub_unread.png";
-static const char *HUB_ICON_READ_FILE   = "ic_hub_read.png";
+// Per-item message state icons, identical to the chat list's message_states/*.png (yellow/grey pellet, sending, sent,
+// delivered, read, failed); also need public="true" in bar-descriptor.xml, otherwise Hub silently shows an empty icon.
+static const char *HUB_ICON_IN_UNREAD_FILE     = "ii_bbm_in_unread.png";
+static const char *HUB_ICON_IN_READ_FILE       = "ii_bbm_in_read.png";
+static const char *HUB_ICON_OUT_SENDING_FILE   = "ii_bbm_out_sending.png";
+static const char *HUB_ICON_OUT_SENT_FILE      = "ii_bbm_out_sent.png";
+static const char *HUB_ICON_OUT_DELIVERED_FILE = "ii_bbm_out_delivered.png";
+static const char *HUB_ICON_OUT_READ_FILE      = "ii_bbm_out_read.png";
+static const char *HUB_ICON_OUT_FAILED_FILE    = "ii_bbm_out_failed.png";
 static const char *HUB_ICON_REPLY_FILE         = "ic_reply.png";
 static const char *HUB_ICON_MARK_OPENED_FILE   = "ic_mark_opened.png";
 static const char *HUB_ICON_MARK_UNOPENED_FILE = "ic_mark_unopened.png";
@@ -103,10 +110,18 @@ long long HubIntegration::categoryIdFor(const QString &threadId)
     return isFeedId(threadId) ? HUB_CATEGORY_FEEDS_ID : HUB_CATEGORY_ID;
 }
 
-const char *HubIntegration::iconFor(const QString &threadId, bool unread)
+// Same rule as ChatsListItem.qml: unread wins (yellow pellet), then the state of our last message, else the grey pellet.
+const char *HubIntegration::iconFor(bool unread, int outState)
 {
-    Q_UNUSED(threadId);
-    return unread ? HUB_ICON_UNREAD_FILE : HUB_ICON_READ_FILE;
+    if (unread) return HUB_ICON_IN_UNREAD_FILE;
+    switch (outState) {
+        case 0:  return HUB_ICON_OUT_SENDING_FILE;
+        case 1:  return HUB_ICON_OUT_SENT_FILE;
+        case 2:  return HUB_ICON_OUT_DELIVERED_FILE;
+        case 3:  return HUB_ICON_OUT_READ_FILE;
+        case 4:  return HUB_ICON_OUT_FAILED_FILE;
+        default: return HUB_ICON_IN_READ_FILE;
+    }
 }
 
 HubIntegration::HubIntegration(QObject *parent)
@@ -343,7 +358,7 @@ void HubIntegration::upsertThreadItemN(const QString &threadId, bool isGroup,
     uds_inbox_item_data_set_source_id(item, const_cast<char*>(threadIdUtf8.constData()));
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
-    uds_inbox_item_data_set_icon(item, iconFor(threadId, true));
+    uds_inbox_item_data_set_icon(item, iconFor(true, -1));
     uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
     uds_inbox_item_data_set_category_id(item, categoryIdFor(threadId));
     uds_inbox_item_data_set_timestamp(item, timestampMs);
@@ -372,6 +387,7 @@ void HubIntegration::upsertThreadItemN(const QString &threadId, bool isGroup,
         st.isGroup = isGroup;
         st.unread = unread;
         st.total  = unread;
+        st.outState = -1;   // a new message of theirs is the last one
         m_threadItemState[threadId] = st;
         saveState(threadId);
     }
@@ -468,6 +484,7 @@ bool HubIntegration::ensureState(const QString &threadId)
     st.isGroup     = s.value("group", false).toBool();
     st.unread      = s.value("unread", 0).toInt();
     st.total       = s.value("total", qMax(st.unread, 1)).toInt();
+    st.outState    = s.value("out", -1).toInt();
     m_threadItemState[threadId] = st;
     if (!m_unreadCounts.contains(threadId)) m_unreadCounts[threadId] = st.unread;
     return true;
@@ -486,6 +503,7 @@ void HubIntegration::saveState(const QString &threadId)
     s.setValue("group", st.isGroup);
     s.setValue("unread", st.unread);
     s.setValue("total", st.total);
+    s.setValue("out", st.outState);
 }
 
 void HubIntegration::forgetState(const QString &threadId)
@@ -513,7 +531,7 @@ bool HubIntegration::publishState(const QString &threadId, bool notify, bool all
     uds_inbox_item_data_set_source_id(item, const_cast<char*>(threadIdUtf8.constData()));
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
-    uds_inbox_item_data_set_icon(item, iconFor(threadId, st.unread > 0));
+    uds_inbox_item_data_set_icon(item, iconFor(st.unread > 0, st.outState));
     uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
     uds_inbox_item_data_set_category_id(item, categoryIdFor(threadId));
     uds_inbox_item_data_set_timestamp(item, st.timestampMs);
@@ -543,6 +561,38 @@ void HubIntegration::removeThreadItem(const QString &threadId)
     }
     forgetState(threadId);
     if (!anyUnread()) setAccountUnread(false);
+}
+
+void HubIntegration::noteOutgoing(const QString &threadId, const QString &preview, qint64 timestampMs)
+{
+    if (m_disabled || !m_ready || threadId.isEmpty() || isFeedId(threadId)) return;
+    if (!ensureState(threadId)) return;   // no Hub item for this thread: nothing to update
+
+    ThreadItemState &st = m_threadItemState[threadId];
+    if (!preview.isEmpty()) st.preview = preview;
+    st.timestampMs = timestampMs > 0 ? timestampMs : QDateTime::currentMSecsSinceEpoch();
+    st.unread   = 0;       // answering a chat means it was read
+    st.outState = 1;       // sent; delivered / read follow from the receipts
+    m_unreadCounts[threadId] = 0;
+    saveState(threadId);
+
+    bool ok = publishState(threadId, false /* no banner or sound */, false /* never create the item */);
+    qDebug() << "[Hub] our message is the last one:" << (ok ? "ok" : "no item in Hub");
+    if (!anyUnread()) setAccountUnread(false);
+}
+
+void HubIntegration::advanceOutgoingState(const QString &threadId, int state)
+{
+    if (m_disabled || !m_ready || threadId.isEmpty() || isFeedId(threadId)) return;
+    if (!ensureState(threadId)) return;
+
+    ThreadItemState &st = m_threadItemState[threadId];
+    if (st.outState < 0 || state <= st.outState) return;   // the last message is theirs, or no progress
+    st.outState = state;
+    saveState(threadId);
+
+    bool ok = publishState(threadId, false, false);
+    qDebug() << "[Hub] our last message is now state" << state << (ok ? "ok" : "no item in Hub");
 }
 
 QString HubIntegration::titleFor(const QString &threadId) const

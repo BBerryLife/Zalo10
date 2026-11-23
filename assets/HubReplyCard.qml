@@ -345,9 +345,15 @@ Page {
             onReplyCardRequested: {
                 card.threadId = threadId;
                 card.isGroup = isGroup;
-                // The Hub item's own title (the name shown in the Hub), else what the messages tell.
-                var hubTitle = zService.hubThreadTitle(threadId);
-                card.cardTitle = (hubTitle && hubTitle.length > 0) ? hubTitle : (isGroup ? "Group chat" : "");
+                // A group: the Hub item's own title is the group name. A 1-1 chat: the Hub item is titled "Zalo10", so use
+                // the person's name as the chat list does (known contact), else the name on their messages (loadHistory()).
+                if (isGroup) {
+                    var hubTitle = zService.hubThreadTitle(threadId);
+                    card.cardTitle = (hubTitle && hubTitle.length > 0) ? hubTitle : "Group chat";
+                } else {
+                    var peer = zService.memberDisplayName(threadId);
+                    card.cardTitle = (peer && peer.length > 0) ? peer : "";
+                }
                 card.loadHistory();
                 // The main app may have renewed the session key since it was saved: take the current one.
                 if (new Date().getTime() - card.lastLoadTs > 4000) card.reloadSession();

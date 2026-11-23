@@ -251,6 +251,7 @@ void ZaloService::onSendMsgQuoteDone()
                 m_seenMsgIds.insert(msgId);
                 dbSaveMessage(out, tid);
                 emit newMessage(tid, out);
+                hubNoteOutgoing(tid, 1, content);
             } else {
             }
         } else {
@@ -297,6 +298,7 @@ void ZaloService::onSendMsgDone()
                 m_seenMsgIds.insert(msgId);
                 dbSaveMessage(out, tid);
                 emit newMessage(tid, out);
+                hubNoteOutgoing(tid, 1, content);
             } else {
             }
         } else {

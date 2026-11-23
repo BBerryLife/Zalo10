@@ -373,8 +373,10 @@ void ZaloService::handleWsReceipts(qint32 cmd, const QByteArray &data)
                                    : (dUids.isEmpty() ? QString() : dUids.first().toString());
         if (threadId.isEmpty() || threadId == m_uid) continue;
         if (!uidListHasOther(dUids, m_uid)) continue;
-        if (dbAdvanceMessageStates(threadId, 2, e["msgId"].toString(), e["realMsgId"].toString()))
+        if (dbAdvanceMessageStates(threadId, 2, e["msgId"].toString(), e["realMsgId"].toString())) {
             emit messageStatesChanged(threadId);
+            hubAdvanceOutgoing(threadId, 2);
+        }
     }
     for (int i = 0; i < seens.size(); ++i) {
         QVariantMap e = seens[i].toMap();
@@ -386,8 +388,10 @@ void ZaloService::handleWsReceipts(qint32 cmd, const QByteArray &data)
             threadId = e["idTo"].toString();
         }
         if (threadId.isEmpty() || threadId == m_uid) continue;
-        if (dbAdvanceMessageStates(threadId, 3, e["msgId"].toString(), e["realMsgId"].toString()))
+        if (dbAdvanceMessageStates(threadId, 3, e["msgId"].toString(), e["realMsgId"].toString())) {
             emit messageStatesChanged(threadId);
+            hubAdvanceOutgoing(threadId, 3);
+        }
     }
 }
 

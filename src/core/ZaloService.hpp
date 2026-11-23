@@ -189,6 +189,11 @@ public:
     bool realtimeSuspended() const { return m_realtimeSuspended; }
     Q_INVOKABLE bool isGroupHubThread(const QString &threadId) const;
     Q_INVOKABLE QString hubThreadTitle(const QString &threadId) const;
+    // Hub item message state (see HubIntegration::noteOutgoing()): our own message became the last one of the thread /
+    // a delivered (2) or read (3) receipt came in. No-ops for threads without a Hub item.
+    void hubNoteOutgoing(const QString &threadId, int msgType, const QString &content);
+    void hubAdvanceOutgoing(const QString &threadId, int state);
+    static QString hubPreviewFor(int mt, const QString &content);
     bool handleHubAction(const QString &action, const QString &threadId);
     Q_INVOKABLE void     dbSaveMessage(const QVariantMap &msg, const QString &threadId);
     Q_INVOKABLE QVariantList dbLoadMessages(const QString &threadId);

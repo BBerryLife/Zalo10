@@ -162,16 +162,19 @@
     <!-- Invoke target for Hub (short-tap + long-press "Reply"), modeled on BBCord/Beeper10
          (short-tap confirmed on 10.3.1): an app-specific mime type (application/vnd.zalo10.hub.chat;
          generic mimes made Hub fail silently) and <property var="uris" value="pim:<mime>"/> in the
-         filter. Must match HUB_MIME_TYPE_MESSAGE in HubIntegration.cpp for items and item actions. -->
+         filter. Must match HUB_MIME_TYPE_MESSAGE in HubIntegration.cpp for items and item actions.
+         OPEN *and* VIEW: the Hub's short tap is an unbound invoke, and the only setup known to deliver it is the
+         one BBCord uses (this target and the service both take OPEN + VIEW). Taking VIEW away (to give it to a
+         card.viewer target) made the short tap do nothing at all, with or without the reply card. With "Reply Card
+         in Hub" on, ApplicationUI::onInvoked() hands the tap on to the reply card below. -->
     <invoke-target id="com.BerryLife.Zalo10.invoke">
         <invoke-target-name>Zalo10</invoke-target-name>
         <icon><image>icon.png</image></icon>
         <type>application</type>
         <entry-point-id>Zalo10</entry-point-id>
         <filter>
-            <!-- OPEN only: the Hub tap (bb.action.VIEW) is the card target's below. With VIEW on both, the Hub resolved
-                 the tap to this application target every time and the app came up before the card did. -->
             <action>bb.action.OPEN</action>
+            <action>bb.action.VIEW</action>
             <!-- Do NOT declare MARKREAD/MARKUNREAD/DELETE here: item actions belong to the service's
                  <invoke-target>. If the UI declared them too, an invoke without a target (e.g. Hub's Delete
                  button) could land in the UI and launch it. -->
@@ -180,9 +183,10 @@
         </filter>
     </invoke-target>
 
-    <!-- Hub "Reply" card: the Hub opens this card.composer target over the Hub screen (action registered in
-         HubIntegration::init()). The card is a second process of the UI entry point in InvokeCard startup mode;
-         ApplicationUI then loads HubReplyCard.qml instead of main.qml. -->
+    <!-- Hub "Reply" card: the Hub opens this card.composer target over the Hub screen (long-press "Reply", action
+         registered in HubIntegration::init()), and the app opens it for a short tap when "Reply Card in Hub" is on.
+         The card is a second process of the UI entry point in InvokeCard startup mode; ApplicationUI then loads
+         HubReplyCard.qml instead of main.qml. -->
     <invoke-target id="com.BerryLife.Zalo10.reply">
         <invoke-target-name>Zalo10 Reply</invoke-target-name>
         <icon><image>icon.png</image></icon>
@@ -190,21 +194,6 @@
         <entry-point-id>Zalo10</entry-point-id>
         <filter>
             <action>bb.action.REPLY</action>
-            <mime-type>application/vnd.zalo10.hub.chat</mime-type>
-            <property var="uris" value="pim:application/vnd.zalo10.hub.chat"/>
-        </filter>
-    </invoke-target>
-
-    <!-- Hub tap: the Hub invokes bb.action.VIEW with the item's mime type and no explicit target, so the card that
-         handles it must be the only non-headless target that accepts VIEW for this mime type. It is the same card
-         process as the reply card; when "Reply Card in Hub" is off, ApplicationUI hands the request on to the app. -->
-    <invoke-target id="com.BerryLife.Zalo10.view">
-        <invoke-target-name>Zalo10 View</invoke-target-name>
-        <icon><image>icon.png</image></icon>
-        <invoke-target-type>card.viewer</invoke-target-type>
-        <entry-point-id>Zalo10</entry-point-id>
-        <filter>
-            <action>bb.action.VIEW</action>
             <mime-type>application/vnd.zalo10.hub.chat</mime-type>
             <property var="uris" value="pim:application/vnd.zalo10.hub.chat"/>
         </filter>

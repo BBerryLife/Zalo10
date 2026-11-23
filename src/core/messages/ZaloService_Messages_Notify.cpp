@@ -395,6 +395,56 @@ QString ZaloService::hubThreadTitle(const QString &threadId) const
     return m_hub ? m_hub->titleFor(threadId) : QString();
 }
 
+// One-line preview of a message for the Hub (same wording as the incoming-message notification).
+QString ZaloService::hubPreviewFor(int mt, const QString &content)
+{
+    QString msgPreview;
+    if (mt == 2) {
+        msgPreview = "[Photo]";
+    } else if (mt == 3) {
+        QString fn;
+        int fi = content.indexOf("\"fileName\":\"");
+        if (fi >= 0) {
+            fi += 12;
+            int fe = content.indexOf("\"", fi);
+            if (fe > fi) fn = content.mid(fi, fe - fi);
+        }
+        msgPreview = fn.isEmpty() ? "[File]" : ("[File] " + fn);
+    } else if (mt == 4) {
+        bool missed = content.contains("\"callResult\":\"missed\"");
+        bool video  = content.contains("\"callKind\":\"video\"");
+        msgPreview = missed ? (video ? "Missed video call" : "Missed call")
+                            : (video ? "Video call" : "Voice call");
+    } else if (mt == 5) {
+        msgPreview = "[Sticker]";
+    } else if (mt == 6) {
+        QString lt;
+        int li = content.indexOf("\"linkTitle\":\"");
+        if (li >= 0) {
+            li += 13;
+            int le = content.indexOf("\"", li);
+            if (le > li) lt = content.mid(li, le - li);
+        }
+        msgPreview = lt.isEmpty() ? "[Link]" : lt.left(80);
+    } else {
+        msgPreview = content.left(80);
+    }
+    if (msgPreview.isEmpty()) msgPreview = "[Message]";
+    return msgPreview;
+}
+
+void ZaloService::hubNoteOutgoing(const QString &threadId, int msgType, const QString &content)
+{
+    if (!m_hub) return;
+    m_hub->noteOutgoing(threadId, QString("You: ") + hubPreviewFor(msgType, content),
+                        QDateTime::currentMSecsSinceEpoch());
+}
+
+void ZaloService::hubAdvanceOutgoing(const QString &threadId, int state)
+{
+    if (m_hub) m_hub->advanceOutgoingState(threadId, state);
+}
+
 bool ZaloService::isGroupHubThread(const QString &threadId) const
 {
     if (!m_hub) return false;

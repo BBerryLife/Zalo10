@@ -45,6 +45,15 @@ public:
 
     void removeThreadItem(const QString &threadId);
 
+    // Message state icon of the item, the same as the chat list's (ChatsListItem.qml): yellow pellet = unread, grey
+    // pellet = last message is theirs and read, otherwise the state of OUR last message (sending / sent / delivered /
+    // read / failed, the numbers of message_states). Items are only ever updated here, never created.
+    //  noteOutgoing(): our message is now the last of the thread (sent here, or echoed from another device); the
+    //  item shows it as "sent" and counts as read.
+    //  advanceOutgoingState(): a delivered (2) / read (3) receipt for it; ignored when the last message is theirs.
+    void noteOutgoing(const QString &threadId, const QString &preview, qint64 timestampMs);
+    void advanceOutgoingState(const QString &threadId, int state);
+
     // Looks up the isGroup saved by the last upsertThreadItem(): the Hub invoke payload only has
     // attributes.sourceId. Returns false (DM) for unknown threads.
     bool isGroupThread(const QString &threadId) const;
@@ -79,7 +88,7 @@ private:
     bool initFeedsAccount();
     static long long accountIdFor(const QString &threadId);
     static long long categoryIdFor(const QString &threadId);
-    static const char *iconFor(const QString &threadId, bool unread);
+    static const char *iconFor(bool unread, int outState);
     bool m_feedsReady;
 
     // The Hub instant preview (banner) shows the ACCOUNT icon, not the item icon. The account therefore
@@ -99,7 +108,8 @@ private:
         bool    isGroup;
         int     unread;
         int     total;
-        ThreadItemState() : timestampMs(0), isGroup(false), unread(0), total(0) {}
+        int     outState;   // -1: the last message is theirs; else the state of ours: 0 sending, 1 sent, 2 delivered, 3 read, 4 failed
+        ThreadItemState() : timestampMs(0), isGroup(false), unread(0), total(0), outState(-1) {}
     };
     QMap<QString, ThreadItemState> m_threadItemState;
 

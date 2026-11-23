@@ -2,7 +2,7 @@
 #include "core/HubIntegration.hpp"
 #include "core/stickers/StickerManager.hpp"
 
-ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain"), m_waitingCameraPhoto(false), m_cardMode(false)
+ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain"), m_waitingCameraPhoto(false), m_cardMode(false), m_hubTapCard(false)
 {
     m_pInvokeManager = new InvokeManager(this);
     bool invokeConnectOk = QObject::connect(
@@ -271,14 +271,18 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
     qDebug() << "[App] invoked action=" << request.action() << "target=" << request.target()
              << "hubPayload=" << trimmed.startsWith("{") << "card=" << m_cardMode;
 
-    // A Hub tap that reached the app itself (not through the service): with "Reply Card in Hub" on, hand it to the
-    // card instead. Only the Hub's JSON payload is forwarded, so the card's own Open request (plain
-    // "threadId|isGroup") cannot loop back here.
+    // A Hub tap (the Hub's JSON payload; reached the app directly or through the service): with "Reply Card in Hub"
+    // on, hand it to the reply card instead of opening the chat. Only the Hub's JSON payload is forwarded, so the
+    // card's own Open request (plain "threadId|isGroup") cannot loop back here.
     if (!m_cardMode && trimmed.startsWith("{")
         && (request.action() == QLatin1String("bb.action.OPEN") || request.action() == QLatin1String("bb.action.VIEW"))) {
         QSettings st("BerryLife", "Zalo10");
+        st.sync();
         if (st.value("hubChatSheet", true).toBool()) {
             qDebug() << "[App] Hub tap reached the app: forwarding to the reply card";
+            // The card is a child card of this app. When it is closed without "Open" the user wants the Hub back, not
+            // this app (see onChildCardDone()).
+            m_hubTapCard = true;
             bb::system::InvokeRequest fwd;
             fwd.setTarget("com.BerryLife.Zalo10.reply");
             fwd.setAction("bb.action.REPLY");
@@ -287,8 +291,10 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
             fwd.setData(request.data());
             bb::system::InvokeTargetReply *r = m_pInvokeManager->invoke(fwd);
             if (r) r->setParent(this);
+            else   qWarning() << "[App] the reply card could not be invoked";
             return;
         }
+        qDebug() << "[App] reply card is off: Hub tap opens the chat";
     }
 
     if (trimmed.startsWith("{")) {
@@ -347,10 +353,15 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
         return;
     }
 
+    // Going into the app (a tap with the card off, or the card's Open button): the card must not send the app
+    // back to the background when it closes.
+    m_hubTapCard = false;
+
     if (HubIntegration::isFeedId(threadId)) {
         emit openFeedsRequested();
         return;
     }
 
+    qDebug() << "[App] opening chat" << threadId << "isGroup=" << isGroup;
     emit openThreadRequested(threadId, isGroup);
 }

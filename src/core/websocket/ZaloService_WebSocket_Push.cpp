@@ -437,46 +437,14 @@ void ZaloService::handleWsPushedMessage(QVariantMap m, bool isGroup)
         QString senderName = out["dName"].toString();
         if (senderName.isEmpty()) senderName = "Unknown";
         int mt = out["msgType"].toInt();
-        QString msgPreview;
-        if (mt == 2) {
-            msgPreview = "[Photo]";
-        } else if (mt == 3) {
-            QString cs = out["content"].toString();
-            QString fn;
-            int fi = cs.indexOf("\"fileName\":\"");
-            if (fi >= 0) {
-                fi += 12;
-                int fe = cs.indexOf("\"", fi);
-                if (fe > fi) fn = cs.mid(fi, fe - fi);
-            }
-            msgPreview = fn.isEmpty() ? "[File]" : ("[File] " + fn);
-        } else if (mt == 4) {
-            QString cs = out["content"].toString();
-            bool missed = cs.contains("\"callResult\":\"missed\"");
-            bool video  = cs.contains("\"callKind\":\"video\"");
-            msgPreview = missed ? (video ? "Missed video call" : "Missed call")
-                                : (video ? "Video call" : "Voice call");
-        } else if (mt == 5) {
-            msgPreview = "[Sticker]";
-        } else if (mt == 6) {
-            QString cs = out["content"].toString();
-            QString lt;
-            int li = cs.indexOf("\"linkTitle\":\"");
-            if (li >= 0) {
-                li += 13;
-                int le = cs.indexOf("\"", li);
-                if (le > li) lt = cs.mid(li, le - li);
-            }
-            msgPreview = lt.isEmpty() ? "[Link]" : lt.left(80);
-        } else {
-            msgPreview = out["content"].toString().left(80);
-        }
-        if (msgPreview.isEmpty()) msgPreview = "[Message]";
+        QString msgPreview = hubPreviewFor(mt, out["content"].toString());
         bool isGrp = out["isGroup"].toBool();
         QString notifTitle = isGrp ? m_groupNames.value(threadId, "Zalo10") : "Zalo10";
         sendHubNotification(notifTitle, senderName + ": " + msgPreview, threadId, isGrp);
         sendBannerNotification(notifTitle, senderName + ": " + msgPreview, threadId, isGrp);
     }
+    // Our own message echoed back (sent from the Hub reply card or another device): the Hub item shows it as the last one.
+    if (isSelf) hubNoteOutgoing(threadId, out["msgType"].toInt(), out["content"].toString());
     // The user is looking at this thread, so the message is read: tell Zalo's servers too, or the
     // official app keeps counting it as unread.
     if (!isSelf && threadId == m_activeThreadId) sendThreadSeenRemote(threadId, out["isGroup"].toBool());

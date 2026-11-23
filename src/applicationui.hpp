@@ -100,6 +100,8 @@ private:
     QString                       m_pendingShareMimeType;
     bool                          m_waitingCameraPhoto;
     bool                          m_cardMode;
+    // A Hub tap was handed to the reply card from this (main) process and the card is still open.
+    bool                          m_hubTapCard;
 };
 
 #endif

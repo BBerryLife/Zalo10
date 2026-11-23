@@ -264,6 +264,14 @@ void ApplicationUI::captureCameraPhoto()
 
 void ApplicationUI::onChildCardDone(const bb::system::CardDoneMessage &message)
 {
+    if (m_hubTapCard) {
+        // The reply card of a Hub tap was closed without "Open" (Open resets the flag in onInvoked()): the user came
+        // from the Hub, so go back to it instead of leaving them in the app.
+        m_hubTapCard = false;
+        qDebug() << "[App] Hub reply card closed (" << message.reason() << "): back to the Hub";
+        minimizeApp();
+        return;
+    }
     if (!m_waitingCameraPhoto) return;   // some other card (share, ...) ended
     // The camera card answers with the saved file's path (reason "save"), nothing when it is cancelled.
     QString path = message.data();
