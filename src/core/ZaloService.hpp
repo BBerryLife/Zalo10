@@ -247,6 +247,7 @@ public:
 signals:
     void loggedInChanged();
     void loginFailed(const QString &message);
+    void voiceCallControl(const QVariantMap &content);  // WS act_type=="voip" frames (call signalling)
     void sessionExpired();  // Session cookies/secretKey are no longer valid: re-login required.
     void loginSuccess(const QString &uid, const QString &displayName);
     void sessionRefreshed();

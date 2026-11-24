@@ -1,6 +1,7 @@
 #include "app/ApplicationUICommon.hpp"
 #include "core/HubIntegration.hpp"
 #include "core/stickers/StickerManager.hpp"
+#include "core/voice/VoiceCallBridge.hpp"
 
 ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain"), m_waitingCameraPhoto(false), m_cardMode(false), m_hubTapCard(false)
 {
@@ -76,6 +77,7 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     qml->setContextProperty("app",      this);
     qml->setContextProperty("zService", zService);
     qml->setContextProperty("stickerManager", new StickerManager(this));
+    qml->setContextProperty("voice", new VoiceCallBridge(zService, this));
 
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);

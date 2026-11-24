@@ -66,19 +66,21 @@ TitleBar {
                 }
 
                 ImageButton {
+                    visible: !chatViewPage.isGroup
                     verticalAlignment: VerticalAlignment.Center
                     preferredWidth: ui.du(8); preferredHeight: ui.du(8)
                     defaultImageSource: "asset:///images/ChatView/ic_bbm_voice_answer.png"
                     pressedImageSource: "asset:///images/ChatView/ic_bbm_voice_answer.png"
                     rightMargin: ui.du(0.8)
-                    onClicked: { voiceCallUnderDevDialog.show() }
+                    onClicked: { if (!voice.active) voice.dial(chatViewPage.threadId, chatViewPage.threadName) }
                 }
                 ImageButton {
+                    visible: !chatViewPage.isGroup
                     verticalAlignment: VerticalAlignment.Center
                     preferredWidth: ui.du(8); preferredHeight: ui.du(8)
                     defaultImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
                     pressedImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
-                    onClicked: { videoCallUnderDevDialog.show() }
+                    onClicked: { videoCallUnavailableToast.show() }
                 }
                 Container {
                     preferredWidth: ui.du(0.2)

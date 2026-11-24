@@ -53,10 +53,12 @@ HEADERS += \
     src/core/stickers/StickerManager.hpp \
     src/utils/ZaloServiceUtils.hpp \
     src/ui/ActiveFrameCover.hpp \
-    src/core/HubIntegration.hpp
+    src/core/HubIntegration.hpp \
+    src/core/voice/VoiceCallBridge.hpp
 
 SOURCES += \
     src/main.cpp \
+    src/core/voice/VoiceCallBridge.cpp \
     src/app/ApplicationUI.cpp \
     src/app/ApplicationUI_Share.cpp \
     src/app/ApplicationUI_Update.cpp \

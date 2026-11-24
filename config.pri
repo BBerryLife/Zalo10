@@ -39,6 +39,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/AboutSheet.qml) \
         $$quote($$BASEDIR/assets/ActiveFrameCover.qml) \
         $$quote($$BASEDIR/assets/AttachPickerSheet.qml) \
+        $$quote($$BASEDIR/assets/CallScreen.qml) \
         $$quote($$BASEDIR/assets/ChangelogPage.qml) \
         $$quote($$BASEDIR/assets/ChatView.qml) \
         $$quote($$BASEDIR/assets/ChatsTab.qml) \
@@ -211,6 +212,16 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/bubble/video_voice/ca_voice_chat_incoming.png) \
         $$quote($$BASEDIR/assets/images/ChatView/bubble/video_voice/ca_voice_chat_missed.png) \
         $$quote($$BASEDIR/assets/images/ChatView/bubble/video_voice/ca_voice_chat_outgoing.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/answer_call.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/audio_bg.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/audioonly_avatar_bg.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/avatar_default_light.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/decline_call.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/end_call_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/end_call_icon_down.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon_disabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon_down.png) \
         $$quote($$BASEDIR/assets/images/ChatView/clear_chat.png) \
         $$quote($$BASEDIR/assets/images/ChatView/darkkeyboard.png) \
         $$quote($$BASEDIR/assets/images/ChatView/default_caller.png) \
@@ -869,6 +880,7 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/core/phonesync/ZaloService_PhoneSync_Flow.cpp) \
         $$quote($$BASEDIR/src/core/phonesync/ZaloService_PhoneSync_Tick.cpp) \
         $$quote($$BASEDIR/src/core/stickers/StickerManager.cpp) \
+        $$quote($$BASEDIR/src/core/voice/VoiceCallBridge.cpp) \
         $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Dispatch.cpp) \
         $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Events.cpp) \
         $$quote($$BASEDIR/src/core/websocket/ZaloService_WebSocket_Frames.cpp) \
@@ -896,6 +908,7 @@ config_pri_source_group1 {
         $$quote($$BASEDIR/src/core/network/NetworkCommon.hpp) \
         $$quote($$BASEDIR/src/core/phonesync/PhoneSyncCommon.hpp) \
         $$quote($$BASEDIR/src/core/stickers/StickerManager.hpp) \
+        $$quote($$BASEDIR/src/core/voice/VoiceCallBridge.hpp) \
         $$quote($$BASEDIR/src/core/websocket/WebSocketCommon.hpp) \
         $$quote($$BASEDIR/src/third_party/prebuilt/device/openssl/include/openssl/aes.h) \
         $$quote($$BASEDIR/src/third_party/prebuilt/device/openssl/include/openssl/asn1.h) \
@@ -1178,6 +1191,11 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../src/core/stickers/*.cc) \
         $$quote($$BASEDIR/../src/core/stickers/*.cpp) \
         $$quote($$BASEDIR/../src/core/stickers/*.cxx) \
+        $$quote($$BASEDIR/../src/core/voice/*.c) \
+        $$quote($$BASEDIR/../src/core/voice/*.c++) \
+        $$quote($$BASEDIR/../src/core/voice/*.cc) \
+        $$quote($$BASEDIR/../src/core/voice/*.cpp) \
+        $$quote($$BASEDIR/../src/core/voice/*.cxx) \
         $$quote($$BASEDIR/../src/core/websocket/*.c) \
         $$quote($$BASEDIR/../src/core/websocket/*.c++) \
         $$quote($$BASEDIR/../src/core/websocket/*.cc) \
@@ -1322,6 +1340,9 @@ lupdate_inclusion {
         $$quote($$BASEDIR/../assets/images/ChatView/bubble/video_voice/*.qml) \
         $$quote($$BASEDIR/../assets/images/ChatView/bubble/video_voice/*.js) \
         $$quote($$BASEDIR/../assets/images/ChatView/bubble/video_voice/*.qs) \
+        $$quote($$BASEDIR/../assets/images/ChatView/call/*.qml) \
+        $$quote($$BASEDIR/../assets/images/ChatView/call/*.js) \
+        $$quote($$BASEDIR/../assets/images/ChatView/call/*.qs) \
         $$quote($$BASEDIR/../assets/images/ChatView/emoji/*.qml) \
         $$quote($$BASEDIR/../assets/images/ChatView/emoji/*.js) \
         $$quote($$BASEDIR/../assets/images/ChatView/emoji/*.qs) \

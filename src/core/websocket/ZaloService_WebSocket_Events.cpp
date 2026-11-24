@@ -237,6 +237,13 @@ void ZaloService::handleWsGroupEvent(const QByteArray &data)
             continue;
         }
 
+        // 1:1 call signalling (request / ring_ring / answer / cancel / end_call / busy ...).
+        // The voice engine owns the state machine; we only forward the control content.
+        if (actType == "voip") {
+            emit voiceCallControl(content);
+            continue;
+        }
+
         if (actType == "syncmsgmb") {
             QVariant smV = content["data"];
             QVariantMap smData = (smV.type() == QVariant::String)

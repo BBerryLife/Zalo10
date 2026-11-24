@@ -1839,16 +1839,10 @@ Page {
             onGroupAvatarUpdated: { chatViewPage.avatarUrl = newAvatar; }
         },
 
-        InfoDialog {
-            id: voiceCallUnderDevDialog
-            title: "Voice Call"
-            body: "This feature is still under development."
-        },
-
-        InfoDialog {
-            id: videoCallUnderDevDialog
-            title: "Video Call"
-            body: "This feature is still under development."
+        SystemToast {
+            id: videoCallUnavailableToast
+            body: "Video calls are not supported yet"
+            position: SystemUiPosition.MiddleCenter
         },
 
         Connections {

@@ -192,6 +192,7 @@ TabbedPane {
             source: "asset:///MyProfilePage.qml"
         },
         AboutSheet    { id: aboutSheet },
+        CallScreen    { id: callScreen },
         
         Connections {
             target: zService
