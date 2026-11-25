@@ -3,17 +3,77 @@
 The lock-screen popup exposes only call actions, never account/message data.
 All PCM is an original generated ringtone, not recorded audio.
 """
-import ctypes as C,os,time
+import ctypes as C,os,threading,time,wave
+try:import audioop
+except ImportError:audioop=None
 from q10media import Audio,AudioOpenError
+
+RING_RATE=16000      # q10_audio_open_ringtone opens the speaker as 16 kHz mono S16_LE, 640-byte fragments
+
+def load_ringtone(path):
+    """Return the ringtone as raw PCM16LE mono 16 kHz, whatever the WAV looks like.
+
+    The old loader skipped a fixed 44-byte header and fed the rest to the speaker unchanged. A WAV
+    with extra chunks (LIST/INFO) or a different rate/channel count then played as noise: the file
+    was 44.1 kHz stereo, i.e. ~5x too fast with the channels interleaved as consecutive samples."""
+    reader=wave.open(path,'rb')
+    try:
+        channels,width,rate=reader.getnchannels(),reader.getsampwidth(),reader.getframerate()
+        data=reader.readframes(reader.getnframes())
+    finally:
+        reader.close()
+    if width!=2 or channels not in (1,2) or not data:raise ValueError('Invalid bundled ringtone')
+    if channels==2 or rate!=RING_RATE:
+        if not audioop:raise ValueError('Ringtone needs conversion but audioop is missing')
+        if channels==2:data=audioop.tomono(data,2,0.5,0.5)
+        if rate!=RING_RATE:data=audioop.ratecv(data,2,1,rate,RING_RATE,None)[0]
+    data=data[:len(data)//640*640]          # whole 20 ms fragments so the loop wraps cleanly
+    if not data:raise ValueError('Invalid bundled ringtone')
+    return data
+
+def log_line(text):
+    """One line on stderr: the app log shows it as `[Voice] engine: ...`."""
+    try:os.write(2,(text+'\n').encode('ascii','replace'))
+    except OSError:pass
+
+
+class RingPump(threading.Thread):
+    """Feeds the ringtone to the speaker from its own thread.
+
+    The speaker queue is only 4 x 20 ms. When the ringtone was written from the engine loop, every
+    dialog call or other stall of 80 ms or more (the loop logged several >100 ms while ringing)
+    ran the queue dry, and a pure tone turns each gap into a loud click. ctypes releases the GIL
+    during the native write, so this thread keeps the queue full while the loop is busy."""
+    def __init__(self,audio,tone):
+        threading.Thread.__init__(self)
+        self.daemon=True
+        self.audio,self.tone,self.position=audio,tone,0
+        self.halt=threading.Event()
+        self.bytes=0;self.error=None;self.slow=0;self.worst=0.0
+
+    def run(self):
+        last=time.time()
+        while not self.halt.is_set():
+            for _ in range(4):
+                n=self.audio.write(self.tone[self.position:self.position+640])
+                if n>0:
+                    self.position=(self.position+n)%len(self.tone);self.bytes+=n
+                elif n in (0,-11):break
+                else:
+                    self.error=n;return
+            now=time.time();gap=now-last;last=now
+            if gap>self.worst:self.worst=gap
+            if gap>0.06:self.slow+=1              # this thread itself was held up for more than 60 ms
+            self.halt.wait(0.01)
+
 
 class CallAlert:
     def __init__(self,root,command,report):
         self.root,self.command,self.report=root,command,report
         self.lib=C.CDLL('libbps.so.3');self.lib.bps_initialize();self.lib.dialog_request_events(0)
-        self.dialog=None;self.audio=None;self.position=0;self.state='idle';self.name='';self.video=False
+        self.dialog=None;self.audio=None;self.pump=None;self.state='idle';self.name='';self.video=False
         self.test_until=None;self.foreground=False;self.popup_kind=None
         self.reopen_at=None
-        self.ring_bytes=0
         self.lib.dialog_create_alert.argtypes=[C.POINTER(C.c_void_p)]
         for name in ('dialog_show','dialog_cancel','dialog_destroy','dialog_event_get_selected_index'):
             getattr(self.lib,name).argtypes=[C.c_void_p]
@@ -28,8 +88,7 @@ class CallAlert:
         for name in ('dialog_set_title_text','dialog_set_alert_message_text'):
             getattr(self.lib,name).argtypes=[C.c_void_p,C.c_char_p]
         self.lib.dialog_add_button.argtypes=[C.c_void_p,C.c_char_p,C.c_bool,C.c_char_p,C.c_bool]
-        with open(os.path.join(root,'ringtone.wav'),'rb') as f:self.tone=f.read()[44:]
-        if not self.tone or len(self.tone)%2:raise ValueError('Invalid bundled ringtone')
+        self.tone=load_ringtone(os.path.join(root,'ringtone.wav'))
 
     def close_popup(self):
         if self.dialog:
@@ -67,12 +126,20 @@ class CallAlert:
     def ringing(self,on):
         if on and not self.audio:
             try:
-                self.audio=Audio(os.path.join(self.root,'libq10audio.so'),ringtone=True);self.position=0;self.ring_bytes=0
+                self.audio=Audio(os.path.join(self.root,'libq10audio.so'),ringtone=True)
             except AudioOpenError as error:
                 self.report({'event':'alert_status','ring_audio':False,'audio_error':error.code,'audio_stage':error.stage})
+                return
+            self.pump=RingPump(self.audio,self.tone);self.pump.start()
         elif not on and self.audio:
-            self.report({'event':'alert_status','ring_finished':True,'ring_bytes':self.ring_bytes,'ring_xruns':self.audio.xruns()})
-            self.audio.close();self.audio=None
+            pump,audio=self.pump,self.audio
+            self.pump=None;self.audio=None
+            pump.halt.set();pump.join(2.0)
+            xruns=audio.xruns()
+            self.report({'event':'alert_status','ring_finished':True,'ring_bytes':pump.bytes,'ring_xruns':xruns})
+            log_line('ring: bytes=%d xruns=%d pump_slow=%d pump_worst=%dms'%(pump.bytes,xruns,pump.slow,int(pump.worst*1000)))
+            if pump.is_alive():log_line('ring: pump did not stop, speaker left open')
+            else:audio.close()
 
     def update(self,event,native_alert=False):
         previous=self.state;self.state=event.get('state','idle');self.video=bool(event.get('video'))
@@ -108,14 +175,9 @@ class CallAlert:
             self.reopen_at=None
             if self.state=='incoming':self.popup('incoming')
             elif self.state=='connected' and not self.foreground:self.popup('connected')
-        if self.audio:
-            for _ in range(4):
-                part=self.tone[self.position:self.position+640]
-                n=self.audio.write(part)
-                if n>0:self.position=(self.position+n)%len(self.tone);self.ring_bytes+=n
-                elif n in (0,-11):break
-                else:
-                    self.ringing(False);self.report({'event':'alert_status','ring_audio':False,'audio_error':n});break
+        if self.pump and self.pump.error is not None:
+            error=self.pump.error;self.ringing(False)
+            self.report({'event':'alert_status','ring_audio':False,'audio_error':error})
         if self.test_until and time.time()>=self.test_until:
             self.test_until=None;self.close_popup();self.ringing(False)
         for _ in range(8):

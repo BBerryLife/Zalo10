@@ -151,10 +151,10 @@ class RelayMedia:
         self.call=None;self.active=False;self.candidates={};self.replies={};self.chosen=None
         self.video_frame=video_frame or (lambda key,data:None)
         self.muted=False
-        self.tuning_path=None;self.cfg={'dsp':True,'mic_gain':'auto','mic_target':1800.0,'mic_max_gain':8.0,'far_max_gain':6.0,'ns_db':-10,'gate':120.0,'play_gain':1.0,'audio_type':None,'cushion':3}
+        self.tuning_path=None;self.cfg={'dsp':True,'mic_gain':'auto','mic_target':1800.0,'mic_max_gain':8.0,'far_max_gain':6.0,'ns_db':-10,'gate':120.0,'play_gain':1.0,'audio_type':None,'cushion':0}
         self.mic_gain=1.5;self.next_write=None;self.late_run=0;self.waiting=False;self.expected=None;self.play_at=None
         self.far_until=0.0;self.dsp_w=0.0;self.last_loop=None;self.applied_gain=1.0
-        self.cushion_cap=3;self.pb_restore=0;self.pb_pending=0;self.pb_total=0;self.pb_inject_at=0.0
+        self.cushion_cap=0;self.aec_ref=b'';self.pb_restore=0;self.pb_pending=0;self.pb_total=0;self.pb_inject_at=0.0
         self.stats={'video_input':0,'video_key_input':0,'video_no_key':0,'video_queue_drop':0,'video_sent':0,'udp_errors':0,"sent_audio_packets":0,"received_audio_packets":0,"dropped_auth_packets":0,"concealed_frames":0,"dropped_capture_frames":0,"play_silence":0,"play_full":0,"mic_peak":0,"play_peak":0,"mic_raw_peak":0,"mic_speech_frames":0,"mic_dsp_muted":0,"play_voice_frames":0,"resyncs":0,"skips":0,"play_wait":0,"late_packets":0}
 
     def prepare(self,call,servers):
@@ -286,7 +286,7 @@ class RelayMedia:
         """Optional <data>/voice-tuning.json (all keys optional):
         dsp (true = echo canceller only while the far end is audible, false = off, "always"), mic_gain ("auto" or 0.1-16), mic_target (rms), mic_max_gain, gate (rms),
         play_gain (0.1-8), audio_type (int: audio-manager type used for both directions)."""
-        cfg={'dsp':True,'mic_gain':'auto','mic_target':1800.0,'mic_max_gain':8.0,'far_max_gain':6.0,'ns_db':-10,'gate':120.0,'play_gain':1.0,'audio_type':None,'cushion':3}
+        cfg={'dsp':True,'mic_gain':'auto','mic_target':1800.0,'mic_max_gain':8.0,'far_max_gain':6.0,'ns_db':-10,'gate':120.0,'play_gain':1.0,'audio_type':None,'cushion':0}
         try:
             with open(self.tuning_path) as handle:data=json.load(handle)
         except (IOError,OSError,ValueError,TypeError):
@@ -303,39 +303,42 @@ class RelayMedia:
             elif number(gain,0.1,16):cfg['mic_gain']=float(gain)
             if number(data.get('ns_db'),-30,-1):cfg['ns_db']=int(data['ns_db'])
             if number(data.get('cushion'),0,4):cfg['cushion']=int(data['cushion'])
-            elif data.get('ns_db')=='stock':cfg['ns_db']=None
+            if data.get('ns_db')=='stock':cfg['ns_db']=None
             kind=data.get('audio_type')
             if isinstance(kind,int) and not isinstance(kind,bool) and 0<=kind<=32:cfg['audio_type']=kind
         self.cfg=cfg;self.mic_gain=1.5;self.next_write=None
-        self.cushion_cap=cfg['cushion'];self.pb_restore=0;self.pb_pending=0;self.pb_total=0;self.pb_inject_at=0.0
+        self.cushion_cap=cfg['cushion'];self.aec_ref=b'';self.pb_restore=0;self.pb_pending=0;self.pb_total=0;self.pb_inject_at=0.0
         self.stats['cfg_dsp']=2 if cfg['dsp']=='always' else int(bool(cfg['dsp']));self.stats['cfg_type']=-1 if cfg['audio_type'] is None else cfg['audio_type']
         self.stats['cfg_play_x100']=int(cfg['play_gain']*100)
         self.stats['cfg_ns']=-18 if cfg['ns_db'] is None else cfg['ns_db']
         self.stats['cfg_mic']=-1 if cfg['mic_gain']=='auto' else int(cfg['mic_gain']*100)
 
     def device_messages(self,data):
-        """React to the audio stack's own warnings (see phone_engine.watch_stderr).
+        """Count the warnings written to this process's stderr during a call.
 
-        The speaker queue is fed one 20 ms frame per 20 ms, but the device pulls data in its own
-        period, so the two beat against each other (~every 320 ms in the field). If the cushion in
-        the queue is thinner than one beat the device runs dry and inserts silence ("Auto-filling
-        the buffer"). Each such warning adds one silent frame of cushion, up to `cushion` frames;
-        a "Had to discard a playback frame" warning means the queue is full, so stop growing it.
-        Frames the stack drops when the stream starts are replaced the same way."""
-        if not self.active or not self.cushion_cap:
+        "discarded first playback frame", "No playback frame available", "Auto-filling the buffer"
+        and "Had to discard a playback frame" are printed by the Speex echo canceller inside
+        libq10dsp, not by the speaker: its reference (speaker) stream was fed out of step with the
+        microphone stream. process_mic now feeds it strictly one reference frame per mic frame, so
+        after the first few frames of a call these should stop; dev_autofill/dev_discard staying
+        high means that pairing is broken again. The optional `cushion` (default 0 = off) adds
+        silent frames to the speaker queue when they appear; it does not help the canceller."""
+        if not self.active:
             return
         stats=self.stats
         first=data.count(b'discarded first playback frame')
+        noref=data.count(b'No playback frame available')
         auto=data.count(b'Auto-filling the buffer')
         dropped=data.count(b'Had to discard a playback frame')
-        if first:
-            stats['dev_first']=stats.get('dev_first',0)+first
-            if stats['dev_first']<=8:self.pb_restore=min(3,self.pb_restore+first)
-        if auto:
-            stats['dev_autofill']=stats.get('dev_autofill',0)+auto
-            if self.pb_total+self.pb_pending<self.cushion_cap:self.pb_pending+=1
+        if first:stats['dev_first']=stats.get('dev_first',0)+first
+        if noref:stats['dev_noref']=stats.get('dev_noref',0)+noref
+        if auto:stats['dev_autofill']=stats.get('dev_autofill',0)+auto
+        if dropped:stats['dev_discard']=stats.get('dev_discard',0)+dropped
+        if not self.cushion_cap:
+            return
+        if first and stats['dev_first']<=8:self.pb_restore=min(3,self.pb_restore+first)
+        if auto and self.pb_total+self.pb_pending<self.cushion_cap:self.pb_pending+=1
         if dropped:
-            stats['dev_discard']=stats.get('dev_discard',0)+dropped
             self.pb_total=max(0,self.pb_total-1)
             self.cushion_cap=min(self.cushion_cap,self.pb_total)
             self.pb_pending=0;self.pb_restore=0
@@ -369,12 +372,19 @@ class RelayMedia:
             self.stats['mic_raw_peak']=max(self.stats['mic_raw_peak'],audioop.max(frame,2))
             if raw>=self.cfg['gate']:
                 self.note('mic_raw_speech_rms',raw,0.05);self.stats['mic_speech_frames']+=1
+            elif audioop:
+                # Frames below the gate: the room/handset noise floor. Together with the speech level
+                # above it gives the microphone's signal-to-noise ratio, which the digital gain cannot improve.
+                self.note('mic_raw_noise_rms',raw,0.02);self.stats['mic_noise_frames']=self.stats.get('mic_noise_frames',0)+1
         used=False
         if self.cfg['dsp']:
             # Always run the canceller so its filter keeps adapting, but only use its output while
             # the far end is audible (echo is possible). With the far end silent there is nothing to
             # cancel, and the noise suppressor was cutting our own speech by ~13 dB. Weight changes
             # are ramped over two frames so switching does not click.
+            ref=self.aec_ref[:640];self.aec_ref=self.aec_ref[640:]
+            if len(ref)<640:ref+=b'\x00'*(640-len(ref))      # nothing was played since the last mic frame
+            self.dsp.playback(ref)                           # exactly one reference frame per mic frame
             processed=self.dsp.capture(frame)
             far=self.cfg['dsp']=='always' or not audioop or now<self.far_until
             target=1.0 if far else 0.0
@@ -420,9 +430,16 @@ class RelayMedia:
         self.applied_gain=gain
         sent=audioop.rms(frame,2)
         if sent>=self.cfg['gate']:self.note('mic_sent_speech_rms',sent,0.05)
+        elif raw<self.cfg['gate']:self.note('mic_sent_noise_rms',sent,0.02)
         self.note('mic_gain_x100',gain*100)
         self.stats['mic_peak']=max(self.stats['mic_peak'],audioop.max(frame,2))
         return frame
+
+    def aec_feed(self,pcm):
+        """Remember audio handed to the speaker; process_mic pairs it 1:1 with mic frames."""
+        if not self.cfg['dsp']:return
+        self.aec_ref+=pcm
+        if len(self.aec_ref)>640*4:self.aec_ref=self.aec_ref[-640*3:]     # never let the reference run far ahead
 
     def pace_playback(self,now):
         """Feed the speaker one 20 ms frame per 20 ms. The device queue holds only 4 x 640 bytes,
@@ -431,7 +448,7 @@ class RelayMedia:
         if self.next_write is None:
             prime=b'\x00'*1920                        # 3 fragments (60 ms): enough cushion, keeps the echo path short
             written=self.playback.write(prime)
-            if written>0 and self.cfg['dsp']:self.dsp.playback(prime[:written])
+            if written>0:self.aec_feed(prime[:written])
             if written<0 and written!=-11:
                 self.failed('speaker_io_error_%d' % written);return
             self.next_write=now+0.02
@@ -441,7 +458,7 @@ class RelayMedia:
             silence=b'\x00'*640
             written=self.playback.write(silence)
             if written>0:
-                if self.cfg['dsp']:self.dsp.playback(silence[:written])
+                self.aec_feed(silence[:written])
                 if self.pb_restore>0:self.pb_restore-=1
                 else:
                     self.pb_pending-=1;self.pb_total+=1;self.stats['cush_total']=self.pb_total
@@ -459,7 +476,7 @@ class RelayMedia:
             if written>0:
                 if real:self.playback_buffer=self.playback_buffer[written:]
                 else:self.stats['play_silence']+=1
-                if self.cfg['dsp']:self.dsp.playback(out[:written])
+                self.aec_feed(out[:written])
                 if real and audioop:
                     level=audioop.rms(out[:written],2)
                     if level>=100:

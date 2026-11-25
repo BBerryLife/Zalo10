@@ -1,5 +1,5 @@
 1
-820
+822
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -169,7 +169,8 @@ images/ChatView/bubble/video_voice/ca_voice_chat_inactive.png
 images/ChatView/bubble/video_voice/ca_voice_chat_incoming.png
 images/ChatView/bubble/video_voice/ca_voice_chat_missed.png
 images/ChatView/bubble/video_voice/ca_voice_chat_outgoing.png
-images/ChatView/call/answer_call.png
+images/ChatView/call/accept.png
+images/ChatView/call/accept_pressed.png
 images/ChatView/call/audioonly_avatar_bg.png
 images/ChatView/call/audio_bg.png
 images/ChatView/call/audio_bg_no_avatar.png
@@ -177,7 +178,8 @@ images/ChatView/call/avatar_default_light.png
 images/ChatView/call/bbm_icon.png
 images/ChatView/call/bbm_icon_disabled.png
 images/ChatView/call/bbm_icon_down.png
-images/ChatView/call/decline_call.png
+images/ChatView/call/decline.png
+images/ChatView/call/decline_pressed.png
 images/ChatView/call/desktop.ini
 images/ChatView/call/end_call_icon.png
 images/ChatView/call/end_call_icon_down.png
