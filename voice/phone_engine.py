@@ -6,6 +6,7 @@ events and packet counts. It never sends chat messages.
 """
 import argparse
 import base64
+import fcntl
 import json
 import os
 import select
@@ -117,6 +118,7 @@ class PhoneEngine:
             lambda reason:self.core.finish(reason),lambda:self.core.finish('peer_ended',False),root=self.root,
             video_frame=lambda key,data:self.emit({'event':'remote_video','key':key,'data':base64.b64encode(data).decode('ascii')}))
         self.media.muted=self.muted
+        self.media.tuning_path=os.path.join(os.path.dirname(self.args.socket),'voice-tuning.json') if self.args.socket else None
         self.media.prepare(call,servers)
 
     def start(self):
@@ -227,7 +229,33 @@ class PhoneEngine:
         elif action=='quit':
             self.core.finish();self.running=False
 
+    def watch_stderr(self):
+        """The QNX audio stack reports underruns by writing to this process's stderr. Route stderr
+        through a pipe we read in the main loop so the media code can react to those messages, and
+        forward every byte unchanged to the original stderr (the app's log still shows them)."""
+        self.err_r=None;self.err_out=None
+        try:
+            read_end,write_end=os.pipe()
+            self.err_out=os.dup(2)
+            os.dup2(write_end,2);os.close(write_end)
+            fcntl.fcntl(read_end,fcntl.F_SETFL,fcntl.fcntl(read_end,fcntl.F_GETFL)|os.O_NONBLOCK)
+            self.err_r=read_end
+        except Exception:
+            self.err_r=None
+
+    def drain_stderr(self):
+        try:
+            data=os.read(self.err_r,4096)
+        except OSError:
+            return
+        if not data:
+            return
+        try:os.write(self.err_out,data)
+        except OSError:pass
+        if self.media:self.media.device_messages(data)
+
     def run(self):
+        self.watch_stderr()
         startup=time.time()
         last_client=startup
         try:
@@ -235,6 +263,7 @@ class PhoneEngine:
                 if self.client:last_client=time.time()
                 elif self.args.socket and time.time()-last_client>90:break
                 fds=[] if self.args.external_api else [self.api.stdout.fileno()]
+                if self.err_r is not None: fds.append(self.err_r)
                 if self.server: fds.append(self.server.fileno())
                 if self.client: fds.append(self.client.fileno())
                 if self.media and self.media.sock:
@@ -242,6 +271,10 @@ class PhoneEngine:
                 if not self.args.socket and not self.args.lookup and not self.args.test_peer_file:
                     fds.append(sys.stdin.fileno())
                 available,_,_=select.select(fds,[],[],0.005)
+                mark=time.time()
+                if self.media:self.media.gap(mark)       # loop-stall instrumentation (counters only)
+                if self.err_r is not None and self.err_r in available:
+                    self.drain_stderr()
                 if self.server and self.server.fileno() in available:
                     client,_=self.server.accept()
                     if self.client: self.client.close()
@@ -261,6 +294,7 @@ class PhoneEngine:
                         self.api_event(json.loads(line.decode('utf-8')))
                 if self.media and self.media.sock and self.media.sock.fileno() in available:
                     self.media.handle_udp()
+                    if self.media:mark=self.media.lap('udp',mark)
                 input_fd=self.client.fileno() if self.client else (None if self.args.socket else sys.stdin.fileno())
                 if not self.args.lookup and not self.args.test_peer_file and input_fd in available:
                     chunk=os.read(input_fd,65536)
@@ -280,7 +314,9 @@ class PhoneEngine:
                 self.core.tick()
                 if self.media:
                     self.media.tick()
+                    mark=self.media.lap('tick',mark)
                 if self.alert:self.alert.tick()
+                if self.media:mark=self.media.lap('alert',mark)
                 if not self.ready and time.time()-startup>30:
                     self.emit({'event':'error','reason':'account_startup_timeout'});break
                 if self.test_started and time.time()-self.test_started>self.args.max_call_seconds:

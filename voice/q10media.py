@@ -330,13 +330,30 @@ class VoiceDSP:
             raise RuntimeError('Voice processing failed')
         return output.raw
 
+    def tune(self,noise_db):
+        """Soften the noise suppressor that q10_dsp_create hard-wires at -18 dB (it thins out quiet
+        speech and adds a watery artefact). q10_dsp_create allocates {SpeexEchoState*,
+        SpeexPreprocessState*} as two consecutive pointers; speex_preprocess_ctl is exported by the
+        same library. Returns True if applied; any doubt means leave the stock settings alone."""
+        try:
+            if noise_db is None or not self.state:return False
+            pointers=(C.c_void_p*2).from_address(self.state)
+            if not pointers[0] or not pointers[1]:return False
+            control=self.lib.speex_preprocess_ctl
+            control.argtypes=[C.c_void_p,C.c_int,C.c_void_p]
+            control.restype=C.c_int
+            value=C.c_int(int(noise_db))
+            return control(pointers[1],18,C.byref(value))==0     # SPEEX_PREPROCESS_SET_NOISE_SUPPRESS
+        except Exception:
+            return False
+
     def close(self):
         if self.state:
             self.lib.q10_dsp_destroy(self.state);self.state=None
 
 
 class Audio:
-    def __init__(self, path, capture=False, ringtone=False):
+    def __init__(self, path, capture=False, ringtone=False, audio_type=None):
         self.lib = C.CDLL(path)
         self.lib.q10_audio_open.argtypes = [C.POINTER(C.c_void_p),C.c_int]
         self.lib.q10_audio_open.restype = C.c_int
@@ -350,9 +367,28 @@ class Audio:
             self.lib.q10_audio_open_ringtone.argtypes=[C.POINTER(C.c_void_p)]
             self.lib.q10_audio_open_ringtone.restype=C.c_int
             result=self.lib.q10_audio_open_ringtone(C.byref(self.handle))
+        elif audio_type is not None:
+            result=self.open_typed(capture,audio_type)
         else:result = self.lib.q10_audio_open(C.byref(self.handle),int(capture))
         if result < 0:
             raise AudioOpenError(result,self.lib.q10_audio_last_stage())
+
+    def open_typed(self,capture,audio_type):
+        """Open with an explicit audio-manager type (this selects the output route).
+
+        The shipped ARM build of q10_audio_open is exactly `mov r2,#4; b common_open`, and
+        common_open(out, capture, type) is the next instruction. Verify those 8 bytes, then call
+        common_open directly; on any mismatch fall back to the stock open (type 4).
+        """
+        stock=lambda:self.lib.q10_audio_open(C.byref(self.handle),int(capture))
+        try:
+            if C.sizeof(C.c_void_p)!=4:return stock()
+            base=C.cast(self.lib.q10_audio_open,C.c_void_p).value
+            if C.string_at(base,8)!=bytes(bytearray((0x04,0x20,0xa0,0xe3,0xff,0xff,0xff,0xea))):return stock()
+            opener=C.CFUNCTYPE(C.c_int,C.POINTER(C.c_void_p),C.c_int,C.c_int)(base+8)
+            return opener(C.byref(self.handle),int(capture),int(audio_type))
+        except Exception:
+            return stock()
 
     def fd(self):
         return self.lib.q10_audio_fd(self.handle)

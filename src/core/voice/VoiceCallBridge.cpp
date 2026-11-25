@@ -292,6 +292,15 @@ void VoiceCallBridge::applyState(const QVariantMap &event)
     const QString st = event.value("state").toString();
     const QString reason = event.value("reason").toString();
     qDebug() << "[Voice] state" << st << "reason=" << reason;
+    if (st == "idle" && event.contains("media_counts")) {
+        // Per-call audio counters from the engine (packets, concealed frames, mic/speaker levels,
+        // xruns, active tuning). Numbers only; no ids or audio.
+        const QVariantMap mc = event.value("media_counts").toMap();
+        QStringList parts;
+        for (QVariantMap::const_iterator it = mc.constBegin(); it != mc.constEnd(); ++it)
+            parts << (it.key() + "=" + it.value().toString());
+        qDebug() << "[Voice] media:" << parts.join(" ");
+    }
 
     if (st == "incoming") {
         m_peerName = event.value("name").toString();

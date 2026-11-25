@@ -214,14 +214,31 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/bubble/video_voice/ca_voice_chat_outgoing.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/answer_call.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/audio_bg.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/audio_bg_no_avatar.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/audioonly_avatar_bg.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/avatar_default_light.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/bbm_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/bbm_icon_disabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/bbm_icon_down.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/decline_call.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ChatView/call/end_call_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/end_call_icon_down.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon_disabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon_down.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/presenter_mode_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/presenter_mode_icon_disabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/presenter_mode_icon_down.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/screenshare_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/screenshare_icon_disabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/screenshare_icon_down.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/speaker_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/speaker_icon_disabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/speaker_icon_down.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/swapcamera_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/swapcamera_icon_disabled.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/swapcamera_icon_down.png) \
         $$quote($$BASEDIR/assets/images/ChatView/clear_chat.png) \
         $$quote($$BASEDIR/assets/images/ChatView/darkkeyboard.png) \
         $$quote($$BASEDIR/assets/images/ChatView/default_caller.png) \
