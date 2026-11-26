@@ -56,6 +56,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
         $$quote($$BASEDIR/assets/HubChatSheet.qml) \
         $$quote($$BASEDIR/assets/HubReplyCard.qml) \
+        $$quote($$BASEDIR/assets/IncomingSlider.qml) \
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \
@@ -226,15 +227,28 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/call/desktop.ini) \
         $$quote($$BASEDIR/assets/images/ChatView/call/end_call_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/end_call_icon_down.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/handle_base_gn.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/handle_base_rd.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/handle_ring_gn.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/ic_decline.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/ic_decline_rd.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/ic_voice_answer.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/ic_voice_answer_gn.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon_disabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/mute_icon_down.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/overlay_fade.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/overlay_half.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/presenter_mode_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/presenter_mode_icon_disabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/presenter_mode_icon_down.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/screenshare_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/screenshare_icon_disabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/screenshare_icon_down.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/slider_arrow_gn.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/slider_arrow_rd.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/slider_handle.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/call/slider_plate.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/speaker_icon.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/speaker_icon_disabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/speaker_icon_down.png) \

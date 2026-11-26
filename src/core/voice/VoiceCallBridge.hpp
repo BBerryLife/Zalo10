@@ -27,6 +27,7 @@ class VoiceCallBridge : public QObject
     Q_PROPERTY(QString status    READ status    NOTIFY changed)
     Q_PROPERTY(QString peerName  READ peerName  NOTIFY changed)
     Q_PROPERTY(QString peerId    READ peerId    NOTIFY changed)
+    Q_PROPERTY(QString peerAvatar READ peerAvatar NOTIFY changed)
     Q_PROPERTY(bool active       READ active    NOTIFY changed)
     Q_PROPERTY(bool incoming     READ incoming  NOTIFY changed)
     Q_PROPERTY(bool connected    READ connected NOTIFY changed)
@@ -42,6 +43,7 @@ public:
     QString status() const;
     QString peerName() const { return m_peerName; }
     QString peerId() const { return m_peerId; }
+    QString peerAvatar() const;   // local file of the peer's cached avatar, empty if none
     bool active() const { return m_state != "idle"; }
     bool incoming() const { return m_state == "incoming"; }
     bool connected() const { return m_state == "connected"; }
@@ -73,6 +75,7 @@ private slots:
     void onEngineDisconnected();
     void onEngineData();
     void onProcessFinished();
+    void onAvatarReady(const QString &threadId, const QString &localPath);
     void onProcessError();
     void onProcessOutput();
     void onTick();

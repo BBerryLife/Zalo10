@@ -24,6 +24,13 @@ bool ZaloService::avatarMetaLookup(const QString &threadId, QString &urlHashOut,
     return found;
 }
 
+QString ZaloService::localAvatarFor(const QString &threadId) const
+{
+    QString urlHash, localPath;
+    if (!avatarMetaLookup(threadId, urlHash, localPath)) return QString();
+    return localPath;
+}
+
 void ZaloService::avatarMetaUpsert(const QString &threadId, const QString &urlHash, const QString &localPath)
 {
     if (!m_db || threadId.isEmpty()) return;

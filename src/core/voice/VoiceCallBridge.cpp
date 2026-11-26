@@ -65,6 +65,7 @@ VoiceCallBridge::VoiceCallBridge(ZaloService *service, QObject *parent)
 
     if (m_service) {
         connect(m_service, SIGNAL(voiceCallControl(QVariantMap)), this, SLOT(control(QVariantMap)));
+        connect(m_service, SIGNAL(avatarReady(QString,QString)), this, SLOT(onAvatarReady(QString,QString)));
     }
 }
 
@@ -83,6 +84,18 @@ QString VoiceCallBridge::socketPath() const
 {
     // The engine only accepts <appdata>/com.BerryLife.Zalo10.*/data/zaloone-engine.sock.
     return appRoot() + "/data/zaloone-engine.sock";
+}
+
+QString VoiceCallBridge::peerAvatar() const
+{
+    return m_service ? m_service->localAvatarFor(m_peerId) : QString();
+}
+
+// The caller's avatar may finish downloading while the call screen is already up.
+void VoiceCallBridge::onAvatarReady(const QString &threadId, const QString &localPath)
+{
+    Q_UNUSED(localPath);
+    if (!m_peerId.isEmpty() && threadId == m_peerId) emit changed();
 }
 
 QString VoiceCallBridge::engineDir() const
@@ -303,6 +316,7 @@ void VoiceCallBridge::applyState(const QVariantMap &event)
     }
 
     if (st == "incoming") {
+        m_peerId = event.value("peer").toString();
         m_peerName = event.value("name").toString();
         if (m_peerName.isEmpty()) m_peerName = QString::fromLatin1("Zalo");
         m_wasIncoming = true;

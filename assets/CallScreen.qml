@@ -2,10 +2,11 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// BBM-style 1:1 voice call screen (layout modelled on BBM's call/AudioDisplay + ControlBox):
-// full-bleed call background, avatar and caller name on top, mute + wide red End button at the
-// bottom; incoming calls show Answer / Decline instead. Driven entirely by the "voice" context
-// property (VoiceCallBridge). Presented automatically while voice.active.
+// 1:1 voice call screen, laid out like the stock Phone app's call screen.
+// Background: audio_bg_no_avatar.png on square screens, default_caller_2.png on portrait screens, full bleed.
+// Caller name (big) and state sit left-aligned around 42% of the screen height, as in the stock design.
+// Incoming calls show the slide control at the bottom (IncomingSlider.qml); active calls show mute + End.
+// Driven entirely by the "voice" context property (VoiceCallBridge). Presented while voice.active.
 Sheet {
     id: callSheet
     property bool showing: false
@@ -58,68 +59,68 @@ Sheet {
             layout: DockLayout {}
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
-            background: callBg.imagePaint
-            attachedObjects: ImagePaintDefinition {
-                id: callBg
-                imageSource: "asset:///images/ChatView/call/audio_bg.png"
-                repeatPattern: RepeatPattern.Fill
+            background: Color.Black
+
+            // Full-screen background picture.
+            ImageView {
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment: VerticalAlignment.Fill
+                scalingMethod: ScalingMethod.AspectFill
+                imageSource: app.squareScreen
+                             ? "asset:///images/ChatView/call/audio_bg_no_avatar.png"
+                             : "asset:///images/ChatView/default_caller_2.png"
             }
 
-            // Caller block (avatar + name + state), top-centre like BBM's audio display.
+            // Slide tint while the incoming-call slider is being dragged: green towards answer,
+            // red towards decline (the stock Phone app's look).
             Container {
-                horizontalAlignment: HorizontalAlignment.Center
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment: VerticalAlignment.Fill
+                background: Color.create("#3c5c22")
+                opacity: incomingSlider.progress < 0 ? Math.min(1, -incomingSlider.progress) * 0.85 : 0
+            }
+            Container {
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment: VerticalAlignment.Fill
+                background: Color.create("#7a1c20")
+                opacity: incomingSlider.progress > 0 ? Math.min(1, incomingSlider.progress) * 0.85 : 0
+            }
+
+            // Caller name and state, left-aligned, the name in big text.
+            Container {
+                horizontalAlignment: HorizontalAlignment.Left
                 verticalAlignment: VerticalAlignment.Top
-                topPadding: ui.du(9)
-                leftPadding: ui.du(3)
-                rightPadding: ui.du(3)
+                topPadding: (app.squareScreen ? app.screenWidthPx : app.screenHeightPx) * 0.42
+                leftPadding: app.screenWidthPx * 0.04
+                rightPadding: app.screenWidthPx * 0.04
                 layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
 
-                Container {
-                    horizontalAlignment: HorizontalAlignment.Center
-                    layout: DockLayout {}
-                    preferredWidth: ui.du(20)
-                    preferredHeight: ui.du(20)
-                    ImageView {
-                        imageSource: "asset:///images/ChatView/call/audioonly_avatar_bg.png"
-                        scalingMethod: ScalingMethod.AspectFit
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        verticalAlignment: VerticalAlignment.Fill
-                    }
-                    ImageView {
-                        imageSource: "asset:///images/ChatView/call/avatar_default_light.png"
-                        scalingMethod: ScalingMethod.AspectFit
-                        horizontalAlignment: HorizontalAlignment.Center
-                        verticalAlignment: VerticalAlignment.Center
-                        preferredWidth: ui.du(18)
-                        preferredHeight: ui.du(18)
-                    }
-                }
                 Label {
-                    horizontalAlignment: HorizontalAlignment.Center
-                    topMargin: ui.du(3)
+                    horizontalAlignment: HorizontalAlignment.Left
                     text: voice.peerName
                     textStyle.color: Color.White
-                    textStyle.fontSize: FontSize.XLarge
-                    textStyle.textAlign: TextAlign.Center
+                    textStyle.fontSize: FontSize.XXLarge
+                    textStyle.textAlign: TextAlign.Left
                     multiline: true
                 }
                 Label {
-                    horizontalAlignment: HorizontalAlignment.Center
+                    horizontalAlignment: HorizontalAlignment.Left
                     text: voice.connected ? voice.duration : voice.status
                     textStyle.color: Color.create("#c8dcf2")
                     textStyle.fontSize: FontSize.Medium
-                    textStyle.textAlign: TextAlign.Center
+                    textStyle.textAlign: TextAlign.Left
                 }
                 Label {
                     visible: voice.connected
-                    horizontalAlignment: HorizontalAlignment.Center
+                    horizontalAlignment: HorizontalAlignment.Left
                     text: voice.status
                     textStyle.color: Color.create("#8fb0d4")
                     textStyle.fontSize: FontSize.XSmall
+                    textStyle.textAlign: TextAlign.Left
                 }
             }
 
-            // In-call controls (mute + End), BBM ControlBox layout: mute left, End right.
+            // In-call controls (mute + End): shown once the call is no longer incoming.
             Container {
                 visible: !voice.incoming
                 horizontalAlignment: HorizontalAlignment.Fill
@@ -149,29 +150,17 @@ Sheet {
                 }
             }
 
-            // Incoming call: Decline / Answer.
-            Container {
+            // Incoming call: slide left to answer, right to decline (see IncomingSlider.qml).
+            IncomingSlider {
+                id: incomingSlider
                 visible: voice.incoming
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Bottom
-                bottomPadding: ui.du(5)
-                layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-
-                Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
-                ImageButton {
-                    defaultImageSource: "asset:///images/ChatView/call/decline_call.png"
-                    preferredWidth: ui.du(17); preferredHeight: ui.du(17)
-                    accessibility.name: "Decline"
-                    onClicked: voice.hangup()
-                }
-                Container { layoutProperties: StackLayoutProperties { spaceQuota: 2 } }
-                ImageButton {
-                    defaultImageSource: "asset:///images/ChatView/call/answer_call.png"
-                    preferredWidth: ui.du(17); preferredHeight: ui.du(17)
-                    accessibility.name: "Answer"
-                    onClicked: voice.answer()
-                }
-                Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
+                // Kept clear of the bottom edge: a horizontal drag right at the bottom edge seems to start the system
+                // "peek" gesture, which pulls this page aside and steals the drag.
+                bottomPadding: (app.squareScreen ? app.screenWidthPx : app.screenHeightPx) * 0.09
+                onAnswered: voice.answer()
+                onDeclined: voice.hangup()
             }
         }
     }

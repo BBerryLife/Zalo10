@@ -136,7 +136,8 @@ private:
     // (IM/TEXT_MESSAGE), a newly registered item action, and the theory that the ID is global while
     // register_client returns a NEW service on every build (taps invoked nothing). If taps still
     // fail with a fresh ID, that theory is ruled out.
-    static const long long ACCOUNT_ID = 424242007LL;
+    // 007 -> 008: the Zalo10 entry survived uninstalling the app (Hub kept the old account), same symptom as before.
+    static const long long ACCOUNT_ID = 424242008LL;
 
 };
 

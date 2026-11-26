@@ -213,6 +213,8 @@ public:
     Q_INVOKABLE QVariantList cachedChatThreads();
     // New Chat sheet: the friend list of the last successful fetchFriends() (empty before the first one).
     Q_INVOKABLE QVariantList cachedFriends() const { return m_lastFriendThreads; }
+    // Local file of a cached avatar for threadId (1:1 thread id == account id). Empty if not downloaded yet.
+    Q_INVOKABLE QString localAvatarFor(const QString &threadId) const;
     // Group list saved by the last complete fetch, so the Groups tab can fill instantly at start.
     Q_INVOKABLE QVariantList cachedConversations();
     // Feeds: changes in contacts' profiles (avatar, cover, bio, birthday), found by comparing with

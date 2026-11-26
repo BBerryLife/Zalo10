@@ -129,6 +129,7 @@
     <asset path="voice/root_alerts.py">voice/root_alerts.py</asset>
     <asset path="voice/q10-ca.pem">voice/q10-ca.pem</asset>
     <asset path="voice/ringtone.wav">voice/ringtone.wav</asset>
+    <asset path="voice/ringback.wav">voice/ringback.wav</asset>
     <asset path="voice/session_probe" type="Qnx/Elf">voice/session_probe</asset>
     <asset path="voice/libq10audio.so" type="Qnx/Elf">voice/libq10audio.so</asset>
     <asset path="voice/libq10opus.so" type="Qnx/Elf">voice/libq10opus.so</asset>

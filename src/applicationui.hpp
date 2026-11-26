@@ -18,8 +18,15 @@ class ZaloService;
 class ApplicationUI : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool squareScreen READ squareScreen CONSTANT)
+    Q_PROPERTY(int screenWidthPx READ screenWidthPx CONSTANT)
+    Q_PROPERTY(int screenHeightPx READ screenHeightPx CONSTANT)
 
 public:
+    // Square displays (Q5/Q10/Q20/Passport) vs portrait (Z3/Z10/Z20/Z30). Physical pixels.
+    bool squareScreen() const;
+    int  screenWidthPx() const;   // the shorter side, i.e. the width in portrait
+    int  screenHeightPx() const;  // the longer side
     explicit ApplicationUI();
     virtual ~ApplicationUI() {}
 

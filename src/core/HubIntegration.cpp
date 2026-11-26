@@ -82,6 +82,7 @@ static int registerItemAction(void *udsHandle, long long accountId, const char *
     uds_item_action_data_set_placement(a, placement);
     uds_item_action_data_set_context_mask(a, contextMask);
     int rc = uds_register_item_context_action(static_cast<uds_context_t>(udsHandle), accountId, a);
+    qDebug() << "[Hub] item action" << action << "rc=" << rc;
     uds_item_action_data_destroy(a);
     return rc;
 }
@@ -204,6 +205,7 @@ bool HubIntegration::init()
 
     int regStatus = uds_get_service_status(m_udsHandle);
     int serviceId = uds_get_service_id(m_udsHandle);
+    qDebug() << "[Hub] service status=" << regStatus << "serviceId=" << serviceId << "target=" << HUB_SERVICE_TARGET;
     // Compare serviceId/status across runs: if register_client always returns NEW with a changing
     // serviceId, Hub treats every build as a new service (see ACCOUNT_ID in the header).
 
@@ -212,15 +214,20 @@ bool HubIntegration::init()
     // Hub keeps its own database (it survives uninstall/reinstall), including the cached account icon. The
     // account id was bumped to get a clean record; the earlier ids are removed so they do not linger as
     // duplicate "Zalo10" accounts.
-    for (long long oldId = 424242001LL; oldId < ACCOUNT_ID; ++oldId) uds_account_removed(m_udsHandle, oldId);
+    int oldRemoved = 0, oldNotRemoved = 0;
+    for (long long oldId = 424242001LL; oldId < ACCOUNT_ID; ++oldId) {
+        if (uds_account_removed(m_udsHandle, oldId) == UDS_SUCCESS) ++oldRemoved; else ++oldNotRemoved;
+    }
     int removeRc = uds_account_removed(m_udsHandle, ACCOUNT_ID);
+    qDebug() << "[Hub] old accounts removed=" << oldRemoved << "not removable=" << oldNotRemoved
+             << "| remove current rc=" << removeRc;
 
     uds_account_data_t *account = uds_account_data_create();
     uds_account_data_set_id(account, ACCOUNT_ID);
     uds_account_data_set_name(account, "Zalo10");
     uds_account_data_set_description(account, "");
     uds_account_data_set_icon(account, HUB_ICON_FILE);
-    uds_account_data_set_target_name(account, HUB_SERVICE_TARGET);
+    uds_account_data_set_target_name(account, HUB_INVOKE_TARGET);   // per the setup note at the top: the invoke-target id
     uds_account_data_set_supports_compose(account, false);
     // Tried UDS_ACCOUNT_TYPE_TEXT_MESSAGE: it did not fix tapping and changed the Hub sort order,
     // so IM is kept.
@@ -228,6 +235,7 @@ bool HubIntegration::init()
 
     rc = uds_account_added(m_udsHandle, account);
     uds_account_data_destroy(account);
+    qDebug() << "[Hub] account add rc=" << rc << "id=" << ACCOUNT_ID;
 
     if (rc != UDS_SUCCESS) {
         qWarning() << "[Hub] account add failed, rc=" << rc;
@@ -253,6 +261,7 @@ bool HubIntegration::init()
         uds_category_data_set_name(category, "Zalo10");
         int categoryRc = uds_category_added(m_udsHandle, category);
         if (categoryRc != UDS_SUCCESS) categoryRc = uds_category_updated(m_udsHandle, category);
+        qDebug() << "[Hub] category 1 rc=" << categoryRc;
         uds_category_data_destroy(category);
     }
 
@@ -263,16 +272,17 @@ bool HubIntegration::init()
     uds_item_action_data_set_target(openAction, HUB_INVOKE_TARGET);
     uds_item_action_data_set_type(openAction, "service");
     // With the reply card on, "Reply" belongs to the card and this one is plainly "Open in Zalo10".
-    const bool replyCard = QSettings("BerryLife", "Zalo10").value("hubChatSheet", true).toBool();
+    const bool replyCard = true;   // long-press Reply opens the reply card; a short tap opens the chat
     uds_item_action_data_set_title(openAction, replyCard ? "Open in Zalo10" : "Reply");
     uds_item_action_data_set_image_source(openAction, replyCard ? HUB_ICON_FILE : HUB_ICON_REPLY_FILE);
     uds_item_action_data_set_mime_type(openAction, HUB_MIME_TYPE_MESSAGE);
     uds_item_action_data_set_placement(openAction, UDS_PLACEMENT_DEFAULT);
     // With the reply card on, the card's own Open button replaces this menu entry: a context mask no item state ever
     // has keeps it out of the long-press menu while the action stays registered (the Hub tap goes to the app).
-    uds_item_action_data_set_context_mask(openAction, replyCard ? 0x40000000 : (HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD));
+    uds_item_action_data_set_context_mask(openAction, HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD);  // EXPERIMENT: valid state bits instead of 0x40000000
 
     int actionRc = uds_register_item_context_action(m_udsHandle, ACCOUNT_ID, openAction);
+    qDebug() << "[Hub] open action rc=" << actionRc;
     uds_item_action_data_destroy(openAction);
     if (actionRc != UDS_SUCCESS) {
         qWarning() << "[Hub] item action registration failed, rc=" << actionRc;
@@ -314,6 +324,7 @@ bool HubIntegration::initFeedsAccount()
     int rc = uds_category_added(m_udsHandle, category);
     if (rc != UDS_SUCCESS) rc = uds_category_updated(m_udsHandle, category);
     uds_category_data_destroy(category);
+    qDebug() << "[Hub] feeds category rc=" << rc;
     if (rc != UDS_SUCCESS) qWarning() << "[Hub] feeds category failed, rc=" << rc;
 
     m_feedsReady = true;
@@ -407,7 +418,7 @@ void HubIntegration::setAccountUnread(bool unread)
     uds_account_data_set_name(account, "Zalo10");
     uds_account_data_set_description(account, "");
     uds_account_data_set_icon(account, unread ? HUB_ICON_UNREAD_FILE : HUB_ICON_FILE);
-    uds_account_data_set_target_name(account, HUB_SERVICE_TARGET);
+    uds_account_data_set_target_name(account, HUB_INVOKE_TARGET);   // per the setup note at the top: the invoke-target id
     uds_account_data_set_supports_compose(account, false);
     uds_account_data_set_type(account, UDS_ACCOUNT_TYPE_IM);
     int rc = uds_account_updated(m_udsHandle, account);

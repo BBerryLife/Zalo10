@@ -3,15 +3,11 @@
 Protocol adapted from VN-Linux-Family/zalo-for-linux (BSD-3-Clause).
 Does not record audio, save keys, or depend on a desktop sound server.
 """
-import json
+import array
 import os
 import socket
 import struct
 import time
-try:
-    import audioop
-except ImportError:
-    audioop=None
 from q10media import Audio, Opus, SRTP, VoiceDSP, audio_header, control_header, init_packet, u16string, unwrap_relay, wrap_audio
 from videowire import VideoAssembler,packetize
 
@@ -143,6 +139,16 @@ class Feedback:
         return struct.pack('!BBH',0x80+(1 if blocks else 0),200,len(body)//4)+body
 
 
+# Z2 (playout tuning for the Q10, see the notes in audio_tick)
+DEVICE_TARGET_Z3=640*3    # Z3: speaker buffer kept at about 60 ms
+PEAK_Z3=True
+PLAYOUT_DELAY_Z2=0.16     # was 0.10
+CATCHUP_AFTER_Z2=0.35     # was 0.12
+STATS_DIR_Z2='/accounts/1000/shared/documents/zalo10/log'
+REC_ENABLED_Z9=False      # Z9 call recorder disabled: never record call audio to disk
+REC_SECONDS_Z9=15
+
+
 class RelayMedia:
     def __init__(self,ready,early,failed,peer_end,clock=time.time,root=None,video_frame=None):
         self.ready,self.early,self.failed,self.peer_end=ready,early,failed,peer_end
@@ -151,11 +157,8 @@ class RelayMedia:
         self.call=None;self.active=False;self.candidates={};self.replies={};self.chosen=None
         self.video_frame=video_frame or (lambda key,data:None)
         self.muted=False
-        self.tuning_path=None;self.cfg={'dsp':True,'mic_gain':'auto','mic_target':1800.0,'mic_max_gain':8.0,'far_max_gain':6.0,'ns_db':-10,'gate':120.0,'play_gain':1.0,'audio_type':None,'cushion':0}
-        self.mic_gain=1.5;self.next_write=None;self.late_run=0;self.waiting=False;self.expected=None;self.play_at=None
-        self.far_until=0.0;self.dsp_w=0.0;self.last_loop=None;self.applied_gain=1.0
-        self.cushion_cap=0;self.aec_ref=b'';self.pb_restore=0;self.pb_pending=0;self.pb_total=0;self.pb_inject_at=0.0
-        self.stats={'video_input':0,'video_key_input':0,'video_no_key':0,'video_queue_drop':0,'video_sent':0,'udp_errors':0,"sent_audio_packets":0,"received_audio_packets":0,"dropped_auth_packets":0,"concealed_frames":0,"dropped_capture_frames":0,"play_silence":0,"play_full":0,"mic_peak":0,"play_peak":0,"mic_raw_peak":0,"mic_speech_frames":0,"mic_dsp_muted":0,"play_voice_frames":0,"resyncs":0,"skips":0,"play_wait":0,"late_packets":0}
+        self.speaker_z19=False   # Z19: False = earpiece (default each call), True = loudspeaker
+        self.stats={'video_input':0,'video_key_input':0,'video_no_key':0,'video_queue_drop':0,'video_sent':0,'udp_errors':0,"sent_audio_packets":0,"received_audio_packets":0,"dropped_auth_packets":0,"concealed_frames":0,"dropped_capture_frames":0}
 
     def prepare(self,call,servers):
         if self.sock:
@@ -188,7 +191,8 @@ class RelayMedia:
         self.feedback=Feedback(call['local_uid'],call['peer_uid'])
         self.packet=init_packet(call['local_uid'],call['peer_uid'],call['id'],call['session'],call['role']=='caller')
         self.attempts=0;self.next_init=0;self.ready_at=None
-        self.capture_buffer=b'';self.playback_buffer=b'';self.jitter={};self.expected=None;self.play_at=None;self.late_run=0;self.waiting=False
+        self.capture_buffer=b'';self.playback_buffer=b'';self.jitter={};self.expected=None;self.play_at=None
+        self.rec_done_z9=False;self.rec_t0_z9=None;self.rec_z9_parts=None;self.rx_idx_z9=None   # Z9
         self.rx_frames=0;self.rx_interval=0;self.last_rx=self.clock();self.last_stats=self.clock()
         self.sent_octets=0;self.next_ping=self.next_status=self.next_report=self.next_twcc=0
         self.sequence=(49152+struct.unpack('!H',os.urandom(2))[0]%4096) if call.get('video') else struct.unpack('!H',os.urandom(2))[0]
@@ -241,8 +245,19 @@ class RelayMedia:
                     self.stats['dropped_auth_packets']+=1;continue
                 now=self.clock();self.last_rx=now;self.rx_frames+=1;self.rx_interval+=1
                 self.stats['received_audio_packets']+=1
+                self.rx_meta_z9(rtp,self.rx.last_index,plain,now)
                 self.feedback.received_rtp(rtp,self.rx.last_index,now)
-                self.queue_audio(self.rx.last_index,plain,now)
+                if self.expected is None:
+                    self.expected=self.rx.last_index;self.play_at=now+PLAYOUT_DELAY_Z2
+                if self.rx.last_index<self.expected and not self.jitter and self.expected-self.rx.last_index<3000:
+                    # Z3: the other phone paused sending (silence) while the play-out clock ran on; follow its
+                    # numbers again instead of dropping every later packet as "too old" (was: all concealed)
+                    self.stats['resyncs']=self.stats.get('resyncs',0)+1
+                    self.expected=self.rx.last_index;self.play_at=now+0.04
+                if self.rx.last_index>=self.expected:
+                    if len(self.jitter)>=64:
+                        self.jitter.clear();self.expected=self.rx.last_index;self.play_at=now+PLAYOUT_DELAY_Z2
+                    self.jitter[self.rx.last_index]=plain
                 self.early(self.rx_frames)
                 if not self.sock:
                     return
@@ -268,10 +283,9 @@ class RelayMedia:
         try:
             self.codec=Opus(os.path.join(self.root,'libq10opus.so'))
             self.dsp=VoiceDSP(os.path.join(self.root,'libq10dsp.so'))
-            self.load_tuning()
-            self.stats['ns_applied']=int(self.dsp.tune(self.cfg['ns_db']))
-            self.playback=Audio(os.path.join(self.root,'libq10audio.so'),False,audio_type=self.cfg['audio_type'])
-            self.capture=Audio(os.path.join(self.root,'libq10audio.so'),True,audio_type=self.cfg['audio_type'])
+            video=bool(self.call.get('video'))
+            self.playback=Audio(os.path.join(self.root,'libq10audio.so'),False,video=video,speaker=self.speaker_z19)
+            self.capture=Audio(os.path.join(self.root,'libq10audio.so'),True,video=video)
         except Exception:
             self.close_audio()
             raise
@@ -282,256 +296,65 @@ class RelayMedia:
             if address!=self.chosen:
                 self.send(control_header(3,self.call['local_uid'],token)+struct.pack('<I',self.call['id']),address)
 
-    def load_tuning(self):
-        """Optional <data>/voice-tuning.json (all keys optional):
-        dsp (true = echo canceller only while the far end is audible, false = off, "always"), mic_gain ("auto" or 0.1-16), mic_target (rms), mic_max_gain, gate (rms),
-        play_gain (0.1-8), audio_type (int: audio-manager type used for both directions)."""
-        cfg={'dsp':True,'mic_gain':'auto','mic_target':1800.0,'mic_max_gain':8.0,'far_max_gain':6.0,'ns_db':-10,'gate':120.0,'play_gain':1.0,'audio_type':None,'cushion':0}
-        try:
-            with open(self.tuning_path) as handle:data=json.load(handle)
-        except (IOError,OSError,ValueError,TypeError):
-            data={}
-        if isinstance(data,dict):
-            def number(value,low,high):
-                return isinstance(value,(int,float)) and not isinstance(value,bool) and low<=value<=high
-            for key,low,high in (('mic_target',500,12000),('mic_max_gain',1,16),('far_max_gain',1,16),('gate',0,2000),('play_gain',0.1,8)):
-                if number(data.get(key),low,high):cfg[key]=float(data[key])
-            if data.get('dsp') in (True,False):cfg['dsp']=bool(data['dsp'])
-            elif data.get('dsp')=='always':cfg['dsp']='always'
-            gain=data.get('mic_gain')
-            if gain=='auto':cfg['mic_gain']='auto'
-            elif number(gain,0.1,16):cfg['mic_gain']=float(gain)
-            if number(data.get('ns_db'),-30,-1):cfg['ns_db']=int(data['ns_db'])
-            if number(data.get('cushion'),0,4):cfg['cushion']=int(data['cushion'])
-            if data.get('ns_db')=='stock':cfg['ns_db']=None
-            kind=data.get('audio_type')
-            if isinstance(kind,int) and not isinstance(kind,bool) and 0<=kind<=32:cfg['audio_type']=kind
-        self.cfg=cfg;self.mic_gain=1.5;self.next_write=None
-        self.cushion_cap=cfg['cushion'];self.aec_ref=b'';self.pb_restore=0;self.pb_pending=0;self.pb_total=0;self.pb_inject_at=0.0
-        self.stats['cfg_dsp']=2 if cfg['dsp']=='always' else int(bool(cfg['dsp']));self.stats['cfg_type']=-1 if cfg['audio_type'] is None else cfg['audio_type']
-        self.stats['cfg_play_x100']=int(cfg['play_gain']*100)
-        self.stats['cfg_ns']=-18 if cfg['ns_db'] is None else cfg['ns_db']
-        self.stats['cfg_mic']=-1 if cfg['mic_gain']=='auto' else int(cfg['mic_gain']*100)
-
-    def device_messages(self,data):
-        """Count the warnings written to this process's stderr during a call.
-
-        "discarded first playback frame", "No playback frame available", "Auto-filling the buffer"
-        and "Had to discard a playback frame" are printed by the Speex echo canceller inside
-        libq10dsp, not by the speaker: its reference (speaker) stream was fed out of step with the
-        microphone stream. process_mic now feeds it strictly one reference frame per mic frame, so
-        after the first few frames of a call these should stop; dev_autofill/dev_discard staying
-        high means that pairing is broken again. The optional `cushion` (default 0 = off) adds
-        silent frames to the speaker queue when they appear; it does not help the canceller."""
-        if not self.active:
-            return
-        stats=self.stats
-        first=data.count(b'discarded first playback frame')
-        noref=data.count(b'No playback frame available')
-        auto=data.count(b'Auto-filling the buffer')
-        dropped=data.count(b'Had to discard a playback frame')
-        if first:stats['dev_first']=stats.get('dev_first',0)+first
-        if noref:stats['dev_noref']=stats.get('dev_noref',0)+noref
-        if auto:stats['dev_autofill']=stats.get('dev_autofill',0)+auto
-        if dropped:stats['dev_discard']=stats.get('dev_discard',0)+dropped
-        if not self.cushion_cap:
-            return
-        if first and stats['dev_first']<=8:self.pb_restore=min(3,self.pb_restore+first)
-        if auto and self.pb_total+self.pb_pending<self.cushion_cap:self.pb_pending+=1
-        if dropped:
-            self.pb_total=max(0,self.pb_total-1)
-            self.cushion_cap=min(self.cushion_cap,self.pb_total)
-            self.pb_pending=0;self.pb_restore=0
-
-    def gap(self,now):
-        """Called once per engine loop iteration: how long the loop went without running."""
-        if self.last_loop is not None:
-            gap=now-self.last_loop;ms=int(gap*1000)
-            if gap>0.04:self.stats['gap_gt40']=self.stats.get('gap_gt40',0)+1
-            if gap>0.06:self.stats['gap_gt60']=self.stats.get('gap_gt60',0)+1
-            if gap>0.10:self.stats['gap_gt100']=self.stats.get('gap_gt100',0)+1
-            if ms>self.stats.get('gap_max',0):self.stats['gap_max']=ms
-        self.last_loop=now
-
-    def lap(self,name,since):
-        """Time one section of the loop; returns the new mark. Counts sections slower than 30 ms."""
-        now=time.time();spent=now-since
-        if spent>0.03:self.stats['slow_'+name]=self.stats.get('slow_'+name,0)+1
-        ms=int(spent*1000)
-        if ms>self.stats.get('max_'+name,0):self.stats['max_'+name]=ms
-        return now
-
-    def note(self,key,value,alpha=0.02):
-        old=self.stats.get(key)
-        self.stats[key]=int(value) if old is None else int(old+(value-old)*alpha)
-
-    def process_mic(self,frame,now=None):
-        if now is None:now=time.time()
-        raw=audioop.rms(frame,2) if audioop else 0
-        if audioop:
-            self.stats['mic_raw_peak']=max(self.stats['mic_raw_peak'],audioop.max(frame,2))
-            if raw>=self.cfg['gate']:
-                self.note('mic_raw_speech_rms',raw,0.05);self.stats['mic_speech_frames']+=1
-            elif audioop:
-                # Frames below the gate: the room/handset noise floor. Together with the speech level
-                # above it gives the microphone's signal-to-noise ratio, which the digital gain cannot improve.
-                self.note('mic_raw_noise_rms',raw,0.02);self.stats['mic_noise_frames']=self.stats.get('mic_noise_frames',0)+1
-        used=False
-        if self.cfg['dsp']:
-            # Always run the canceller so its filter keeps adapting, but only use its output while
-            # the far end is audible (echo is possible). With the far end silent there is nothing to
-            # cancel, and the noise suppressor was cutting our own speech by ~13 dB. Weight changes
-            # are ramped over two frames so switching does not click.
-            ref=self.aec_ref[:640];self.aec_ref=self.aec_ref[640:]
-            if len(ref)<640:ref+=b'\x00'*(640-len(ref))      # nothing was played since the last mic frame
-            self.dsp.playback(ref)                           # exactly one reference frame per mic frame
-            processed=self.dsp.capture(frame)
-            far=self.cfg['dsp']=='always' or not audioop or now<self.far_until
-            target=1.0 if far else 0.0
-            if self.dsp_w<target:self.dsp_w=min(target,self.dsp_w+0.5)
-            elif self.dsp_w>target:self.dsp_w=max(target,self.dsp_w-0.5)
-            if self.dsp_w>=1.0:frame=processed;used=True
-            elif self.dsp_w>0.0:
-                frame=audioop.add(audioop.mul(frame,2,1.0-self.dsp_w),audioop.mul(processed,2,self.dsp_w),2);used=True
-        if self.muted:
-            return b'\x00'*640
-        if not audioop:
-            return frame
-        if used:self.stats['mic_dsp_frames']=self.stats.get('mic_dsp_frames',0)+1
-        rms=audioop.rms(frame,2);peak=audioop.max(frame,2)
-        if used and raw>=self.cfg['gate'] and rms<self.cfg['gate']*0.5:
-            self.stats['mic_dsp_muted']+=1                # echo canceller swallowed real speech
-        far_now=now<self.far_until
-        gain=self.cfg['mic_gain']
-        if gain=='auto':
-            # Slow-rise / fast-fall AGC toward a speech level. Frames below the gate (room noise,
-            # pauses) hold the gain so the noise floor is not chased. While the far end is audible
-            # the ceiling drops and the gain never rises, so residual echo is not amplified.
-            ceiling=self.cfg['mic_max_gain']
-            if far_now:ceiling=min(ceiling,self.cfg['far_max_gain'])
-            if rms>=self.cfg['gate']:
-                want=max(1.0,min(ceiling,self.cfg['mic_target']/float(rms)))
-                if want<self.mic_gain:self.mic_gain=want
-                elif not far_now:self.mic_gain+=(want-self.mic_gain)*0.04
-            if far_now and self.mic_gain>ceiling:self.mic_gain=max(ceiling,self.mic_gain*0.9)
-            gain=self.mic_gain
-        # Apply the gain as a short ramp (4 x 5 ms) from last frame's value so level changes do not
-        # click at frame boundaries, and limit each block so it can never clip.
-        previous=self.applied_gain
-        if gain!=1.0 or previous!=1.0:
-            blocks=[]
-            for i in range(4):
-                step=previous+(gain-previous)*(i+1)/4.0
-                block=frame[i*160:(i+1)*160]
-                top=audioop.max(block,2)
-                if step>1.0 and top>0:step=min(step,32000.0/top)
-                blocks.append(audioop.mul(block,2,step) if step!=1.0 else block)
-            frame=b''.join(blocks)
-        self.applied_gain=gain
-        sent=audioop.rms(frame,2)
-        if sent>=self.cfg['gate']:self.note('mic_sent_speech_rms',sent,0.05)
-        elif raw<self.cfg['gate']:self.note('mic_sent_noise_rms',sent,0.02)
-        self.note('mic_gain_x100',gain*100)
-        self.stats['mic_peak']=max(self.stats['mic_peak'],audioop.max(frame,2))
-        return frame
-
-    def aec_feed(self,pcm):
-        """Remember audio handed to the speaker; process_mic pairs it 1:1 with mic frames."""
-        if not self.cfg['dsp']:return
-        self.aec_ref+=pcm
-        if len(self.aec_ref)>640*4:self.aec_ref=self.aec_ref[-640*3:]     # never let the reference run far ahead
-
-    def pace_playback(self,now):
-        """Feed the speaker one 20 ms frame per 20 ms. The device queue holds only 4 x 640 bytes,
-        so bursts underrun it ("No playback frame") and then overflow it ("discard a playback
-        frame"); both are audible as crackle."""
-        if self.next_write is None:
-            prime=b'\x00'*1920                        # 3 fragments (60 ms): enough cushion, keeps the echo path short
-            written=self.playback.write(prime)
-            if written>0:self.aec_feed(prime[:written])
-            if written<0 and written!=-11:
-                self.failed('speaker_io_error_%d' % written);return
-            self.next_write=now+0.02
-            return
-        gain=self.cfg['play_gain']
-        if (self.pb_restore>0 or self.pb_pending>0) and now>=self.pb_inject_at:
-            silence=b'\x00'*640
-            written=self.playback.write(silence)
-            if written>0:
-                self.aec_feed(silence[:written])
-                if self.pb_restore>0:self.pb_restore-=1
-                else:
-                    self.pb_pending-=1;self.pb_total+=1;self.stats['cush_total']=self.pb_total
-                self.pb_inject_at=now+0.02
-            elif written in (0,-11):
-                self.pb_restore=0;self.pb_pending=0       # queue is full: the cushion is already as deep as it gets
+    def audio_tick(self,now):
+        for _ in range(8):
+            data=self.capture.read()
+            if isinstance(data,bytes) and data:
+                self.capture_buffer+=data
+            elif data in (0,-11) or data==b'':
+                break
             else:
-                self.failed('speaker_io_error_%d' % written);return
-        for _ in range(4):
-            if now<self.next_write:break
-            real=len(self.playback_buffer)>=640
-            chunk=self.playback_buffer[:640] if real else b'\x00'*640
-            out=audioop.mul(chunk,2,gain) if (real and gain!=1.0 and audioop) else chunk
-            written=self.playback.write(out)
-            if written>0:
-                if real:self.playback_buffer=self.playback_buffer[written:]
-                else:self.stats['play_silence']+=1
-                self.aec_feed(out[:written])
-                if real and audioop:
-                    level=audioop.rms(out[:written],2)
-                    if level>=100:
-                        self.note('play_voice_rms',level,0.05);self.stats['play_voice_frames']+=1
-                    if level>=80:self.far_until=now+0.6        # far end audible: echo possible
-                    self.stats['play_peak']=max(self.stats['play_peak'],audioop.max(out[:written],2))
-                self.next_write+=0.02
-                if written<len(out):break
-            elif written in (0,-11):
-                self.stats['play_full']+=1;break
-            else:
-                self.failed('speaker_io_error_%d' % written);return
-        if now-self.next_write>0.1:
-            self.next_write=now                      # stalled process: resync instead of bursting
-
-    def queue_audio(self,index,plain,now):
-        """Put a received frame (index = SRTP packet index) into the jitter buffer."""
-        if self.expected is None:
-            self.expected=index;self.play_at=now+0.06;self.late_run=0
-        if index<self.expected:
-            # Behind the playout pointer. A lone straggler was already concealed; a run of them
-            # means the pointer got ahead of the stream, so rejoin the stream where it is now.
-            self.stats['late_packets']+=1;self.late_run+=1
-            if self.late_run>=5:
-                self.jitter.clear();self.expected=index;self.play_at=now+0.04
-                self.late_run=0;self.waiting=False;self.stats['resyncs']+=1
-                self.jitter[index]=plain
-            return
-        self.late_run=0
-        if self.waiting:
-            self.waiting=False;self.play_at=now+0.04       # stream resumed: re-buffer ~40 ms
-        if len(self.jitter)>=64:
-            self.jitter.clear();self.expected=index;self.play_at=now+0.06;self.stats['resyncs']+=1
-        self.jitter[index]=plain
-
-    def schedule_playout(self,now):
-        """Decode one frame per 20 ms into playback_buffer, never running ahead of the stream."""
-        if self.play_at is None or self.expected is None:
-            return
-        if self.rx.highest-self.expected>8:                # bound latency to ~160 ms
-            self.expected=self.rx.highest-3
+                self.failed('microphone_io_error_%d' % data);return
+        # Keep normal scheduler bursts (up to 120 ms) intact; discard only
+        # genuinely stale speech. Each 640-byte unit is one 20-ms Opus frame.
+        if len(self.capture_buffer)>640*6:
+            dropped=(len(self.capture_buffer)//640-6)*640
+            self.capture_buffer=self.capture_buffer[dropped:]
+            self.stats['dropped_capture_frames']+=dropped//640
+            self.timestamp=(self.timestamp+(dropped//640)*320)&0xffffffff
+        for _ in range(min(3,len(self.capture_buffer)//640)):
+            frame=self.capture_buffer[:640];self.capture_buffer=self.capture_buffer[640:]
+            if PEAK_Z3 and self.sequence%5==0:self.peak_z3('peak_mic',frame)
+            self.rec_z9(b'M',frame,now)
+            frame=self.dsp.capture(frame)
+            if self.muted:frame=b'\x00'*640
+            self.rec_z9(b'S',frame,now)
+            opus=self.codec.encode(frame)
+            self.rec_z9(b'E',opus,now)
+            header=audio_header(self.sequence,self.timestamp,self.call['local_uid'],self.twseq)
+            packet=self.tx.protect(header,opus,self.roc)
+            self.twseq=(self.twseq+1)&65535
+            self.send(wrap_audio(packet,self.replies[self.chosen]))
+            self.stats['sent_audio_packets']+=1;self.sent_octets+=len(opus)
+            self.sequence=(self.sequence+1)&65535
+            if self.sequence==0:self.roc+=1
+            self.timestamp=(self.timestamp+320)&0xffffffff
+        if self.play_at is not None and now-self.play_at>CATCHUP_AFTER_Z2:
+            # A delayed process must catch up to current speech, not play an
+            # ever-growing tail of old packets after a scheduling pause.
+            # Z2: only after a long pause (was 0.12 s); keep 5 frames (was 3).
+            self.stats['catchups']=self.stats.get('catchups',0)+1
+            self.expected=max(self.expected,self.rx.highest-5)
             self.jitter=dict((index,value) for index,value in self.jitter.items() if index>=self.expected)
-            self.stats['skips']+=1
-        if now-self.play_at>0.12:
-            self.play_at=now-0.04                          # delayed process: resume pacing, no backlog replay
-        for _ in range(3):
-            if now<self.play_at:
+            self.play_at=now-0.04
+        # Z3: too much waiting speech (more than 12 frames = 240 ms behind) -> jump to 6 frames behind once
+        if self.expected is not None and self.rx.highest-self.expected>12:
+            self.stats['catchups']=self.stats.get('catchups',0)+1
+            self.expected=self.rx.highest-6
+            self.jitter=dict((index,value) for index,value in self.jitter.items() if index>=self.expected)
+        for _ in range(6):   # Z2: was 3
+            if self.play_at is None or now<self.play_at:
                 break
             packet=self.jitter.pop(self.expected,None)
-            if packet is None and self.rx.highest<=self.expected:
-                # Nothing newer has arrived: the stream is late or paused (silence suppression).
-                # Hold the pointer. Advancing it here made every later packet "late" and dropped it.
-                self.stats['play_wait']+=1;self.waiting=True
-                self.play_at=now+0.02
-                break
+            if packet is None and self.rx.highest<self.expected:
+                # Z3: nothing newer has arrived (the other phone is silent or late): fill this 20 ms but keep
+                # waiting for the same number; short gaps get Opus concealment, longer ones plain silence
+                self.stats['waits']=self.stats.get('waits',0)+1
+                self.wait_run_z3=getattr(self,'wait_run_z3',0)+1
+                self.playback_buffer+=self.codec.decode(None) if self.wait_run_z3<=3 else b'\x00'*640
+                self.play_at+=0.02
+                continue
+            self.wait_run_z3=0
             if packet is None:
                 self.stats['concealed_frames']+=1
             try:
@@ -542,48 +365,115 @@ class RelayMedia:
             except (RuntimeError,ValueError):
                 self.playback_buffer+=self.codec.decode(None)
             self.expected+=1;self.play_at+=0.02
-            if len(self.playback_buffer)>640*6:
-                self.playback_buffer=self.playback_buffer[-640*4:]
+            if PEAK_Z3 and self.expected%5==0:self.peak_z3('peak_play',self.playback_buffer[-640:])
+            if len(self.playback_buffer)>640*12:   # Z2: was 6 -> 4 (cut speech every short pause)
+                self.stats['trimmed_frames']=self.stats.get('trimmed_frames',0)+(len(self.playback_buffer)//640-8)
+                self.playback_buffer=self.playback_buffer[-640*8:]
+        if self.playback_buffer:
+            # Z3: keep the speaker buffer shallow (about 60 ms) so the echo canceller stays in step;
+            # the larger device buffer only absorbs pauses
+            room=3840
+            q=self.playback.queued()
+            if q is not None and self.playback.rate()==48000:q=None   # Z15: no 60 ms cap at 48 kHz (the device starts after 160 ms)
+            if q is not None:
+                room=max(0,DEVICE_TARGET_Z3-q)
+                if q>getattr(self,'queued_max_z3',0):self.queued_max_z3=q
+            written=self.playback.write(self.playback_buffer[:min(3840,room)]) if room>=640 else 0
+            if written>0:
+                self.rec_z9(b'W',self.playback_buffer[:written],now)
+                self.dsp.playback(self.playback_buffer[:written])
+                self.playback_buffer=self.playback_buffer[written:]
+            elif written not in (0,-11):
+                self.failed('speaker_io_error_%d' % written)
 
-    def audio_tick(self,now):
-        mark=time.time()
-        for _ in range(8):
-            data=self.capture.read()
-            if isinstance(data,bytes) and data:
-                self.capture_buffer+=data
-            elif data in (0,-11) or data==b'':
-                break
-            else:
-                self.failed('microphone_io_error_%d' % data);return
-        mark=self.lap('cap',mark)
-        # Keep normal scheduler bursts (up to 120 ms) intact; discard only
-        # genuinely stale speech. Each 640-byte unit is one 20-ms Opus frame.
-        if len(self.capture_buffer)>640*6:
-            dropped=(len(self.capture_buffer)//640-6)*640
-            self.capture_buffer=self.capture_buffer[dropped:]
-            self.stats['dropped_capture_frames']+=dropped//640
-            self.timestamp=(self.timestamp+(dropped//640)*320)&0xffffffff
-        for _ in range(min(3,len(self.capture_buffer)//640)):
-            frame=self.capture_buffer[:640];self.capture_buffer=self.capture_buffer[640:]
-            frame=self.process_mic(frame,now)
-            opus=self.codec.encode(frame)
-            header=audio_header(self.sequence,self.timestamp,self.call['local_uid'],self.twseq)
-            packet=self.tx.protect(header,opus,self.roc)
-            self.twseq=(self.twseq+1)&65535
-            self.send(wrap_audio(packet,self.replies[self.chosen]))
-            self.stats['sent_audio_packets']+=1;self.sent_octets+=len(opus)
-            self.sequence=(self.sequence+1)&65535
-            if self.sequence==0:self.roc+=1
-            self.timestamp=(self.timestamp+320)&0xffffffff
-        mark=self.lap('enc',mark)
-        self.schedule_playout(now)
-        self.pace_playback(now)
-        self.lap('play',mark)
+    def peak_z3(self,key,pcm):
+        # Z3: loudest sample of a 20 ms frame (32767 = clipping), every 5th frame
+        try:
+            a=array.array('h');a.frombytes(pcm[:640])
+            m=max(max(a),-min(a)) if len(a) else 0
+            if m>=32700:self.stats['clip_'+key]=self.stats.get('clip_'+key,0)+1   # Z9: frames at full scale
+            if m>self.stats.get(key,0):self.stats[key]=m
+        except Exception:
+            pass
+
+    def rx_meta_z9(self,rtp,index,payload,now):
+        # Z9: how the other phone stamps its packets (RTP clock step per 20 ms) and what Opus mode it sends (counts only)
+        try:
+            ts=struct.unpack_from('!I',rtp,4)[0]
+            if getattr(self,'rx_idx_z9',None) is not None and index==self.rx_idx_z9+1:
+                step=(ts-self.rx_ts_z9)&0xffffffff
+                c=self.stats.setdefault('ts_steps_z9',{})
+                if step in c or len(c)<16:c[step]=c.get(step,0)+1
+            self.rx_ts_z9=ts;self.rx_idx_z9=index
+            if payload:
+                self.stats['toc_z9']=payload[0]
+                self.stats['rx_bytes_z9']=self.stats.get('rx_bytes_z9',0)+len(payload)
+                self.stats['pt_z9']=rtp[1]&127
+            self.rec_z9(b'R',struct.pack('<II',index&0xffffffff,ts)+payload,now)
+        except Exception:
+            pass
+
+    def rec_z9(self,tag,data,now):
+        # Z9 test build only: the first REC_SECONDS_Z9 s of the call (microphone, sent and received audio) for analysis
+        if not REC_ENABLED_Z9:return
+        try:
+            if getattr(self,'rec_done_z9',False):return
+            t0=getattr(self,'rec_t0_z9',None)
+            if t0 is None:
+                self.rec_t0_z9=t0=now;self.rec_z9_parts=[b'Z9REC1']
+            if now-t0>REC_SECONDS_Z9:
+                self.rec_flush_z9();return
+            self.rec_z9_parts.append(tag+struct.pack('<IH',int((now-t0)*1000),len(data))+data)
+        except Exception:
+            pass
+
+    def rec_flush_z9(self):
+        try:
+            if getattr(self,'rec_done_z9',False) or not getattr(self,'rec_z9_parts',None):return
+            self.rec_done_z9=True
+            d=STATS_DIR_Z2
+            if not os.path.isdir(d):os.makedirs(d)
+            with open(os.path.join(d,'z9_ghiam.bin'),'wb') as f:f.write(b''.join(self.rec_z9_parts))
+            self.rec_z9_parts=None
+        except Exception:
+            pass
+
+    def log_stats_z2(self,now,final=False):
+        try:
+            if not final and now-getattr(self,'stats_at_z2',0)<5:return
+            self.stats_at_z2=now
+            st=self.stats
+            line='%s %s video=%d rx=%d concealed=%d waits=%d resyncs=%d catchups=%d trimmed=%d cap_drop=%d auth_drop=%d udp_err=%d play_xrun=%s cap_xrun=%s jitter=%d dev_max=%d peak_play=%d peak_mic=%d clip_play=%d clip_mic=%d ts_step=%s pt=%s toc=%s rx_avg_bytes=%s mic_type=%s mic_fix=%s spk=%s/%s/fell%s tick_max_ms=%d engine=%s\n' % (
+                time.strftime('%d/%m %H:%M:%S'),'end' if final else 'call',int(bool(self.call and self.call.get('video'))),
+                st['received_audio_packets'],st['concealed_frames'],st.get('waits',0),st.get('resyncs',0),st.get('catchups',0),st.get('trimmed_frames',0),
+                st['dropped_capture_frames'],st['dropped_auth_packets'],st['udp_errors'],
+                self.playback.xruns() if self.playback else '-',self.capture.xruns() if self.capture else '-',
+                len(getattr(self,'jitter',{})),getattr(self,'queued_max_z3',0),
+                st.get('peak_play',0),st.get('peak_mic',0),st.get('clip_peak_play',0),st.get('clip_peak_mic',0),
+                ','.join('%d:%d'%kv for kv in sorted(st.get('ts_steps_z9',{}).items(),key=lambda kv:-kv[1])[:3]) or '-',
+                st.get('pt_z9','-'),st.get('toc_z9','-'),
+                st.get('rx_bytes_z9',0)//max(1,st['received_audio_packets']),
+                getattr(self.capture,'audio_type','-') if self.capture else '-',
+                ('%d/%d'%(self.capture.diag(4),self.capture.diag(5))) if self.capture else '-',
+                getattr(self.playback,'audio_type','-') if self.playback else '-',self.playback.rate() if self.playback else '-',self.playback.diag(3) if self.playback else '-',
+                int(getattr(self,'tick_max_z2',0)*1000),self.root)
+            self.tick_max_z2=0;self.queued_max_z3=0;st['peak_play']=0;st['peak_mic']=0
+            d=STATS_DIR_Z2
+            if not os.path.isdir(d):os.makedirs(d)
+            p=os.path.join(d,'zaloone_call.log')
+            if os.path.exists(p) and os.path.getsize(p)>200000:os.rename(p,p+'.old')
+            with open(p,'a') as f:f.write(line)
+        except Exception:
+            pass
 
     def tick(self):
         if not self.sock or not self.call:
             return
         now=self.clock()
+        if self.active:
+            gap=now-getattr(self,'tick_last_z2',now);self.tick_last_z2=now
+            if gap>getattr(self,'tick_max_z2',0):self.tick_max_z2=gap
+            self.log_stats_z2(now)
         if self.ready_at is None and now>=self.next_init:
             # A locked handset can take several seconds to resume its Wi-Fi route.
             # Keep callee setup inside the 20-second answer deadline.
@@ -658,18 +548,30 @@ class RelayMedia:
             if not self.video_sequence:self.video_roc+=1
             self.twseq=(self.twseq+1)&65535;self.next_video=now+.012
 
+    def set_speaker_z19(self,on):
+        # Z19: switch the call between earpiece and loudspeaker; returns the state really in use
+        on=bool(on)
+        if on==self.speaker_z19:return on
+        if not self.active or not self.playback or (self.call and self.call.get('video')):
+            self.speaker_z19=on;return on
+        path=os.path.join(self.root,'libq10audio.so')
+        self.playback.close();self.playback=None
+        try:
+            self.playback=Audio(path,False,speaker=on);self.speaker_z19=on
+        except Exception:
+            self.playback=Audio(path,False,speaker=self.speaker_z19)
+        self.stats['speaker_switch']=self.stats.get('speaker_switch',0)+1
+        return self.speaker_z19
+
     def close_audio(self):
-        for name,key in (('playback','play_xruns'),('capture','cap_xruns')):
-            value=getattr(self,name,None)
-            if value:
-                try:self.stats[key]=int(value.xruns())
-                except Exception:pass
         for name in ('capture','playback','codec','dsp'):
             value=getattr(self,name,None)
             if value:
                 value.close();setattr(self,name,None)
 
     def stop(self):
+        if self.active and self.call:self.log_stats_z2(self.clock(),True)
+        self.rec_flush_z9()
         self.active=False;self.close_audio()
         if self.sock:
             if self.call:

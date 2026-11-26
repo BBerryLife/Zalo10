@@ -43,6 +43,7 @@ class CallCore:
         value={"event":"state","state":state}
         if self.call and state=='incoming':
             value['name']=self.call.get('name','')
+            value['peer']=self.call.get('peer','')
             value['callId']=str(self.call['id'])
         if self.call:value['video']=bool(self.call.get('video'))
         if reason:
@@ -104,6 +105,25 @@ class CallCore:
             self.send(402,data)
 
     def control(self,content):
+        before=self.call['state'] if self.call else None
+        try:self._control(content)
+        finally:
+            try:self._trace(content,before)
+            except Exception:pass
+
+    def _trace(self,content,before):
+        d=obj(content.get('data'));p=obj(d.get('params'));x=obj(p.get('extendData'))
+        sess=d.get('session') or p.get('sessId') or ''
+        info={'t':int(time.time()),'act':content.get('act'),'keys':sorted(content.keys())[:12],'dkeys':sorted(d.keys())[:30],
+            'pkeys':sorted(p.keys())[:30],'callType':x.get('callType'),'sessLen':len(str(sess)),
+            'uidFrom':str(d.get('uidFrom'))[:3]+'..' if d.get('uidFrom') else None,'uidTo':bool(d.get('uidTo')),
+            'tsAgeS':(time.time()-float(d['ts'])/1000) if str(d.get('ts','')).replace('.','',1).isdigit() else None,
+            'before':before,'after':self.call['state'] if self.call else None}
+        path='/accounts/1000/shared/documents/zalo10/incoming_call.log'
+        if os.path.exists(path) and os.stat(path).st_size>65536:os.rename(path,path+'.old')
+        with open(path,'a') as f:f.write(json.dumps(info)+'\n')
+
+    def _control(self,content):
         action=content.get("act")
         d=obj(content.get("data"))
         call_id=d.get("callId",d.get("id",content.get("callId",content.get("id"))))

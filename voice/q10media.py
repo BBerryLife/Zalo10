@@ -241,6 +241,9 @@ def unwrap_relay(packet):
     return result
 
 
+DECODER_GAIN_Z4=-1536   # Z4: -6 dB
+
+
 class Opus:
     """Use a phone-local libopus, without bundling another app's binary."""
     def __init__(self, path):
@@ -267,6 +270,14 @@ class Opus:
         if not self.decoder or error.value:
             self.close()
             raise RuntimeError("Opus decoder creation failed")
+        # Z4: the call log showed the received speech at full scale (32767) almost all the time, i.e. clipped:
+        # play it 6 dB quieter (OPUS_SET_GAIN, in 1/256 dB). Not fatal if the library refuses.
+        try:
+            self.lib.opus_decoder_ctl.argtypes=[C.c_void_p,C.c_int,C.c_int]
+            self.lib.opus_decoder_ctl.restype=C.c_int
+            self.lib.opus_decoder_ctl(self.decoder,4034,DECODER_GAIN_Z4)
+        except Exception:
+            pass
         # Stable 20ms voice, with spare recovery information for packet loss.
         for request,value in ((4002,24000),(4010,5),(4012,1),(4014,5),(4016,0)):
             if self.lib.opus_encoder_ctl(self.encoder,request,C.c_int(value)) < 0:
@@ -300,6 +311,11 @@ class Opus:
             self.decoder = None
 
 
+# Z20: earpiece devices, opened as a voice call at 16 kHz (48 kHz on this route stalls: Z19 log 24/11)
+# earpiece test 24/11: voicep -6 dB best, pcmC1D0p -6 dB next, handsetp crackled
+EAR_Z20=[('pcmC1D0p',0),('voicep',0),('handsetp',0)]
+RING_Z25='ring48'
+
 class AudioOpenError(RuntimeError):
     def __init__(self, code, stage):
         self.code,self.stage=code,stage
@@ -330,30 +346,15 @@ class VoiceDSP:
             raise RuntimeError('Voice processing failed')
         return output.raw
 
-    def tune(self,noise_db):
-        """Soften the noise suppressor that q10_dsp_create hard-wires at -18 dB (it thins out quiet
-        speech and adds a watery artefact). q10_dsp_create allocates {SpeexEchoState*,
-        SpeexPreprocessState*} as two consecutive pointers; speex_preprocess_ctl is exported by the
-        same library. Returns True if applied; any doubt means leave the stock settings alone."""
-        try:
-            if noise_db is None or not self.state:return False
-            pointers=(C.c_void_p*2).from_address(self.state)
-            if not pointers[0] or not pointers[1]:return False
-            control=self.lib.speex_preprocess_ctl
-            control.argtypes=[C.c_void_p,C.c_int,C.c_void_p]
-            control.restype=C.c_int
-            value=C.c_int(int(noise_db))
-            return control(pointers[1],18,C.byref(value))==0     # SPEEX_PREPROCESS_SET_NOISE_SUPPRESS
-        except Exception:
-            return False
-
     def close(self):
         if self.state:
             self.lib.q10_dsp_destroy(self.state);self.state=None
 
 
 class Audio:
-    def __init__(self, path, capture=False, ringtone=False, audio_type=None):
+    # Z2: video=True opens the speaker/microphone as a video chat (loudspeaker); a voice call opens them as a
+    # voice call (earpiece) - needs the Z2 libq10audio.so (q10_audio_open_type); older library: as before.
+    def __init__(self, path, capture=False, ringtone=False, video=False, speaker=False, ring_mode=None):
         self.lib = C.CDLL(path)
         self.lib.q10_audio_open.argtypes = [C.POINTER(C.c_void_p),C.c_int]
         self.lib.q10_audio_open.restype = C.c_int
@@ -364,31 +365,117 @@ class Audio:
         self.lib.q10_audio_close.argtypes = [C.c_void_p]
         self.handle = C.c_void_p()
         if ringtone:
-            self.lib.q10_audio_open_ringtone.argtypes=[C.POINTER(C.c_void_p)]
-            self.lib.q10_audio_open_ringtone.restype=C.c_int
-            result=self.lib.q10_audio_open_ringtone(C.byref(self.handle))
-        elif audio_type is not None:
-            result=self.open_typed(capture,audio_type)
+            # Z25: the ringtone crackled (Z24, anh 24/11): it went to the loudspeaker at 16 kHz, the path that crackled
+            # in the speaker tests. Play it at 48 kHz through our own filter, like the clean Loa button.
+            # RING_Z25 'ring48' = phone ringtone route at 48 kHz; 'spk' = the Loa button device (handsetp 48 kHz).
+            # Override in Documents/zalo10/ring_device.txt: ring48, spk or off (= Z24 way, 16 kHz).
+            mode=RING_Z25
+            try:
+                with open('/accounts/1000/shared/documents/zalo10/ring_device.txt') as f:
+                    v=f.read().strip()
+                if v in ('ring48','spk','off'):mode=v
+            except Exception:
+                pass
+            if ring_mode in ('ring48','spk','off'):mode=ring_mode   # C1: the caller can pick the route (ringback)
+            result=-1
+            if mode=='spk' and hasattr(self.lib,'q10_audio_open_name_rate'):
+                self.lib.q10_audio_open_name_rate.argtypes=[C.POINTER(C.c_void_p),C.c_int,C.c_char_p,C.c_int]
+                self.lib.q10_audio_open_name_rate.restype=C.c_int
+                result=self.lib.q10_audio_open_name_rate(C.byref(self.handle),0,b'/dev/snd/handsetp',1)
+                if result>=0:self.audio_type='ring:spk'
+            if result<0 and mode!='off' and hasattr(self.lib,'q10_audio_open_type_rate'):
+                self.lib.q10_audio_open_type_rate.argtypes=[C.POINTER(C.c_void_p),C.c_int,C.c_int,C.c_int]
+                self.lib.q10_audio_open_type_rate.restype=C.c_int
+                result=self.lib.q10_audio_open_type_rate(C.byref(self.handle),0,1,1)
+                if result>=0:self.audio_type='ring:48'
+            if result<0:
+                self.lib.q10_audio_open_ringtone.argtypes=[C.POINTER(C.c_void_p)]
+                self.lib.q10_audio_open_ringtone.restype=C.c_int
+                result=self.lib.q10_audio_open_ringtone(C.byref(self.handle))
+                self.audio_type='ring:16'
+        elif hasattr(self.lib,'q10_audio_open_type'):
+            self.lib.q10_audio_open_type.argtypes=[C.POINTER(C.c_void_p),C.c_int,C.c_int]
+            self.lib.q10_audio_open_type.restype=C.c_int
+            self.audio_type=4 if video else 0
+            result=-1
+            if capture and not video:
+                # Z12: the microphone opened through audio_manager is gated by the phone's voice processing
+                # (~10 ms holes every ~20 ms, mic test 24/11). Open the hardware capture device directly instead.
+                # Device name from Documents/zalo10/mic_device.txt (default pcmC0D0c; "off" = old way).
+                # Z14: mic test 24/11: voicec and pcmC1D0c give clean sound (no 16-sample block errors, like
+                # Voice Notes); pcmC0D0c (Z12/Z13) has them. Try voicec first, then pcmC1D0c, then pcmC0D0c.
+                names=['voicec','pcmC1D0c','pcmC0D0c']
+                try:
+                    with open('/accounts/1000/shared/documents/zalo10/mic_device.txt') as f:
+                        v=f.read().strip()
+                    if v:names=[v]
+                except Exception:
+                    pass
+                if names!=['off'] and hasattr(self.lib,'q10_audio_open_name'):
+                    self.lib.q10_audio_open_name.argtypes=[C.POINTER(C.c_void_p),C.c_int,C.c_char_p]
+                    self.lib.q10_audio_open_name.restype=C.c_int
+                    for name in names:
+                        result=self.lib.q10_audio_open_name(C.byref(self.handle),1,('/dev/snd/'+name).encode())
+                        if result>=0:
+                            self.audio_type='dev:'+name
+                            break
+            if not capture and not video and not speaker and hasattr(self.lib,'q10_audio_open_voice_name_rate'):
+                # Z19: earpiece by default. The same clean device as Z17b (handsetp, 48 kHz with our filter), but
+                # registered with the audio manager as a voice call, which the phone routes to the earpiece.
+                # Z17b opened it without the audio manager and it played on the loudspeaker (anh, 24/11).
+                # If none opens, the old voice route below (Z14, also earpiece) is used.
+                self.lib.q10_audio_open_voice_name_rate.argtypes=[C.POINTER(C.c_void_p),C.c_char_p,C.c_int]
+                self.lib.q10_audio_open_voice_name_rate.restype=C.c_int
+                for name,t48 in EAR_Z20:
+                    result=self.lib.q10_audio_open_voice_name_rate(C.byref(self.handle),('/dev/snd/'+name).encode(),t48)
+                    if result>=0:
+                        self.audio_type='ear:'+name
+                        break
+            if not capture and not video and speaker and hasattr(self.lib,'q10_audio_open_name_rate'):
+                # Z19: loudspeaker button = the Z17b way (device opened directly)
+                # Z15: speaker test 24/11: pcmC1D0p (48 kHz, our own filter) and voicep (16 kHz) sounded best.
+                # Override in Documents/zalo10/spk_device.txt: "name:48", "name:16" or "off" (old way).
+                # Z16: handsetp = earpiece (Z15b voicep went to the loudspeaker)
+                spk=[('handsetp',1),('handsetp',0),('voicep',0)]
+                try:
+                    with open('/accounts/1000/shared/documents/zalo10/spk_device.txt') as f:
+                        v=f.read().strip()
+                    if v=='off':spk=[]
+                    elif v:
+                        n,_,r=v.partition(':');spk=[(n,0 if r=='16' else 1)]
+                except Exception:
+                    pass
+                self.lib.q10_audio_open_name_rate.argtypes=[C.POINTER(C.c_void_p),C.c_int,C.c_char_p,C.c_int]
+                self.lib.q10_audio_open_name_rate.restype=C.c_int
+                for name,t48 in spk:
+                    result=self.lib.q10_audio_open_name_rate(C.byref(self.handle),0,('/dev/snd/'+name).encode(),t48)
+                    if result>=0:
+                        self.audio_type='spk:'+name
+                        break
+            if result<0:
+                result=self.lib.q10_audio_open_type(C.byref(self.handle),int(capture),self.audio_type if isinstance(self.audio_type,int) else 0)
         else:result = self.lib.q10_audio_open(C.byref(self.handle),int(capture))
         if result < 0:
             raise AudioOpenError(result,self.lib.q10_audio_last_stage())
-
-    def open_typed(self,capture,audio_type):
-        """Open with an explicit audio-manager type (this selects the output route).
-
-        The shipped ARM build of q10_audio_open is exactly `mov r2,#4; b common_open`, and
-        common_open(out, capture, type) is the next instruction. Verify those 8 bytes, then call
-        common_open directly; on any mismatch fall back to the stock open (type 4).
-        """
-        stock=lambda:self.lib.q10_audio_open(C.byref(self.handle),int(capture))
-        try:
-            if C.sizeof(C.c_void_p)!=4:return stock()
-            base=C.cast(self.lib.q10_audio_open,C.c_void_p).value
-            if C.string_at(base,8)!=bytes(bytearray((0x04,0x20,0xa0,0xe3,0xff,0xff,0xff,0xea))):return stock()
-            opener=C.CFUNCTYPE(C.c_int,C.POINTER(C.c_void_p),C.c_int,C.c_int)(base+8)
-            return opener(C.byref(self.handle),int(capture),int(audio_type))
-        except Exception:
-            return stock()
+        if not capture and not video and not ringtone and hasattr(self.lib,'q10_audio_set_eq'):
+            # Z17: warm EQ for the earpiece (low-mid lift, treble cut). Level 0 = off, 1 light, 2 medium, 3 strong.
+            # Override in Documents/zalo10/eq_level.txt
+            lv=2
+            try:
+                with open('/accounts/1000/shared/documents/zalo10/eq_level.txt') as f:
+                    lv=int(f.read().strip())
+            except Exception:
+                pass
+            self.lib.q10_audio_set_eq.argtypes=[C.c_void_p,C.c_int]
+            self.lib.q10_audio_set_eq.restype=C.c_int
+            if self.lib.q10_audio_set_eq(self.handle,lv)==0:
+                self.audio_type='%s+eq%d'%(self.audio_type,lv)
+            if not speaker and hasattr(self.lib,'q10_audio_set_gain'):
+                # Z20: earpiece 6 dB lower (earpiece test 24/11: the earpiece path crackles on loud speech)
+                self.lib.q10_audio_set_gain.argtypes=[C.c_void_p,C.c_int]
+                self.lib.q10_audio_set_gain.restype=C.c_int
+                if self.lib.q10_audio_set_gain(self.handle,8192)==0:
+                    self.audio_type+='-6dB'
 
     def fd(self):
         return self.lib.q10_audio_fd(self.handle)
@@ -402,6 +489,28 @@ class Audio:
         self.lib.q10_audio_state.argtypes=[C.c_void_p]
         self.lib.q10_audio_state.restype=C.c_int
         return self.lib.q10_audio_state(self.handle)
+
+    def diag(self,what):
+        # Z13: counts from the audio library (4 bad microphone block runs bridged, 5 lone jumps smoothed)
+        if not hasattr(self.lib,'q10_audio_diag'):return -1
+        self.lib.q10_audio_diag.argtypes=[C.c_void_p,C.c_int]
+        self.lib.q10_audio_diag.restype=C.c_int
+        return self.lib.q10_audio_diag(self.handle,what)
+
+    def rate(self):
+        # Z15: sample rate the device runs at now (48000 while our own filter is used)
+        if not hasattr(self.lib,'q10_audio_rate'):return 16000
+        self.lib.q10_audio_rate.argtypes=[C.c_void_p]
+        self.lib.q10_audio_rate.restype=C.c_int
+        return self.lib.q10_audio_rate(self.handle)
+
+    def queued(self):
+        # Z3: bytes waiting in the device buffer; None with an older library
+        if not hasattr(self.lib,'q10_audio_queued'):return None
+        self.lib.q10_audio_queued.argtypes=[C.c_void_p]
+        self.lib.q10_audio_queued.restype=C.c_int
+        value=self.lib.q10_audio_queued(self.handle)
+        return value if value>=0 else None
 
     def read(self):
         output = C.create_string_buffer(640)

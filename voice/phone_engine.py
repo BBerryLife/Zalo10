@@ -6,7 +6,6 @@ events and packet counts. It never sends chat messages.
 """
 import argparse
 import base64
-import fcntl
 import json
 import os
 import select
@@ -37,6 +36,17 @@ class PhoneEngine:
         self.server=None;self.client=None;self.last_state={'event':'state','state':'idle'}
         self.pending_open_ui=False
         self.broker_alert_id=''
+        self.speaker=False;self.spk_server=None
+        if args.socket:
+            # Z19: the call screen's loudspeaker button (QML) asks here: GET http://127.0.0.1:47819/spk?on=1|0
+            try:
+                self.spk_server=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                self.spk_server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+                self.spk_server.bind(('127.0.0.1',47819));self.spk_server.listen(4);self.spk_server.setblocking(False)
+            except (OSError,socket.error):
+                try:self.spk_server.close()
+                except Exception:pass
+                self.spk_server=None
         if args.socket:
             args.socket=os.path.join(os.path.realpath(os.path.dirname(args.socket)),os.path.basename(args.socket))
             if not args.socket.startswith('/accounts/1000/appdata/com.BerryLife.Zalo10.') or not args.socket.endswith('/data/zaloone-engine.sock'):
@@ -65,7 +75,7 @@ class PhoneEngine:
 
     def emit(self,event):
         if self.args.socket and event.get('event') in ('state','api_result','media_preparing','error','audio_open_error','call_control','local_choice'):
-            trace=dict((k,event[k]) for k in ('event','state','video','reason','command','ok','error_code','candidate_count','kind','stage','code','where') if k in event)
+            trace=dict((k,event[k]) for k in ('event','state','video','reason','command','ok','error_code','candidate_count','kind','stage','code') if k in event)
             trace['time']=int(time.time())
             try:
                 path=os.path.join(os.path.dirname(self.args.socket),'zaloone-call-events')
@@ -75,6 +85,7 @@ class PhoneEngine:
         if event.get('event')=='state': self.last_state=dict(event)
         if event.get('event')=='state' and event.get('state')=='idle':
             self.muted=False
+            self.speaker=False   # Z19: every call starts on the earpiece
             self.pending_open_ui=False
         if event.get('event')=='state' and self.alert:
             native_alert=event.get('state')=='incoming' and self.broker_alert_id and event.get('callId')==self.broker_alert_id
@@ -118,7 +129,7 @@ class PhoneEngine:
             lambda reason:self.core.finish(reason),lambda:self.core.finish('peer_ended',False),root=self.root,
             video_frame=lambda key,data:self.emit({'event':'remote_video','key':key,'data':base64.b64encode(data).decode('ascii')}))
         self.media.muted=self.muted
-        self.media.tuning_path=os.path.join(os.path.dirname(self.args.socket),'voice-tuning.json') if self.args.socket else None
+        self.media.speaker_z19=self.speaker
         self.media.prepare(call,servers)
 
     def start(self):
@@ -209,8 +220,7 @@ class PhoneEngine:
         elif action=='ui_foreground' and self.alert:
             self.alert.set_foreground(frame.get('foreground'))
         elif action=='control':
-            content=frame.get('content')
-            if not isinstance(content,dict):content={}
+            content=frame.get('content',{})
             if content.get('act')=='request':self.broker_alert_id=frame.get('brokerAlert','')
             if content.get('act') in ('request','cancel','end_call','reject','busy','answer','answer_ack','ring_ring'):
                 self.emit({'event':'call_control','kind':content['act']})
@@ -229,33 +239,91 @@ class PhoneEngine:
         elif action=='quit':
             self.core.finish();self.running=False
 
-    def watch_stderr(self):
-        """The QNX audio stack reports underruns by writing to this process's stderr. Route stderr
-        through a pipe we read in the main loop so the media code can react to those messages, and
-        forward every byte unchanged to the original stderr (the app's log still shows them)."""
-        self.err_r=None;self.err_out=None
+    def speaker_request(self):
+        # Z19: one tiny HTTP request from the app's call screen; only "/spk", answers the state in use ("1"/"0")
         try:
-            read_end,write_end=os.pipe()
-            self.err_out=os.dup(2)
-            os.dup2(write_end,2);os.close(write_end)
-            fcntl.fcntl(read_end,fcntl.F_SETFL,fcntl.fcntl(read_end,fcntl.F_GETFL)|os.O_NONBLOCK)
-            self.err_r=read_end
-        except Exception:
-            self.err_r=None
+            conn,peer=self.spk_server.accept()
+        except (OSError,socket.error):
+            return
+        try:
+            conn.settimeout(0.3)
+            if peer[0]!='127.0.0.1':return
+            first=conn.recv(1024)
+            head=first.decode('latin-1','replace').split('\r\n',1)[0].split(' ')
+            path=head[1] if len(head)>1 else ''
+            if path.startswith('/grp/') and head[0]=='POST':
+                # Z30-Z32: group functions of the app (create, info, members, polls...); answered from a thread
+                if self.group_request(conn,first):conn=None
+                return
+            if path.startswith('/spk'):
+                if 'on=1' in path:want=True
+                elif 'on=0' in path:want=False
+                else:want=None
+                if want is not None:
+                    self.speaker=want
+                    if self.media:self.speaker=self.media.set_speaker_z19(want)
+                body='1' if self.speaker else '0'
+                conn.sendall(('HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s'%(len(body),body)).encode('ascii'))
+            else:
+                conn.sendall(b'HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+        except (OSError,socket.error,ValueError):
+            pass
+        finally:
+            if conn is not None:conn.close()
 
-    def drain_stderr(self):
+    def group_request(self,conn,first):
+        # Z30: read the whole POST (JSON body: name, members), then create the group on Zalo in a thread
+        data=first
         try:
-            data=os.read(self.err_r,4096)
-        except OSError:
-            return
-        if not data:
-            return
-        try:os.write(self.err_out,data)
-        except OSError:pass
-        if self.media:self.media.device_messages(data)
+            conn.settimeout(2)
+            while b'\r\n\r\n' not in data and len(data)<65536:
+                more=conn.recv(4096)
+                if not more:break
+                data+=more
+            head,_,body=data.partition(b'\r\n\r\n')
+            length=0
+            for line in head.decode('latin-1','replace').split('\r\n')[1:]:
+                if line.lower().startswith('content-length:'):length=int(line.split(':',1)[1].strip() or 0)
+            if length<0 or length>65536:return False
+            while len(body)<length:
+                more=conn.recv(4096)
+                if not more:break
+                body+=more
+            req=json.loads(body[:length].decode('utf-8'))
+            if not isinstance(req,dict):return False
+            action=head.decode('latin-1','replace').split(' ')[1][5:].split('?')[0]
+        except (OSError,socket.error,ValueError,TypeError,AttributeError,IndexError):
+            return False
+        import threading
+        if getattr(self,'group_lock',None) is None:self.group_lock=threading.Lock()
+        if getattr(self,'group_waiting',0)>=6:
+            self.group_answer(conn,{'ok':False,'error':'busy'});return True
+        self.group_waiting=getattr(self,'group_waiting',0)+1
+        def work():
+            # Z32: one Zalo request at a time (the TLS library keeps one connection state); others wait their turn
+            with self.group_lock:
+                try:
+                    import groupapi
+                    ca=os.environ.get('Q10_CA_FILE') or os.path.join(self.root,'q10-ca.pem')
+                    result=groupapi.call(action,req,self.args.settings,ca)
+                except Exception as error:
+                    result={'ok':False,'error':'internal','kind':error.__class__.__name__}
+                self.group_waiting-=1
+            self.group_answer(conn,result)
+        worker=threading.Thread(target=work);worker.daemon=True;worker.start()
+        return True
+
+    def group_answer(self,conn,result):
+        body=json.dumps(result).encode('utf-8')
+        try:
+            conn.settimeout(5)
+            conn.sendall(('HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: %d\r\nConnection: close\r\n\r\n'%len(body)).encode('ascii')+body)
+        except (OSError,socket.error):
+            pass
+        finally:
+            conn.close()
 
     def run(self):
-        self.watch_stderr()
         startup=time.time()
         last_client=startup
         try:
@@ -263,18 +331,16 @@ class PhoneEngine:
                 if self.client:last_client=time.time()
                 elif self.args.socket and time.time()-last_client>90:break
                 fds=[] if self.args.external_api else [self.api.stdout.fileno()]
-                if self.err_r is not None: fds.append(self.err_r)
                 if self.server: fds.append(self.server.fileno())
+                if self.spk_server: fds.append(self.spk_server.fileno())
                 if self.client: fds.append(self.client.fileno())
                 if self.media and self.media.sock:
                     fds.append(self.media.sock.fileno())
                 if not self.args.socket and not self.args.lookup and not self.args.test_peer_file:
                     fds.append(sys.stdin.fileno())
                 available,_,_=select.select(fds,[],[],0.005)
-                mark=time.time()
-                if self.media:self.media.gap(mark)       # loop-stall instrumentation (counters only)
-                if self.err_r is not None and self.err_r in available:
-                    self.drain_stderr()
+                if self.spk_server and self.spk_server.fileno() in available:
+                    self.speaker_request()
                 if self.server and self.server.fileno() in available:
                     client,_=self.server.accept()
                     if self.client: self.client.close()
@@ -294,7 +360,6 @@ class PhoneEngine:
                         self.api_event(json.loads(line.decode('utf-8')))
                 if self.media and self.media.sock and self.media.sock.fileno() in available:
                     self.media.handle_udp()
-                    if self.media:mark=self.media.lap('udp',mark)
                 input_fd=self.client.fileno() if self.client else (None if self.args.socket else sys.stdin.fileno())
                 if not self.args.lookup and not self.args.test_peer_file and input_fd in available:
                     chunk=os.read(input_fd,65536)
@@ -314,9 +379,7 @@ class PhoneEngine:
                 self.core.tick()
                 if self.media:
                     self.media.tick()
-                    mark=self.media.lap('tick',mark)
                 if self.alert:self.alert.tick()
-                if self.media:mark=self.media.lap('alert',mark)
                 if not self.ready and time.time()-startup>30:
                     self.emit({'event':'error','reason':'account_startup_timeout'});break
                 if self.test_started and time.time()-self.test_started>self.args.max_call_seconds:
@@ -325,13 +388,7 @@ class PhoneEngine:
             self.core.finish('interrupted')
         except Exception as error:
             # Exception objects/raw protocol frames are intentionally not logged.
-            where=''
-            try:
-                import traceback
-                tb=traceback.extract_tb(error.__traceback__)[-1]
-                where='%s:%s %s'%(os.path.basename(tb[0]),tb[1],tb[2])  # code location only, never the message
-            except Exception:pass
-            self.emit({'event':'error','reason':'runtime_failure','kind':error.__class__.__name__,'where':where})
+            self.emit({'event':'error','reason':'runtime_failure','kind':error.__class__.__name__})
             if isinstance(error,AudioOpenError):
                 self.emit({'event':'audio_open_error','code':error.code,'stage':error.stage})
             self.core.finish('runtime_failure')
@@ -352,6 +409,7 @@ class PhoneEngine:
                     self.api.terminate()
             self.devnull.close()
             if self.client: self.client.close()
+            if self.spk_server:self.spk_server.close()
             if self.server:
                 self.server.close()
                 if os.path.exists(self.args.socket): os.unlink(self.args.socket)
