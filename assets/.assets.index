@@ -1,5 +1,5 @@
 1
-836
+835
 AboutSheet.qml
 ActiveFrameCover.qml
 AttachPickerSheet.qml
@@ -792,7 +792,6 @@ images/SettingsSheet/ic_save.png
 images/SettingsSheet/ic_sb_settings_active.png
 images/SettingsSheet/ic_unhide.png
 images/updates.png
-IncomingSlider.qml
 InfoDialog.qml
 InvitesTab.qml
 lists/avatarhub.js

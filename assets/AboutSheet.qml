@@ -11,8 +11,6 @@ Sheet {
 
         property variant activeChangelogPage: null
         property string pendingManifestAction: ""
-        property string pendingDownloadUrl: ""
-        property string pendingDownloadVersion: ""
 
         function isVersionNewer(a, b) {
             var pa = a.split('.');
@@ -61,27 +59,7 @@ Sheet {
             aboutNav.pendingManifestAction = "";
             manifestTimeoutTimer.stop();
 
-            if (action === "update") {
-                updateBtn.enabled = true;
-                var latest = manifest.latestVersion || "";
-                var downloadUrl = manifest.downloadUrl || "";
-                if (latest.length === 0) {
-                    updateResultToast.body = "Update info unavailable right now. Try again later.";
-                    updateResultToast.show();
-                    return;
-                }
-                var current = app.appVersion();
-                if (!aboutNav.isVersionNewer(latest, current)) {
-                    updateResultToast.body = "You're already on the latest version (" + current + ").";
-                    updateResultToast.show();
-                } else {
-                    aboutNav.pendingDownloadUrl = downloadUrl;
-                    aboutNav.pendingDownloadVersion = latest;
-                    updateConfirmDialog.title = "New Update Available";
-                    updateConfirmDialog.body = "New version " + latest + " detected. Would you like to download it?";
-                    updateConfirmDialog.show();
-                }
-            } else if (action === "changelog") {
+            if (action === "changelog") {
                 var versions = manifest.changelog || [];
                 if (aboutNav.activeChangelogPage) {
                     aboutNav.activeChangelogPage.setRows(aboutNav.buildChangelogRows(versions));
@@ -94,11 +72,7 @@ Sheet {
             aboutNav.pendingManifestAction = "";
             manifestTimeoutTimer.stop();
 
-            if (action === "update") {
-                updateBtn.enabled = true;
-                updateResultToast.body = message;
-                updateResultToast.show();
-            } else if (action === "changelog") {
+            if (action === "changelog") {
                 if (aboutNav.activeChangelogPage) {
                     aboutNav.activeChangelogPage.setRows([{ rowType: "item", tag: "", text: message }]);
                 }
@@ -200,29 +174,12 @@ Sheet {
 
                     Container {
                         topMargin: 30
-                        horizontalAlignment: HorizontalAlignment.Fill
-                        layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-
-                        Button {
-                            id: updateBtn
-                            text: "Update"
-                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            rightMargin: ui.du(0.8)
-                            onClicked: {
-                                updateBtn.enabled = false;
-                                updateCheckingToast.show();
-                                aboutNav.pendingManifestAction = "update";
-                                manifestTimeoutTimer.restart();
-                                // Cache-bust: jsDelivr sends a long max-age, so a changing query string avoids a stale copy.
-                                manifestFetcher.url = manifestFetcher.manifestUrl + "?t=" + new Date().getTime();
-                            }
-                        }
+                        horizontalAlignment: HorizontalAlignment.Center
 
                         Button {
                             id: changeListBtn
                             text: "Change List"
-                            layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                            leftMargin: ui.du(0.8)
+                            horizontalAlignment: HorizontalAlignment.Center
                             onClicked: {
                                 var changelogPage = changelogPageDef.createObject();
                                 aboutNav.activeChangelogPage = changelogPage;
@@ -356,29 +313,6 @@ Sheet {
             ComponentDefinition {
                 id: changelogPageDef
                 source: "asset:///ChangelogPage.qml"
-            },
-            SystemToast {
-                id: updateCheckingToast
-                body: "Checking for updates…"
-            },
-            SystemToast {
-                id: updateResultToast
-                body: ""
-            },
-            SystemDialog {
-                id: updateConfirmDialog
-                title: "New Update Available"
-                body: ""
-                confirmButton.label: "Update"
-                cancelButton.label: "Cancel"
-                onFinished: {
-                    if (value === SystemUiResult.ConfirmButtonSelection) {
-                        // Delegates to the Browser: Qt4's TLS stack can't complete the handshake with this CDN.
-                        Qt.openUrlExternally(aboutNav.pendingDownloadUrl);
-                        updateResultToast.body = "Opening download in Browser. Check your Downloads folder when done.";
-                        updateResultToast.show();
-                    }
-                }
             }
         ]
     }

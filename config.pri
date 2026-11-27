@@ -56,7 +56,6 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/GroupsTab.qml) \
         $$quote($$BASEDIR/assets/HubChatSheet.qml) \
         $$quote($$BASEDIR/assets/HubReplyCard.qml) \
-        $$quote($$BASEDIR/assets/IncomingSlider.qml) \
         $$quote($$BASEDIR/assets/InfoDialog.qml) \
         $$quote($$BASEDIR/assets/InvitesTab.qml) \
         $$quote($$BASEDIR/assets/LoginView.qml) \

@@ -320,6 +320,7 @@ void VoiceCallBridge::applyState(const QVariantMap &event)
         m_peerName = event.value("name").toString();
         if (m_peerName.isEmpty()) m_peerName = QString::fromLatin1("Zalo");
         m_wasIncoming = true;
+        qDebug() << "[Voice] incoming peer=" << m_peerId << "avatar=" << peerAvatar();
     }
     // On connect the engine replays its (idle) state right after "ready"; that must not cancel a
     // dial we have just queued. A real end-of-call idle always carries a reason.

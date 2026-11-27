@@ -2,10 +2,10 @@ import bb.cascades 1.4
 import bb.system 1.0
 import QtQuick 1.0
 
-// 1:1 voice call screen, laid out like the stock Phone app's call screen.
-// Background: audio_bg_no_avatar.png on square screens, default_caller_2.png on portrait screens, full bleed.
-// Caller name (big) and state sit left-aligned around 42% of the screen height, as in the stock design.
-// Incoming calls show the slide control at the bottom (IncomingSlider.qml); active calls show mute + End.
+// 1:1 voice call screen.
+// Background: audio_bg.png, full bleed on all screens.
+// Incoming calls: avatar centred, name + "Incoming Zalo call" below, accept/decline buttons at the bottom.
+// Active calls: caller name + state left-aligned at ~42% height, mute + End at the bottom.
 // Driven entirely by the "voice" context property (VoiceCallBridge). Presented while voice.active.
 Sheet {
     id: callSheet
@@ -61,33 +61,133 @@ Sheet {
             verticalAlignment: VerticalAlignment.Fill
             background: Color.Black
 
-            // Full-screen background picture.
+            // Full-screen background: audio_bg.png for all screens.
             ImageView {
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
                 scalingMethod: ScalingMethod.AspectFill
-                imageSource: app.squareScreen
-                             ? "asset:///images/ChatView/call/audio_bg_no_avatar.png"
-                             : "asset:///images/ChatView/default_caller_2.png"
+                imageSource: "asset:///images/ChatView/call/audio_bg.png"
             }
 
-            // Slide tint while the incoming-call slider is being dragged: green towards answer,
-            // red towards decline (the stock Phone app's look).
+            // ── INCOMING CALL layout ──────────────────────────────────────────
+            // Square avatar (centre), name + "Incoming Zalo call" below, accept/decline at the bottom.
             Container {
+                visible: voice.incoming
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Fill
-                background: Color.create("#3c5c22")
-                opacity: incomingSlider.progress < 0 ? Math.min(1, -incomingSlider.progress) * 0.85 : 0
-            }
-            Container {
-                horizontalAlignment: HorizontalAlignment.Fill
-                verticalAlignment: VerticalAlignment.Fill
-                background: Color.create("#7a1c20")
-                opacity: incomingSlider.progress > 0 ? Math.min(1, incomingSlider.progress) * 0.85 : 0
+                layout: DockLayout {}
+
+                Container {
+                    horizontalAlignment: HorizontalAlignment.Center
+                    verticalAlignment: VerticalAlignment.Center
+                    // Slightly above true centre so the bottom buttons have breathing room.
+                    translationY: -(app.squareScreen ? app.screenWidthPx : app.screenHeightPx) * 0.08
+                    leftPadding: app.screenWidthPx * 0.04
+                    rightPadding: app.screenWidthPx * 0.04
+                    layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+
+                    // Square avatar. The default picture always sits underneath, so a missing or
+                    // not-yet-downloaded local avatar never leaves a hole.
+                    Container {
+                        horizontalAlignment: HorizontalAlignment.Center
+                        preferredWidth: app.screenWidthPx * 0.40
+                        preferredHeight: app.screenWidthPx * 0.40
+                        layout: DockLayout {}
+
+                        ImageView {
+                            horizontalAlignment: HorizontalAlignment.Fill
+                            verticalAlignment: VerticalAlignment.Fill
+                            scalingMethod: ScalingMethod.AspectFill
+                            imageSource: "asset:///images/ChatView/call/avatar_default_light.png"
+                        }
+                        ImageView {
+                            horizontalAlignment: HorizontalAlignment.Fill
+                            verticalAlignment: VerticalAlignment.Fill
+                            scalingMethod: ScalingMethod.AspectFill
+                            // Plain local path, like every other avatar in the app (no file:// prefix).
+                            imageSource: voice.peerAvatar
+                            visible: voice.peerAvatar.length > 0
+                        }
+                    }
+
+                    Label {
+                        topMargin: ui.du(3)
+                        horizontalAlignment: HorizontalAlignment.Center
+                        text: voice.peerName
+                        multiline: true
+                        textStyle.base: SystemDefaults.TextStyles.BigText
+                        textStyle.color: Color.White
+                        textStyle.textAlign: TextAlign.Center
+                    }
+
+                    Label {
+                        topMargin: ui.du(0.5)
+                        horizontalAlignment: HorizontalAlignment.Center
+                        text: "Incoming Zalo call"
+                        textStyle.color: Color.create("#c8dcf2")
+                        textStyle.fontSize: FontSize.Medium
+                        textStyle.textAlign: TextAlign.Center
+                    }
+                }
+
+                // Accept (left) / Decline (right). ImageView + TapHandler instead of ImageButton:
+                // ImageButton draws the blue keyboard-focus highlight, ImageView never does.
+                Container {
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment: VerticalAlignment.Bottom
+                    bottomPadding: (app.squareScreen ? app.screenWidthPx : app.screenHeightPx) * 0.06
+                    leftPadding: app.screenWidthPx * 0.14
+                    rightPadding: app.screenWidthPx * 0.14
+                    layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
+
+                    ImageView {
+                        id: acceptBtn
+                        verticalAlignment: VerticalAlignment.Center
+                        preferredWidth: app.screenWidthPx * 0.19
+                        preferredHeight: app.screenWidthPx * 0.19
+                        scalingMethod: ScalingMethod.AspectFit
+                        imageSource: "asset:///images/ChatView/call/accept.png"
+                        navigation.focusPolicy: NavigationFocusPolicy.NotFocusable
+                        accessibility.name: "Accept"
+                        gestureHandlers: [
+                            TapHandler { onTapped: voice.answer() }
+                        ]
+                        onTouch: {
+                            if (event.isDown())
+                                acceptBtn.imageSource = "asset:///images/ChatView/call/accept_pressed.png";
+                            else if (event.isUp() || event.isCancel())
+                                acceptBtn.imageSource = "asset:///images/ChatView/call/accept.png";
+                        }
+                    }
+
+                    Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
+
+                    ImageView {
+                        id: declineBtn
+                        verticalAlignment: VerticalAlignment.Center
+                        preferredWidth: app.screenWidthPx * 0.19
+                        preferredHeight: app.screenWidthPx * 0.19
+                        scalingMethod: ScalingMethod.AspectFit
+                        imageSource: "asset:///images/ChatView/call/decline.png"
+                        navigation.focusPolicy: NavigationFocusPolicy.NotFocusable
+                        accessibility.name: "Decline"
+                        gestureHandlers: [
+                            TapHandler { onTapped: voice.hangup() }
+                        ]
+                        onTouch: {
+                            if (event.isDown())
+                                declineBtn.imageSource = "asset:///images/ChatView/call/decline_pressed.png";
+                            else if (event.isUp() || event.isCancel())
+                                declineBtn.imageSource = "asset:///images/ChatView/call/decline.png";
+                        }
+                    }
+                }
             }
 
+            // ── ACTIVE / CONNECTING CALL layout ──────────────────────────────
             // Caller name and state, left-aligned, the name in big text.
             Container {
+                visible: !voice.incoming
                 horizontalAlignment: HorizontalAlignment.Left
                 verticalAlignment: VerticalAlignment.Top
                 topPadding: (app.squareScreen ? app.screenWidthPx : app.screenHeightPx) * 0.42
@@ -148,19 +248,6 @@ Sheet {
                     accessibility.name: "End call"
                     onClicked: voice.hangup()
                 }
-            }
-
-            // Incoming call: slide left to answer, right to decline (see IncomingSlider.qml).
-            IncomingSlider {
-                id: incomingSlider
-                visible: voice.incoming
-                horizontalAlignment: HorizontalAlignment.Fill
-                verticalAlignment: VerticalAlignment.Bottom
-                // Kept clear of the bottom edge: a horizontal drag right at the bottom edge seems to start the system
-                // "peek" gesture, which pulls this page aside and steals the drag.
-                bottomPadding: (app.squareScreen ? app.screenWidthPx : app.screenHeightPx) * 0.09
-                onAnswered: voice.answer()
-                onDeclined: voice.hangup()
             }
         }
     }

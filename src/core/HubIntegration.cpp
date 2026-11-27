@@ -111,18 +111,13 @@ long long HubIntegration::categoryIdFor(const QString &threadId)
     return isFeedId(threadId) ? HUB_CATEGORY_FEEDS_ID : HUB_CATEGORY_ID;
 }
 
-// Same rule as ChatsListItem.qml: unread wins (yellow pellet), then the state of our last message, else the grey pellet.
+// Use branded ic_hub_unread / ic_hub_read icons instead of the per-state ii_bbm_* pellets.
+// The message-state tracking logic (outState, advanceOutgoingState, noteOutgoing) is kept intact
+// so the Hub item state remains correct; only the visual icon switches between two states.
 const char *HubIntegration::iconFor(bool unread, int outState)
 {
-    if (unread) return HUB_ICON_IN_UNREAD_FILE;
-    switch (outState) {
-        case 0:  return HUB_ICON_OUT_SENDING_FILE;
-        case 1:  return HUB_ICON_OUT_SENT_FILE;
-        case 2:  return HUB_ICON_OUT_DELIVERED_FILE;
-        case 3:  return HUB_ICON_OUT_READ_FILE;
-        case 4:  return HUB_ICON_OUT_FAILED_FILE;
-        default: return HUB_ICON_IN_READ_FILE;
-    }
+    Q_UNUSED(outState);
+    return unread ? HUB_ICON_UNREAD_FILE : "ic_hub_read.png";
 }
 
 HubIntegration::HubIntegration(QObject *parent)
@@ -267,35 +262,11 @@ bool HubIntegration::init()
 
     // "Reply" item context action (long-press), registered once for the account.
     // Mime type/placement/target must follow the setup described at the top of this file.
-    uds_item_action_data_t *openAction = uds_item_action_data_create();
-    uds_item_action_data_set_action(openAction, "bb.action.OPEN");
-    uds_item_action_data_set_target(openAction, HUB_INVOKE_TARGET);
-    uds_item_action_data_set_type(openAction, "service");
-    // With the reply card on, "Reply" belongs to the card and this one is plainly "Open in Zalo10".
-    const bool replyCard = true;   // long-press Reply opens the reply card; a short tap opens the chat
-    uds_item_action_data_set_title(openAction, replyCard ? "Open in Zalo10" : "Reply");
-    uds_item_action_data_set_image_source(openAction, replyCard ? HUB_ICON_FILE : HUB_ICON_REPLY_FILE);
-    uds_item_action_data_set_mime_type(openAction, HUB_MIME_TYPE_MESSAGE);
-    uds_item_action_data_set_placement(openAction, UDS_PLACEMENT_DEFAULT);
-    // With the reply card on, the card's own Open button replaces this menu entry: a context mask no item state ever
-    // has keeps it out of the long-press menu while the action stays registered (the Hub tap goes to the app).
-    uds_item_action_data_set_context_mask(openAction, HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD);  // EXPERIMENT: valid state bits instead of 0x40000000
-
-    int actionRc = uds_register_item_context_action(m_udsHandle, ACCOUNT_ID, openAction);
-    qDebug() << "[Hub] open action rc=" << actionRc;
-    uds_item_action_data_destroy(openAction);
-    if (actionRc != UDS_SUCCESS) {
-        qWarning() << "[Hub] item action registration failed, rc=" << actionRc;
-        // Not fatal: the account is registered, only the "Open" action is missing.
-    } else {
-    }
-
-    if (replyCard) {
-        int replyRc = registerItemAction(m_udsHandle, ACCOUNT_ID, ACTION_REPLY, HUB_REPLY_TARGET,
-                                         HUB_ICON_REPLY_FILE, "Reply",
-                                         HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD, UDS_PLACEMENT_DEFAULT);
-        qDebug() << "[Hub] reply card action rc=" << replyRc;
-    }
+    // "Open in Zalo10" is intentionally omitted from the long-press menu; a short tap opens the chat.
+    int replyRc = registerItemAction(m_udsHandle, ACCOUNT_ID, ACTION_REPLY, HUB_REPLY_TARGET,
+                                     HUB_ICON_REPLY_FILE, "Reply",
+                                     HUB_CONTEXT_STATE_READ | HUB_CONTEXT_STATE_UNREAD, UDS_PLACEMENT_DEFAULT);
+    qDebug() << "[Hub] reply card action rc=" << replyRc;
 
     registerItemAction(m_udsHandle, ACCOUNT_ID, ACTION_MARK_READ, HUB_SERVICE_TARGET,
                        HUB_ICON_MARK_OPENED_FILE, "Mark Read",
