@@ -73,7 +73,7 @@
     </invoke-target>
 
     <name>Zalo10</name>
-    <versionNumber>1.5.0</versionNumber>
+    <versionNumber>1.6.0</versionNumber>
     <description>The Zalo10 application for BB10</description>
     <author>BerryLife</author>
     <buildId>0</buildId>
