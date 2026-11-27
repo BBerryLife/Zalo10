@@ -74,7 +74,7 @@ class PhoneEngine:
                 self.emit({'event':'error','reason':'call_alert_unavailable'})
 
     def emit(self,event):
-        if self.args.socket and event.get('event') in ('state','api_result','media_preparing','error','audio_open_error','call_control','local_choice'):
+        if self.args.socket and event.get('event') in ('state','api_result','media_preparing','error','audio_open_error','call_control','local_choice','open_ui'):
             trace=dict((k,event[k]) for k in ('event','state','video','reason','command','ok','error_code','candidate_count','kind','stage','code') if k in event)
             trace['time']=int(time.time())
             try:

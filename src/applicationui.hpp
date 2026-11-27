@@ -14,6 +14,7 @@ class QTranslator;
 class QNetworkReply;
 class QSslError;
 class ZaloService;
+class VoiceCallBridge;
 
 class ApplicationUI : public QObject
 {
@@ -109,6 +110,7 @@ private:
     bool                          m_cardMode;
     // A Hub tap was handed to the reply card from this (main) process and the card is still open.
     bool                          m_hubTapCard;
+    VoiceCallBridge*              m_voice;
 };
 
 #endif

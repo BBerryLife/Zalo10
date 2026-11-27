@@ -10,6 +10,10 @@ Runs next to the app, started by `VoiceCallBridge` (src/core/voice). Speaks JSON
 - `session_probe` – native helper that signs/sends call API requests using the app's saved session
   (`imei`, `secretKey`, `cookies` from `BerryLife/Zalo10.conf`)
 
+Incoming calls: with the app in front the call screen (CallScreen.qml) shows. Minimized, the engine sends `open_ui`
+and the app opens itself on the call screen (no Hub notification); if it is still not in front after 3 s, one system
+popup follows. Locked, the app cannot be shown above the lock screen, so the same 3 s rule ends in the system popup. With the app closed, Zalo10Headless opens the app and hands it the call frame.
+
 Requirements (inherited from the reference build): Python 3.2 at /usr/bin/python3.2 and a device
 that lets the app run it with audio access (rooted Q10 in the reference). Voice only; video
 (`libq10video`/`libq10camera`) is shipped but not wired to the UI.

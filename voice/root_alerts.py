@@ -117,6 +117,7 @@ class CallAlert:
         self.dialog=None;self.audio=None;self.position=0;self.state='idle';self.name='';self.video=False
         self.test_until=None;self.foreground=False;self.popup_kind=None
         self.reopen_at=None
+        self.popups=0;self.presented=False
         self.ring_bytes=0
         self.waker=ScreenWake()   # Z27
         self.notice=CallNotice(self.lib,self.waker.log)   # Z28
@@ -151,6 +152,9 @@ class CallAlert:
     def popup(self,kind):
         if self.dialog and self.popup_kind==kind:return
         if kind=='incoming' and self.reopen_at and time.time()<self.reopen_at:return
+        if kind=='incoming':
+            if self.popups>=4:return
+            self.popups+=1
         self.close_popup();d=C.c_void_p()
         created=self.lib.dialog_create_alert(C.byref(d))
         if created:
@@ -189,14 +193,19 @@ class CallAlert:
             self.report({'event':'alert_status','ring_finished':True,'ring_bytes':self.ring_bytes,'ring_xruns':self.audio.xruns(),'ring_route':getattr(self.audio,'audio_type',''),'ring_rate':self.audio.rate()})   # Z25
             self.audio.close();self.audio=None
 
+    def present_incoming(self):
+        # Ask the app to come to the front. If the screen is still not in front after 3 s (minimized and the
+        # invoke failed, or the device is locked: an app window cannot sit above the lock screen), tick() shows
+        # the system popup, which can.
+        self.presented=True
+        self.open_ui()
+
     def update(self,event,native_alert=False):
         previous=self.state;self.state=event.get('state','idle');self.video=bool(event.get('video'))
         if self.state!=previous or self.state=='idle':self.reopen_at=None
+        if self.state!='incoming':self.presented=False;self.popups=0
         if self.state=='incoming':self.name=event.get('name') or 'Zalo'
-        if self.state=='incoming' and previous!='incoming':   # Z27/Z28
-            if self.waker.enabled():
-              try:self.notice.show('Cuộc gọi video Zalo' if self.video else 'Cuộc gọi Zalo đến',self.name or 'Zalo')
-              except Exception as error:self.waker.log('notice error '+error.__class__.__name__)
+        if self.state=='incoming' and previous!='incoming':   # Z27
             try:self.waker.wake('incoming')
             except Exception as error:self.waker.log('incoming error '+error.__class__.__name__)
         elif self.state!='incoming' and previous=='incoming':
@@ -210,7 +219,7 @@ class CallAlert:
         self.ringing((self.state=='incoming' and not native_alert) or back,back)
         if self.state=='incoming' and not native_alert:
             if self.foreground:self.close_popup()   # Z24: the Zalo call screen is showing
-            else:self.popup('incoming')
+            elif not self.presented:self.present_incoming()
         elif self.state=='connected' and not self.foreground:self.popup('connected')
         else:self.close_popup()
 

@@ -19,6 +19,7 @@
 class QLocalSocket;
 class QProcess;
 class ZaloService;
+namespace bb { namespace system { class InvokeManager; } }
 
 class VoiceCallBridge : public QObject
 {
@@ -56,7 +57,7 @@ public slots:
     Q_INVOKABLE void answer();
     Q_INVOKABLE void hangup();
     Q_INVOKABLE void setMuted(bool muted);
-    // The call sheet is on screen: tell the engine to drop its lock-screen style popup.
+    // The call sheet is open: the engine drops its popup once the app is also in front.
     Q_INVOKABLE void setForeground(bool foreground);
     Q_INVOKABLE void ensureRunning();
     // Wired to ZaloService::voiceCallControl (WS "voip" frames).
@@ -80,9 +81,13 @@ private slots:
     void onProcessOutput();
     void onTick();
     void onDialTimeout();
+    void onAppFullscreen();
+    void onAppHidden();
 
 private:
     void sendFrame(const QVariantMap &frame);
+    void pushForeground();
+    void bringToFront();
     void flushPending();
     void applyEvent(const QVariantMap &event);
     void applyState(const QVariantMap &event);
@@ -107,6 +112,9 @@ private:
     bool    m_muted;
     bool    m_engineReady;
     bool    m_wasIncoming;
+    bool    m_appVisible;     // app window is full screen (not minimized / screen off)
+    bool    m_sheetOpen;      // call sheet reports itself open
+    bb::system::InvokeManager *m_invoke;
     bool    m_awaitingDial;   // dial sent, engine has not left its initial idle state yet
     void failDial(const QString &reason);
     void logEngineTrace();

@@ -2,6 +2,11 @@
 #include "../ZaloService.hpp"
 #include "../../utils/json/ZaloMessageJson.hpp"
 
+#include <bb/cascades/Application>
+#include <bb/system/InvokeManager>
+#include <bb/system/InvokeRequest>
+#include <bb/system/InvokeTargetReply>
+
 #include <QLocalSocket>
 #include <QProcess>
 #include <QSettings>
@@ -10,6 +15,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDateTime>
+#include <QUrl>
 #include <QDebug>
 
 namespace {
@@ -42,6 +48,9 @@ VoiceCallBridge::VoiceCallBridge(ZaloService *service, QObject *parent)
     , m_muted(false)
     , m_engineReady(false)
     , m_wasIncoming(false)
+    , m_appVisible(true)
+    , m_sheetOpen(false)
+    , m_invoke(new bb::system::InvokeManager(this))
     , m_awaitingDial(false)
     , m_connectTries(0)
     , m_readyFalse(0)
@@ -62,6 +71,13 @@ VoiceCallBridge::VoiceCallBridge(ZaloService *service, QObject *parent)
 
     m_tick.setInterval(1000);
     connect(&m_tick, SIGNAL(timeout()), this, SLOT(onTick()));
+
+    bb::cascades::Application *app = bb::cascades::Application::instance();
+    if (app) {
+        connect(app, SIGNAL(fullscreen()), this, SLOT(onAppFullscreen()));
+        connect(app, SIGNAL(thumbnail()),  this, SLOT(onAppHidden()));
+        connect(app, SIGNAL(invisible()),  this, SLOT(onAppHidden()));
+    }
 
     if (m_service) {
         connect(m_service, SIGNAL(voiceCallControl(QVariantMap)), this, SLOT(control(QVariantMap)));
@@ -218,6 +234,7 @@ void VoiceCallBridge::onEngineConnected()
 {
     m_buffer.clear();
     m_retry.stop();
+    if (m_sheetOpen && m_appVisible) pushForeground();
 }
 
 void VoiceCallBridge::onEngineDisconnected()
@@ -285,6 +302,8 @@ void VoiceCallBridge::applyEvent(const QVariantMap &event)
             failDial("engine_error");
         }
         emit changed();
+    } else if (kind == "open_ui") {
+        bringToFront();
     } else if (kind == "state") {
         applyState(event);
     } else if (kind == "error") {
@@ -454,14 +473,51 @@ void VoiceCallBridge::setMuted(bool muted)
 
 void VoiceCallBridge::setForeground(bool foreground)
 {
-    QVariantMap f; f["action"] = "ui_foreground"; f["foreground"] = foreground;
+    m_sheetOpen = foreground;
+    pushForeground();
+}
+
+// The engine counts the call screen as "in front" only while the sheet is open AND the app is visible;
+// a sheet that opened inside a minimized app must not silence the engine.
+void VoiceCallBridge::pushForeground()
+{
+    QVariantMap f; f["action"] = "ui_foreground"; f["foreground"] = (m_sheetOpen && m_appVisible);
     sendFrame(f);
+}
+
+void VoiceCallBridge::onAppFullscreen()
+{
+    m_appVisible = true;
+    pushForeground();
+}
+
+void VoiceCallBridge::onAppHidden()
+{
+    m_appVisible = false;
+    pushForeground();
+}
+
+// Engine asked for the call screen (incoming call while minimized or locked): OPEN invoke on our own
+// target, the same way a Hub tap brings the app up. onInvoked() ignores the "zalo10:call" marker.
+void VoiceCallBridge::bringToFront()
+{
+    if (m_appVisible) return;
+    qDebug() << "[Voice] bringing the app to the front";
+    bb::system::InvokeRequest req;
+    req.setTarget("com.BerryLife.Zalo10.invoke");
+    req.setAction("bb.action.OPEN");
+    req.setMimeType("application/vnd.zalo10.hub.chat");
+    req.setUri(QUrl("pim:application/vnd.zalo10.hub.chat"));
+    req.setData(QByteArray("zalo10:call"));
+    bb::system::InvokeTargetReply *reply = m_invoke->invoke(req);
+    if (reply) connect(reply, SIGNAL(finished()), reply, SLOT(deleteLater()));
 }
 
 void VoiceCallBridge::control(const QVariantMap &content)
 {
     // WS frame -> engine. Engine ignores stale/foreign call ids; we only bound what we forward.
     const QString act = content.value("act").toString();
+    qDebug() << "[Voice] control act=" << act;
     if (act != "request" && act != "cancel" && act != "end_call" && act != "reject" &&
         act != "busy" && act != "answer" && act != "answer_ack" && act != "ring_ring")
         return;

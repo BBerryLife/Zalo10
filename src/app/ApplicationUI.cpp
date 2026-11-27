@@ -31,7 +31,7 @@ int ApplicationUI::screenHeightPx() const
     return screenPixels().height();
 }
 
-ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain"), m_waitingCameraPhoto(false), m_cardMode(false), m_hubTapCard(false)
+ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NULL), m_exitHandled(false), m_pendingShareMimeType("text/plain"), m_waitingCameraPhoto(false), m_cardMode(false), m_hubTapCard(false), m_voice(NULL)
 {
     m_pInvokeManager = new InvokeManager(this);
     bool invokeConnectOk = QObject::connect(
@@ -105,7 +105,8 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     qml->setContextProperty("app",      this);
     qml->setContextProperty("zService", zService);
     qml->setContextProperty("stickerManager", new StickerManager(this));
-    qml->setContextProperty("voice", new VoiceCallBridge(zService, this));
+    m_voice = new VoiceCallBridge(zService, this);
+    qml->setContextProperty("voice", m_voice);
 
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
@@ -268,6 +269,18 @@ void ApplicationUI::onInvoked(const bb::system::InvokeRequest &request)
     // uri() is always empty.
     QString rawData = QString::fromUtf8(request.data());
     QUrl    rawUri  = request.uri();
+
+    // Incoming-call launch: the engine (app minimized) or the headless service (app closed) opens the app on
+    // the call screen. "zalo10:call" alone only brings the app forward; "zalo10:call|<json>" also carries the
+    // call "request" frame the service received while the app was closed.
+    static const QString kCallMarker = QString::fromLatin1("zalo10:call");
+    if (rawData.startsWith(kCallMarker)) {
+        const QString payload = rawData.mid(kCallMarker.size() + 1);
+        qDebug() << "[App] call launch, frame=" << !payload.isEmpty();
+        if (m_voice && !payload.isEmpty())
+            m_voice->control(jsonToMap(payload.toUtf8()));
+        return;
+    }
 
     QString threadId;
     bool    isGroup = false;
