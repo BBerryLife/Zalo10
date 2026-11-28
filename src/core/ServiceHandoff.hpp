@@ -25,6 +25,9 @@ static const char *const ACTION_UI_CLOSED = "com.BerryLife.Zalo10.service.UI_CLO
 
 inline QString pidFilePath() { return QDir::homePath() + "/zalo10_ui.pid"; }
 
+// Local socket the service listens on; the UI writes "open_ui" to it when an incoming call needs the app in front.
+inline QString cmdSocketPath() { return QDir::homePath() + "/zalo10_svc.sock"; }
+
 inline void markUiAlive()
 {
     QFile f(pidFilePath());

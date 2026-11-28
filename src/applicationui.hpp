@@ -37,6 +37,8 @@ public slots:
     void onServicePingFinished();
     void onBringToFront(int shape);
     void onBringReplyFinished();
+    void onBringSocketConnected();
+    void onBringSocketError();
     void invokeEmail(const QString &to, const QString &subject);
     void minimizeApp();
     Q_INVOKABLE void setDarkTheme(bool dark);

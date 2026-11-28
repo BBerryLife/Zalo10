@@ -657,8 +657,7 @@ void VoiceCallBridge::control(const QVariantMap &content)
 }
 
 // Engine asked for the call screen (incoming call while minimized or locked). The request shapes are tried in turn
-// by ApplicationUI (it owns the app's InvokeManager; the bridge's own second InvokeManager is the suspect for the BadRequest replies),
-// every 1.5 s until the app is in front.
+// by ApplicationUI, every 1.5 s until the app is in front.
 void VoiceCallBridge::bringToFront()
 {
     m_bringAttempt = 0;
@@ -667,7 +666,7 @@ void VoiceCallBridge::bringToFront()
 
 void VoiceCallBridge::tryBringToFront()
 {
-    static const int kShapes = 5;
+    static const int kShapes = 3;
     if (m_appVisible || m_bringAttempt >= kShapes) return;
     if (m_bringAttempt > 0 && !active()) return;
     emit bringToFrontRequested(m_bringAttempt++);

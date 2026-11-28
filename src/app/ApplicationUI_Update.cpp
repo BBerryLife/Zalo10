@@ -51,6 +51,14 @@ QString ApplicationUI::exportLog()
 
     bool ok = QFile::copy(srcPath, destPath);
     qWarning() << "[App] exportLog:" << (ok ? "success ->" : "FAILED ->") << destPath;
+
+    // The headless service keeps its own log next to the app's; export it alongside with the same stamp.
+    const QString serviceSrc  = QDir::homePath() + "/zalo10_service.log";
+    const QString serviceDest = destDir + "/zalo10_service_log_" + stamp + ".txt";
+    if (QFile::exists(serviceSrc)) {
+        bool serviceOk = QFile::copy(serviceSrc, serviceDest);
+        qWarning() << "[App] exportLog service:" << (serviceOk ? "success ->" : "FAILED ->") << serviceDest;
+    }
     return ok ? destPath : QString();
 }
 
