@@ -107,6 +107,7 @@ ApplicationUI::ApplicationUI() : QObject(), m_zService(NULL), m_updateManager(NU
     qml->setContextProperty("stickerManager", new StickerManager(this));
     m_voice = new VoiceCallBridge(zService, this);
     qml->setContextProperty("voice", m_voice);
+    connect(m_voice, SIGNAL(bringToFrontRequested(int)), this, SLOT(onBringToFront(int)));
 
     AbstractPane *root = qml->createRootObject<AbstractPane>();
     Application::instance()->setScene(root);
@@ -218,6 +219,55 @@ void ApplicationUI::pingHandoffService(const char *action)
         return;
     }
     connect(reply, SIGNAL(finished()), this, SLOT(onServicePingFinished()));
+}
+
+// Incoming call while the app is not in front: the shapes below are tried one per call until the app comes up.
+// Each attempt logs the Navigator's error code (0 = accepted, 2 = BadRequest).
+void ApplicationUI::onBringToFront(int shape)
+{
+    qDebug() << "[Voice] bring to front, shape" << shape;
+    bb::system::InvokeRequest req;
+    switch (shape) {
+    case 0:   // exactly the UI_OPENED ping, other action
+        req.setTarget("com.BerryLife.Zalo10.service");
+        req.setAction("com.BerryLife.Zalo10.service.OPEN_UI");
+        break;
+    case 1:
+        req.setTarget("com.BerryLife.Zalo10.service");
+        req.setAction("com.BerryLife.Zalo10.service.OPEN_UI");
+        req.setUri(QUrl("headless:"));
+        break;
+    case 2:   // service, OPEN, Hub-like
+        req.setTarget("com.BerryLife.Zalo10.service");
+        req.setAction("bb.action.OPEN");
+        req.setMimeType("application/vnd.zalo10.hub.chat");
+        break;
+    case 3:   // the app itself
+        req.setTarget("com.BerryLife.Zalo10.invoke");
+        req.setAction("bb.action.OPEN");
+        req.setMimeType("application/vnd.zalo10.hub.chat");
+        req.setData(QByteArray("zalo10:call"));
+        break;
+    default:
+        req.setTarget("com.BerryLife.Zalo10.invoke");
+        req.setAction("bb.action.OPEN");
+        req.setMimeType("application/vnd.zalo10.hub.chat");
+        req.setUri(QUrl("pim:application/vnd.zalo10.hub.chat"));
+        req.setData(QByteArray("zalo10:call"));
+        break;
+    }
+    bb::system::InvokeTargetReply *reply = m_pInvokeManager->invoke(req);
+    if (!reply) { qWarning() << "[Voice] bring to front: no reply, shape" << shape; return; }
+    reply->setProperty("shape", shape);
+    connect(reply, SIGNAL(finished()), this, SLOT(onBringReplyFinished()));
+}
+
+void ApplicationUI::onBringReplyFinished()
+{
+    bb::system::InvokeTargetReply *reply = qobject_cast<bb::system::InvokeTargetReply *>(sender());
+    if (!reply) return;
+    qDebug() << "[Voice] bring-to-front reply error=" << (int)reply->error() << "shape" << reply->property("shape").toInt();
+    reply->deleteLater();
 }
 
 void ApplicationUI::onServicePingFinished()

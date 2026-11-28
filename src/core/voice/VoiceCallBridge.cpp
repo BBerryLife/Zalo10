@@ -3,9 +3,6 @@
 #include "../../utils/json/ZaloMessageJson.hpp"
 
 #include <bb/cascades/Application>
-#include <bb/system/InvokeManager>
-#include <bb/system/InvokeRequest>
-#include <bb/system/InvokeTargetReply>
 
 #include <QLocalSocket>
 #include <QProcess>
@@ -16,6 +13,7 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <QUrl>
+#include <QTimer>
 #include <QDebug>
 
 namespace {
@@ -50,7 +48,7 @@ VoiceCallBridge::VoiceCallBridge(ZaloService *service, QObject *parent)
     , m_wasIncoming(false)
     , m_appVisible(true)
     , m_sheetOpen(false)
-    , m_invoke(new bb::system::InvokeManager(this))
+    , m_bringAttempt(0)
     , m_awaitingDial(false)
     , m_connectTries(0)
     , m_readyFalse(0)
@@ -497,22 +495,6 @@ void VoiceCallBridge::onAppHidden()
     pushForeground();
 }
 
-// Engine asked for the call screen (incoming call while minimized or locked): OPEN invoke on our own
-// target, the same way a Hub tap brings the app up. onInvoked() ignores the "zalo10:call" marker.
-void VoiceCallBridge::bringToFront()
-{
-    if (m_appVisible) return;
-    qDebug() << "[Voice] bringing the app to the front";
-    bb::system::InvokeRequest req;
-    req.setTarget("com.BerryLife.Zalo10.invoke");
-    req.setAction("bb.action.OPEN");
-    req.setMimeType("application/vnd.zalo10.hub.chat");
-    req.setUri(QUrl("pim:application/vnd.zalo10.hub.chat"));
-    req.setData(QByteArray("zalo10:call"));
-    bb::system::InvokeTargetReply *reply = m_invoke->invoke(req);
-    if (reply) connect(reply, SIGNAL(finished()), reply, SLOT(deleteLater()));
-}
-
 void VoiceCallBridge::control(const QVariantMap &content)
 {
     // WS frame -> engine. Engine ignores stale/foreign call ids; we only bound what we forward.
@@ -531,6 +513,24 @@ void VoiceCallBridge::control(const QVariantMap &content)
     m_pending.append(f);
     startEngine(false);
     flushPending();
+}
+
+// Engine asked for the call screen (incoming call while minimized or locked). The request shapes are tried in turn
+// by ApplicationUI (it owns the app's InvokeManager; the bridge's own second InvokeManager is the suspect for the BadRequest replies),
+// every 1.5 s until the app is in front.
+void VoiceCallBridge::bringToFront()
+{
+    m_bringAttempt = 0;
+    tryBringToFront();
+}
+
+void VoiceCallBridge::tryBringToFront()
+{
+    static const int kShapes = 5;
+    if (m_appVisible || m_bringAttempt >= kShapes) return;
+    if (m_bringAttempt > 0 && !active()) return;
+    emit bringToFrontRequested(m_bringAttempt++);
+    QTimer::singleShot(1500, this, SLOT(tryBringToFront()));
 }
 
 // ---------------------------------------------------------------- presentation

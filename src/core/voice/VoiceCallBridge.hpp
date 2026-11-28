@@ -19,7 +19,6 @@
 class QLocalSocket;
 class QProcess;
 class ZaloService;
-namespace bb { namespace system { class InvokeManager; } }
 
 class VoiceCallBridge : public QObject
 {
@@ -69,6 +68,7 @@ signals:
     // reason is the engine's code, e.g. "peer_reject", "timeout", "local_hangup".
     void callEnded(const QString &reason, int seconds);
     void engineError(const QString &message);
+    void bringToFrontRequested(int shape);
 
 private slots:
     void connectEngine();
@@ -83,6 +83,7 @@ private slots:
     void onDialTimeout();
     void onAppFullscreen();
     void onAppHidden();
+    void tryBringToFront();
 
 private:
     void sendFrame(const QVariantMap &frame);
@@ -114,7 +115,7 @@ private:
     bool    m_wasIncoming;
     bool    m_appVisible;     // app window is full screen (not minimized / screen off)
     bool    m_sheetOpen;      // call sheet reports itself open
-    bb::system::InvokeManager *m_invoke;
+    int     m_bringAttempt;
     bool    m_awaitingDial;   // dial sent, engine has not left its initial idle state yet
     void failDial(const QString &reason);
     void logEngineTrace();

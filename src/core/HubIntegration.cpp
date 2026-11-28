@@ -213,9 +213,7 @@ bool HubIntegration::init()
     for (long long oldId = 424242001LL; oldId < ACCOUNT_ID; ++oldId) {
         if (uds_account_removed(m_udsHandle, oldId) == UDS_SUCCESS) ++oldRemoved; else ++oldNotRemoved;
     }
-    int removeRc = uds_account_removed(m_udsHandle, ACCOUNT_ID);
-    qDebug() << "[Hub] old accounts removed=" << oldRemoved << "not removable=" << oldNotRemoved
-             << "| remove current rc=" << removeRc;
+    qDebug() << "[Hub] old accounts removed=" << oldRemoved << "not removable=" << oldNotRemoved;
 
     uds_account_data_t *account = uds_account_data_create();
     uds_account_data_set_id(account, ACCOUNT_ID);
@@ -228,7 +226,16 @@ bool HubIntegration::init()
     // so IM is kept.
     uds_account_data_set_type(account, UDS_ACCOUNT_TYPE_IM);
 
-    rc = uds_account_added(m_udsHandle, account);
+    // Update the existing account instead of deleting and re-adding it on every start: a re-created account
+    // lost its alert settings, so the Hub alert fell back to the system tone ("essential") although the app's
+    // notification settings still showed "present". Only when there is no account to update is it added.
+    rc = uds_account_updated(m_udsHandle, account);
+    qDebug() << "[Hub] account update rc=" << rc;
+    if (rc != UDS_SUCCESS) {
+        int removeRc = uds_account_removed(m_udsHandle, ACCOUNT_ID);
+        rc = uds_account_added(m_udsHandle, account);
+        qDebug() << "[Hub] account re-created, remove rc=" << removeRc;
+    }
     uds_account_data_destroy(account);
     qDebug() << "[Hub] account add rc=" << rc << "id=" << ACCOUNT_ID;
 
