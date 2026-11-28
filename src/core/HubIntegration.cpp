@@ -15,6 +15,9 @@
 static const char *HUB_ICON_FILE = "ic_hub.png";
 // Account icon while something is unread (see setAccountUnread()).
 static const char *HUB_ICON_UNREAD_FILE = "ic_hub_unread.png";
+// The Zalo10 Feeds item has its own read / unread icons (the updates arrows, recoloured like ic_hub_*).
+static const char *HUB_ICON_FEEDS_UNREAD_FILE = "ic_hub_feeds_unread.png";
+static const char *HUB_ICON_FEEDS_READ_FILE   = "ic_hub_feeds_read.png";
 // Per-item message state icons, identical to the chat list's message_states/*.png (yellow/grey pellet, sending, sent,
 // delivered, read, failed); also need public="true" in bar-descriptor.xml, otherwise Hub silently shows an empty icon.
 static const char *HUB_ICON_IN_UNREAD_FILE     = "ii_bbm_in_unread.png";
@@ -114,9 +117,10 @@ long long HubIntegration::categoryIdFor(const QString &threadId)
 // Use branded ic_hub_unread / ic_hub_read icons instead of the per-state ii_bbm_* pellets.
 // The message-state tracking logic (outState, advanceOutgoingState, noteOutgoing) is kept intact
 // so the Hub item state remains correct; only the visual icon switches between two states.
-const char *HubIntegration::iconFor(bool unread, int outState)
+const char *HubIntegration::iconFor(const QString &threadId, bool unread, int outState)
 {
     Q_UNUSED(outState);
+    if (isFeedId(threadId)) return unread ? HUB_ICON_FEEDS_UNREAD_FILE : HUB_ICON_FEEDS_READ_FILE;
     return unread ? HUB_ICON_UNREAD_FILE : "ic_hub_read.png";
 }
 
@@ -347,7 +351,7 @@ void HubIntegration::upsertThreadItemN(const QString &threadId, bool isGroup,
     uds_inbox_item_data_set_source_id(item, const_cast<char*>(threadIdUtf8.constData()));
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
-    uds_inbox_item_data_set_icon(item, iconFor(true, -1));
+    uds_inbox_item_data_set_icon(item, iconFor(threadId, true, -1));
     uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
     uds_inbox_item_data_set_category_id(item, categoryIdFor(threadId));
     uds_inbox_item_data_set_timestamp(item, timestampMs);
@@ -520,7 +524,7 @@ bool HubIntegration::publishState(const QString &threadId, bool notify, bool all
     uds_inbox_item_data_set_source_id(item, const_cast<char*>(threadIdUtf8.constData()));
     uds_inbox_item_data_set_name(item, titleUtf8.constData());
     uds_inbox_item_data_set_description(item, previewUtf8.constData());
-    uds_inbox_item_data_set_icon(item, iconFor(st.unread > 0, st.outState));
+    uds_inbox_item_data_set_icon(item, iconFor(threadId, st.unread > 0, st.outState));
     uds_inbox_item_data_set_mime_type(item, HUB_MIME_TYPE_MESSAGE);
     uds_inbox_item_data_set_category_id(item, categoryIdFor(threadId));
     uds_inbox_item_data_set_timestamp(item, st.timestampMs);

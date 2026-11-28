@@ -48,12 +48,12 @@ Sheet {
         var question = questionField.text.trim();
         var options = collectOptions();
         if (question.length === 0) {
-            pollValidationToast.body = "Please enter a poll question.";
+            pollValidationToast.body = qsTr("Please enter a poll question.");
             pollValidationToast.show();
             return;
         }
         if (options.length < 2) {
-            pollValidationToast.body = "Please enter at least 2 options.";
+            pollValidationToast.body = qsTr("Please enter at least 2 options.");
             pollValidationToast.show();
             return;
         }
@@ -87,7 +87,7 @@ Sheet {
                     }
 
                     Label {
-                        text: "Poll"
+                        text: qsTr("Poll")
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         verticalAlignment: VerticalAlignment.Center
                         textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
@@ -99,13 +99,13 @@ Sheet {
 
         actions: [
             ActionItem {
-                title: "Settings"
+                title: qsTr("Settings")
                 imageSource: "asset:///images/ic_settings.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: { pollSettingsSheet.open(); }
             },
             ActionItem {
-                title: "Confirm"
+                title: qsTr("Confirm")
                 imageSource: "asset:///images/ChatView/ic_save.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: { createPollSheetRoot.doConfirm(); }
@@ -123,7 +123,7 @@ Sheet {
 
                     TextField {
                         id: questionField
-                        hintText: "Ask something"
+                        hintText: qsTr("Ask something")
                         horizontalAlignment: HorizontalAlignment.Fill
                         textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Medium }
                     }
@@ -137,7 +137,7 @@ Sheet {
                     leftPadding: 20; rightPadding: 20; bottomPadding: 6
 
                     Label {
-                        text: "Choose multiple options"
+                        text: qsTr("Choose multiple options")
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         verticalAlignment: VerticalAlignment.Center
                         textStyle { color: Color.Gray; fontSize: FontSize.Small }
@@ -152,19 +152,19 @@ Sheet {
                     horizontalAlignment: HorizontalAlignment.Fill
                     leftPadding: 20; rightPadding: 20; topPadding: 8
 
-                    TextField { id: opt0; visible: createPollSheetRoot.optionVisibleCount > 0; hintText: "Option 1"; bottomMargin: 10 }
-                    TextField { id: opt1; visible: createPollSheetRoot.optionVisibleCount > 1; hintText: "Option 2"; bottomMargin: 10 }
-                    TextField { id: opt2; visible: createPollSheetRoot.optionVisibleCount > 2; hintText: "Option 3"; bottomMargin: 10 }
-                    TextField { id: opt3; visible: createPollSheetRoot.optionVisibleCount > 3; hintText: "Option 4"; bottomMargin: 10 }
-                    TextField { id: opt4; visible: createPollSheetRoot.optionVisibleCount > 4; hintText: "Option 5"; bottomMargin: 10 }
-                    TextField { id: opt5; visible: createPollSheetRoot.optionVisibleCount > 5; hintText: "Option 6"; bottomMargin: 10 }
-                    TextField { id: opt6; visible: createPollSheetRoot.optionVisibleCount > 6; hintText: "Option 7"; bottomMargin: 10 }
-                    TextField { id: opt7; visible: createPollSheetRoot.optionVisibleCount > 7; hintText: "Option 8"; bottomMargin: 10 }
-                    TextField { id: opt8; visible: createPollSheetRoot.optionVisibleCount > 8; hintText: "Option 9"; bottomMargin: 10 }
-                    TextField { id: opt9; visible: createPollSheetRoot.optionVisibleCount > 9; hintText: "Option 10"; bottomMargin: 10 }
+                    TextField { id: opt0; visible: createPollSheetRoot.optionVisibleCount > 0; hintText: qsTr("Option 1"); bottomMargin: 10 }
+                    TextField { id: opt1; visible: createPollSheetRoot.optionVisibleCount > 1; hintText: qsTr("Option 2"); bottomMargin: 10 }
+                    TextField { id: opt2; visible: createPollSheetRoot.optionVisibleCount > 2; hintText: qsTr("Option 3"); bottomMargin: 10 }
+                    TextField { id: opt3; visible: createPollSheetRoot.optionVisibleCount > 3; hintText: qsTr("Option 4"); bottomMargin: 10 }
+                    TextField { id: opt4; visible: createPollSheetRoot.optionVisibleCount > 4; hintText: qsTr("Option 5"); bottomMargin: 10 }
+                    TextField { id: opt5; visible: createPollSheetRoot.optionVisibleCount > 5; hintText: qsTr("Option 6"); bottomMargin: 10 }
+                    TextField { id: opt6; visible: createPollSheetRoot.optionVisibleCount > 6; hintText: qsTr("Option 7"); bottomMargin: 10 }
+                    TextField { id: opt7; visible: createPollSheetRoot.optionVisibleCount > 7; hintText: qsTr("Option 8"); bottomMargin: 10 }
+                    TextField { id: opt8; visible: createPollSheetRoot.optionVisibleCount > 8; hintText: qsTr("Option 9"); bottomMargin: 10 }
+                    TextField { id: opt9; visible: createPollSheetRoot.optionVisibleCount > 9; hintText: qsTr("Option 10"); bottomMargin: 10 }
 
                     Label {
-                        text: "+ Add option"
+                        text: qsTr("+ Add option")
                         visible: createPollSheetRoot.optionVisibleCount < createPollSheetRoot.maxOptions
                         textStyle { color: Color.create("#2575fc"); fontWeight: FontWeight.Bold }
                         topMargin: 4; bottomMargin: 20
@@ -201,7 +201,7 @@ Sheet {
                                     onClicked: { pollSettingsSheet.close(); }
                                 }
                                 Label {
-                                    text: "Poll settings"
+                                    text: qsTr("Poll settings")
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                     verticalAlignment: VerticalAlignment.Center
                                     textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
@@ -219,7 +219,7 @@ Sheet {
                             horizontalAlignment: HorizontalAlignment.Fill
                             bottomMargin: 20
                             Label {
-                                text: "Let people add new options"
+                                text: qsTr("Let people add new options")
                                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                 verticalAlignment: VerticalAlignment.Center
                             }
@@ -234,7 +234,7 @@ Sheet {
                             horizontalAlignment: HorizontalAlignment.Fill
                             bottomMargin: 20
                             Label {
-                                text: "Hide vote results until poll ends"
+                                text: qsTr("Hide vote results until poll ends")
                                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                 verticalAlignment: VerticalAlignment.Center
                                 multiline: true
@@ -250,7 +250,7 @@ Sheet {
                             horizontalAlignment: HorizontalAlignment.Fill
                             bottomMargin: 20
                             Label {
-                                text: "Anonymous poll"
+                                text: qsTr("Anonymous poll")
                                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                 verticalAlignment: VerticalAlignment.Center
                             }

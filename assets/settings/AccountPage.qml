@@ -4,14 +4,14 @@ import bb.system 1.0
 Page {
     id: page
     property variant sheet
-    titleBar: SettingsTitleBar { heading: "Account" }
+    titleBar: SettingsTitleBar { heading: qsTr("Account") }
 
     ScrollView {
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             SettingsButtonRow {
-                text: "Log Out"
-                description: "Signs this device out of your Zalo account."
+                text: qsTr("Log Out")
+                description: qsTr("Signs this device out of your Zalo account.")
                 onClicked: { logoutDialog.show(); }
             }
         }
@@ -20,10 +20,10 @@ Page {
     attachedObjects: [
         SystemDialog {
             id: logoutDialog
-            title: "Log Out"
-            body: "Are you sure you want to log out?"
-            confirmButton.label: "Log Out"
-            cancelButton.label: "Cancel"
+            title: qsTr("Log Out")
+            body: qsTr("Are you sure you want to log out?")
+            confirmButton.label: qsTr("Log Out")
+            cancelButton.label: qsTr("Cancel")
             onFinished: {
                 if (result === SystemUiResult.ConfirmButtonSelection) {
                     zService.logout();

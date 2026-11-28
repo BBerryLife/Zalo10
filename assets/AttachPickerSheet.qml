@@ -13,9 +13,9 @@ Sheet {
 
     Page {
         titleBar: TitleBar {
-            title: "Attach"
+            title: qsTr("Attach")
             dismissAction: ActionItem {
-                title: "Cancel"
+                title: qsTr("Cancel")
                 onTriggered: { attachPickerSheetRoot.close(); }
             }
         }
@@ -29,13 +29,13 @@ Sheet {
                     // ArrayDataModel has no declarable items property: fill it with qualified append() calls
                     // (attachModel.append); unqualified append()/insertList() throws ReferenceError.
                     Component.onCompleted: {
-                        attachModel.append({ key: "picture",     label: "Picture",     icon: "asset:///images/ChatView/bubble/file_types/File Type - Picture (Image).png", enabled: true  });
-                        attachModel.append({ key: "video",       label: "Video",       icon: "asset:///images/ChatView/bubble/file_types/File Type - Video.png",           enabled: true  });
-                        attachModel.append({ key: "location",    label: "Location",    icon: "asset:///images/ChatView/bubble/file_types/File Type - Location.png",      enabled: false });
-                        attachModel.append({ key: "audio",       label: "Audio",       icon: "asset:///images/ChatView/bubble/file_types/File Type - Audio.png",         enabled: true  });
-                        attachModel.append({ key: "voicenote",   label: "Voice Note",  icon: "asset:///images/ChatView/bubble/file_types/File Type - Voice Note (Audio Recording).png", enabled: true  });
-                        attachModel.append({ key: "contact",     label: "Contact",     icon: "asset:///images/ChatView/bubble/file_types/File Type - VCF (Contanct).png", enabled: true  });
-                        attachModel.append({ key: "file",        label: "File",        icon: "asset:///images/ChatView/bubble/file_types/File Type - Generic.png",       enabled: true  });
+                        attachModel.append({ key: "picture",     label: qsTr("Picture"),     icon: "asset:///images/ChatView/bubble/file_types/File Type - Picture (Image).png", enabled: true  });
+                        attachModel.append({ key: "video",       label: qsTr("Video"),       icon: "asset:///images/ChatView/bubble/file_types/File Type - Video.png",           enabled: true  });
+                        attachModel.append({ key: "location",    label: qsTr("Location"),    icon: "asset:///images/ChatView/bubble/file_types/File Type - Location.png",      enabled: false });
+                        attachModel.append({ key: "audio",       label: qsTr("Audio"),       icon: "asset:///images/ChatView/bubble/file_types/File Type - Audio.png",         enabled: true  });
+                        attachModel.append({ key: "voicenote",   label: qsTr("Voice Note"),  icon: "asset:///images/ChatView/bubble/file_types/File Type - Voice Note (Audio Recording).png", enabled: true  });
+                        attachModel.append({ key: "contact",     label: qsTr("Contact"),     icon: "asset:///images/ChatView/bubble/file_types/File Type - VCF (Contanct).png", enabled: true  });
+                        attachModel.append({ key: "file",        label: qsTr("File"),        icon: "asset:///images/ChatView/bubble/file_types/File Type - Generic.png",       enabled: true  });
                     }
                 }
 

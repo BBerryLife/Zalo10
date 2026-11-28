@@ -42,7 +42,7 @@ Sheet {
                 // Only explain calls that ended without ever connecting (declined / busy / no answer
                 // / engine failure); a normal hang-up needs no message.
                 if (seconds === 0 && reason !== "local_hangup") {
-                    endToast.body = (reason === "engine_error") ? "Voice calling is unavailable"
+                    endToast.body = (reason === "engine_error") ? qsTr("Voice calling is unavailable")
                                                                 : voice.status;
                     endToast.show();
                 }
@@ -123,7 +123,7 @@ Sheet {
                     Label {
                         topMargin: ui.du(0.5)
                         horizontalAlignment: HorizontalAlignment.Center
-                        text: "Incoming Zalo call"
+                        text: qsTr("Incoming Zalo call")
                         textStyle.color: Color.create("#c8dcf2")
                         textStyle.fontSize: FontSize.Medium
                         textStyle.textAlign: TextAlign.Center

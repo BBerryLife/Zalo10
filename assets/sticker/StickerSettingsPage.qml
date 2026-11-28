@@ -113,7 +113,7 @@ Page {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 leftPadding: ui.du(2)
                 Label {
-                    text: "Sticker settings"
+                    text: qsTr("Sticker settings")
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Center
@@ -126,7 +126,7 @@ Page {
     // One action that switches role, so it never has to be hidden.
     actions: [
         ActionItem {
-            title: settingsPage.reorderMode ? "Save" : "Reorder"
+            title: settingsPage.reorderMode ? qsTr("Save") : qsTr("Reorder")
             imageSource: settingsPage.reorderMode
                 ? "asset:///images/ChatView/ic_folder_save.png"
                 : "asset:///images/ChatView/ic_reorder.png"
@@ -172,7 +172,7 @@ Page {
             verticalAlignment: VerticalAlignment.Center
             multiline: true
             textStyle { textAlign: TextAlign.Center }
-            text: "No sticker packs yet.\nOpen the Shop to get some."
+            text: qsTr("No sticker packs yet.\nOpen the Shop to get some.")
         }
     }
 }

@@ -4,7 +4,7 @@ import bb.cascades 1.4
 // only the heading (their way back is the navigation pane's back button).
 TitleBar {
     id: bar
-    property string heading: "Settings"
+    property string heading: qsTr("Settings")
     property bool   closable: false
     signal closeRequested()
 
@@ -32,7 +32,7 @@ TitleBar {
                 text: bar.heading
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
-                leftMargin: bar.closable ? 0 : ui.du(1)
+                leftMargin: bar.closable ? 0 : ui.du(1.5)
                 textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
                 topMargin: 0; bottomMargin: 0
             }

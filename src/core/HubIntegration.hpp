@@ -88,7 +88,7 @@ private:
     bool initFeedsAccount();
     static long long accountIdFor(const QString &threadId);
     static long long categoryIdFor(const QString &threadId);
-    static const char *iconFor(bool unread, int outState);
+    static const char *iconFor(const QString &threadId, bool unread, int outState);
     bool m_feedsReady;
 
     // The Hub instant preview (banner) shows the ACCOUNT icon, not the item icon. The account therefore

@@ -27,7 +27,7 @@ Container {
                 if (ListItemData.reactions && ListItemData.reactions[0])
                     rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[0].icon);
             } } ]
-            ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[0]) ? ListItemData.reactions[0].asset : ""; preferredWidth: 32; preferredHeight: 32; verticalAlignment: VerticalAlignment.Center; scalingMethod: ScalingMethod.AspectFit }
+            Label { text: (ListItemData.reactions && ListItemData.reactions[0]) ? ListItemData.reactions[0].emoji : ""; textStyle.fontSize: FontSize.Medium; verticalAlignment: VerticalAlignment.Center }
             Label { text: (ListItemData.reactions && ListItemData.reactions[0]) ? ("+" + ListItemData.reactions[0].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 4; verticalAlignment: VerticalAlignment.Center }
         }
         Container {
@@ -41,7 +41,7 @@ Container {
                 if (ListItemData.reactions && ListItemData.reactions[1])
                     rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[1].icon);
             } } ]
-            ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[1]) ? ListItemData.reactions[1].asset : ""; preferredWidth: 32; preferredHeight: 32; verticalAlignment: VerticalAlignment.Center; scalingMethod: ScalingMethod.AspectFit }
+            Label { text: (ListItemData.reactions && ListItemData.reactions[1]) ? ListItemData.reactions[1].emoji : ""; textStyle.fontSize: FontSize.Medium; verticalAlignment: VerticalAlignment.Center }
             Label { text: (ListItemData.reactions && ListItemData.reactions[1]) ? ("+" + ListItemData.reactions[1].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 4; verticalAlignment: VerticalAlignment.Center }
         }
         Container {
@@ -55,7 +55,7 @@ Container {
                 if (ListItemData.reactions && ListItemData.reactions[2])
                     rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[2].icon);
             } } ]
-            ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[2]) ? ListItemData.reactions[2].asset : ""; preferredWidth: 32; preferredHeight: 32; verticalAlignment: VerticalAlignment.Center; scalingMethod: ScalingMethod.AspectFit }
+            Label { text: (ListItemData.reactions && ListItemData.reactions[2]) ? ListItemData.reactions[2].emoji : ""; textStyle.fontSize: FontSize.Medium; verticalAlignment: VerticalAlignment.Center }
             Label { text: (ListItemData.reactions && ListItemData.reactions[2]) ? ("+" + ListItemData.reactions[2].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 4; verticalAlignment: VerticalAlignment.Center }
         }
         Container {
@@ -69,7 +69,7 @@ Container {
                 if (ListItemData.reactions && ListItemData.reactions[3])
                     rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[3].icon);
             } } ]
-            ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[3]) ? ListItemData.reactions[3].asset : ""; preferredWidth: 32; preferredHeight: 32; verticalAlignment: VerticalAlignment.Center; scalingMethod: ScalingMethod.AspectFit }
+            Label { text: (ListItemData.reactions && ListItemData.reactions[3]) ? ListItemData.reactions[3].emoji : ""; textStyle.fontSize: FontSize.Medium; verticalAlignment: VerticalAlignment.Center }
             Label { text: (ListItemData.reactions && ListItemData.reactions[3]) ? ("+" + ListItemData.reactions[3].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 4; verticalAlignment: VerticalAlignment.Center }
         }
         Container {
@@ -83,7 +83,7 @@ Container {
                 if (ListItemData.reactions && ListItemData.reactions[4])
                     rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[4].icon);
             } } ]
-            ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[4]) ? ListItemData.reactions[4].asset : ""; preferredWidth: 32; preferredHeight: 32; verticalAlignment: VerticalAlignment.Center; scalingMethod: ScalingMethod.AspectFit }
+            Label { text: (ListItemData.reactions && ListItemData.reactions[4]) ? ListItemData.reactions[4].emoji : ""; textStyle.fontSize: FontSize.Medium; verticalAlignment: VerticalAlignment.Center }
             Label { text: (ListItemData.reactions && ListItemData.reactions[4]) ? ("+" + ListItemData.reactions[4].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 4; verticalAlignment: VerticalAlignment.Center }
         }
         Container {
@@ -96,7 +96,7 @@ Container {
                 if (ListItemData.reactions && ListItemData.reactions[5])
                     rowRoot.ListItem.view.doSendReaction(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.msgType, ListItemData.reactions[5].icon);
             } } ]
-            ImageView { imageSource: (ListItemData.reactions && ListItemData.reactions[5]) ? ListItemData.reactions[5].asset : ""; preferredWidth: 32; preferredHeight: 32; verticalAlignment: VerticalAlignment.Center; scalingMethod: ScalingMethod.AspectFit }
+            Label { text: (ListItemData.reactions && ListItemData.reactions[5]) ? ListItemData.reactions[5].emoji : ""; textStyle.fontSize: FontSize.Medium; verticalAlignment: VerticalAlignment.Center }
             Label { text: (ListItemData.reactions && ListItemData.reactions[5]) ? ("+" + ListItemData.reactions[5].count) : ""; textStyle { fontSize: FontSize.Small; color: rowRoot.isDark ? Color.create("#FFFFFF") : Color.create("#444444") } leftMargin: 4; verticalAlignment: VerticalAlignment.Center }
         }
     }

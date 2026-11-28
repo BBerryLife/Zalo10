@@ -13,7 +13,7 @@ TitleBar {
             leftPadding: ui.du(2.5)
             rightPadding: ui.du(2.5)
             Label {
-                text: "Groups"
+                text: qsTr("Groups")
                 textStyle {
                     color: Color.White
                     base: SystemDefaults.TextStyles.TitleText
@@ -30,7 +30,7 @@ TitleBar {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 TextField {
                     id: groupsSearchField
-                    hintText: "Search groups..."
+                    hintText: qsTr("Search groups...")
                     verticalAlignment: VerticalAlignment.Center
                     textStyle { color: Color.White }
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -43,7 +43,7 @@ TitleBar {
                     }
                 }
                 Button {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     preferredWidth: ui.du(14)
                     verticalAlignment: VerticalAlignment.Center
                     onClicked: {

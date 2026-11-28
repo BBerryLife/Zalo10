@@ -62,9 +62,9 @@ Sheet {
 
     content: Page {
         titleBar: TitleBar {
-            title: "Sticker Pack"
+            title: qsTr("Sticker Pack")
             dismissAction: ActionItem {
-                title: "Close"
+                title: qsTr("Close")
                 onTriggered: { packSheet.close(); }
             }
         }
@@ -125,7 +125,7 @@ Sheet {
                 topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
                 leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
                 Label {
-                    text: packSheet.stickerCount + (packSheet.stickerCount === 1 ? " sticker" : " stickers")
+                    text: packSheet.stickerCount + (packSheet.stickerCount === 1 ? qsTr(" sticker") : qsTr(" stickers"))
                     textStyle {
                         base: SystemDefaults.TextStyles.SmallText
                         fontWeight: FontWeight.Bold

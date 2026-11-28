@@ -174,11 +174,11 @@ Page {
     titleBar: TitleBar {
         title: card.cardTitle
         dismissAction: ActionItem {
-            title: "Cancel"
+            title: qsTr("Cancel")
             onTriggered: { app.closeCard(); }
         }
         acceptAction: ActionItem {
-            title: "Open"
+            title: qsTr("Open")
             onTriggered: { app.openThreadFromCard(card.threadId, card.isGroup); }
         }
     }
@@ -186,7 +186,7 @@ Page {
     actions: [
         ActionItem {
             id: sendAction
-            title: "Send"
+            title: qsTr("Send")
             imageSource: "asset:///images/ChatView/ConversationPaneSend.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             enabled: false
@@ -322,7 +322,7 @@ Page {
                 id: inputField
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
-                hintText: "Enter a message"
+                hintText: qsTr("Enter a message")
                 inputMode: TextFieldInputMode.Chat
                 minHeight: ui.du(7)
                 backgroundVisible: false

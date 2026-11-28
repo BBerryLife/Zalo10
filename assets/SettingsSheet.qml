@@ -30,7 +30,7 @@ Sheet {
         Page {
             id: settingsPage
             titleBar: SettingsTitleBar {
-                heading: "Settings"
+                heading: qsTr("Settings")
                 closable: true
                 onCloseRequested: { settingsSheetRoot.close(); }
             }
@@ -45,44 +45,44 @@ Sheet {
 
                     StandardListItem {
                         imageSource: "asset:///images/SettingsSheet/ic_sb_settings_active.png"
-                        title: "General"
-                        description: "Recalled messages"
+                        title: qsTr("General")
+                        description: qsTr("Language and chat options")
                         gestureHandlers: TapHandler { onTapped: { settingsSheetRoot.openCategory(generalDef); } }
                     }
                     StandardListItem {
                         imageSource: "asset:///images/SettingsSheet/ic_picture.png"
-                        title: "Appearance"
-                        description: "Dark theme"
+                        title: qsTr("Appearance")
+                        description: qsTr("Theme and display")
                         gestureHandlers: TapHandler { onTapped: { settingsSheetRoot.openCategory(appearanceDef); } }
                     }
                     StandardListItem {
                         imageSource: "asset:///images/SettingsSheet/ca_notification.png"
-                        title: "Notifications"
-                        description: "Feeds notifications in BlackBerry Hub"
+                        title: qsTr("Notifications")
+                        description: qsTr("Feeds notifications in BlackBerry Hub")
                         gestureHandlers: TapHandler { onTapped: { settingsSheetRoot.openCategory(notificationsDef); } }
                     }
                     StandardListItem {
                         imageSource: "asset:///images/SettingsSheet/ca_data_management.png"
-                        title: "Data & Backup"
-                        description: "Export, import and sync messages"
+                        title: qsTr("Data & Backup")
+                        description: qsTr("Export, import and sync messages")
                         gestureHandlers: TapHandler { onTapped: { settingsSheetRoot.openCategory(dataDef); } }
                     }
                     StandardListItem {
                         imageSource: "asset:///images/SettingsSheet/ca_storage_access.png"
-                        title: "Cache Control"
-                        description: "Cached photos and local message history"
+                        title: qsTr("Cache Control")
+                        description: qsTr("Cached photos and local message history")
                         gestureHandlers: TapHandler { onTapped: { settingsSheetRoot.openCategory(cacheDef); } }
                     }
                     StandardListItem {
                         imageSource: "asset:///images/SettingsSheet/ca_softwarelogtool.png"
-                        title: "Support"
-                        description: "Export the log file"
+                        title: qsTr("Support")
+                        description: qsTr("Export the log file")
                         gestureHandlers: TapHandler { onTapped: { settingsSheetRoot.openCategory(supportDef); } }
                     }
                     StandardListItem {
                         imageSource: "asset:///images/SettingsSheet/ca_accounts.png"
-                        title: "Account"
-                        description: "Log out"
+                        title: qsTr("Account")
+                        description: qsTr("Log out")
                         gestureHandlers: TapHandler { onTapped: { settingsSheetRoot.openCategory(accountDef); } }
                     }
                 }

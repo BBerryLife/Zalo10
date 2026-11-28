@@ -63,6 +63,6 @@ Container {
         verticalAlignment: VerticalAlignment.Center
         multiline: true
         textStyle { textAlign: TextAlign.Center; color: stickerGrid.isDark ? Color.create("#9a9a9a") : Color.create("#555555") }
-        text: "This pack has no stickers."
+        text: qsTr("This pack has no stickers.")
     }
 }

@@ -49,9 +49,9 @@ TitleBar {
                 attachedObjects: [
                     SystemDialog {
                         id: newChatDialog
-                        title: "New Chat"
-                        body: "This feature is still under development."
-                        confirmButton.label: "OK"
+                        title: qsTr("New Chat")
+                        body: qsTr("This feature is still under development.")
+                        confirmButton.label: qsTr("OK")
                         cancelButton.label: ""
                         cancelButton.enabled: false
                     }
@@ -64,7 +64,7 @@ TitleBar {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 TextField {
                     id: chatsSearchField
-                    hintText: "Search chats..."
+                    hintText: qsTr("Search chats...")
                     verticalAlignment: VerticalAlignment.Center
                     textStyle { color: Color.White }
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -77,7 +77,7 @@ TitleBar {
                     }
                 }
                 Button {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     preferredWidth: ui.du(14)
                     verticalAlignment: VerticalAlignment.Center
                     onClicked: {

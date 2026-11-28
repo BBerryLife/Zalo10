@@ -44,7 +44,7 @@ Connections {
         if (success) {
             chatViewPage.applyRecall(msgId);
         } else {
-            errorToast.body = error.length > 0 ? error : "Failed to recall message";
+            errorToast.body = error.length > 0 ? error : qsTr("Failed to recall message");
             errorToast.show();
         }
     }
@@ -54,7 +54,7 @@ Connections {
         if (success) {
             chatViewPage.applyLocalDelete(msgId);
         } else {
-            errorToast.body = error.length > 0 ? error : "Failed to delete message";
+            errorToast.body = error.length > 0 ? error : qsTr("Failed to delete message");
             errorToast.show();
         }
     }

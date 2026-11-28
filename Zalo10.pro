@@ -126,16 +126,11 @@ OTHER_FILES += \
     assets/EmojiPanel.qml \
     assets/FeedsTab.qml \
     assets/FocusSink.qml \
-    assets/emoji/EmojiPeoplePage.qml \
-    assets/emoji/EmojiNaturePage.qml \
-    assets/emoji/EmojiObjectsPage.qml \
-    assets/emoji/EmojiPlacesPage.qml \
-    assets/emoji/EmojiSymbolsPage.qml \
     assets/sticker/StickerBar.qml \
     assets/sticker/StickerGrid.qml \
     assets/sticker/StickerSettingsPage.qml \
     assets/sticker/StickerShopPage.qml \
-    assets/emoji/EmojiButton.qml \
+    assets/emoji/EmojiData.js \
     assets/ContactsTab.qml \
     assets/LoginView.qml \
     assets/ProfileView.qml \

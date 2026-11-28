@@ -64,13 +64,13 @@ Sheet {
     attachedObjects: [
         SystemDialog {
             id: avatarDialog
-            title: "Change Profile Picture"
-            body: "Where should the new picture come from?"
-            confirmButton.label: "Choose Photo"
+            title: qsTr("Change Profile Picture")
+            body: qsTr("Where should the new picture come from?")
+            confirmButton.label: qsTr("Choose Photo")
             confirmButton.enabled: true
-            cancelButton.label: "Cancel"
+            cancelButton.label: qsTr("Cancel")
             cancelButton.enabled: true
-            buttons: [ SystemUiButton { label: "Open Camera"; enabled: true } ]
+            buttons: [ SystemUiButton { label: qsTr("Open Camera"); enabled: true } ]
             onFinished: {
                 if (result === SystemUiResult.ConfirmButtonSelection) {
                     photoPicker.open();
@@ -83,7 +83,7 @@ Sheet {
             id: photoPicker
             type: FileType.Picture
             mode: FilePickerMode.Picker
-            title: "Select Picture"
+            title: qsTr("Select Picture")
             onFileSelected: mySheet.useNewPhoto(selectedFiles[0])
         },
         SystemToast { id: resultToast },
@@ -111,11 +111,11 @@ Sheet {
             onSelfAvatarChanged: {
                 mySheet.uploading = false;
                 if (ok) {
-                    resultToast.body = "Profile picture updated";
+                    resultToast.body = qsTr("Profile picture updated");
                     mySheet.avatarPath = "";
                     refreshTimer.restart();
                 } else {
-                    resultToast.body = "Could not change picture" + (error.length > 0 ? ": " + error : "");
+                    resultToast.body = qsTr("Could not change picture") + (error.length > 0 ? ": " + error : "");
                 }
                 resultToast.show();
             }
@@ -124,9 +124,9 @@ Sheet {
 
     content: Page {
         titleBar: TitleBar {
-            title: "My Profile"
+            title: qsTr("My Profile")
             dismissAction: ActionItem {
-                title: "Close"
+                title: qsTr("Close")
                 onTriggered: mySheet.close()
             }
         }
@@ -197,7 +197,7 @@ Sheet {
                                 background: Color.create("#99000000")
                                 layout: DockLayout {}
                                 Label {
-                                    text: "Change"
+                                    text: qsTr("Change")
                                     horizontalAlignment: HorizontalAlignment.Center
                                     verticalAlignment: VerticalAlignment.Center
                                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.White }
@@ -232,13 +232,13 @@ Sheet {
                     }
                 }
 
-                ProfileInfoRow { label: "Status";      value: mySheet.bio }
-                ProfileInfoRow { label: "Phone";       value: mySheet.phone }
-                ProfileInfoRow { label: "Gender";      value: mySheet.genderText }
-                ProfileInfoRow { label: "Birthday";    value: mySheet.birthday }
-                ProfileInfoRow { label: "Username";    value: mySheet.username }
-                ProfileInfoRow { label: "Joined Zalo"; value: mySheet.joined }
-                ProfileInfoRow { label: "Zalo ID";     value: mySheet.zaloId }
+                ProfileInfoRow { label: qsTr("Status");      value: mySheet.bio }
+                ProfileInfoRow { label: qsTr("Phone");       value: mySheet.phone }
+                ProfileInfoRow { label: qsTr("Gender");      value: mySheet.genderText }
+                ProfileInfoRow { label: qsTr("Birthday");    value: mySheet.birthday }
+                ProfileInfoRow { label: qsTr("Username");    value: mySheet.username }
+                ProfileInfoRow { label: qsTr("Joined Zalo"); value: mySheet.joined }
+                ProfileInfoRow { label: qsTr("Zalo ID");     value: mySheet.zaloId }
             }
         }
     }

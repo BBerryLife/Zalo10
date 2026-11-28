@@ -66,7 +66,7 @@ NavigationPane {
 
         actions: [
             ActionItem {
-                title: "Refresh"
+                title: qsTr("Refresh")
                 imageSource: "asset:///images/InvitesTab/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
@@ -76,7 +76,7 @@ NavigationPane {
                 }
             },
             ActionItem {
-                title: "Search"
+                title: qsTr("Search")
                 imageSource: "asset:///images/InvitesTab/action_icon_search.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
@@ -91,7 +91,7 @@ NavigationPane {
                 }
             },
             ActionItem {
-                title: "Accept All"
+                title: qsTr("Accept All")
                 imageSource: "asset:///images/InvitesTab/ai_add_task.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
@@ -150,7 +150,7 @@ NavigationPane {
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
 
                                     Label {
-                                        text: ListItemData.name || "Unknown User"
+                                        text: ListItemData.name || qsTr("Unknown User")
                                         textStyle {
                                             base: SystemDefaults.TextStyles.PrimaryText
                                             fontWeight: FontWeight.Bold
@@ -159,7 +159,7 @@ NavigationPane {
                                     }
 
                                     Label {
-                                        text: ListItemData.msg || "Wants to be your friend"
+                                        text: ListItemData.msg || qsTr("Wants to be your friend")
                                         textStyle {
                                             base: SystemDefaults.TextStyles.SubtitleText
                                             color: Color.DarkGray
@@ -171,7 +171,7 @@ NavigationPane {
                                     Container {
                                         layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                                         Button {
-                                            text: "Accept"
+                                            text: qsTr("Accept")
                                             preferredHeight: ui.du(5.5)
                                             preferredWidth: ui.du(18)
                                             rightMargin: ui.du(1.5)
@@ -180,7 +180,7 @@ NavigationPane {
                                             }
                                         }
                                         Button {
-                                            text: "Decline"
+                                            text: qsTr("Decline")
                                             preferredHeight: ui.du(5.5)
                                             preferredWidth: ui.du(18)
                                             onClicked: {
@@ -210,7 +210,7 @@ NavigationPane {
 
             Label {
                 id: invEmpty
-                text: "No friend requests"
+                text: qsTr("No friend requests")
                 visible: false
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center

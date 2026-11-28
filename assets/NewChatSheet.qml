@@ -186,9 +186,9 @@ Sheet {
 
     content: Page {
         titleBar: TitleBar {
-            title: "New Chat"
+            title: qsTr("New Chat")
             dismissAction: ActionItem {
-                title: "Cancel"
+                title: qsTr("Cancel")
                 onTriggered: { ncSheet.closeSheet(); }
             }
         }
@@ -204,7 +204,7 @@ Sheet {
                 leftPadding: ui.du(1.2); rightPadding: ui.du(1.2)
                 TextField {
                     id: searchField
-                    hintText: "Search name..."
+                    hintText: qsTr("Search name...")
                     horizontalAlignment: HorizontalAlignment.Fill
                     input {
                         flags: TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff
@@ -225,7 +225,7 @@ Sheet {
                 topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
                 leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
                 Label {
-                    text: "Suggested"
+                    text: qsTr("Suggested")
                     textStyle {
                         base: SystemDefaults.TextStyles.SmallText
                         fontWeight: FontWeight.Bold
@@ -278,7 +278,7 @@ Sheet {
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                     verticalAlignment: VerticalAlignment.Center
                                     leftMargin: ui.du(1.2)
-                                    text: ListItemData.name || "Unknown"
+                                    text: ListItemData.name || qsTr("Unknown")
                                     textStyle {
                                         color: rowRoot.ListItem.view.isDarkProxy ? Color.White : Color.Black
                                         fontSize: FontSize.Medium

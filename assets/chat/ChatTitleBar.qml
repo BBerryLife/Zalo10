@@ -58,7 +58,7 @@ TitleBar {
                         topMargin: 0; bottomMargin: 0
                     }
                     Label {
-                        text: chatViewPage.isGroup ? "Group"
+                        text: chatViewPage.isGroup ? qsTr("Group")
                               : (chatViewPage.presenceText.length > 0 ? chatViewPage.presenceText : "Zalo Contact")
                         textStyle { color: chatViewPage.presenceOnline ? Color.create("#7dff9b") : Color.create("#b3d4ff"); fontSize: FontSize.XSmall }
                         topMargin: ui.du(0.2); bottomMargin: 0
@@ -74,13 +74,20 @@ TitleBar {
                     rightMargin: ui.du(0.8)
                     onClicked: { if (!voice.active) voice.dial(chatViewPage.threadId, chatViewPage.threadName) }
                 }
+                // Shown in groups too (the voice icon isn't); group calls aren't supported yet.
                 ImageButton {
-                    visible: !chatViewPage.isGroup
                     verticalAlignment: VerticalAlignment.Center
                     preferredWidth: ui.du(8); preferredHeight: ui.du(8)
                     defaultImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
                     pressedImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
-                    onClicked: { if (!voice.active) voice.dialVideo(chatViewPage.threadId, chatViewPage.threadName) }
+                    onClicked: {
+                        if (chatViewPage.isGroup) {
+                            videoCallUnavailableToast.body = qsTr("Video calls are not available in groups yet");
+                            videoCallUnavailableToast.show();
+                        } else if (!voice.active) {
+                            voice.dialVideo(chatViewPage.threadId, chatViewPage.threadName);
+                        }
+                    }
                 }
                 Container {
                     preferredWidth: ui.du(0.2)
@@ -97,7 +104,7 @@ TitleBar {
 
                 TextField {
                     id: chatSearchField
-                    hintText: "Search in this chat..."
+                    hintText: qsTr("Search in this chat...")
                     verticalAlignment: VerticalAlignment.Center
                     textStyle { color: Color.create("#FFFFFF") }
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -133,7 +140,7 @@ TitleBar {
                     onClicked: chatViewPage.gotoSearchMatch(1)
                 }
                 Button {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     preferredWidth: ui.du(12)
                     verticalAlignment: VerticalAlignment.Center
                     onClicked: {

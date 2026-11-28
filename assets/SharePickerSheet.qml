@@ -23,9 +23,9 @@ Sheet {
 
     Page {
         titleBar: TitleBar {
-            title: "Share"
+            title: qsTr("Share")
             dismissAction: ActionItem {
-                title: "Cancel"
+                title: qsTr("Cancel")
                 onTriggered: { sharePickerSheetRoot.close(); }
             }
         }

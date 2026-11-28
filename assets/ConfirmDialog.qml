@@ -2,7 +2,7 @@ import bb.cascades 1.4
 import bb.system 1.0
 
 SystemDialog {
-    property string confirmLabel: "OK"
+    property string confirmLabel: qsTr("OK")
     property string cancelLabel: "Cancel"
     signal confirmed()
 

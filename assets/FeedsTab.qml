@@ -147,7 +147,7 @@ NavigationPane {
     Page {
         actions: [
             DeleteActionItem {
-                title: "Clear Feeds"
+                title: qsTr("Clear Feeds")
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: { clearFeedsDialog.show(); }
             }
@@ -173,9 +173,9 @@ NavigationPane {
                 SegmentedControl {
                     horizontalAlignment: HorizontalAlignment.Fill
                     options: [
-                        Option { text: "All" },
-                        Option { text: "Info" },
-                        Option { text: "Photos" }
+                        Option { text: qsTr("All") },
+                        Option { text: qsTr("Info") },
+                        Option { text: qsTr("Photos") }
                     ]
                     onSelectedIndexChanged: {
                         feedsNav.filterIndex = selectedIndex;
@@ -292,12 +292,12 @@ NavigationPane {
                     leftPadding: ui.du(5); rightPadding: ui.du(5)
                     bottomPadding: ui.du(14)
                     Label {
-                        text: "No updates yet"
+                        text: qsTr("No updates yet")
                         horizontalAlignment: HorizontalAlignment.Center
                         textStyle.base: SystemDefaults.TextStyles.BigText
                     }
                     Label {
-                        text: "Changes to your contacts' profile pictures, covers, bios and birthdays show up here."
+                        text: qsTr("Changes to your contacts' profile pictures, covers, bios and birthdays show up here.")
                         multiline: true
                         horizontalAlignment: HorizontalAlignment.Center
                         textStyle.textAlign: TextAlign.Center
@@ -311,9 +311,9 @@ NavigationPane {
             ArrayDataModel { id: feedModel },
             ConfirmDialog {
                 id: clearFeedsDialog
-                title: "Clear Feeds"
-                body: "Remove all feed updates?"
-                confirmLabel: "Clear"
+                title: qsTr("Clear Feeds")
+                body: qsTr("Remove all feed updates?")
+                confirmLabel: qsTr("Clear")
                 onConfirmed: { zService.clearFeedEvents(); }
             },
             Connections {

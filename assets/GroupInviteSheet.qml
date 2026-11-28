@@ -401,7 +401,7 @@ Sheet {
     function finishCreate(avatarOk, errText) {
         giSheet.busy = false;
         var av = (avatarOk && giSheet.pendingAvatar.length > 0) ? giSheet.pendingAvatar : "";
-        resultToast.body = avatarOk ? "Group created" : "Group created, but the picture could not be set: " + errText;
+        resultToast.body = avatarOk ? qsTr("Group created") : qsTr("Group created, but the picture could not be set: ") + errText;
         resultToast.show();
         var gid = giSheet.createdId;
         var gname = giSheet.createdName;
@@ -433,13 +433,13 @@ Sheet {
         SystemToast { id: resultToast },
         SystemDialog {
             id: avatarDialog
-            title: "Group Picture"
-            body: "Where should the picture come from?"
-            confirmButton.label: "Choose Photo"
+            title: qsTr("Group Picture")
+            body: qsTr("Where should the picture come from?")
+            confirmButton.label: qsTr("Choose Photo")
             confirmButton.enabled: true
-            cancelButton.label: "Cancel"
+            cancelButton.label: qsTr("Cancel")
             cancelButton.enabled: true
-            buttons: [ SystemUiButton { label: "Open Camera"; enabled: true } ]
+            buttons: [ SystemUiButton { label: qsTr("Open Camera"); enabled: true } ]
             onFinished: {
                 if (result === SystemUiResult.ConfirmButtonSelection) {
                     photoPicker.open();
@@ -453,7 +453,7 @@ Sheet {
             id: photoPicker
             type: FileType.Picture
             mode: FilePickerMode.Picker
-            title: "Select Picture"
+            title: qsTr("Select Picture")
             onFileSelected: giSheet.usePhoto(selectedFiles[0])
         },
         Connections {
@@ -487,7 +487,7 @@ Sheet {
                 if (!ok) {
                     giSheet.busy = false;
                     giSheet.updateAccept();
-                    resultToast.body = "Could not create the group" + (error.length > 0 ? ": " + error : "");
+                    resultToast.body = qsTr("Could not create the group") + (error.length > 0 ? ": " + error : "");
                     resultToast.show();
                     return;
                 }
@@ -526,14 +526,14 @@ Sheet {
 
     content: Page {
         titleBar: TitleBar {
-            title: giSheet.sheetMode === "create" ? "Create Group" : "Invite More"
+            title: giSheet.sheetMode === "create" ? qsTr("Create Group") : qsTr("Invite More")
             dismissAction: ActionItem {
-                title: "Cancel"
+                title: qsTr("Cancel")
                 onTriggered: { giSheet.closeSheet(); }
             }
             acceptAction: ActionItem {
                 id: confirmAction
-                title: giSheet.sheetMode === "create" ? "Create" : "Add"
+                title: giSheet.sheetMode === "create" ? qsTr("Create") : qsTr("Add")
                 enabled: false
                 onTriggered: { giSheet.confirm(); }
             }
@@ -578,7 +578,7 @@ Sheet {
                         background: Color.create("#99000000")
                         layout: DockLayout {}
                         Label {
-                            text: "Change"
+                            text: qsTr("Change")
                             horizontalAlignment: HorizontalAlignment.Center
                             verticalAlignment: VerticalAlignment.Center
                             textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.White }
@@ -604,7 +604,7 @@ Sheet {
                     TextField {
                         id: nameField
                         visible: giSheet.sheetMode === "create"
-                        hintText: "Group name"
+                        hintText: qsTr("Group name")
                         horizontalAlignment: HorizontalAlignment.Fill
                         maximumLength: 100
                         input {
@@ -614,7 +614,7 @@ Sheet {
                     }
                     Label {
                         visible: giSheet.sheetMode === "invite"
-                        text: giSheet.groupName.length > 0 ? giSheet.groupName : "Group"
+                        text: giSheet.groupName.length > 0 ? giSheet.groupName : qsTr("Group")
                         multiline: false
                         textStyle { base: SystemDefaults.TextStyles.BigText; color: giSheet.isDark ? Color.White : Color.Black }
                     }
@@ -638,7 +638,7 @@ Sheet {
                 leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
                 CheckBox {
                     id: renameBox
-                    text: "Change group name"
+                    text: qsTr("Change group name")
                     onCheckedChanged: {
                         giSheet.renameChecked = checked;
                         giSheet.updateAccept();
@@ -647,7 +647,7 @@ Sheet {
                 TextField {
                     id: renameField
                     visible: giSheet.renameChecked
-                    hintText: "New group name"
+                    hintText: qsTr("New group name")
                     horizontalAlignment: HorizontalAlignment.Fill
                     maximumLength: 100
                     input {
@@ -666,7 +666,7 @@ Sheet {
                 leftPadding: ui.du(1.2); rightPadding: ui.du(1.2)
                 TextField {
                     id: searchField
-                    hintText: "Search name..."
+                    hintText: qsTr("Search name...")
                     horizontalAlignment: HorizontalAlignment.Fill
                     input {
                         flags: TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff
@@ -686,7 +686,7 @@ Sheet {
                 topPadding: ui.du(0.8); bottomPadding: ui.du(0.8)
                 leftPadding: ui.du(1.5); rightPadding: ui.du(1.5)
                 Label {
-                    text: "Suggested"
+                    text: qsTr("Suggested")
                     textStyle {
                         base: SystemDefaults.TextStyles.SmallText
                         fontWeight: FontWeight.Bold
@@ -739,7 +739,7 @@ Sheet {
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                                     verticalAlignment: VerticalAlignment.Center
                                     leftMargin: ui.du(1.2)
-                                    text: ListItemData.name || "Unknown"
+                                    text: ListItemData.name || qsTr("Unknown")
                                     textStyle {
                                         color: rowRoot.ListItem.view.isDarkProxy ? Color.White : Color.Black
                                         fontSize: FontSize.Medium

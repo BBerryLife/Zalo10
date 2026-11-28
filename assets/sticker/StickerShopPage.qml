@@ -94,7 +94,7 @@ Page {
                 layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
                 leftPadding: ui.du(2)
                 Label {
-                    text: "Sticker Shop"
+                    text: qsTr("Sticker Shop")
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Center
@@ -106,7 +106,7 @@ Page {
 
     actions: [
         ActionItem {
-            title: "Refresh"
+            title: qsTr("Refresh")
             imageSource: "asset:///images/ChatView/ic_resend.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: shopPage.refresh()
@@ -127,9 +127,9 @@ Page {
             onCatalogReady:   { shopPage.loading = false; shopPage.reload(); }
             onCatalogFailed:  {
                 shopPage.loading = false;
-                emptyLabel.text = "Could not load the sticker list.\nCheck your connection and tap Refresh.";
+                emptyLabel.text = qsTr("Could not load the sticker list.\nCheck your connection and tap Refresh.");
                 emptyLabel.visible = (shopModel.size() === 0);
-                shopToast.body = "Could not load stickers: " + error;
+                shopToast.body = qsTr("Could not load stickers: ") + error;
                 shopToast.show();
             }
             onPreviewReady:   { shopPage.refreshPack(packId); }
@@ -146,7 +146,7 @@ Page {
             onPackRemoved:    { shopPage.refreshPack(packId); }
             onPackFailed:     {
                 shopPage.refreshPack(packId);
-                shopToast.body = "Could not download " + packId + ": " + error;
+                shopToast.body = qsTr("Could not download ") + packId + ": " + error;
                 shopToast.show();
             }
         },
@@ -242,7 +242,7 @@ Page {
             verticalAlignment: VerticalAlignment.Center
             multiline: true
             textStyle { textAlign: TextAlign.Center }
-            text: "No sticker packs available."
+            text: qsTr("No sticker packs available.")
         }
     }
 }

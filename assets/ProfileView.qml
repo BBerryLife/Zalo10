@@ -71,7 +71,7 @@ Page {
                 leftPadding: ui.du(2.5)
 
                 Label {
-                    text: profilePage.contactName.length > 0 ? profilePage.contactName : "Profile"
+                    text: profilePage.contactName.length > 0 ? profilePage.contactName : qsTr("Profile")
                     verticalAlignment: VerticalAlignment.Center
                     horizontalAlignment: HorizontalAlignment.Left
                     textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
@@ -100,7 +100,7 @@ Page {
 
     actions: [
         ActionItem {
-            title: "Send Message"
+            title: qsTr("Send Message")
             imageSource: "asset:///images/ContactsTab/ProfileView/ic_bbm.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             onTriggered: {
@@ -220,7 +220,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Status"
+                    text: qsTr("Status")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -238,7 +238,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Account"
+                    text: qsTr("Account")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -256,7 +256,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Gender"
+                    text: qsTr("Gender")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -274,7 +274,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Birthday"
+                    text: qsTr("Birthday")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -292,7 +292,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Last active"
+                    text: qsTr("Last active")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -310,7 +310,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Joined Zalo"
+                    text: qsTr("Joined Zalo")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -329,7 +329,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Business info"
+                    text: qsTr("Business info")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -347,7 +347,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Address"
+                    text: qsTr("Address")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -365,7 +365,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Website"
+                    text: qsTr("Website")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -383,7 +383,7 @@ Page {
                 rightPadding: ui.du(3)
                 topPadding: ui.du(1)
                 Label {
-                    text: "Email"
+                    text: qsTr("Email")
                     textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.Gray }
                 }
                 Label {
@@ -402,7 +402,7 @@ Page {
                 topPadding: ui.du(1)
 
                 Label {
-                    text: "Zalo ID"
+                    text: qsTr("Zalo ID")
                     textStyle {
                         base: SystemDefaults.TextStyles.SmallText
                         color: Color.Gray
@@ -441,7 +441,7 @@ Page {
             Page {
                 actions: [
                     ActionItem {
-                        title: "Close"
+                        title: qsTr("Close")
                         imageSource: "asset:///images/SettingsSheet/ic_close_white.png"
                         ActionBar.placement: ActionBarPlacement.Signature
                         onTriggered: imgSheet.close()

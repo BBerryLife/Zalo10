@@ -16,7 +16,7 @@ Sheet {
     function doCreate() {
         var content = noteContentArea.text.trim();
         if (content.length === 0) {
-            noteValidationToast.body = "Please enter some content for the note.";
+            noteValidationToast.body = qsTr("Please enter some content for the note.");
             noteValidationToast.show();
             return;
         }
@@ -48,7 +48,7 @@ Sheet {
                     }
 
                     Label {
-                        text: "Create note"
+                        text: qsTr("Create note")
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         verticalAlignment: VerticalAlignment.Center
                         textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
@@ -60,7 +60,7 @@ Sheet {
 
         actions: [
             ActionItem {
-                title: "Create note"
+                title: qsTr("Create note")
                 imageSource: "asset:///images/ChatView/ic_save.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: { createNoteSheetRoot.doCreate(); }
@@ -77,14 +77,14 @@ Sheet {
                     leftPadding: 20; rightPadding: 20; topPadding: 6
 
                     Label {
-                        text: "Content"
+                        text: qsTr("Content")
                         textStyle { color: Color.Gray; fontWeight: FontWeight.Bold }
                         bottomMargin: 6
                     }
 
                     TextArea {
                         id: noteContentArea
-                        hintText: "Enter content or paste link"
+                        hintText: qsTr("Enter content or paste link")
                         horizontalAlignment: HorizontalAlignment.Fill
                         minHeight: 220; preferredHeight: 240
                     }
@@ -96,7 +96,7 @@ Sheet {
                     leftPadding: 20; rightPadding: 20; topPadding: 16; bottomPadding: 20
 
                     Label {
-                        text: "Pin conversation note"
+                        text: qsTr("Pin conversation note")
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         verticalAlignment: VerticalAlignment.Center
                     }

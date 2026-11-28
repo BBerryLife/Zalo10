@@ -64,13 +64,13 @@ Sheet {
     attachedObjects: [
         SystemDialog {
             id: typeChooser
-            title: "Forward message"
-            body: "Choose where to forward this message to"
-            confirmButton.label: "Groups"
+            title: qsTr("Forward message")
+            body: qsTr("Choose where to forward this message to")
+            confirmButton.label: qsTr("Groups")
             confirmButton.enabled: true
-            cancelButton.label: "Cancel"
+            cancelButton.label: qsTr("Cancel")
             cancelButton.enabled: true
-            buttons: [ SystemUiButton { id: chatButton; label: "Chat"; enabled: true } ]
+            buttons: [ SystemUiButton { id: chatButton; label: qsTr("Chat"); enabled: true } ]
             onFinished: {
                 if (result === SystemUiResult.ConfirmButtonSelection) {
                     forwardSheet.pickingGroups = true;
@@ -114,14 +114,14 @@ Sheet {
 
     content: Page {
         titleBar: TitleBar {
-            title: forwardSheet.pickingGroups ? "Forward to Groups" : "Forward to Chats"
+            title: forwardSheet.pickingGroups ? qsTr("Forward to Groups") : qsTr("Forward to Chats")
             dismissAction: ActionItem {
-                title: "Cancel"
+                title: qsTr("Cancel")
                 onTriggered: { forwardSheet.close(); }
             }
             acceptAction: ActionItem {
                 id: sendAction
-                title: "Send"
+                title: qsTr("Send")
                 enabled: false
                 onTriggered: { forwardSheet.doSend(); }
             }
@@ -153,7 +153,7 @@ Sheet {
 
                                 Label {
                                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                                    text: ListItemData.name || "Unknown"
+                                    text: ListItemData.name || qsTr("Unknown")
                                     textStyle { color: rowRoot.ListItem.view.isDarkProxy ? Color.White : Color.Black; fontSize: FontSize.Medium }
                                 }
                                 CheckBox {

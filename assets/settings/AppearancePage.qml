@@ -3,15 +3,15 @@ import bb.cascades 1.4
 Page {
     id: page
     property variant sheet
-    titleBar: SettingsTitleBar { heading: "Appearance" }
+    titleBar: SettingsTitleBar { heading: qsTr("Appearance") }
 
     ScrollView {
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             SettingsToggleRow {
                 id: darkRow
-                title: "Dark Theme"
-                description: "Enabling dark mode at night reduces eye strain and saves battery on OLED displays."
+                title: qsTr("Dark Theme")
+                description: qsTr("Enabling dark mode at night reduces eye strain and saves battery on OLED displays.")
                 onUserToggled: { app.setDarkTheme(value); }
             }
         }

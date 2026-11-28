@@ -12,13 +12,13 @@ CustomListItem {
         ActionSet {
             title: friendRow.rowTitle
             ActionItem {
-                title: friendRow.rowUnread ? "Mark as Read" : "Mark as Unread"
+                title: friendRow.rowUnread ? qsTr("Mark as Read") : qsTr("Mark as Unread")
                 imageSource: friendRow.rowUnread ? "asset:///images/ChatsTab/ic_mark_opened.png"
                                           : "asset:///images/ChatsTab/ic_mark_unopened.png"
                 onTriggered: { friendRow.ListItem.view.toggleUnread(friendRow.ListItem.indexPath); }
             }
             DeleteActionItem {
-                title: "Delete"
+                title: qsTr("Delete")
                 imageSource: "asset:///images/ChatsTab/ic_delete.png"
                 onTriggered: { friendRow.ListItem.view.deleteChat(friendRow.ListItem.indexPath); }
             }
@@ -76,7 +76,7 @@ CustomListItem {
                     }
                 }
                 Label {
-                    text: ListItemData.name || ListItemData.displayName || "Unknown User"
+                    text: ListItemData.name || ListItemData.displayName || qsTr("Unknown User")
                     textStyle { base: SystemDefaults.TextStyles.TitleText }
                     verticalAlignment: VerticalAlignment.Center
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }

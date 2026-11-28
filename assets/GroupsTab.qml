@@ -311,7 +311,7 @@ NavigationPane {
 
         actions: [
             ActionItem {
-                title: groupsNav.refreshCooldown ? "Please wait..." : "Refresh"
+                title: groupsNav.refreshCooldown ? qsTr("Please wait...") : qsTr("Refresh")
                 enabled: !groupsNav.refreshCooldown
                 imageSource: "asset:///images/GroupsTab/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
@@ -351,7 +351,7 @@ NavigationPane {
                         horizontalAlignment: HorizontalAlignment.Fill
                         TextField {
                             id: groupsSearchField
-                            hintText: "Search groups..."
+                            hintText: qsTr("Search groups...")
                             backgroundVisible: false
                             horizontalAlignment: HorizontalAlignment.Fill
                             textStyle.color: groupsNav.isDark ? Color.White : Color.Black

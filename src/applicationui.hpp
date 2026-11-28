@@ -37,14 +37,15 @@ public slots:
     void onServicePingFinished();
     void onBringToFront(int shape);
     void onBringReplyFinished();
-    void onBringSocketConnected();
-    void onBringSocketError();
     void invokeEmail(const QString &to, const QString &subject);
     void minimizeApp();
     Q_INVOKABLE void setDarkTheme(bool dark);
     Q_INVOKABLE bool getDarkTheme();
     Q_INVOKABLE void setShowRecalledMessages(bool show);
     Q_INVOKABLE bool getShowRecalledMessages();
+    // UI language: "system" (follow the device), "en" or "vi". Applied at once.
+    Q_INVOKABLE QString getLanguage();
+    Q_INVOKABLE void setLanguage(const QString &lang);
     Q_INVOKABLE bool getTosAccepted();
     Q_INVOKABLE void setTosAccepted(bool accepted);
     Q_INVOKABLE void quitApp();

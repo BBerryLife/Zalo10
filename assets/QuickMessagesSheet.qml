@@ -52,7 +52,7 @@ Page {
                 leftPadding: ui.du(2)
 
                 Label {
-                    text: "Quick Messages"
+                    text: qsTr("Quick Messages")
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Center
@@ -64,7 +64,7 @@ Page {
 
     actions: [
         ActionItem {
-            title: "Add New QM"
+            title: qsTr("Add New QM")
             imageSource: "asset:///images/ChatView/add.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             onTriggered: {
@@ -74,11 +74,11 @@ Page {
             }
         },
         ActionItem {
-            title: "Get from Zalo"
+            title: qsTr("Get from Zalo")
             imageSource: "asset:///images/ChatView/ic_download.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: {
-                qmFetchProgressToast.body = "Fetching quick messages from Zalo…";
+                qmFetchProgressToast.body = qsTr("Fetching quick messages from Zalo…");
                 qmFetchProgressToast.show();
                 zService.fetchServerQuickMessages();
             }
@@ -97,7 +97,7 @@ Page {
 
             TextField {
                 id: qmSearchField
-                hintText: "Search quick messages"
+                hintText: qsTr("Search quick messages")
                 horizontalAlignment: HorizontalAlignment.Fill
                 input {
                     flags: TextInputFlag.AutoCapitalizationOff | TextInputFlag.SpellCheckOff | TextInputFlag.PredictionOff
@@ -142,17 +142,17 @@ Page {
                                 ActionSet {
                                     title: "/" + ListItemData.name
                                     ActionItem {
-                                        title: "Edit"
+                                        title: qsTr("Edit")
                                         imageSource: "asset:///images/ChatView/ic_edit.png"
                                         onTriggered: { qmRow.ListItem.view.doEdit(ListItemData.id); }
                                     }
                                     ActionItem {
-                                        title: "Use in Chat"
+                                        title: qsTr("Use in Chat")
                                         imageSource: "asset:///images/ChatView/ic_replace_message.png"
                                         onTriggered: { qmRow.ListItem.view.doUseInChat(ListItemData.content); }
                                     }
                                     DeleteActionItem {
-                                        title: "Delete"
+                                        title: qsTr("Delete")
                                         onTriggered: { qmRow.ListItem.view.doDelete(ListItemData.id, ListItemData.name); }
                                     }
                                 }
@@ -206,7 +206,7 @@ Page {
 
                 function doDelete(qid, qname) {
                     qmDeleteDialog.targetId = qid;
-                    qmDeleteDialog.body = "Delete the quick message \"/" + qname + "\"?";
+                    qmDeleteDialog.body = qsTr("Delete the quick message \"/") + qname + "\"?";
                     qmDeleteDialog.show();
                 }
             }
@@ -230,9 +230,9 @@ Page {
         SystemDialog {
             id: qmDeleteDialog
             property int targetId: -1
-            title: "Delete Quick Message"
-            confirmButton.label: "Delete"
-            cancelButton.label: "Cancel"
+            title: qsTr("Delete Quick Message")
+            confirmButton.label: qsTr("Delete")
+            cancelButton.label: qsTr("Cancel")
             onFinished: {
                 if (result === SystemUiResult.ConfirmButtonSelection) {
                     zService.deleteQuickMessage(qmDeleteDialog.targetId);
@@ -253,9 +253,9 @@ Page {
             onServerQuickMessagesReady: {
                 qmFetchProgressToast.cancel();
                 if (error.length > 0) {
-                    qmFetchDoneToast.body = "Could not fetch from Zalo: " + error;
+                    qmFetchDoneToast.body = qsTr("Could not fetch from Zalo: ") + error;
                 } else {
-                    qmFetchDoneToast.body = "Got " + imported + " new quick message(s) from Zalo"
+                    qmFetchDoneToast.body = qsTr("Got ") + imported + qsTr(" new quick message(s) from Zalo")
                         + (skipped > 0 ? " (" + skipped + " already had)" : "");
                     quickMsgPage.reload();
                 }

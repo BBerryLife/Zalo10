@@ -480,7 +480,7 @@ Page {
                 Label {
                     verticalAlignment: VerticalAlignment.Center
                     leftMargin: ui.du(1)
-                    text: "Loading older messages..."
+                    text: qsTr("Loading older messages...")
                     textStyle.fontSize: FontSize.XSmall
                     textStyle.color: chatViewPage.isDark ? Color.create("#b0b0b0") : Color.create("#555555")
                 }
@@ -586,7 +586,7 @@ Page {
 
             function doCopy(content, isPhoto, localImage) {
                 if (isPhoto) {
-                    errorToast.body = "Copy isn't available for photos";
+                    errorToast.body = qsTr("Copy isn't available for photos");
                     errorToast.show();
                     return;
                 }
@@ -620,16 +620,17 @@ Page {
                 sendAction.enabled = (inputField.text.trim().length > 0 || chatViewPage.pendingReplyMsgId.length > 0);
                 inputField.requestFocus();
             }
-            property variant reactionAssets: ({
-                "like":  "asset:///images/ChatView/emoji/people/emoji_1f44d_64.png",
-                "heart": "asset:///images/ChatView/emoji/people/emoji_2764_64.png",
-                "haha":  "asset:///images/ChatView/emoji/people/emoji_1f604_64.png",
-                "wow":   "asset:///images/ChatView/emoji/people/emoji_1f631_64.png",
-                "cry":   "asset:///images/ChatView/emoji/people/emoji_1f62d_64.png",
-                "angry": "asset:///images/ChatView/emoji/people/emoji_1f621_64.png"
+            // System emoji (no pictures): the OS emoji font draws them.
+            property variant reactionEmoji: ({
+                "like":  "\ud83d\udc4d",
+                "heart": "\u2764\ufe0f",
+                "haha":  "\ud83d\ude04",
+                "wow":   "\ud83d\ude31",
+                "cry":   "\ud83d\ude2d",
+                "angry": "\ud83d\ude21"
             })
             property variant reactionRTypes: ({ "like": 0, "heart": 1, "haha": 2, "wow": 3, "cry": 4, "angry": 5 })
-            function reactionAssetFor(iconId) { return msgList.reactionAssets[iconId] || ""; }
+            function reactionEmojiFor(iconId) { return msgList.reactionEmoji[iconId] || ""; }
             function reactionRType(iconId)    { return (iconId in msgList.reactionRTypes) ? msgList.reactionRTypes[iconId] : 0; }
 
             property variant reactionsByMsg: ({})
@@ -642,7 +643,7 @@ Page {
                 return -1;
             }
 
-            // Pure: reactionsByMsg[msgId] -> [{icon, asset, count, mine}] ordered by first reactor, so new
+            // Pure: reactionsByMsg[msgId] -> [{icon, emoji, count, mine}] ordered by first reactor, so new
             // reactions add a pill on the right instead of reordering.
             function summarizePills(msgId) {
                 var byUid = msgList.reactionsByMsg[msgId] || {};
@@ -663,7 +664,7 @@ Page {
                 var pills = [];
                 for (var j = 0; j < order.length; j++) {
                     var ic = order[j];
-                    pills.push({ icon: ic, asset: msgList.reactionAssetFor(ic), count: counts[ic], mine: (ic === mineIcon) });
+                    pills.push({ icon: ic, emoji: msgList.reactionEmojiFor(ic), count: counts[ic], mine: (ic === mineIcon) });
                 }
                 return pills;
             }
@@ -714,7 +715,7 @@ Page {
             function doResend(msgId) { chatViewPage.resendMessage(msgId); }
             function doRecallMsg(msgId, cliMsgId, isMine) {
                 if (!isMine) {
-                    errorToast.body = "You can only recall your own messages";
+                    errorToast.body = qsTr("You can only recall your own messages");
                     errorToast.show();
                     return;
                 }
@@ -723,7 +724,7 @@ Page {
             function doForward(msgId, content, msgType, ts) { forwardPickerSheet.openFor(content || "", msgType || 0, msgId || "", ts || ""); }
             function doPin(msgId, cliMsgId, senderId, isMine, rawDName, content, msgType) {
                 if (!chatViewPage.isGroup) {
-                    errorToast.body = "Pinning is only available in group chats";
+                    errorToast.body = qsTr("Pinning is only available in group chats");
                     errorToast.show();
                     return;
                 }
@@ -741,7 +742,7 @@ Page {
             }
             function doDownload(msgId, localImage) {
                 if (!localImage || localImage.length === 0) {
-                    errorToast.body = "Photo not downloaded yet";
+                    errorToast.body = qsTr("Photo not downloaded yet");
                     errorToast.show();
                     return;
                 }
@@ -749,7 +750,7 @@ Page {
                 if (saved && saved.length > 0) {
                     downloadToast.show();
                 } else {
-                    errorToast.body = "Failed to save photo";
+                    errorToast.body = qsTr("Failed to save photo");
                     errorToast.show();
                 }
             }
@@ -759,7 +760,7 @@ Page {
             }
             function doDownloadVideo(msgId, href, fileName) {
                 if (!href || href.length === 0) {
-                    errorToast.body = "Video not available";
+                    errorToast.body = qsTr("Video not available");
                     errorToast.show();
                     return;
                 }
@@ -772,7 +773,7 @@ Page {
             // ListItemData.stickerLocalPath once applyStickerUpdate() patches it.
             function doShare(content, isPhoto, localImage) {
                 if (isPhoto) {
-                    errorToast.body = "Share isn't available for photos";
+                    errorToast.body = qsTr("Share isn't available for photos");
                     errorToast.show();
                     return;
                 }
@@ -831,7 +832,7 @@ Page {
             leftPadding: ui.du(2)
             rightPadding: ui.du(2)
             Label {
-                text: "You have blocked this person. They cannot send you messages."
+                text: qsTr("You have blocked this person. They cannot send you messages.")
                 textStyle { color: Color.White; fontSize: FontSize.Small }
                 multiline: true
             }
@@ -863,7 +864,7 @@ Page {
                 id: inputField
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
-                hintText: "Enter a message"
+                hintText: qsTr("Enter a message")
                 inputMode: TextFieldInputMode.Chat
                 minHeight: ui.du(7)
                 backgroundVisible: false
@@ -924,14 +925,14 @@ Page {
         // Left of Send on the action bar (OnBar actions are laid out in declaration order).
         ActionItem {
             id: inviteMoreAction
-            title: "Invite More"
+            title: qsTr("Invite More")
             imageSource: "asset:///images/ChatView/ic_invite_to_bbm.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             onTriggered: { chatViewPage.openInviteMore(); }
         },
         ActionItem {
             id: sendAction
-            title: "Send"
+            title: qsTr("Send")
             imageSource: "asset:///images/ChatView/ConversationPaneSend.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             enabled: false
@@ -939,7 +940,7 @@ Page {
         },
         ActionItem {
             id: searchAction
-            title: "Search"
+            title: qsTr("Search")
             imageSource: "asset:///images/ChatView/action_icon_search.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: {
@@ -953,7 +954,7 @@ Page {
         },
         ActionItem {
             id: muteAction
-            title: chatViewPage.isMuted ? "Unmute" : "Mute notifications"
+            title: chatViewPage.isMuted ? qsTr("Unmute") : qsTr("Mute notifications")
             imageSource: "asset:///images/ChatView/ic_notifications_off.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: {
@@ -961,7 +962,7 @@ Page {
             }
         },
         ActionItem {
-            title: chatViewPage.isBlocked ? "Unblock user" : "Block user"
+            title: chatViewPage.isBlocked ? qsTr("Unblock user") : qsTr("Block user")
             imageSource: "asset:///images/ChatView/ic_block_contact.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: !chatViewPage.isGroup
@@ -973,7 +974,7 @@ Page {
             }
         },
         ActionItem {
-            title: "Clear history"
+            title: qsTr("Clear history")
             imageSource: "asset:///images/ChatView/clear_chat.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: { clearHistoryDialog.show() }
@@ -981,21 +982,21 @@ Page {
         // Group Board is pushed via groupBoardRequested (flip-a-bool, like qmRequested). Disabled, not
         // hidden, outside groups (same as Block/Leave group).
         ActionItem {
-            title: "Group board"
+            title: qsTr("Group board")
             imageSource: "asset:///images/ChatView/ic_sb_notes.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: chatViewPage.isGroup
             onTriggered: { chatViewPage.groupBoardRequested = true; }
         },
         ActionItem {
-            title: "Leave group"
+            title: qsTr("Leave group")
             imageSource: "asset:///images/ChatView/ic_chat_leave.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             enabled: chatViewPage.isGroup
             onTriggered: { leaveGroupDialog.show() }
         },
         ActionItem {
-            title: "Create today's event"
+            title: qsTr("Create today's event")
             imageSource: "asset:///images/ChatView/ic_create_event.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: {
@@ -1661,7 +1662,7 @@ Page {
 
         SystemToast {
             id: copyToast
-            body: "Copied to clipboard"
+            body: qsTr("Copied to clipboard")
             position: SystemUiPosition.MiddleCenter
         },
 
@@ -1695,7 +1696,7 @@ Page {
 
         SystemToast {
             id: downloadToast
-            body: "Saved to Downloads"
+            body: qsTr("Saved to Downloads")
             position: SystemUiPosition.MiddleCenter
         },
 
@@ -1708,11 +1709,11 @@ Page {
             target: zService
             onPinMessageDone: {
                 if (success) {
-                    pinToast.body = "Message pinned";
+                    pinToast.body = qsTr("Message pinned");
                     pinToast.show();
                     chatViewPage.loadBoardItems();
                 } else {
-                    errorToast.body = (error && error.length > 0) ? ("Pin failed: " + error) : "Pin failed";
+                    errorToast.body = (error && error.length > 0) ? (qsTr("Pin failed: ") + error) : qsTr("Pin failed");
                     errorToast.show();
                 }
             }
@@ -1813,7 +1814,7 @@ Page {
             onVideoDownloadFailed: {
                 msgList.updateVideoBubbleProgress(msgId, 0, true);
                 msgList.pendingVideoOpenMsgId = "";
-                errorToast.body = "Video download failed" + (errorMsg && errorMsg.length > 0 ? (": " + errorMsg) : "");
+                errorToast.body = qsTr("Video download failed") + (errorMsg && errorMsg.length > 0 ? (": " + errorMsg) : "");
                 errorToast.show();
             }
         },
@@ -1896,7 +1897,7 @@ Page {
 
         SystemToast {
             id: videoCallUnavailableToast
-            body: "Video calls are not supported yet"
+            body: qsTr("Video calls are not supported yet")
             position: SystemUiPosition.MiddleCenter
         },
 
@@ -1948,7 +1949,7 @@ Page {
             onContactPickError: {
                 if (threadId !== chatViewPage.threadId) return;
                 if (reason !== "canceled") {
-                    errorToast.body = "Could not get contact";
+                    errorToast.body = qsTr("Could not get contact");
                     errorToast.show();
                 }
             }
@@ -1958,7 +1959,7 @@ Page {
             id: imagePicker
             type: FileType.Picture
             mode: FilePickerMode.Picker
-            title: "Select Picture"
+            title: qsTr("Select Picture")
             onFileSelected: {
                 var path = selectedFiles[0];
                 var cachedPath = zService.cacheLocalImage(path);
@@ -1981,12 +1982,12 @@ Page {
             id: videoPicker
             type: FileType.Video
             mode: FilePickerMode.Picker
-            title: "Select Video"
+            title: qsTr("Select Video")
             onFileSelected: {
                 var path = selectedFiles[0];
                 var ext  = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
                 if (ext !== "mp4") {
-                    errorToast.body = "Only .mp4 videos are supported";
+                    errorToast.body = qsTr("Only .mp4 videos are supported");
                     errorToast.show();
                     return;
                 }
@@ -2019,7 +2020,7 @@ Page {
             id: filePicker
             type: FileType.Other
             mode: FilePickerMode.Picker
-            title: "Select File"
+            title: qsTr("Select File")
             onFileSelected: {
                 chatViewPage.stageAndSendLocalFile(selectedFiles[0]);
             }
@@ -2029,7 +2030,7 @@ Page {
             id: audioPicker
             type: FileType.Music
             mode: FilePickerMode.Picker
-            title: "Select Audio"
+            title: qsTr("Select Audio")
             onFileSelected: {
                 chatViewPage.stageAndSendLocalFile(selectedFiles[0]);
             }
@@ -2037,34 +2038,34 @@ Page {
 
         ConfirmDialog {
             id: blockDialog
-            title: "Block user"
-            body: "Block " + chatViewPage.threadName + "? They won't be able to message you."
-            confirmLabel: "Block"
+            title: qsTr("Block user")
+            body: qsTr("Block ") + chatViewPage.threadName + qsTr("? They won't be able to message you.")
+            confirmLabel: qsTr("Block")
             onConfirmed: zService.blockUser(chatViewPage.threadId)
         },
 
         ConfirmDialog {
             id: clearHistoryDialog
-            title: "Clear history"
-            body: "Delete all messages in this conversation? This only removes them for you."
-            confirmLabel: "Clear"
+            title: qsTr("Clear history")
+            body: qsTr("Delete all messages in this conversation? This only removes them for you.")
+            confirmLabel: qsTr("Clear")
             onConfirmed: zService.clearHistory(chatViewPage.threadId, chatViewPage.isGroup)
         },
 
         ConfirmDialog {
             id: leaveGroupDialog
-            title: "Leave group"
-            body: "Leave " + chatViewPage.threadName + "? You won't be able to receive messages from this group."
-            confirmLabel: "Leave"
+            title: qsTr("Leave group")
+            body: qsTr("Leave ") + chatViewPage.threadName + qsTr("? You won't be able to receive messages from this group.")
+            confirmLabel: qsTr("Leave")
             onConfirmed: zService.leaveGroup(chatViewPage.threadId)
         },
 
         ConfirmDialog {
             id: createEventDialog
             property string eventSubject: ""
-            title: "Create today's event"
-            body: "Create \"" + eventSubject + "\" in your calendar for today?"
-            confirmLabel: "Create"
+            title: qsTr("Create today's event")
+            body: qsTr("Create \"") + eventSubject + qsTr("\" in your calendar for today?")
+            confirmLabel: qsTr("Create")
             onConfirmed: {
                 app.createTodayEvent(createEventDialog.eventSubject,
                 "Create on Zalo10 - " + chatViewPage.threadName, 30);

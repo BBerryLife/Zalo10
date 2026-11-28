@@ -25,7 +25,7 @@ CustomListItem {
                 textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Medium }
             }
             Label {
-                text: ListItemData.boardType === "poll" ? "Poll"
+                text: ListItemData.boardType === "poll" ? qsTr("Poll")
                     : ListItemData.boardType === "note" ? "Note"
                     : "Pinned Message"
                 verticalAlignment: VerticalAlignment.Center
@@ -45,12 +45,12 @@ CustomListItem {
                 textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.Medium }
             }
             Label {
-                text: ListItemData.allowMultiChoices ? "Choose multiple options" : "Choose one option"
+                text: ListItemData.allowMultiChoices ? qsTr("Choose multiple options") : qsTr("Choose one option")
                 textStyle { color: Color.Gray; fontSize: FontSize.XSmall }
                 topMargin: ui.du(0.2); bottomMargin: ui.du(0.6)
             }
             Label {
-                text: (ListItemData.numVote || 0) + " member" + ((ListItemData.numVote === 1) ? "" : "s") + " voted"
+                text: (ListItemData.numVote || 0) + qsTr(" member") + ((ListItemData.numVote === 1) ? "" : "s") + qsTr(" voted")
                 textStyle { color: Color.create("#2575fc"); fontSize: FontSize.XSmall }
                 bottomMargin: ui.du(0.6)
                 gestureHandlers: [ TapHandler { onTapped: {
@@ -232,7 +232,7 @@ CustomListItem {
                 Label {
                     horizontalAlignment: HorizontalAlignment.Center
                     verticalAlignment: VerticalAlignment.Center
-                    text: "Vote"
+                    text: qsTr("Vote")
                     textStyle { color: Color.create("#2575fc"); fontSize: FontSize.Large; fontWeight: FontWeight.Bold }
                 }
             }
@@ -250,7 +250,7 @@ CustomListItem {
                 topMargin: ui.du(0.2); bottomMargin: ui.du(0.4)
             }
             Label {
-                text: ListItemData.boardType === "note" ? "View note" : "Jump to message"
+                text: ListItemData.boardType === "note" ? qsTr("View note") : qsTr("Jump to message")
                 textStyle { color: Color.create("#2575fc"); fontSize: FontSize.Small }
                 gestureHandlers: [
                     TapHandler {

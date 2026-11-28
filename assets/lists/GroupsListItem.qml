@@ -12,7 +12,7 @@ CustomListItem {
         ActionSet {
             title: groupRow.rowTitle
             ActionItem {
-                title: groupRow.rowUnread ? "Mark as Read" : "Mark as Unread"
+                title: groupRow.rowUnread ? qsTr("Mark as Read") : qsTr("Mark as Unread")
                 imageSource: groupRow.rowUnread ? "asset:///images/GroupsTab/ic_mark_opened.png"
                                           : "asset:///images/GroupsTab/ic_mark_unopened.png"
                 onTriggered: { groupRow.ListItem.view.toggleUnread(groupRow.ListItem.indexPath); }
@@ -51,7 +51,7 @@ CustomListItem {
                     minWidth:       ui.du(3.0)
                 }
                 Label {
-                    text: ListItemData.name || "Unknown Group"
+                    text: ListItemData.name || qsTr("Unknown Group")
                     textStyle { base: SystemDefaults.TextStyles.TitleText }
                     verticalAlignment: VerticalAlignment.Center
                     layoutProperties: StackLayoutProperties { spaceQuota: 1 }

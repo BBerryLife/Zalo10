@@ -21,6 +21,7 @@ NavigationPane {
     }
 
     property bool searchVisible: false
+    property bool refreshCooldown: false
     property string searchText: ""
     // Chats whose online dot is lit, shown as the Chats tab subtitle ("N Active Chats") by main.qml.
     // Maintained by friendList.setOnline() / startPresence().
@@ -81,18 +82,32 @@ NavigationPane {
 
         actions: [
             ActionItem {
-                title: "Mark All as Read"
+                title: qsTr("Mark All as Read")
                 imageSource: "asset:///images/ChatsTab/ai_add_task.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: { markAllReadDialog.show() }
             },
             ActionItem {
-                title: "Edit Status"
+                title: qsTr("Edit Status")
                 imageSource: "asset:///images/ChatsTab/edit.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
                 onTriggered: {
                     editStatusDialog.inputField.defaultText = chatsNav.selfBio;
                     editStatusDialog.show();
+                }
+            },
+            ActionItem {
+                title: chatsNav.refreshCooldown ? qsTr("Please wait...") : qsTr("Refresh")
+                enabled: !chatsNav.refreshCooldown
+                imageSource: "asset:///images/ChatsTab/ic_sync.png"
+                ActionBar.placement: ActionBarPlacement.InOverflow
+                onTriggered: {
+                    if (chatsNav.refreshCooldown) return;
+                    chatsNav.refreshCooldown = true;
+                    chatsRefreshCooldownTimer.restart();
+                    // Rebuilds the list from the stored messages (unread, pins, last message) and
+                    // restarts the presence lookups.
+                    chatsNav.loadChats(true);
                 }
             }
         ]
@@ -147,7 +162,7 @@ NavigationPane {
                     var tid = d.threadId || d.uid || "";
                     if (tid.length === 0) return;
                     chatsNav.pendingDeleteTid = tid;
-                    deleteChatDialog.body = "Delete all messages with " + (d.name || d.displayName || "this chat") + "? This only removes them for you.";
+                    deleteChatDialog.body = qsTr("Delete all messages with ") + (d.name || d.displayName || qsTr("this chat")) + qsTr("? This only removes them for you.");
                     deleteChatDialog.show();
                 }
 
@@ -189,12 +204,12 @@ NavigationPane {
                 leftPadding: ui.du(5); rightPadding: ui.du(5)
                 bottomPadding: ui.du(14)
                 Label {
-                    text: "No conversations yet"
+                    text: qsTr("No conversations yet")
                     horizontalAlignment: HorizontalAlignment.Center
                     textStyle.base: SystemDefaults.TextStyles.BigText
                 }
                 Label {
-                    text: "Tap the new chat button to start one."
+                    text: qsTr("Tap the new chat button to start one.")
                     multiline: true
                     horizontalAlignment: HorizontalAlignment.Center
                     textStyle.textAlign: TextAlign.Center
@@ -211,6 +226,12 @@ NavigationPane {
                 onItemRemoved:  { unreadRecountTimer.restart(); }
                 onItemUpdated:  { unreadRecountTimer.restart(); }
                 onItemsChanged: { unreadRecountTimer.restart(); }
+            },
+            Timer {
+                id: chatsRefreshCooldownTimer
+                interval: 4000
+                repeat: false
+                onTriggered: chatsNav.refreshCooldown = false
             },
             Timer {
                 id: unreadRecountTimer
@@ -263,24 +284,24 @@ NavigationPane {
             },
             ConfirmDialog {
                 id: deleteChatDialog
-                title: "Delete conversation"
-                confirmLabel: "Delete"
+                title: qsTr("Delete conversation")
+                confirmLabel: qsTr("Delete")
                 onConfirmed: { zService.clearHistory(chatsNav.pendingDeleteTid, false); }
             },
             ConfirmDialog {
                 id: markAllReadDialog
-                title: "Mark All as Read"
-                body: "Mark every unread chat and group as read, here and in the official Zalo app?"
-                confirmLabel: "Mark all"
+                title: qsTr("Mark All as Read")
+                body: qsTr("Mark every unread chat and group as read, here and in the official Zalo app?")
+                confirmLabel: qsTr("Mark all")
                 onConfirmed: { zService.markAllThreadsRead(); }
             },
             SystemPrompt {
                 // Own bio (zca-js updateProfileBio). The current text is filled in by the action below.
                 id: editStatusDialog
-                title: "Edit Status"
-                body: "Your status is shown on your Zalo profile."
-                confirmButton.label: "Save"
-                cancelButton.label: "Cancel"
+                title: qsTr("Edit Status")
+                body: qsTr("Your status is shown on your Zalo profile.")
+                confirmButton.label: qsTr("Save")
+                cancelButton.label: qsTr("Cancel")
                 inputField.emptyText: "Status"
                 onFinished: {
                     if (result !== SystemUiResult.ConfirmButtonSelection) return;
@@ -306,9 +327,9 @@ NavigationPane {
                     chatsNav.bioSaving = false;
                     if (ok) {
                         chatsNav.selfBio = chatsNav.pendingBio;
-                        statusToast.body = "Status updated";
+                        statusToast.body = qsTr("Status updated");
                     } else {
-                        statusToast.body = "Could not update status" + (error.length > 0 ? ": " + error : "");
+                        statusToast.body = qsTr("Could not update status") + (error.length > 0 ? ": " + error : "");
                     }
                     statusToast.show();
                 }

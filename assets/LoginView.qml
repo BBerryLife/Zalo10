@@ -6,7 +6,7 @@ Page {
     signal loginSuccessful()
 
     titleBar: TitleBar {
-        title: "Sign in to Zalo10"
+        title: qsTr("Sign in to Zalo10")
         kind: TitleBarKind.Default
         appearance: TitleBarAppearance.Branded
     }
@@ -19,7 +19,7 @@ Page {
         Container { preferredHeight: ui.du(3) }
 
         Label {
-            text: "Scan the QR code with the Zalo app on your phone"
+            text: qsTr("Scan the QR code with the Zalo app on your phone")
             multiline: true
             horizontalAlignment: HorizontalAlignment.Center
             textStyle {
@@ -70,7 +70,7 @@ Page {
                     verticalAlignment:   VerticalAlignment.Fill
                     layout: DockLayout {}
                     Label {
-                        text: "QR Expired"
+                        text: qsTr("QR Expired")
                         horizontalAlignment: HorizontalAlignment.Center
                         verticalAlignment:   VerticalAlignment.Center
                         textStyle { base: SystemDefaults.TextStyles.TitleText; color: Color.White }
@@ -83,7 +83,7 @@ Page {
 
         Label {
             id: statusLabel
-            text: "Loading QR code..."
+            text: qsTr("Loading QR code...")
             horizontalAlignment: HorizontalAlignment.Center
             textStyle {
                 base:      SystemDefaults.TextStyles.BodyText
@@ -95,7 +95,7 @@ Page {
 
         Button {
             id: retryBtn
-            text: "Refresh QR"
+            text: qsTr("Refresh QR")
             visible: false
             horizontalAlignment: HorizontalAlignment.Center
             onClicked: {
@@ -103,7 +103,7 @@ Page {
                 retryBtn.visible  = false;
                 qrImage.visible   = false;
                 qrLoading.visible = true;
-                statusLabel.text  = "Loading QR code...";
+                statusLabel.text  = qsTr("Loading QR code...");
                 zService.retryQRLogin();
             }
         }
@@ -117,15 +117,15 @@ Page {
                 expiredOverlay.visible = false;
                 retryBtn.visible       = false;
                 if (imagePath.indexOf("data:") === 0) {
-                    statusLabel.text = "Code: " + qrCode.substring(0, 16) + "...";
+                    statusLabel.text = qsTr("Code: ") + qrCode.substring(0, 16) + "...";
                 } else {
                     qrImage.imageSource = imagePath;
                     qrImage.visible     = true;
-                    statusLabel.text    = "Scan with Zalo on your phone";
+                    statusLabel.text    = qsTr("Scan with Zalo on your phone");
                 }
             }
             onQrScanned: {
-                statusLabel.text  = "Scanned! Confirming...";
+                statusLabel.text  = qsTr("Scanned! Confirming...");
                 qrImage.visible   = false;
                 qrLoading.visible = true;
             }
@@ -133,11 +133,11 @@ Page {
                 qrLoading.visible      = false;
                 expiredOverlay.visible = true;
                 retryBtn.visible       = true;
-                statusLabel.text       = "QR code has expired";
+                statusLabel.text       = qsTr("QR code has expired");
             }
             onLoginSuccess: { loginView.loginSuccessful(); }
             onLoginFailed:  {
-                statusLabel.text  = "Error: " + message;
+                statusLabel.text  = qsTr("Error: ") + message;
                 retryBtn.visible  = true;
                 qrLoading.visible = false;
             }

@@ -21,17 +21,17 @@ TabbedPane {
     Menu.definition: MenuDefinition {
         actions: [
             ActionItem {
-                title: "About"
+                title: qsTr("About")
                 imageSource: "asset:///images/ic_info.png"
                 onTriggered: { aboutSheet.open(); }
             },
             ActionItem {
-                title: "Settings"
+                title: qsTr("Settings")
                 imageSource: "asset:///images/ic_settings.png"
                 onTriggered: { settingsSheet.open(); }
             },
             ActionItem {
-                title: "Feedback"
+                title: qsTr("Feedback")
                 imageSource: "asset:///images/ic_mail.png"
                 onTriggered: { app.invokeEmail("Berrylife2025@gmail.com", "Zalo10 Feedback"); }
             }
@@ -93,9 +93,9 @@ TabbedPane {
     
     Tab {
         id: chatsTab
-        title: "Chats"
+        title: qsTr("Chats")
         // Subtitle like the old BBM list: "N Active Chats" (singular for 1).
-        description: chatsTabContent.onlineChatCount + (chatsTabContent.onlineChatCount === 1 ? " Active Chat" : " Active Chats")
+        description: chatsTabContent.onlineChatCount + (chatsTabContent.onlineChatCount === 1 ? qsTr(" Active Chat") : qsTr(" Active Chats"))
         imageSource: "asset:///images/ic_bbm.png"
         // Native red spark on the tab: right in the menu AND on the navigation bar (a custom icon
         // with a baked-in spark got tinted dark there). Chats stay lit while any chat is unread.
@@ -109,8 +109,8 @@ TabbedPane {
     
     Tab {
         id: feedsTab
-        title: "Feeds"
-        description: root.feedsUnreadCount + (root.feedsUnreadCount === 1 ? " New Update" : " New Updates")
+        title: qsTr("Feeds")
+        description: root.feedsUnreadCount + (root.feedsUnreadCount === 1 ? qsTr(" New Update") : qsTr(" New Updates"))
         imageSource: "asset:///images/updates.png"
         newContentAvailable: root.feedsUnreadCount > 0
         FeedsTab {
@@ -123,8 +123,8 @@ TabbedPane {
 
     Tab {
         id: contactsTab
-        title: "Contacts"
-        description: contactsTabContent.contactCount + (contactsTabContent.contactCount === 1 ? " Contact" : " Contacts")
+        title: qsTr("Contacts")
+        description: contactsTabContent.contactCount + (contactsTabContent.contactCount === 1 ? qsTr(" Contact") : qsTr(" Contacts"))
         imageSource: "asset:///images/ic_contact.png"
         ContactsTab {
             id: contactsTabContent
@@ -135,8 +135,8 @@ TabbedPane {
     
     Tab {
         id: groupsTab
-        title: "Groups"
-        description: groupsTabContent.groupCount + (groupsTabContent.groupCount === 1 ? " Group" : " Groups")
+        title: qsTr("Groups")
+        description: groupsTabContent.groupCount + (groupsTabContent.groupCount === 1 ? qsTr(" Group") : qsTr(" Groups"))
         imageSource: "asset:///images/ic_groups_white.png"
         newContentAvailable: groupsTabContent.unreadCount > 0
         GroupsTab {
@@ -148,8 +148,8 @@ TabbedPane {
     
     Tab {
         id: invitesTab
-        title: "Invites"
-        description: invitesTabContent.inviteCount + (invitesTabContent.inviteCount === 1 ? " New Invite" : " New Invites")
+        title: qsTr("Invites")
+        description: invitesTabContent.inviteCount + (invitesTabContent.inviteCount === 1 ? qsTr(" New Invite") : qsTr(" New Invites"))
         imageSource: "asset:///images/ic_add_contact.png"
         newContentAvailable: invitesTabContent.inviteCount > 0
         InvitesTab {
@@ -163,8 +163,8 @@ TabbedPane {
     // Sticker Shop (free sticker packs from BBerryLife.github.io).
     Tab {
         id: shopTab
-        title: "Shop"
-        description: "Store"
+        title: qsTr("Shop")
+        description: qsTr("Store")
         imageSource: "asset:///images/ic_buy.png"
         StickerShopPage {
             id: shopTabContent
@@ -259,10 +259,10 @@ TabbedPane {
 
         SystemDialog {
             id: tosDialog
-            title: "Terms of Service"
+            title: qsTr("Terms of Service")
             body: "Informal Disclaimer:\nZalo10 is an independent, non-profit personal project. It has no official affiliation or connection with Zalo (VNG).\n\nAccount Risks:\nUsing a third-party application based on an emulation library may violate Zalo's terms of service. Please consider using a secondary account. The author takes no responsibility if your Zalo account is suspended or banned.\n\nData Policy:\nThe application runs directly on your device and serves strictly as a display interface. It does not store or forward your personal data or login credentials to any third party.\n\nMaintenance and Issues:\nThe application is provided \"As-Is\". Features and functionality may be interrupted at any time if Zalo updates or changes their system."
-            confirmButton.label: "OK"
-            cancelButton.label: "Cancel"
+            confirmButton.label: qsTr("OK")
+            cancelButton.label: qsTr("Cancel")
             onFinished: {
                 if (value === SystemUiResult.ConfirmButtonSelection) {
                     app.setTosAccepted(true);

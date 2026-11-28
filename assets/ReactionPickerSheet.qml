@@ -4,7 +4,7 @@ import QtQuick 1.0
 
 // Backed by bb::system::SystemListDialog. The root is a QtObject because the dialog's default
 // property is "buttons", so it can't host a Timer or other children. Rows are text-only
-// (appendItem() has no icon parameter). Needs "import bb.system 1.3" for dismissOnSelection;
+// (appendItem() has no icon parameter), so each one starts with its system emoji. Needs "import bb.system 1.3" for dismissOnSelection;
 // without it the dialog doesn't auto-close on tap.
 QtObject {
     id: root
@@ -26,12 +26,12 @@ QtObject {
 
         dlg.clearList();
         var cur = existingIcon || "";
-        dlg.appendItem(qsTr("Like"),      true, cur === "like");
-        dlg.appendItem(qsTr("Heart"),     true, cur === "heart");
-        dlg.appendItem(qsTr("Haha"),      true, cur === "haha");
-        dlg.appendItem(qsTr("Surprised"), true, cur === "wow");
-        dlg.appendItem(qsTr("Sad"),       true, cur === "cry");
-        dlg.appendItem(qsTr("Angry"),     true, cur === "angry");
+        dlg.appendItem("\ud83d\udc4d  " + qsTr("Like"),      true, cur === "like");
+        dlg.appendItem("\u2764\ufe0f  " + qsTr("Heart"),     true, cur === "heart");
+        dlg.appendItem("\ud83d\ude04  " + qsTr("Haha"),      true, cur === "haha");
+        dlg.appendItem("\ud83d\ude31  " + qsTr("Surprised"), true, cur === "wow");
+        dlg.appendItem("\ud83d\ude2d  " + qsTr("Sad"),       true, cur === "cry");
+        dlg.appendItem("\ud83d\ude21  " + qsTr("Angry"),     true, cur === "angry");
 
         dlg.show();
     }

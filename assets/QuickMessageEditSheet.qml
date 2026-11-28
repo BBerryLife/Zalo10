@@ -29,7 +29,7 @@ Sheet {
         var ct = qmContentArea.text.trim();
 
         if (nm.length === 0 || ct.length === 0) {
-            qmValidationToast.body = "Please enter both a shortcut and a message.";
+            qmValidationToast.body = qsTr("Please enter both a shortcut and a message.");
             qmValidationToast.show();
             return;
         }
@@ -42,7 +42,7 @@ Sheet {
         }
 
         if (!ok) {
-            qmValidationToast.body = "A quick message with that shortcut already exists.";
+            qmValidationToast.body = qsTr("A quick message with that shortcut already exists.");
             qmValidationToast.show();
             return;
         }
@@ -76,7 +76,7 @@ Sheet {
                     }
 
                     Label {
-                        text: qmEditSheetRoot.editId < 0 ? "New Quick Message" : "Edit Quick Message"
+                        text: qmEditSheetRoot.editId < 0 ? qsTr("New Quick Message") : qsTr("Edit Quick Message")
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         verticalAlignment: VerticalAlignment.Center
                         textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
@@ -88,7 +88,7 @@ Sheet {
 
         actions: [
             ActionItem {
-                title: "Save"
+                title: qsTr("Save")
                 imageSource: "asset:///images/ChatView/ic_save.png"
                 ActionBar.placement: ActionBarPlacement.OnBar
                 onTriggered: { qmEditSheetRoot.doSave(); }
@@ -101,7 +101,7 @@ Sheet {
                 topPadding: 14
 
                 Label {
-                    text: "Create a QM by filling out the forms below"
+                    text: qsTr("Create a QM by filling out the forms below")
                     multiline: true; textStyle.color: Color.Gray
                     horizontalAlignment: HorizontalAlignment.Center
                     textStyle.textAlign: TextAlign.Center
@@ -135,7 +135,7 @@ Sheet {
 
                         TextField {
                             id: qmNameField
-                            hintText: "Shortcut (Eg: hello)"
+                            hintText: qsTr("Shortcut (Eg: hello)")
                             backgroundVisible: false
                             verticalAlignment: VerticalAlignment.Center
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
@@ -152,7 +152,7 @@ Sheet {
 
                     TextArea {
                         id: qmContentArea
-                        hintText: "Enter your message"
+                        hintText: qsTr("Enter your message")
                         horizontalAlignment: HorizontalAlignment.Fill
                         minHeight: 200; preferredHeight: 220
                     }

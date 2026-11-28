@@ -153,10 +153,10 @@ Page {
                 horizontalAlignment: HorizontalAlignment.Fill
                 topMargin: ui.du(0.5); bottomMargin: ui.du(0.5)
                 leftMargin: ui.du(1); rightMargin: ui.du(1)
-                Option { text: "All" }
-                Option { text: "Messages" }
-                Option { text: "Note" }
-                Option { text: "Poll" }
+                Option { text: qsTr("All") }
+                Option { text: qsTr("Messages") }
+                Option { text: qsTr("Note") }
+                Option { text: qsTr("Poll") }
                 onSelectedIndexChanged: { groupBoardPage.applyFilter(); }
             }
         }
@@ -227,19 +227,19 @@ Page {
 
     actions: [
         ActionItem {
-            title: "Create note"
+            title: qsTr("Create note")
             imageSource: "asset:///images/ChatView/ic_action_new_note.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             onTriggered: { createNoteSheet.open(); }
         },
         ActionItem {
-            title: "Create Poll"
+            title: qsTr("Create Poll")
             imageSource: "asset:///images/ChatView/ic_review_add.png"
             ActionBar.placement: ActionBarPlacement.OnBar
             onTriggered: { createPollSheet.open(); }
         },
         ActionItem {
-            title: "Reload"
+            title: qsTr("Reload")
             imageSource: "asset:///images/ChatsTab/ic_sync.png"
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: { groupBoardPage.reload(); }
@@ -265,7 +265,7 @@ Page {
                 groupBoardPage.allItems = items;
                 groupBoardPage.applyFilter();
                 if (error.length > 0) {
-                    boardErrorToast.body = "Couldn't load group board: " + error;
+                    boardErrorToast.body = qsTr("Couldn't load group board: ") + error;
                     boardErrorToast.show();
                 }
             }
@@ -274,7 +274,7 @@ Page {
             target: zService
             onVotePollDone: {
                 if (!success) {
-                    boardErrorToast.body = "Couldn't submit vote: " + error;
+                    boardErrorToast.body = qsTr("Couldn't submit vote: ") + error;
                     boardErrorToast.show();
                     return;
                 }
@@ -285,11 +285,11 @@ Page {
             target: zService
             onCreateNoteDone: {
                 if (success) {
-                    boardErrorToast.body = "Note created";
+                    boardErrorToast.body = qsTr("Note created");
                     boardErrorToast.show();
                     groupBoardPage.reload();
                 } else {
-                    boardErrorToast.body = "Couldn't create note: " + error;
+                    boardErrorToast.body = qsTr("Couldn't create note: ") + error;
                     boardErrorToast.show();
                 }
             }
@@ -298,11 +298,11 @@ Page {
             target: zService
             onCreatePollDone: {
                 if (success) {
-                    boardErrorToast.body = "Poll created";
+                    boardErrorToast.body = qsTr("Poll created");
                     boardErrorToast.show();
                     groupBoardPage.reload();
                 } else {
-                    boardErrorToast.body = "Couldn't create poll: " + error;
+                    boardErrorToast.body = qsTr("Couldn't create poll: ") + error;
                     boardErrorToast.show();
                 }
             }
@@ -317,7 +317,7 @@ Page {
                 groupBoardPage.loading = false;
                 groupBoardPage.loadError = "Timed out";
                 groupBoardPage.applyFilter();
-                boardErrorToast.body = "Couldn't load group board: timed out. Use Reload to try again.";
+                boardErrorToast.body = qsTr("Couldn't load group board: timed out. Use Reload to try again.");
                 boardErrorToast.show();
             }
         },

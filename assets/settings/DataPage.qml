@@ -6,7 +6,7 @@ import QtQuick 1.0   // Connections lives here; without it this page fails to lo
 Page {
     id: page
     property variant sheet
-    titleBar: SettingsTitleBar { heading: "Data & Backup" }
+    titleBar: SettingsTitleBar { heading: qsTr("Data & Backup") }
 
     // Conversations a phone sync could not match automatically (zService.phoneSyncUnmatched()).
     property int unmatchedCount: 0
@@ -22,7 +22,7 @@ Page {
     onCreationCompleted: { page.refreshUnmatched(); }
 
     function doExport() {
-        exportProgressToast.body = "Exporting data…";
+        exportProgressToast.body = qsTr("Exporting data…");
         exportProgressToast.show();
 
         var result = zService.exportData("/accounts/1000/shared/documents");
@@ -30,9 +30,9 @@ Page {
         exportProgressToast.cancel();
 
         if (result && result.success) {
-            exportDoneToast.body = "Exported " + result.messageCount + " message(s) to:\n" + result.path;
+            exportDoneToast.body = qsTr("Exported ") + result.messageCount + qsTr(" message(s) to:\n") + result.path;
         } else {
-            exportDoneToast.body = "Export failed" + (result && result.error ? (": " + result.error) : ".");
+            exportDoneToast.body = qsTr("Export failed") + (result && result.error ? (": " + result.error) : ".");
         }
         exportDoneToast.show();
     }
@@ -42,26 +42,26 @@ Page {
             horizontalAlignment: HorizontalAlignment.Fill
 
             SettingsButtonRow {
-                text: "Export Data"
-                description: "Saves your message history (text only — photos are not included) to /accounts/1000/shared/documents/zalo10 as a JSON file you can keep as a backup or move to another device."
+                text: qsTr("Export Data")
+                description: qsTr("Saves your message history (text only — photos are not included) to /accounts/1000/shared/documents/zalo10 as a JSON file you can keep as a backup or move to another device.")
                 onClicked: { page.doExport(); }
             }
             SettingsButtonRow {
-                text: "Import Data"
-                description: "Restores message history from a previously exported file. Conversations you already have are left untouched — only new messages are added."
+                text: qsTr("Import Data")
+                description: qsTr("Restores message history from a previously exported file. Conversations you already have are left untouched — only new messages are added.")
                 onClicked: { importFilePicker.open(); }
             }
             SettingsButtonRow {
-                text: "Sync Messages from Phone"
-                description: "Brings older messages from the Zalo app on your phone into Zalo10. Your phone will ask you to confirm. "
+                text: qsTr("Sync Messages from Phone")
+                description: qsTr("Brings older messages from the Zalo app on your phone into Zalo10. Your phone will ask you to confirm. ")
                     + "Conversations are matched using messages Zalo10 has already received, so run it again after a few days of use to bring in more. "
                     + "Text, photos, files, links, calls and stickers are imported; voice notes and locations appear as a short label."
                 onClicked: { phoneSyncConfirm.show(); }
             }
             SettingsButtonRow {
                 visible: page.unmatchedCount > 0
-                text: "Match Conversations (" + page.unmatchedCount + ")"
-                description: "Conversations from your phone that could not be matched automatically. Choose the friend or group each one belongs to and its messages are imported."
+                text: qsTr("Match Conversations (") + page.unmatchedCount + ")"
+                description: qsTr("Conversations from your phone that could not be matched automatically. Choose the friend or group each one belongs to and its messages are imported.")
                 onClicked: { page.openMatch(); }
             }
         }
@@ -83,12 +83,12 @@ Page {
             id: importFilePicker
             type: FileType.Other
             mode: FilePickerMode.Picker
-            title: "Select Zalo10 export (.json)"
+            title: qsTr("Select Zalo10 export (.json)")
             filter: [ "*.json" ]
             directories: [ "/accounts/1000/shared/documents/zalo10" ]
             onFileSelected: {
                 var path = selectedFiles[0];
-                importProgressToast.body = "Importing data…";
+                importProgressToast.body = qsTr("Importing data…");
                 importProgressToast.show();
 
                 var result = zService.importData(path);
@@ -106,7 +106,7 @@ Page {
                             + ".";
                     }
                 } else {
-                    importDoneToast.body = "Import failed" + (result && result.error ? (": " + result.error) : ".");
+                    importDoneToast.body = qsTr("Import failed") + (result && result.error ? (": " + result.error) : ".");
                 }
                 importDoneToast.show();
             }
@@ -126,10 +126,10 @@ Page {
 
         SystemDialog {
             id: phoneSyncConfirm
-            title: "Sync Messages from Phone"
-            body: "Your phone's Zalo app will ask you to confirm. Keep Zalo10 open until the sync finishes."
-            confirmButton.label: "Start"
-            cancelButton.label: "Cancel"
+            title: qsTr("Sync Messages from Phone")
+            body: qsTr("Your phone's Zalo app will ask you to confirm. Keep Zalo10 open until the sync finishes.")
+            confirmButton.label: qsTr("Start")
+            cancelButton.label: qsTr("Cancel")
             onFinished: {
                 if (result !== SystemUiResult.ConfirmButtonSelection) return;
                 phoneSyncProgressDialog.progress = 0;
@@ -141,11 +141,11 @@ Page {
         },
         SystemProgressDialog {
             id: phoneSyncProgressDialog
-            title: "Syncing from phone"
+            title: qsTr("Syncing from phone")
             progress: 0
             state: SystemUiProgressState.Active
-            confirmButton.label: "Hide"
-            cancelButton.label: "Stop"
+            confirmButton.label: qsTr("Hide")
+            cancelButton.label: qsTr("Stop")
             // System dialogs only repaint changed properties on show(); see onPhoneSyncProgress.
             property bool hiddenByUser: false
             property int  lastPct: -1

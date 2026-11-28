@@ -36,7 +36,7 @@ Container {
             Label {
                 visible: (ListItemData.pollNumVote || 0) > 0
                 verticalAlignment: VerticalAlignment.Center
-                text: String(ListItemData.pollNumVote || 0) + " voted"
+                text: String(ListItemData.pollNumVote || 0) + qsTr(" voted")
                 textStyle { color: Color.create("#2575fc"); fontSize: FontSize.Small }
                 gestureHandlers: [ TapHandler { onTapped: {
                     rowRoot.ListItem.view.viewPollVotersProxy(ListItemData.pollId);
@@ -262,7 +262,7 @@ Container {
             Label {
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment: VerticalAlignment.Center
-                text: "Vote"
+                text: qsTr("Vote")
                 textStyle { color: Color.create("#2575fc"); fontSize: FontSize.Large; fontWeight: FontWeight.Bold }
             }
         }

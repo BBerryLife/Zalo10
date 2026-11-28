@@ -326,7 +326,7 @@ Container {
 
             Label {
                 visible: rowRoot.recalledHidden
-                text: rowRoot.mine ? "You recalled a message" : "This message was recalled"
+                text: rowRoot.mine ? qsTr("You recalled a message") : qsTr("This message was recalled")
                 textStyle {
                     base:       SystemDefaults.TextStyles.BodyText
                     fontStyle:  FontStyle.Italic
@@ -351,7 +351,7 @@ Container {
                     topMargin: 0; bottomMargin: 0
                 }
                 Label {
-                    text: "(This message was recalled)"
+                    text: qsTr("(This message was recalled)")
                     textStyle {
                         base:       SystemDefaults.TextStyles.SmallText
                         fontStyle:  FontStyle.Italic
@@ -378,7 +378,7 @@ Container {
                     imageSource: ListItemData.localImage
                 }
                 Label {
-                    text: "(This message was recalled)"
+                    text: qsTr("(This message was recalled)")
                     textStyle {
                         base:       SystemDefaults.TextStyles.SmallText
                         fontStyle:  FontStyle.Italic

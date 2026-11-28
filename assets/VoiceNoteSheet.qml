@@ -27,9 +27,9 @@ Sheet {
 
     Page {
         titleBar: TitleBar {
-            title: "Voice Note"
+            title: qsTr("Voice Note")
             dismissAction: ActionItem {
-                title: "Cancel"
+                title: qsTr("Cancel")
                 onTriggered: {
                     if (voiceNoteSheetRoot.outputPath !== "") {
                         zService.deleteLocalFile(voiceNoteSheetRoot.outputPath);
@@ -75,7 +75,7 @@ Sheet {
 
             Label {
                 horizontalAlignment: HorizontalAlignment.Center
-                text: voiceNoteSheetRoot.state === "idle"     ? "Tap record to start" :
+                text: voiceNoteSheetRoot.state === "idle"     ? qsTr("Tap record to start") :
                       voiceNoteSheetRoot.state === "recording" ? "Recording..." :
                                                                   "Recorded — send or discard"
                 textStyle.base: SystemDefaults.TextStyles.SubtitleText
@@ -84,7 +84,7 @@ Sheet {
 
             Button {
                 horizontalAlignment: HorizontalAlignment.Center
-                text: voiceNoteSheetRoot.state === "recording" ? "Stop" : "Record"
+                text: voiceNoteSheetRoot.state === "recording" ? qsTr("Stop") : qsTr("Record")
                 visible: voiceNoteSheetRoot.state !== "recorded"
                 onClicked: {
                     if (voiceNoteSheetRoot.state === "idle") {
@@ -105,7 +105,7 @@ Sheet {
                 topMargin: 10
 
                 Button {
-                    text: "Discard"
+                    text: qsTr("Discard")
                     onClicked: {
                         zService.deleteLocalFile(voiceNoteSheetRoot.outputPath);
                         voiceNoteSheetRoot.reset();
@@ -113,7 +113,7 @@ Sheet {
                     rightMargin: 10
                 }
                 Button {
-                    text: "Send"
+                    text: qsTr("Send")
                     onClicked: {
                         var p = voiceNoteSheetRoot.outputPath;
                         voiceNoteSheetRoot.state = "idle";

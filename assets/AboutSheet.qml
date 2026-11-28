@@ -101,7 +101,7 @@ Sheet {
                         }
 
                         Label {
-                            text: "About"
+                            text: qsTr("About")
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                             verticalAlignment: VerticalAlignment.Center
                             textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
@@ -113,13 +113,13 @@ Sheet {
 
             actions: [
                 ActionItem {
-                    title: "Facebook"
+                    title: qsTr("Facebook")
                     imageSource: "asset:///images/AboutSheet/ic_facebook.png"
                     ActionBar.placement: ActionBarPlacement.OnBar
                     onTriggered: { Qt.openUrlExternally("https://www.facebook.com/BBerrylife") }
                 },
                 ActionItem {
-                    title: "Donate"
+                    title: qsTr("Donate")
                     imageSource: "asset:///images/AboutSheet/ic_scan_barcode.png"
                     ActionBar.placement: ActionBarPlacement.Signature
                     onTriggered: {
@@ -128,7 +128,7 @@ Sheet {
                     }
                 },
                 ActionItem {
-                    title: "Website"
+                    title: qsTr("Website")
                     imageSource: "asset:///images/AboutSheet/ic_sb_network.png"
                     ActionBar.placement: ActionBarPlacement.OnBar
                     onTriggered: { Qt.openUrlExternally("https://BBerryLife.github.io") }
@@ -148,7 +148,7 @@ Sheet {
                             layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                             verticalAlignment: VerticalAlignment.Center
                             Label { text: "Zalo10"; textStyle.base: SystemDefaults.TextStyles.BigText }
-                            Label { text: "Version: " + app.appVersion(); textStyle.color: Color.Gray; topMargin: 4 }
+                            Label { text: qsTr("Version: ") + app.appVersion(); textStyle.color: Color.Gray; topMargin: 4 }
                             Label { text: "Developed by BBerryLife© 2026"; textStyle.color: Color.Gray; topMargin: 4 }
                         }
 
@@ -165,7 +165,7 @@ Sheet {
                     Divider { topMargin: 30; bottomMargin: 20 }
 
                     Label {
-                        text: "Zalo10 is a native Zalo client for BlackBerry 10.\nNo NodeJS, no browser required."
+                        text: qsTr("Zalo10 is a native Zalo client for BlackBerry 10.\nNo NodeJS, no browser required.")
                         multiline: true
                         textStyle.color: Color.Gray
                         horizontalAlignment: HorizontalAlignment.Center
@@ -178,7 +178,7 @@ Sheet {
 
                         Button {
                             id: changeListBtn
-                            text: "Change List"
+                            text: qsTr("Change List")
                             horizontalAlignment: HorizontalAlignment.Center
                             onClicked: {
                                 var changelogPage = changelogPageDef.createObject();
@@ -252,7 +252,7 @@ Sheet {
                                 leftPadding: ui.du(2.5)
                                 layout: DockLayout {}
                                 Label {
-                                    text: "Donate & Support"
+                                    text: qsTr("Donate & Support")
                                     horizontalAlignment: HorizontalAlignment.Left
                                     verticalAlignment: VerticalAlignment.Center
                                     textStyle {
@@ -271,7 +271,7 @@ Sheet {
                             leftPadding: 30; rightPadding: 30; topPadding: 50; bottomPadding: 50
 
                             Label {
-                                text: "If you find the app useful and are feeling generous, you can donate 10,000 VND to help me fund the purchase of BB10/BBOS devices for app testing, and... to support the app developer."
+                                text: qsTr("If you find the app useful and are feeling generous, you can donate 10,000 VND to help me fund the purchase of BB10/BBOS devices for app testing, and... to support the app developer.")
                                 multiline: true
                                 horizontalAlignment: HorizontalAlignment.Center
                                 textStyle {
@@ -299,7 +299,7 @@ Sheet {
 
                             Label {
                                 topMargin: 30
-                                text: "Thank you for your support!"
+                                text: qsTr("Thank you for your support!")
                                 horizontalAlignment: HorizontalAlignment.Center
                                 textStyle {
                                     color: Color.DarkGray

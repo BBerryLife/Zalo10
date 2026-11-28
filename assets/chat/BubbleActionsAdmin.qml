@@ -1,14 +1,14 @@
 import bb.cascades 1.4
 
 ActionSet {
-    title: "Message"
+    title: qsTr("Message")
     ActionItem {
-        title: "Copy"
+        title: qsTr("Copy")
         imageSource: "asset:///images/ChatView/ic_copy.png"
         onTriggered: { rowRoot.ListItem.view.doCopy(ListItemData.content, (ListItemData.msgType === 2 || ListItemData.msgType === "2"), ListItemData.localImage); }
     }
     ActionItem {
-        title: "Reply"
+        title: qsTr("Reply")
         imageSource: "asset:///images/ChatView/ic_quote_message.png"
         onTriggered: {
             rowRoot.ListItem.view.doReply(ListItemData.msgId, ListItemData.cliMsgId,
@@ -17,23 +17,23 @@ ActionSet {
         }
     }
     ActionItem {
-        title: "Reaction"
+        title: qsTr("Reaction")
         imageSource: "asset:///images/ChatView/ic_emoticon_enabled_white.png"
         onTriggered: { rowRoot.ListItem.view.doReaction(ListItemData.msgId); }
     }
     ActionItem {
-        title: "Recall"
+        title: qsTr("Recall")
         imageSource: "asset:///images/ChatView/ic_retract_message.png"
         enabled: rowRoot.canRecall(ListItemData.ts)
         onTriggered: { rowRoot.ListItem.view.doRecallMsg(ListItemData.msgId, ListItemData.cliMsgId, rowRoot.mine); }
     }
     ActionItem {
-        title: "Forward"
+        title: qsTr("Forward")
         imageSource: "asset:///images/ChatView/ic_forward_message.png"
         onTriggered: { rowRoot.ListItem.view.doForward(ListItemData.msgId, ListItemData.content, ListItemData.msgType, ListItemData.ts); }
     }
     ActionItem {
-        title: "Pin message"
+        title: qsTr("Pin message")
         imageSource: "asset:///images/ChatView/ic_pin.png"
         onTriggered: {
             rowRoot.ListItem.view.doPin(ListItemData.msgId, ListItemData.cliMsgId,
@@ -42,7 +42,7 @@ ActionSet {
         }
     }
     ActionItem {
-        title: "Download"
+        title: qsTr("Download")
         imageSource: "asset:///images/ChatView/ic_download.png"
         onTriggered: {
             if (ListItemData.msgType === 3 || ListItemData.msgType === "3") {
@@ -72,17 +72,17 @@ ActionSet {
         }
     }
     ActionItem {
-        title: "Share"
+        title: qsTr("Share")
         imageSource: "asset:///images/ChatView/ic_share.png"
         onTriggered: { rowRoot.ListItem.view.doShare(ListItemData.content, (ListItemData.msgType === 2 || ListItemData.msgType === "2"), ListItemData.localImage); }
     }
     ActionItem {
-        title: "Delete for me only"
+        title: qsTr("Delete for me only")
         imageSource: "asset:///images/ChatView/action_delete.png"
         onTriggered: { rowRoot.ListItem.view.doDeleteForMe(ListItemData.msgId, ListItemData.cliMsgId, ListItemData.senderId); }
     }
     DeleteActionItem {
-        title: "Delete"
+        title: qsTr("Delete")
         imageSource: "asset:///images/ChatView/action_delete.png"
         onTriggered: { rowRoot.ListItem.view.doDeleteMsg(ListItemData.msgId); }
     }

@@ -139,7 +139,7 @@ NavigationPane {
         actions: [
             ActionItem {
                 id: contactsRefreshAction
-                title: contactsNav.refreshCooldown ? "Please wait..." : "Refresh"
+                title: contactsNav.refreshCooldown ? qsTr("Please wait...") : qsTr("Refresh")
                 enabled: !contactsNav.refreshCooldown
                 imageSource: "asset:///images/ContactsTab/ic_sync.png"
                 ActionBar.placement: ActionBarPlacement.InOverflow
@@ -180,7 +180,7 @@ NavigationPane {
                         horizontalAlignment: HorizontalAlignment.Fill
                         TextField {
                             id: contactsSearchField
-                            hintText: "Search contacts..."
+                            hintText: qsTr("Search contacts...")
                             backgroundVisible: false
                             horizontalAlignment: HorizontalAlignment.Fill
                             textStyle.color: contactsNav.isDark ? Color.White : Color.Black
@@ -295,7 +295,7 @@ NavigationPane {
 
             Label {
                 id: contactsEmpty
-                text: "No contacts found"
+                text: qsTr("No contacts found")
                 visible: false
                 horizontalAlignment: HorizontalAlignment.Center
                 verticalAlignment:   VerticalAlignment.Center

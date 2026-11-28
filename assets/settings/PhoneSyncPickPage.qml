@@ -12,7 +12,7 @@ Page {
     property variant chosen          // {id, name}
 
     titleBar: SettingsTitleBar {
-        heading: (pick.item && pick.item.isGroup) ? "Choose Group" : "Choose Friend"
+        heading: (pick.item && pick.item.isGroup) ? qsTr("Choose Group") : qsTr("Choose Friend")
     }
 
     function filter(q) {
@@ -36,7 +36,7 @@ Page {
 
     function choose(c) {
         pick.chosen = c;
-        confirmDialog.body = "Import " + pick.item.count + (pick.item.count === 1 ? " message" : " messages")
+        confirmDialog.body = qsTr("Import ") + pick.item.count + (pick.item.count === 1 ? qsTr(" message") : qsTr(" messages"))
                              + " into \"" + c.name + "\"?\n\nZalo10 will remember this choice for later syncs.";
         confirmDialog.show();
     }
@@ -44,11 +44,11 @@ Page {
     function doAssign() {
         var n = zService.phoneSyncAssign(pick.item.kind, pick.item.shortId, pick.chosen.id);
         if (n < 0) {
-            doneToast.body = "Could not import right now (a sync may still be running). Try again in a moment.";
+            doneToast.body = qsTr("Could not import right now (a sync may still be running). Try again in a moment.");
             doneToast.show();
             return;
         }
-        doneToast.body = "Imported " + n + (n === 1 ? " message" : " messages") + " into \"" + pick.chosen.name + "\".";
+        doneToast.body = qsTr("Imported ") + n + (n === 1 ? qsTr(" message") : qsTr(" messages")) + qsTr(" into \"") + pick.chosen.name + "\".";
         doneToast.show();
         if (pick.matchPage) pick.matchPage.reload();
         if (pick.sheet) pick.sheet.popPage();
@@ -63,7 +63,7 @@ Page {
             leftPadding: ui.du(2); rightPadding: ui.du(2); topPadding: ui.du(1.5); bottomPadding: ui.du(1.5)
             background: Color.create("#1A808080")
             Label {
-                text: "Last messages in this conversation:"
+                text: qsTr("Last messages in this conversation:")
                 textStyle.base: SystemDefaults.TextStyles.SmallText
                 textStyle.fontWeight: FontWeight.Bold
             }
@@ -76,7 +76,7 @@ Page {
 
         TextField {
             id: searchField
-            hintText: (pick.item && pick.item.isGroup) ? "Search groups" : "Search friends"
+            hintText: (pick.item && pick.item.isGroup) ? qsTr("Search groups") : qsTr("Search friends")
             horizontalAlignment: HorizontalAlignment.Fill
             topMargin: ui.du(1)
             onTextChanging: { pick.filter(text); }
@@ -114,9 +114,9 @@ Page {
         ArrayDataModel { id: candModel },
         SystemDialog {
             id: confirmDialog
-            title: "Import Messages"
-            confirmButton.label: "Import"
-            cancelButton.label: "Cancel"
+            title: qsTr("Import Messages")
+            confirmButton.label: qsTr("Import")
+            cancelButton.label: qsTr("Cancel")
             onFinished: {
                 if (value === SystemUiResult.ConfirmButtonSelection) pick.doAssign();
             }

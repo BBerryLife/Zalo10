@@ -115,13 +115,13 @@ Container {
             leftPadding: ui.du(0.9); rightPadding: ui.du(0.9)
 
             Label {
-                text: "Pinboard (" + pinboardBar.topItems.length + ")"
+                text: qsTr("Pinboard (") + pinboardBar.topItems.length + ")"
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
                 textStyle { fontWeight: FontWeight.Bold; fontSize: FontSize.XSmall; color: pinboardBar.isDark ? Color.White : Color.Black }
             }
             Label {
-                text: "Collapse"
+                text: qsTr("Collapse")
                 verticalAlignment: VerticalAlignment.Center
                 textStyle { color: Color.create("#2575fc"); fontSize: FontSize.XSmall }
                 gestureHandlers: [ TapHandler { onTapped: { pinboardBar.expanded = false; } } ]

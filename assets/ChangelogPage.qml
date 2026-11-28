@@ -24,7 +24,7 @@ Page {
                 leftPadding: ui.du(2.5)
                 layout: DockLayout {}
                 Label {
-                    text: "Change List"
+                    text: qsTr("Change List")
                     horizontalAlignment: HorizontalAlignment.Left
                     verticalAlignment: VerticalAlignment.Center
                     textStyle {
@@ -63,7 +63,7 @@ Page {
                         bottomPadding: ui.du(2)
 
                         Label {
-                            text: "Version " + ListItemData.version + ".x"
+                            text: qsTr("Version ") + ListItemData.version + ".x"
                             textStyle {
                                 base: SystemDefaults.TextStyles.TitleText
                                 fontWeight: FontWeight.Bold
@@ -116,7 +116,7 @@ Page {
 
         Label {
             id: changelogEmpty
-            text: "Changelog is empty right now."
+            text: qsTr("Changelog is empty right now.")
             visible: false
             horizontalAlignment: HorizontalAlignment.Center
             verticalAlignment: VerticalAlignment.Center

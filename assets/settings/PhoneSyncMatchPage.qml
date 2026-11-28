@@ -6,7 +6,7 @@ Page {
     id: page
     property variant sheet
     property variant dataPage        // DataPage, to refresh its "Match Conversations (N)" button
-    titleBar: SettingsTitleBar { heading: "Match Conversations" }
+    titleBar: SettingsTitleBar { heading: qsTr("Match Conversations") }
 
     function reload() {
         var items = zService.phoneSyncUnmatched();
@@ -34,7 +34,7 @@ Page {
             horizontalAlignment: HorizontalAlignment.Fill
             leftPadding: ui.du(2); rightPadding: ui.du(2); topPadding: ui.du(2); bottomPadding: ui.du(1)
             Label {
-                text: "These conversations from your phone could not be matched automatically. Tap one and choose the friend or group it belongs to; its messages are then imported, and later syncs will match it by themselves."
+                text: qsTr("These conversations from your phone could not be matched automatically. Tap one and choose the friend or group it belongs to; its messages are then imported, and later syncs will match it by themselves.")
                 multiline: true
                 textStyle.color: Color.Gray
                 textStyle.base: SystemDefaults.TextStyles.SmallText
@@ -46,7 +46,7 @@ Page {
             visible: false
             horizontalAlignment: HorizontalAlignment.Center
             topMargin: ui.du(4)
-            text: "Nothing left to match."
+            text: qsTr("Nothing left to match.")
             textStyle.color: Color.Gray
         }
 
@@ -61,7 +61,7 @@ Page {
                         horizontalAlignment: HorizontalAlignment.Fill
                         leftPadding: ui.du(2); rightPadding: ui.du(2); topPadding: ui.du(1.5)
                         Label {
-                            text: (ListItemData.isGroup ? "Group chat" : "Chat") + "  ·  " + ListItemData.count
+                            text: (ListItemData.isGroup ? qsTr("Group chat") : qsTr("Chat")) + "  ·  " + ListItemData.count
                                   + (ListItemData.count === 1 ? " message" : " messages")
                             textStyle.base: SystemDefaults.TextStyles.TitleText
                         }

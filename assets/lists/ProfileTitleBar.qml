@@ -87,7 +87,7 @@ TitleBar {
                             topMargin: 0; bottomMargin: 0
                         }
                         Label {
-                            text: "Available"
+                            text: qsTr("Available")
                             textStyle { color: Color.create("#b3d4ff"); fontSize: FontSize.XSmall }
                             topMargin: ui.du(0.2); bottomMargin: 0
                         }
@@ -144,7 +144,7 @@ TitleBar {
                     }
                 }
                 Button {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     preferredWidth: ui.du(14)
                     verticalAlignment: VerticalAlignment.Center
                     onClicked: {
@@ -157,17 +157,17 @@ TitleBar {
             attachedObjects: [
                 SystemDialog {
                     id: profileDevDialog
-                    title: "Profile"
-                    body: "This feature is still under development."
-                    confirmButton.label: "OK"
+                    title: qsTr("Profile")
+                    body: qsTr("This feature is still under development.")
+                    confirmButton.label: qsTr("OK")
                     cancelButton.label: ""
                     cancelButton.enabled: false
                 },
                 SystemDialog {
                     id: addDevDialog
                     title: profileBar.addDialogTitle
-                    body: "This feature is still under development."
-                    confirmButton.label: "OK"
+                    body: qsTr("This feature is still under development.")
+                    confirmButton.label: qsTr("OK")
                     cancelButton.label: ""
                     cancelButton.enabled: false
                 }

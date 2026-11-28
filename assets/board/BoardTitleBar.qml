@@ -14,7 +14,7 @@ TitleBar {
             leftPadding: ui.du(2)
 
             Label {
-                text: "Group Board"
+                text: qsTr("Group Board")
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 horizontalAlignment: HorizontalAlignment.Fill
                 verticalAlignment: VerticalAlignment.Center

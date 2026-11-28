@@ -31,7 +31,7 @@ Sheet {
                     }
 
                     Label {
-                        text: "Note"
+                        text: qsTr("Note")
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         verticalAlignment: VerticalAlignment.Center
                         textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
@@ -47,7 +47,7 @@ Sheet {
                 topPadding: 20; leftPadding: 20; rightPadding: 20; bottomPadding: 20
 
                 Label {
-                    text: noteViewerRoot.creatorLabel.length > 0 ? ("Created by " + noteViewerRoot.creatorLabel) : ""
+                    text: noteViewerRoot.creatorLabel.length > 0 ? (qsTr("Created by ") + noteViewerRoot.creatorLabel) : ""
                     visible: noteViewerRoot.creatorLabel.length > 0
                     textStyle { color: Color.Gray; fontSize: FontSize.Small }
                     bottomMargin: 14

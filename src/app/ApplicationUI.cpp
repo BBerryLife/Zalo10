@@ -3,7 +3,6 @@
 #include "core/stickers/StickerManager.hpp"
 #include "core/voice/VoiceCallBridge.hpp"
 #include <bb/device/DisplayInfo>
-#include <QLocalSocket>
 
 namespace {
 QSize screenPixels()
@@ -205,10 +204,28 @@ void ApplicationUI::quitApp()
     onManualExit();
 }
 
+QString ApplicationUI::getLanguage()
+{
+    QSettings settings("BerryLife", "Zalo10");
+    return settings.value("language", "system").toString();
+}
+
+void ApplicationUI::setLanguage(const QString &lang)
+{
+    QSettings settings("BerryLife", "Zalo10");
+    settings.setValue("language", lang);
+    settings.sync();
+    onSystemLanguageChanged();
+}
+
+// Also runs when the user picks a language in Settings > General. The source strings are English, so
+// "en" just removes the translator; "system" follows the device language (Zalo10_vi.qm for vi_VN, etc.).
 void ApplicationUI::onSystemLanguageChanged()
 {
     QCoreApplication::instance()->removeTranslator(m_pTranslator);
-    QString locale = QLocale().name();
+    QString lang = getLanguage();
+    if (lang == "en") return;
+    QString locale = (lang.isEmpty() || lang == "system") ? QLocale().name() : lang;
     if (m_pTranslator->load(QString("Zalo10_%1").arg(locale), "app/native/qm"))
         QCoreApplication::instance()->installTranslator(m_pTranslator);
 }
@@ -222,47 +239,45 @@ void ApplicationUI::pingHandoffService(const char *action)
     connect(reply, SIGNAL(finished()), this, SLOT(onServicePingFinished()));
 }
 
-// Incoming call while the app is not in front. Every invoke the app sent to bring itself or the service forward came
-// back BadRequest (error 2), so the first attempts use a local socket to the headless service, which then opens the
-// app with the same forward it uses for a Hub tap. The last attempt is a plain OPEN on the app's own target.
+// Incoming call while the app is not in front: the shapes below are tried one per call until the app comes up.
+// Each attempt logs the Navigator's error code (0 = accepted, 2 = BadRequest).
 void ApplicationUI::onBringToFront(int shape)
 {
     qDebug() << "[Voice] bring to front, shape" << shape;
-    if (shape < 2) {
-        QLocalSocket *sock = new QLocalSocket(this);
-        connect(sock, SIGNAL(connected()), this, SLOT(onBringSocketConnected()));
-        connect(sock, SIGNAL(error(QLocalSocket::LocalSocketError)), this, SLOT(onBringSocketError()));
-        sock->connectToServer(ServiceHandoff::cmdSocketPath());
-        return;
-    }
     bb::system::InvokeRequest req;
-    req.setTarget("com.BerryLife.Zalo10.invoke");
-    req.setAction("bb.action.OPEN");
-    req.setMimeType("application/vnd.zalo10.hub.chat");
-    req.setData(QByteArray("zalo10:call"));
+    switch (shape) {
+    case 0:   // exactly the UI_OPENED ping, other action
+        req.setTarget("com.BerryLife.Zalo10.service");
+        req.setAction("com.BerryLife.Zalo10.service.OPEN_UI");
+        break;
+    case 1:
+        req.setTarget("com.BerryLife.Zalo10.service");
+        req.setAction("com.BerryLife.Zalo10.service.OPEN_UI");
+        req.setUri(QUrl("headless:"));
+        break;
+    case 2:   // service, OPEN, Hub-like
+        req.setTarget("com.BerryLife.Zalo10.service");
+        req.setAction("bb.action.OPEN");
+        req.setMimeType("application/vnd.zalo10.hub.chat");
+        break;
+    case 3:   // the app itself
+        req.setTarget("com.BerryLife.Zalo10.invoke");
+        req.setAction("bb.action.OPEN");
+        req.setMimeType("application/vnd.zalo10.hub.chat");
+        req.setData(QByteArray("zalo10:call"));
+        break;
+    default:
+        req.setTarget("com.BerryLife.Zalo10.invoke");
+        req.setAction("bb.action.OPEN");
+        req.setMimeType("application/vnd.zalo10.hub.chat");
+        req.setUri(QUrl("pim:application/vnd.zalo10.hub.chat"));
+        req.setData(QByteArray("zalo10:call"));
+        break;
+    }
     bb::system::InvokeTargetReply *reply = m_pInvokeManager->invoke(req);
     if (!reply) { qWarning() << "[Voice] bring to front: no reply, shape" << shape; return; }
     reply->setProperty("shape", shape);
     connect(reply, SIGNAL(finished()), this, SLOT(onBringReplyFinished()));
-}
-
-void ApplicationUI::onBringSocketConnected()
-{
-    QLocalSocket *sock = qobject_cast<QLocalSocket *>(sender());
-    if (!sock) return;
-    sock->write("open_ui\n");
-    sock->flush();
-    qDebug() << "[Voice] bring to front: sent to the service";
-    sock->disconnectFromServer();
-    sock->deleteLater();
-}
-
-void ApplicationUI::onBringSocketError()
-{
-    QLocalSocket *sock = qobject_cast<QLocalSocket *>(sender());
-    if (!sock) return;
-    qWarning() << "[Voice] bring to front: service socket error" << (int)sock->error() << sock->errorString();
-    sock->deleteLater();
 }
 
 void ApplicationUI::onBringReplyFinished()
@@ -278,7 +293,6 @@ void ApplicationUI::onServicePingFinished()
     bb::system::InvokeTargetReply *reply = qobject_cast<bb::system::InvokeTargetReply *>(sender());
     if (!reply) return;
     // error() == 0 means Navigator accepted the invoke (even if it had to start the service).
-    qDebug() << "[App] service ping reply error=" << (int)reply->error();
     reply->deleteLater();
 }
 

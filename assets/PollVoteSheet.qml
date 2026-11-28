@@ -126,7 +126,7 @@ Sheet {
                     }
 
                     Label {
-                        text: "Poll"
+                        text: qsTr("Poll")
                         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                         verticalAlignment: VerticalAlignment.Center
                         textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
@@ -160,14 +160,14 @@ Sheet {
                     textStyle { color: Color.Gray; fontSize: FontSize.Small }
                 }
                 Label {
-                    text: pollVoteSheet.allowMulti ? "Choose multiple options" : "Choose one option"
+                    text: pollVoteSheet.allowMulti ? qsTr("Choose multiple options") : qsTr("Choose one option")
                     textStyle { color: pollVoteSheet.isDark ? Color.create("#dddddd") : Color.create("#444444")
                                 fontSize: FontSize.Medium }
                     topMargin: ui.du(1)
                 }
                 Label {
                     visible: pollVoteSheet.numVote > 0
-                    text: pollVoteSheet.numVote + (pollVoteSheet.numVote === 1 ? " member voted" : " members voted")
+                    text: pollVoteSheet.numVote + (pollVoteSheet.numVote === 1 ? qsTr(" member voted") : qsTr(" members voted"))
                     textStyle { color: Color.create("#2575fc"); fontSize: FontSize.Medium }
                     topMargin: ui.du(1)
                 }
@@ -238,7 +238,7 @@ Sheet {
 
                 Button {
                     horizontalAlignment: HorizontalAlignment.Fill
-                    text: "Vote"
+                    text: qsTr("Vote")
                     enabled: pollVoteSheet.selectedCount > 0 && pollVoteSheet.selectionChanged
                     onClicked: { pollVoteSheet.submit() }
                 }

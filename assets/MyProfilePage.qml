@@ -134,7 +134,7 @@ Page {
                             background: Color.create("#99000000")
                             layout: DockLayout {}
                             Label {
-                                text: "Change"
+                                text: qsTr("Change")
                                 horizontalAlignment: HorizontalAlignment.Center
                                 verticalAlignment: VerticalAlignment.Center
                                 textStyle { base: SystemDefaults.TextStyles.SmallText; color: Color.White }
@@ -173,25 +173,25 @@ Page {
                 }
             }
 
-            ProfileInfoRow { label: "Phone";       value: myPage.phone }
-            ProfileInfoRow { label: "Gender";      value: myPage.genderText }
-            ProfileInfoRow { label: "Birthday";    value: myPage.birthday }
-            ProfileInfoRow { label: "Username";    value: myPage.username }
-            ProfileInfoRow { label: "Joined Zalo"; value: myPage.joined }
-            ProfileInfoRow { label: "Zalo ID";     value: myPage.zaloId }
+            ProfileInfoRow { label: qsTr("Phone");       value: myPage.phone }
+            ProfileInfoRow { label: qsTr("Gender");      value: myPage.genderText }
+            ProfileInfoRow { label: qsTr("Birthday");    value: myPage.birthday }
+            ProfileInfoRow { label: qsTr("Username");    value: myPage.username }
+            ProfileInfoRow { label: qsTr("Joined Zalo"); value: myPage.joined }
+            ProfileInfoRow { label: qsTr("Zalo ID");     value: myPage.zaloId }
         }
     }
 
     attachedObjects: [
         SystemDialog {
             id: avatarDialog
-            title: "Change Profile Picture"
-            body: "Where should the new picture come from?"
-            confirmButton.label: "Choose Photo"
+            title: qsTr("Change Profile Picture")
+            body: qsTr("Where should the new picture come from?")
+            confirmButton.label: qsTr("Choose Photo")
             confirmButton.enabled: true
-            cancelButton.label: "Cancel"
+            cancelButton.label: qsTr("Cancel")
             cancelButton.enabled: true
-            buttons: [ SystemUiButton { label: "Open Camera"; enabled: true } ]
+            buttons: [ SystemUiButton { label: qsTr("Open Camera"); enabled: true } ]
             onFinished: {
                 if (result === SystemUiResult.ConfirmButtonSelection) {
                     photoPicker.open();
@@ -204,7 +204,7 @@ Page {
             id: photoPicker
             type: FileType.Picture
             mode: FilePickerMode.Picker
-            title: "Select Picture"
+            title: qsTr("Select Picture")
             onFileSelected: myPage.useNewPhoto(selectedFiles[0])
         },
         SystemToast { id: resultToast },
@@ -221,7 +221,7 @@ Page {
             Page {
                 actions: [
                     ActionItem {
-                        title: "Close"
+                        title: qsTr("Close")
                         imageSource: "asset:///images/SettingsSheet/ic_close_white.png"
                         ActionBar.placement: ActionBarPlacement.Signature
                         onTriggered: imgSheet.close()
@@ -267,11 +267,11 @@ Page {
             onSelfAvatarChanged: {
                 myPage.uploading = false;
                 if (ok) {
-                    resultToast.body = "Profile picture updated";
+                    resultToast.body = qsTr("Profile picture updated");
                     myPage.avatarPath = "";
                     refreshTimer.restart();
                 } else {
-                    resultToast.body = "Could not change picture" + (error.length > 0 ? ": " + error : "");
+                    resultToast.body = qsTr("Could not change picture") + (error.length > 0 ? ": " + error : "");
                 }
                 resultToast.show();
             }
