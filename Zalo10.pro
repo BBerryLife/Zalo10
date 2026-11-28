@@ -14,6 +14,8 @@ LIBS += -lunifieddatasourcec
 # -lbbcascadespickers: ContactPicker needs the real header and an explicit link.
 LIBS += -lbbcascadespickers
 LIBS += -lQtNetwork -lQtScript -lQtGui
+# -lscreen: ApplicationUI::captureScreen() (libscreen display read, use_camera_desktop permission).
+LIBS += -lscreen
 # Bundled OpenSSL 1.1.1w, static (src/third_party/prebuilt). --exclude-libs keeps its symbols
 # from clashing with the system libssl that libQtNetwork loads.
 simulator {
@@ -141,6 +143,8 @@ OTHER_FILES += \
     assets/QuickMessageEditSheet.qml \
     assets/AttachPickerSheet.qml \
     assets/VoiceNoteSheet.qml \
+    assets/ScreenCaptureSheet.qml \
+    assets/CaptureTextBox.qml \
     assets/ChangelogPage.qml \
     assets/ChatsTab.qml \
     assets/CreateNoteSheet.qml \
@@ -181,3 +185,7 @@ OTHER_FILES += \
     assets/lists/ProfileTitleBar.qml \
     assets/lists/GroupsListItem.qml \
     assets/lists/GroupsServiceConnections.qml
+
+# translations/Makefile runs "lrelease Zalo10.pro" from the translations folder and this file is all it reads
+# (config.pri is not included), so every language needs listing here to get its .qm.
+TRANSLATIONS = Zalo10.ts Zalo10_vi.ts

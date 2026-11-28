@@ -226,7 +226,11 @@ void ApplicationUI::onSystemLanguageChanged()
     QString lang = getLanguage();
     if (lang == "en") return;
     QString locale = (lang.isEmpty() || lang == "system") ? QLocale().name() : lang;
-    if (m_pTranslator->load(QString("Zalo10_%1").arg(locale), "app/native/qm"))
+    const QString name = QString("Zalo10_%1").arg(locale);
+    bool loaded = m_pTranslator->load(name, "app/native/qm");
+    if (!loaded) loaded = m_pTranslator->load(name, QCoreApplication::applicationDirPath() + "/qm");
+    qDebug() << "[I18n] language" << lang << "locale" << locale << (loaded ? "loaded" : "NOT loaded (no .qm?)");
+    if (loaded)
         QCoreApplication::instance()->installTranslator(m_pTranslator);
 }
 

@@ -64,6 +64,11 @@ public slots:
     Q_INVOKABLE void openLocalFile(const QString &localPath);
     // Camera card (sys.camera.card): one photo; the file comes back through cameraPhotoCaptured().
     Q_INVOKABLE void captureCameraPhoto();
+    // Screen capture (needs <permission>use_camera_desktop</permission>): reads the whole display with libscreen and
+    // saves a PNG under /tmp. captureScreenRegion() crops it to a rectangle in screen pixels. The result arrives
+    // through screenCaptured() or screenCaptureFailed().
+    Q_INVOKABLE void captureScreen();
+    Q_INVOKABLE void captureScreenRegion(int x, int y, int w, int h);
 
     // Hub reply card (InvokeCard startup, see the constructor). closeCard() ends the card; openThreadFromCard() hands
     // the conversation to the main app (a normal bb.action.OPEN invoke) and then closes the card.
@@ -84,6 +89,8 @@ signals:
     void shareTargetsReady(const QVariantList &targets);
     void eventCreated(bool success, const QString &error);
     void cameraPhotoCaptured(const QString &path);
+    void screenCaptured(const QString &path, int imgWidth, int imgHeight);
+    void screenCaptureFailed(const QString &reason);
 
 private slots:
     void onSystemLanguageChanged();

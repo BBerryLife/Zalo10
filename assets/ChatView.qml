@@ -18,6 +18,8 @@ Page {
     property bool   initialized: false
     property bool   emojiPanelOpen: false
     property variant emojiPanelRef: null
+    // This page asked for a screen capture and waits for app.screenCaptured (the singleton signals every live page).
+    property bool   captureRequested: false
     property string pendingAttachPath: ""
     property string pendingAttachName: ""
     property string pendingReplyMsgId:      ""
@@ -979,22 +981,6 @@ Page {
             ActionBar.placement: ActionBarPlacement.InOverflow
             onTriggered: { clearHistoryDialog.show() }
         },
-        // Group Board is pushed via groupBoardRequested (flip-a-bool, like qmRequested). Disabled, not
-        // hidden, outside groups (same as Block/Leave group).
-        ActionItem {
-            title: qsTr("Group board")
-            imageSource: "asset:///images/ChatView/ic_sb_notes.png"
-            ActionBar.placement: ActionBarPlacement.InOverflow
-            enabled: chatViewPage.isGroup
-            onTriggered: { chatViewPage.groupBoardRequested = true; }
-        },
-        ActionItem {
-            title: qsTr("Leave group")
-            imageSource: "asset:///images/ChatView/ic_chat_leave.png"
-            ActionBar.placement: ActionBarPlacement.InOverflow
-            enabled: chatViewPage.isGroup
-            onTriggered: { leaveGroupDialog.show() }
-        },
         ActionItem {
             title: qsTr("Create today's event")
             imageSource: "asset:///images/ChatView/ic_create_event.png"
@@ -1002,6 +988,16 @@ Page {
             onTriggered: {
                 createEventDialog.eventSubject = "Meeting with " + chatViewPage.threadName;
                 createEventDialog.show();
+            }
+        },
+        // The timer lets the overflow menu close first, so it is not in the capture.
+        ActionItem {
+            title: qsTr("Capture Screen")
+            imageSource: "asset:///images/ChatView/ic_camera.png"
+            ActionBar.placement: ActionBarPlacement.InOverflow
+            onTriggered: {
+                chatViewPage.captureRequested = true;
+                captureDelayTimer.start();
             }
         }
     ]
@@ -1200,6 +1196,41 @@ Page {
     // Shared by filePicker/audioPicker/voiceNoteSheet/contact-vcf: builds a local echo bubble
     // (msgType=3, "local_file_" prefix) then calls sendFile(). path must be a real system path
     // WITHOUT "file://".
+    // Group board / Leave group exist only in group chats: an ActionItem cannot be hidden, so they are added to
+    // and removed from the overflow menu (after the fixed actions) as isGroup changes.
+    property bool groupActionsAdded: false
+    function syncGroupActions() {
+        if (chatViewPage.isGroup && !chatViewPage.groupActionsAdded) {
+            chatViewPage.addAction(groupBoardAction, ActionBarPlacement.InOverflow);
+            chatViewPage.addAction(leaveGroupAction, ActionBarPlacement.InOverflow);
+            chatViewPage.groupActionsAdded = true;
+        } else if (!chatViewPage.isGroup && chatViewPage.groupActionsAdded) {
+            chatViewPage.removeAction(groupBoardAction);
+            chatViewPage.removeAction(leaveGroupAction);
+            chatViewPage.groupActionsAdded = false;
+        }
+    }
+    onIsGroupChanged: { chatViewPage.syncGroupActions(); }
+    onCreationCompleted: { chatViewPage.syncGroupActions(); }
+
+    // Edited screen capture from ScreenCaptureSheet: staged like a picked picture, sent with Send.
+    function attachCapturedImage(path) {
+        var cachedPath = zService.cacheLocalImage(path);
+        if (cachedPath !== path) zService.deleteLocalFile(path);
+        var fname = cachedPath.substring(cachedPath.lastIndexOf('/') + 1);
+        chatViewPage.pendingReplyMsgId      = "";
+        chatViewPage.pendingReplyCliMsgId   = "";
+        chatViewPage.pendingReplyOwnerId    = "";
+        chatViewPage.pendingReplySenderName = "";
+        chatViewPage.pendingReplyContent    = "";
+        chatViewPage.pendingReplyMsgType    = 0;
+        chatViewPage.pendingReplyTs         = "";
+        chatViewPage.pendingAttachPath = cachedPath;
+        chatViewPage.pendingAttachName = fname;
+        inputField.requestFocus();
+        sendAction.enabled = true;
+    }
+
     function stageAndSendLocalFile(path) {
         var fname = path.substring(path.lastIndexOf('/') + 1);
         var mf = {
@@ -1934,6 +1965,50 @@ Page {
                 errorToast.body = message;
                 errorToast.show();
             }
+        },
+
+        // Group Board is pushed via groupBoardRequested (flip-a-bool, like qmRequested). Added to the page by
+        // syncGroupActions() in group chats only.
+        ActionItem {
+            id: groupBoardAction
+            title: qsTr("Group board")
+            imageSource: "asset:///images/ChatView/ic_sb_notes.png"
+            onTriggered: { chatViewPage.groupBoardRequested = true; }
+        },
+        ActionItem {
+            id: leaveGroupAction
+            title: qsTr("Leave group")
+            imageSource: "asset:///images/ChatView/ic_chat_leave.png"
+            onTriggered: { leaveGroupDialog.show() }
+        },
+
+        Timer {
+            id: captureDelayTimer
+            interval: 700
+            repeat: false
+            onTriggered: { app.captureScreen(); }
+        },
+
+        // First capture (the chat as it is): opens the editor. The editor's own second capture (Done) is ignored here
+        // because captureRequested is already false by then.
+        Connections {
+            target: app
+            onScreenCaptured: {
+                if (!chatViewPage.captureRequested) return;
+                chatViewPage.captureRequested = false;
+                captureSheet.openWith(path, imgWidth, imgHeight);
+            }
+            onScreenCaptureFailed: {
+                if (!chatViewPage.captureRequested) return;
+                chatViewPage.captureRequested = false;
+                errorToast.body = qsTr("Could not capture the screen");
+                errorToast.show();
+            }
+        },
+
+        ScreenCaptureSheet {
+            id: captureSheet
+            onImageReady: { chatViewPage.attachCapturedImage(path); }
         },
 
         // pickContact() result: the built .vcf is sent via sendFile(), like VoiceNoteSheet.onVoiceNoteReady.

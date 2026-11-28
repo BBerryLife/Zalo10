@@ -9,15 +9,19 @@ Page {
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             // Language names stay in their own language; only "System default" is translated.
-            DropDown {
-                id: languageDrop
-                title: qsTr("Language")
-                property bool ready: false
-                Option { text: qsTr("System default"); value: "system" }
-                Option { text: "English"; value: "en" }
-                Option { text: "Ti\u1EBFng Vi\u1EC7t"; value: "vi" }
-                onSelectedOptionChanged: {
-                    if (ready && selectedOption) app.setLanguage(selectedOption.value);
+            Container {
+                horizontalAlignment: HorizontalAlignment.Fill
+                topPadding: ui.du(2); leftPadding: ui.du(2); rightPadding: ui.du(2)
+                DropDown {
+                    id: languageDrop
+                    title: qsTr("Language")
+                    property bool ready: false
+                    Option { text: qsTr("System default"); value: "system" }
+                    Option { text: "English"; value: "en" }
+                    Option { text: "Ti\u1EBFng Vi\u1EC7t"; value: "vi" }
+                    onSelectedOptionChanged: {
+                        if (ready && selectedOption) app.setLanguage(selectedOption.value);
+                    }
                 }
             }
             SettingsToggleRow {

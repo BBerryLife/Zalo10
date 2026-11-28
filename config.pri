@@ -40,6 +40,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/ActiveFrameCover.qml) \
         $$quote($$BASEDIR/assets/AttachPickerSheet.qml) \
         $$quote($$BASEDIR/assets/CallScreen.qml) \
+        $$quote($$BASEDIR/assets/CaptureTextBox.qml) \
         $$quote($$BASEDIR/assets/ChangelogPage.qml) \
         $$quote($$BASEDIR/assets/ChatView.qml) \
         $$quote($$BASEDIR/assets/ChatsTab.qml) \
@@ -71,6 +72,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/QuickMessageEditSheet.qml) \
         $$quote($$BASEDIR/assets/QuickMessagesSheet.qml) \
         $$quote($$BASEDIR/assets/ReactionPickerSheet.qml) \
+        $$quote($$BASEDIR/assets/ScreenCaptureSheet.qml) \
         $$quote($$BASEDIR/assets/SettingsSheet.qml) \
         $$quote($$BASEDIR/assets/SharePickerSheet.qml) \
         $$quote($$BASEDIR/assets/VoiceNoteSheet.qml) \
@@ -118,6 +120,7 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatView/add.png) \
         $$quote($$BASEDIR/assets/images/ChatView/attach_icon.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/brightness_bar.png) \
         $$quote($$BASEDIR/assets/images/ChatView/bubble/file_transfer/cal_160x160.png) \
         $$quote($$BASEDIR/assets/images/ChatView/bubble/file_transfer/doc_160x160.png) \
         $$quote($$BASEDIR/assets/images/ChatView/bubble/file_transfer/generic_160x160.png) \
@@ -257,6 +260,10 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/call/swapcamera_icon_disabled.png) \
         $$quote($$BASEDIR/assets/images/ChatView/call/swapcamera_icon_down.png) \
         $$quote($$BASEDIR/assets/images/ChatView/clear_chat.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/color_dot.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/color_dot_active.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/color_dot_outline.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/color_wheel.png) \
         $$quote($$BASEDIR/assets/images/ChatView/darkkeyboard.png) \
         $$quote($$BASEDIR/assets/images/ChatView/default_caller.png) \
         $$quote($$BASEDIR/assets/images/ChatView/default_caller_2.png) \
@@ -267,10 +274,13 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_bbm_voice_answer.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_block_contact.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_call.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_camera.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_chat_leave.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_color_picker.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_copy.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_copy_chat.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_create_event.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/ic_done_white.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_download.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_edit.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_emoticon_enabled.png) \
@@ -301,8 +311,13 @@ config_pri_assets {
         $$quote($$BASEDIR/assets/images/ChatView/ic_share.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_status.png) \
         $$quote($$BASEDIR/assets/images/ChatView/ic_textmessage.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/picker_ring.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemess.png) \
         $$quote($$BASEDIR/assets/images/ChatView/timemesswhite.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/toolbar_bold.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/toolbar_italic.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/toolbar_italic5.png) \
+        $$quote($$BASEDIR/assets/images/ChatView/toolbar_underline.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/action_icon_search.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/ai_add_task.png) \
         $$quote($$BASEDIR/assets/images/ChatsTab/default_avt.png) \

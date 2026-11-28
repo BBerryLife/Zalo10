@@ -16,7 +16,7 @@ TitleBar {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment:   VerticalAlignment.Fill
             layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-            leftPadding: ui.du(1)
+            leftPadding: bar.closable ? ui.du(1) : ui.du(2)
 
             ImageButton {
                 visible: bar.closable
@@ -32,7 +32,6 @@ TitleBar {
                 text: bar.heading
                 layoutProperties: StackLayoutProperties { spaceQuota: 1 }
                 verticalAlignment: VerticalAlignment.Center
-                leftMargin: bar.closable ? 0 : ui.du(1.5)
                 textStyle { color: Color.White; base: SystemDefaults.TextStyles.TitleText; fontWeight: FontWeight.Bold }
                 topMargin: 0; bottomMargin: 0
             }
