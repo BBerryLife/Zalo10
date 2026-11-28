@@ -8,6 +8,19 @@ Page {
     property variant sheet
     titleBar: SettingsTitleBar { heading: "Data & Backup" }
 
+    // Conversations a phone sync could not match automatically (zService.phoneSyncUnmatched()).
+    property int unmatchedCount: 0
+    function refreshUnmatched() {
+        page.unmatchedCount = zService.phoneSyncUnmatched().length;
+    }
+    function openMatch() {
+        var p = matchDef.createObject();
+        if (!p) return;
+        p.dataPage = page;
+        page.sheet.pushPage(p);
+    }
+    onCreationCompleted: { page.refreshUnmatched(); }
+
     function doExport() {
         exportProgressToast.body = "Exporting data…";
         exportProgressToast.show();
@@ -42,8 +55,14 @@ Page {
                 text: "Sync Messages from Phone"
                 description: "Brings older messages from the Zalo app on your phone into Zalo10. Your phone will ask you to confirm. "
                     + "Conversations are matched using messages Zalo10 has already received, so run it again after a few days of use to bring in more. "
-                    + "Only text messages are imported (photos, stickers and files are not)."
+                    + "Text, photos, files, links, calls and stickers are imported; voice notes and locations appear as a short label."
                 onClicked: { phoneSyncConfirm.show(); }
+            }
+            SettingsButtonRow {
+                visible: page.unmatchedCount > 0
+                text: "Match Conversations (" + page.unmatchedCount + ")"
+                description: "Conversations from your phone that could not be matched automatically. Choose the friend or group each one belongs to and its messages are imported."
+                onClicked: { page.openMatch(); }
             }
         }
     }
@@ -103,6 +122,8 @@ Page {
             button.enabled: true
         },
 
+        ComponentDefinition { id: matchDef; source: "asset:///settings/PhoneSyncMatchPage.qml" },
+
         SystemDialog {
             id: phoneSyncConfirm
             title: "Sync Messages from Phone"
@@ -113,6 +134,7 @@ Page {
                 if (result !== SystemUiResult.ConfirmButtonSelection) return;
                 phoneSyncProgressDialog.progress = 0;
                 phoneSyncProgressDialog.statusMessage = "Starting…";
+                phoneSyncProgressDialog.hiddenByUser = false;
                 phoneSyncProgressDialog.show();
                 zService.startPhoneSync();
             }
@@ -124,8 +146,13 @@ Page {
             state: SystemUiProgressState.Active
             confirmButton.label: "Hide"
             cancelButton.label: "Stop"
+            // System dialogs only repaint changed properties on show(); see onPhoneSyncProgress.
+            property bool hiddenByUser: false
+            property int  lastPct: -1
+            property variant lastShownMs: 0
             onFinished: {
                 if (result === SystemUiResult.CancelButtonSelection) zService.cancelPhoneSync();
+                else if (result === SystemUiResult.ConfirmButtonSelection) phoneSyncProgressDialog.hiddenByUser = true;
             }
         },
         SystemToast {
@@ -136,10 +163,19 @@ Page {
         Connections {
             target: zService
             onPhoneSyncProgress: {
-                phoneSyncProgressDialog.progress = percent;
-                phoneSyncProgressDialog.statusMessage = text;
+                // A visible SystemProgressDialog does not repaint property changes until show() is called.
+                // Progress can arrive every ~30 ms while importing: repaint only on a new percent or after 1 s.
+                var now = new Date().getTime();
+                var d = phoneSyncProgressDialog;
+                if (percent === d.lastPct && now - d.lastShownMs < 1000) return;
+                d.lastPct = percent;
+                d.lastShownMs = now;
+                d.progress = percent;
+                d.statusMessage = percent + "% · " + text;
+                if (!d.hiddenByUser) d.show();
             }
             onPhoneSyncFinished: {
+                page.refreshUnmatched();
                 phoneSyncProgressDialog.cancel();
                 phoneSyncDoneToast.body = message;
                 phoneSyncDoneToast.show();

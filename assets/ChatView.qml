@@ -76,6 +76,18 @@ Page {
     titleBar: ChatTitleBar {}
 
     // Invite More: in a one-to-one chat it makes a new group (this person already ticked), in a group it adds people.
+    // Rows use per-kind delegates (msgList.rowTypeFor). If a replace changes the kind, remove and
+    // re-insert so the ListView builds the matching delegate instead of reusing the old one.
+    function safeReplaceRow(idx, row) {
+        var old = msgModel.value(idx);
+        if (old && msgList.rowTypeFor(old) !== msgList.rowTypeFor(row)) {
+            msgModel.removeAt(idx);
+            msgModel.insert(idx, row);
+        } else {
+            msgModel.replace(idx, row);
+        }
+    }
+
     function openInviteMore() {
         if (chatViewPage.isGroup) {
             groupInviteSheet.openInvite(chatViewPage.threadId, chatViewPage.threadName, chatViewPage.avatarUrl);
@@ -171,7 +183,7 @@ Page {
             if ((d.msgId || "") === msgId) {
                 if (d.ts === newTs) return;
                 d.ts = newTs;
-                msgModel.replace(j, d);
+                chatViewPage.safeReplaceRow(j, d);
                 chatViewPage.rebuildGroups();
                 return;
             }
@@ -191,7 +203,7 @@ Page {
                 }
                 d.content    = "";
                 d.msgType    = 99;
-                msgModel.replace(j, d);
+                chatViewPage.safeReplaceRow(j, d);
                 return;
             }
         }
@@ -662,7 +674,7 @@ Page {
                 var row = msgModel.value(idx);
                 row = JSON.parse(JSON.stringify(row));
                 row.reactions = msgList.summarizePills(msgId);
-                msgModel.replace(idx, row);
+                chatViewPage.safeReplaceRow(idx, row);
             }
 
             function applyReactionRecord(msgId, uid, icon) {
@@ -774,19 +786,37 @@ Page {
             }
             function doDeleteMsg(msgId)    {}
 
+            // Perf: one delegate per row kind, so a text row no longer builds the photo/video/call/
+            // link/sticker bubbles. Mirrors the visible: conditions of those bubbles.
+            function rowTypeFor(data) {
+                if (!data) return "text";
+                if (data.kind && data.kind !== "message") return "full";
+                var mt = String(data.msgType);
+                if (mt === "99") return "text";
+                if (mt === "3" || mt === "4" || mt === "5" || mt === "6") return "full";
+                if (mt === "2") return "photo";
+                var c = data.content;
+                if (typeof c === "string" && c.length > 1 && c.charAt(0) === "{"
+                    && (c.indexOf("normalUrl") >= 0 || c.indexOf("thumbUrl") >= 0
+                        || c.indexOf("thumb") >= 0 || c.indexOf("href") >= 0)) return "photo";
+                return "text";
+            }
+            function itemType(data, indexPath) { return msgList.rowTypeFor(data); }
+
             listItemComponents: [
                 ListItemComponent {
-                    type: ""
+                    type: "text"
+                    ChatBubbleItemText {}
+                },
+                ListItemComponent {
+                    type: "photo"
+                    ChatBubbleItemPhoto {}
+                },
+                ListItemComponent {
+                    type: "full"
                     ChatBubbleItem {}
                 }
             ]
-        }
-
-        Container {
-            id: emojiPanelSlot
-            horizontalAlignment: HorizontalAlignment.Fill
-            topMargin: ui.du(0.8)
-            visible: false
         }
 
         ChatQuickMessageBar {}
@@ -843,6 +873,11 @@ Page {
                     submitKey: SubmitKey.Send
                     onSubmitted: { doSend() }
                 }
+                gestureHandlers: [
+                    TapHandler {
+                        onTapped: { if (chatViewPage.emojiPanelOpen) chatViewPage.setEmojiPanel(false); }
+                    }
+                ]
                 onTextChanging: {
                     sendAction.enabled = (text.trim().length > 0 || chatViewPage.pendingAttachPath.length > 0);
                     chatViewPage.refreshQuickMessageSuggestions(text);
@@ -872,22 +907,15 @@ Page {
                 pressedImageSource: emojiPanelOpen
                     ? (chatViewPage.isDark ? "asset:///images/ChatView/ic_keyboard_enabled.png" : "asset:///images/ChatView/darkkeyboard.png")
                     : (chatViewPage.isDark ? "asset:///images/ChatView/ic_emoticon_enabled_white.png" : "asset:///images/ChatView/ic_emoticon_enabled.png")
-                onClicked: {
-                    emojiPanelOpen = !emojiPanelOpen;
-                    if (emojiPanelOpen && !chatViewPage.emojiPanelRef) {
-                        var ep = emojiPanelDef.createObject();
-                        ep.isDark = chatViewPage.isDark;
-                        ep.horizontalAlignment = HorizontalAlignment.Fill;
-                        // 23 du for the emoji grid + category bar, plus the 7.5 du sticker bar.
-                        ep.preferredHeight = ui.du(31);
-                        ep.minHeight = ui.du(24);
-                        emojiPanelSlot.add(ep);
-                        emojiSignalCon.target = ep;
-                        chatViewPage.emojiPanelRef = ep;
-                    }
-                    emojiPanelSlot.visible = emojiPanelOpen;
-                }
+                onClicked: { chatViewPage.setEmojiPanel(!emojiPanelOpen); }
             }
+        }
+
+        // Takes the place of the keyboard: below the input bar, which is pushed up while it is open.
+        Container {
+            id: emojiPanelSlot
+            horizontalAlignment: HorizontalAlignment.Fill
+            visible: false
         }
 
     }
@@ -1421,7 +1449,7 @@ Page {
             return;
         } else {
             for (var i2 = 0; i2 < size; i2++) {
-                msgModel.replace(i2, items[i2]);
+                chatViewPage.safeReplaceRow(i2, items[i2]);
             }
         }
         if (scrollAfter) {
@@ -1478,7 +1506,7 @@ Page {
             msg.quoteMsgType    = it.quoteMsgType;
             msg.quoteOwnerId    = it.quoteOwnerId;
         }
-        msgModel.replace(target, msg);
+        chatViewPage.safeReplaceRow(target, msg);
         return true;
     }
 
@@ -1494,7 +1522,7 @@ Page {
                 return;
             }
             it.sendFailed = true;
-            msgModel.replace(k, it);
+            chatViewPage.safeReplaceRow(k, it);
             return;
         }
     }
@@ -1547,6 +1575,32 @@ Page {
 
     // Sends a sticker file from an installed pack. It shows up as an image bubble with the same
     // "local_img_" placeholder the photo flow uses, so the WS echo / messageSent replace it the same way.
+    // A real Zalo sticker (EmojiPanel > Zalo tab); the sent message arrives through newMessage.
+    // Opens/closes the emoji + sticker panel below the input bar. Opening drops the keyboard,
+    // closing brings it back; the layout change is animated by Cascades' implicit animations.
+    function setEmojiPanel(open) {
+        if (open && !chatViewPage.emojiPanelRef) {
+            var ep = emojiPanelDef.createObject();
+            ep.isDark = chatViewPage.isDark;
+            ep.horizontalAlignment = HorizontalAlignment.Fill;
+            // Emoji grid + the 7.5 du sticker bar.
+            ep.preferredHeight = ui.du(31);
+            ep.minHeight = ui.du(24);
+            emojiPanelSlot.add(ep);
+            emojiSignalCon.target = ep;
+            chatViewPage.emojiPanelRef = ep;
+        }
+        chatViewPage.emojiPanelOpen = open;
+        emojiPanelSlot.visible = open;
+        if (open) inputField.loseFocus(); else inputField.requestFocus();
+    }
+
+    function sendZaloSticker(stickerId, cateId, type) {
+        if (!chatViewPage.threadId || chatViewPage.threadId === "") return;
+        if (chatViewPage.isBlocked) return;
+        zService.sendZaloSticker(chatViewPage.threadId, stickerId, cateId, type, chatViewPage.isGroup);
+    }
+
     function sendStickerFile(path) {
         if (!chatViewPage.threadId || chatViewPage.threadId === "") return;
         if (chatViewPage.isBlocked) return;
@@ -1600,6 +1654,7 @@ Page {
                 inputField.text = inputField.text + charStr
             }
             onStickerPicked: { chatViewPage.sendStickerFile(path); }
+            onZaloStickerPicked: { chatViewPage.sendZaloSticker(stickerId, cateId, type); }
             onStickerShopRequested:     { chatViewPage.stickerShopRequested = true; }
             onStickerSettingsRequested: { chatViewPage.stickerSettingsRequested = true; }
         },

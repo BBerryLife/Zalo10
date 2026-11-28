@@ -1,4 +1,5 @@
 #include "VoiceCallBridge.hpp"
+#include "VideoCallMedia.hpp"
 #include "../ZaloService.hpp"
 #include "../../utils/json/ZaloMessageJson.hpp"
 
@@ -54,7 +55,18 @@ VoiceCallBridge::VoiceCallBridge(ZaloService *service, QObject *parent)
     , m_readyFalse(0)
     , m_lastFailMs(0)
     , m_connectedAtMs(0)
+    , m_videoMedia(new VideoCallMedia(this))
+    , m_video(false)
+    , m_videoRunning(false)
+    , m_cameraWanted(true)
+    , m_lastKeyReqMs(0)
 {
+    connect(m_videoMedia, SIGNAL(localFrameEncoded(bool,QByteArray)), this, SLOT(onLocalVideo(bool,QByteArray)));
+    connect(m_videoMedia, SIGNAL(keyframeNeeded()), this, SLOT(onKeyframeNeeded()));
+    connect(m_videoMedia, SIGNAL(remoteImageChanged()), this, SIGNAL(remoteFrameChanged()));
+    connect(m_videoMedia, SIGNAL(localImageChanged()), this, SIGNAL(localFrameChanged()));
+    connect(m_videoMedia, SIGNAL(cameraChanged()), this, SIGNAL(cameraChanged()));
+
     connect(m_socket, SIGNAL(connected()),    this, SLOT(onEngineConnected()));
     connect(m_socket, SIGNAL(disconnected()), this, SLOT(onEngineDisconnected()));
     connect(m_socket, SIGNAL(readyRead()),    this, SLOT(onEngineData()));
@@ -240,9 +252,13 @@ void VoiceCallBridge::onEngineDisconnected()
     m_engineReady = false;
     m_buffer.clear();
     if (m_state != "idle") {
-        m_state = "idle";
-        m_tick.stop();
-        emit callEnded(QString::fromLatin1("engine_exited"), 0);
+        // Usually the engine is still running the call (it drops a client that stops reading).
+        // Reconnect: on connect it replays its current state, which keeps or ends the call screen.
+        // If it really is gone, connectEngine() gives up after its retries and failDial() ends the call.
+        qDebug() << "[Voice] engine connection lost during a call; reconnecting";
+        m_connectTries = 1;           // the process is (most likely) still there: don't start another
+        m_retry.start();
+        return;
     }
     emit changed();
 }
@@ -269,17 +285,124 @@ void VoiceCallBridge::flushPending()
 void VoiceCallBridge::onEngineData()
 {
     m_buffer.append(m_socket->readAll());
-    if (m_buffer.size() > kMaxFrame) {          // malformed / hostile peer: reset
-        m_buffer.clear();
-        m_socket->abort();
-        return;
-    }
     int nl;
     while ((nl = m_buffer.indexOf('\n')) >= 0) {
         QByteArray line = m_buffer.left(nl);
         m_buffer.remove(0, nl + 1);
         if (line.isEmpty()) continue;
+        if (handleRemoteVideoLine(line)) continue;
         applyEvent(jsonToMap(line));
+    }
+    // Checked after splitting: several video frames can arrive in one read. Only an unfinished
+    // line this large is malformed.
+    if (m_buffer.size() > kMaxFrame) {
+        m_buffer.clear();
+        m_socket->abort();
+    }
+}
+
+// Received video arrives up to ~15 times a second as {"data": "<base64>", "event": "remote_video", "key": b}
+// (the engine writes sorted keys). It is read here directly: a general JSON parse of a 20-300 KB
+// line per frame would cost more than decoding the picture.
+bool VoiceCallBridge::handleRemoteVideoLine(const QByteArray &line)
+{
+    static const QByteArray head("{\"data\": \"");
+    if (!line.startsWith(head) || line.indexOf("\"event\": \"remote_video\"") < 0)
+        return false;
+    const int end = line.indexOf('"', head.size());
+    if (end < 0) return true;
+    if (m_video && m_videoRunning) {
+        const bool key = line.endsWith("\"key\": true}");
+        m_videoMedia->pushRemote(key, QByteArray::fromBase64(line.mid(head.size(), end - head.size())));
+    }
+    return true;
+}
+
+void VoiceCallBridge::onLocalVideo(bool key, const QByteArray &h264)
+{
+    if (!m_video || m_state != "connected" || !m_cameraWanted) return;
+    if (m_socket->state() != QLocalSocket::ConnectedState) return;
+    // The engine accepts at most 350000 base64 characters per frame.
+    QByteArray b64 = h264.toBase64();
+    if (b64.size() > 350000) return;
+    // Built by hand for the same reason as handleRemoteVideoLine().
+    QByteArray line;
+    line.reserve(b64.size() + 64);
+    line.append("{\"action\":\"video_frame\",\"key\":");
+    line.append(key ? "true" : "false");
+    line.append(",\"data\":\"");
+    line.append(b64);
+    line.append("\"}\n");
+    m_socket->write(line);
+}
+
+void VoiceCallBridge::onKeyframeNeeded()
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_lastKeyReqMs < 1000) return;       // the engine also limits PLIs to one a second
+    m_lastKeyReqMs = now;
+    QVariantMap f; f["action"] = "video_keyframe";
+    sendFrame(f);
+}
+
+// Camera and decoding run only while a video call is connected.
+void VoiceCallBridge::updateVideoMedia()
+{
+    const bool want = m_video && m_state == "connected";
+    if (want && !m_videoRunning) {
+        if (!m_videoMedia->load(engineDir())) {
+            qDebug() << "[Video] video libraries unavailable; continuing as a voice call";
+            return;
+        }
+        m_videoRunning = true;
+        m_videoMedia->start();
+        if (m_cameraWanted && !m_videoMedia->startCamera(true) && !m_videoMedia->startCamera(false)) {
+            m_cameraWanted = false;
+            QVariantMap f; f["action"] = "camera_off";
+            sendFrame(f);
+        }
+        onKeyframeNeeded();
+        emit cameraChanged();
+    } else if (!want && m_videoRunning) {
+        qDebug() << "[Video] call counters:" << m_videoMedia->counters();
+        m_videoRunning = false;
+        m_videoMedia->stop();
+        emit cameraChanged();
+    }
+}
+
+bool VoiceCallBridge::cameraOn() const { return m_videoRunning && m_videoMedia->cameraOn(); }
+bool VoiceCallBridge::frontCamera() const { return m_videoMedia->frontCamera(); }
+bool VoiceCallBridge::hasRemoteVideo() const { return m_videoRunning && m_videoMedia->hasRemote(); }
+QVariant VoiceCallBridge::remoteFrame() const { return m_videoMedia->remoteImage(); }
+QVariant VoiceCallBridge::localFrame() const { return m_videoMedia->localImage(); }
+
+void VoiceCallBridge::setCameraOn(bool on)
+{
+    if (!m_video) return;
+    m_cameraWanted = on;
+    if (!m_videoRunning) { emit cameraChanged(); return; }
+    if (on) {
+        if (!m_videoMedia->startCamera(m_videoMedia->frontCamera())) {
+            m_cameraWanted = false;
+            emit cameraChanged();
+        }
+    } else {
+        m_videoMedia->stopCamera();
+        QVariantMap f; f["action"] = "camera_off";
+        sendFrame(f);
+    }
+}
+
+void VoiceCallBridge::switchCamera()
+{
+    if (!m_videoRunning || !m_videoMedia->cameraOn()) return;
+    const bool front = !m_videoMedia->frontCamera();
+    m_videoMedia->stopCamera();
+    if (!m_videoMedia->startCamera(front) && !m_videoMedia->startCamera(!front)) {
+        m_cameraWanted = false;
+        QVariantMap f; f["action"] = "camera_off";
+        sendFrame(f);
     }
 }
 
@@ -311,6 +434,9 @@ void VoiceCallBridge::applyEvent(const QVariantMap &event)
                  << "stage=" << event.value("stage").toString()
                  << "code=" << event.value("code").toString();
         logEngineTrace();
+        // The engine reports a command or control frame it could not use and carries on with the
+        // call; ending the call screen here left the call running without a UI (seen on device).
+        if (event.value("reason").toString() == "invalid_ui_command") return;
         emit engineError(event.value("reason").toString());
         failDial("engine_error");
     }
@@ -348,6 +474,11 @@ void VoiceCallBridge::applyState(const QVariantMap &event)
     }
     const QString previous = m_state;
     m_state = st.isEmpty() ? QString::fromLatin1("idle") : st;
+    if (m_state != "idle" && event.contains("video")) {
+        const bool v = event.value("video").toBool();
+        if (v && !m_video) m_cameraWanted = true;   // new video call: camera starts on
+        m_video = v;
+    }
 
     if (m_state == "connected" && previous != "connected") {
         m_connectedAtMs = QDateTime::currentMSecsSinceEpoch();
@@ -363,10 +494,13 @@ void VoiceCallBridge::applyState(const QVariantMap &event)
         m_lastReason = reason;
         const bool wasActive = (previous != "idle");
         m_wasIncoming = false;
+        updateVideoMedia();
+        m_video = false;
         emit changed();
         if (wasActive) emit callEnded(reason, secs);
         return;
     }
+    updateVideoMedia();
     emit changed();
     emit durationChanged();
 }
@@ -405,6 +539,8 @@ void VoiceCallBridge::failDial(const QString &reason)
     if (m_state != "idle") {
         m_state = "idle";
         m_lastReason = reason;
+        updateVideoMedia();
+        m_video = false;
         emit changed();
         emit callEnded(reason, 0);
     }
@@ -412,7 +548,10 @@ void VoiceCallBridge::failDial(const QString &reason)
 
 // ---------------------------------------------------------------- QML API
 
-void VoiceCallBridge::dial(const QString &peer, const QString &name)
+void VoiceCallBridge::dial(const QString &peer, const QString &name) { startDial(peer, name, false); }
+void VoiceCallBridge::dialVideo(const QString &peer, const QString &name) { startDial(peer, name, true); }
+
+void VoiceCallBridge::startDial(const QString &peer, const QString &name, bool video)
 {
     if (m_state != "idle" || peer.isEmpty()) return;
     for (int i = 0; i < peer.size(); ++i)
@@ -421,6 +560,8 @@ void VoiceCallBridge::dial(const QString &peer, const QString &name)
     m_peerId = peer;
     m_peerName = name.isEmpty() ? QString::fromLatin1("Zalo") : name;
     m_state = "calling";                              // optimistic; engine confirms
+    m_video = video;
+    m_cameraWanted = true;
     m_awaitingDial = true;
     m_dialTimer.start();
     m_lastReason.clear();
@@ -430,7 +571,7 @@ void VoiceCallBridge::dial(const QString &peer, const QString &name)
     frame["action"] = "call";
     frame["peer"] = peer;
     frame["name"] = m_peerName;
-    frame["video"] = false;
+    frame["video"] = video;
     m_pending.append(frame);
     startEngine(true);
     flushPending();
@@ -552,9 +693,9 @@ QString VoiceCallBridge::status() const
 {
     if (m_state == "calling" || m_state == "negotiating") return QString::fromLatin1("Calling...");
     if (m_state == "ringing")   return QString::fromLatin1("Ringing...");
-    if (m_state == "incoming")  return QString::fromLatin1("Incoming Zalo call");
+    if (m_state == "incoming")  return QString::fromLatin1(m_video ? "Incoming Zalo video call" : "Incoming Zalo call");
     if (m_state == "answering") return QString::fromLatin1("Connecting...");
-    if (m_state == "connected") return QString::fromLatin1("Zalo call connected");
+    if (m_state == "connected") return QString::fromLatin1(m_video ? "Zalo video call" : "Zalo call connected");
     return reasonText(m_lastReason);
 }
 

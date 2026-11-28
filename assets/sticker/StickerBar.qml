@@ -13,6 +13,7 @@ Container {
     signal shopTapped()
     signal settingsTapped()
     signal packTapped(string packId)
+    signal zaloTapped()
 
     horizontalAlignment: HorizontalAlignment.Fill
     preferredHeight: ui.du(7.5)
@@ -71,6 +72,23 @@ Container {
             preferredWidth: ui.du(5); preferredHeight: ui.du(5)
             imageSource: "asset:///images/ic_buy.png"
             filterColor: stickerBar.isDark ? Color.White : Color.Black
+        }
+    }
+
+    // Zalo's own stickers (ZaloStickerPanel.qml)
+    Container {
+        preferredWidth: ui.du(9)
+        verticalAlignment: VerticalAlignment.Fill
+        layout: DockLayout {}
+        background: stickerBar.activePackId === "__zalo__" ? Color.create(stickerBar.highlight()) : Color.Transparent
+        onTouch: { if (event.isUp()) stickerBar.zaloTapped(); }
+        Label {
+            horizontalAlignment: HorizontalAlignment.Center
+            verticalAlignment: VerticalAlignment.Center
+            text: "Zalo"
+            textStyle.fontWeight: FontWeight.Bold
+            textStyle.fontSize: FontSize.Small
+            textStyle.color: Color.create("#0068ff")
         }
     }
 

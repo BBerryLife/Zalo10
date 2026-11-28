@@ -156,6 +156,8 @@ void ZaloService::onCookieStep1Done()
     if (!boardA.isEmpty()) m_groupBoardServiceUrl = boardA[0].toString();
     if (!reactA.isEmpty()) m_reactionServiceUrl = reactA[0].toString();
     if (!cloudA.isEmpty()) m_groupCloudMsgServiceUrl = cloudA[0].toString();
+    QVariantList stkA = svcMap["sticker"].toList();
+    if (!stkA.isEmpty()) m_stickerServiceUrl = stkA[0].toString();
 
     if (m_uid.isEmpty()) {
         emit loginFailed("Cookie het han hoac sai - Lay lai ZPSID/ZPW_SEK moi");

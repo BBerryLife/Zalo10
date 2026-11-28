@@ -54,11 +54,13 @@ HEADERS += \
     src/utils/ZaloServiceUtils.hpp \
     src/ui/ActiveFrameCover.hpp \
     src/core/HubIntegration.hpp \
-    src/core/voice/VoiceCallBridge.hpp
+    src/core/voice/VoiceCallBridge.hpp \
+    src/core/voice/VideoCallMedia.hpp
 
 SOURCES += \
     src/main.cpp \
     src/core/voice/VoiceCallBridge.cpp \
+    src/core/voice/VideoCallMedia.cpp \
     src/app/ApplicationUI.cpp \
     src/app/ApplicationUI_Share.cpp \
     src/app/ApplicationUI_Update.cpp \
@@ -82,6 +84,7 @@ SOURCES += \
     src/core/messages/ZaloService_Messages_Notify.cpp \
     src/core/messages/ZaloService_Messages_Photo.cpp \
     src/core/messages/ZaloService_Messages_Gif.cpp \
+    src/core/messages/ZaloService_Messages_ZaloSticker.cpp \
     src/core/stickers/StickerManager.cpp \
     src/core/messages/ZaloService_Messages_PhotoFetch.cpp \
     src/core/messages/ZaloService_Messages_Send.cpp \
@@ -90,6 +93,7 @@ SOURCES += \
     src/core/network/ZaloService_Network_SessionKey.cpp \
     src/core/phonesync/ZaloService_PhoneSync_Flow.cpp \
     src/core/phonesync/ZaloService_PhoneSync_Tick.cpp \
+    src/core/phonesync/ZaloService_PhoneSync_Match.cpp \
     src/core/websocket/ZaloService_WebSocket_Dispatch.cpp \
     src/core/websocket/ZaloService_WebSocket_Events.cpp \
     src/core/websocket/ZaloService_WebSocket_Frames.cpp \

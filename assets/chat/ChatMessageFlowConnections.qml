@@ -125,7 +125,7 @@ Connections {
                             if (msg.localImage && msg.localImage.length > 0
                                 && (!dv0.localImage || dv0.localImage.length === 0)) {
                                 dv0.localImage = msg.localImage;
-                                msgModel.replace(di0, dv0);
+                                chatViewPage.safeReplaceRow(di0, dv0);
                             }
                             return;
                         }
@@ -160,12 +160,12 @@ Connections {
                 }
 
                 if (placeholderIdx >= 0) {
-                    msgModel.replace(placeholderIdx, msg);
+                    chatViewPage.safeReplaceRow(placeholderIdx, msg);
                     handledInPlace = true;
                 } else if (savedLocalImage.length === 0 && msg.localImage && msg.localImage.length > 0) {
                     for (var li = msgModel.size() - 1; li >= 0; li--) {
                         if (msgModel.value(li).localImage === msg.localImage) {
-                            msgModel.replace(li, msg);
+                            chatViewPage.safeReplaceRow(li, msg);
                             handledInPlace = true;
                             break;
                         }
@@ -185,7 +185,7 @@ Connections {
                         if (chatViewPage.extractPhotoCaption(dv2.content || "") !== myCap) continue;
                         if ((!msg.localImage || msg.localImage.length === 0) && dv2.localImage && dv2.localImage.length > 0)
                             msg.localImage = dv2.localImage;
-                        msgModel.replace(di2, msg);
+                        chatViewPage.safeReplaceRow(di2, msg);
                         handledInPlace = true;
                         break;
                     }
@@ -214,7 +214,7 @@ Connections {
                     }
                 }
                 if (vPlaceholderIdx >= 0) {
-                    msgModel.replace(vPlaceholderIdx, msg);
+                    chatViewPage.safeReplaceRow(vPlaceholderIdx, msg);
                     handledInPlace = true;
                 }
             } else if (msg.msgType === 6 || msg.msgType === "6") {
@@ -244,7 +244,7 @@ Connections {
                     }
                 }
                 if (lPlaceholderIdx >= 0) {
-                    msgModel.replace(lPlaceholderIdx, msg);
+                    chatViewPage.safeReplaceRow(lPlaceholderIdx, msg);
                     handledInPlace = true;
                 }
             } else {
@@ -261,7 +261,7 @@ Connections {
             if (dupIdx >= 0) {
                 var existingRow = msgModel.value(dupIdx);
                 if (msg.ts && String(msg.ts) !== String(existingRow.ts)) {
-                    msgModel.replace(dupIdx, msg);
+                    chatViewPage.safeReplaceRow(dupIdx, msg);
                     chatViewPage.rebuildGroups(true);
                 }
                 return;

@@ -184,10 +184,54 @@ Sheet {
                 }
             }
 
+            // Video call: the other person's picture, full screen once the first frame is decoded.
+            Container {
+                visible: voice.video && voice.hasRemoteVideo
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment: VerticalAlignment.Fill
+                background: Color.Black
+                layout: DockLayout {}
+                ImageView {
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    verticalAlignment: VerticalAlignment.Fill
+                    scalingMethod: ScalingMethod.AspectFit
+                    image: voice.remoteFrame
+                }
+            }
+
+            // Video call: our own camera, small, top right.
+            Container {
+                visible: voice.video && voice.cameraOn
+                horizontalAlignment: HorizontalAlignment.Right
+                verticalAlignment: VerticalAlignment.Top
+                topPadding: ui.du(2)
+                rightPadding: ui.du(2)
+                ImageView {
+                    preferredWidth: app.screenWidthPx * 0.3
+                    preferredHeight: app.screenWidthPx * 0.3
+                    scalingMethod: ScalingMethod.AspectFit
+                    image: voice.localFrame
+                }
+            }
+
+            // Video call with a picture: name and timer in one line at the top left.
+            Container {
+                visible: voice.video && voice.hasRemoteVideo
+                horizontalAlignment: HorizontalAlignment.Left
+                verticalAlignment: VerticalAlignment.Top
+                topPadding: ui.du(2)
+                leftPadding: ui.du(2)
+                Label {
+                    text: voice.peerName + "  " + (voice.connected ? voice.duration : voice.status)
+                    textStyle.color: Color.White
+                    textStyle.fontSize: FontSize.Small
+                }
+            }
+
             // ── ACTIVE / CONNECTING CALL layout ──────────────────────────────
             // Caller name and state, left-aligned, the name in big text.
             Container {
-                visible: !voice.incoming
+                visible: !voice.incoming && !(voice.video && voice.hasRemoteVideo)
                 horizontalAlignment: HorizontalAlignment.Left
                 verticalAlignment: VerticalAlignment.Top
                 topPadding: (app.squareScreen ? app.screenWidthPx : app.screenHeightPx) * 0.42
@@ -239,6 +283,30 @@ Sheet {
                     disabledImageSource: "asset:///images/ChatView/call/mute_icon_disabled.png"
                     accessibility.name: voice.muted ? "Unmute" : "Mute"
                     onClicked: voice.setMuted(!voice.muted)
+                }
+                // Video call: camera on/off and front/back.
+                ImageButton {
+                    visible: voice.video
+                    verticalAlignment: VerticalAlignment.Center
+                    leftMargin: ui.du(2)
+                    enabled: voice.connected
+                    opacity: voice.cameraOn ? 1.0 : 0.45
+                    preferredWidth: ui.du(11); preferredHeight: ui.du(11)
+                    defaultImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
+                    pressedImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
+                    accessibility.name: voice.cameraOn ? "Turn camera off" : "Turn camera on"
+                    onClicked: voice.setCameraOn(!voice.cameraOn)
+                }
+                ImageButton {
+                    visible: voice.video
+                    verticalAlignment: VerticalAlignment.Center
+                    leftMargin: ui.du(2)
+                    enabled: voice.connected && voice.cameraOn
+                    defaultImageSource: "asset:///images/ChatView/call/swapcamera_icon.png"
+                    pressedImageSource: "asset:///images/ChatView/call/swapcamera_icon_down.png"
+                    disabledImageSource: "asset:///images/ChatView/call/swapcamera_icon_disabled.png"
+                    accessibility.name: "Switch camera"
+                    onClicked: voice.switchCamera()
                 }
                 Container { layoutProperties: StackLayoutProperties { spaceQuota: 1 } }
                 ImageButton {

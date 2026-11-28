@@ -1,7 +1,7 @@
 import bb.cascades 1.4
 import QtQuick 1.0
-import "emoji"
 import "sticker"
+import "emoji/EmojiData.js" as EmojiData
 
 Container {
     id: emojiPanel
@@ -11,9 +11,9 @@ Container {
     signal stickerPicked(string path)
     signal stickerShopRequested()
     signal stickerSettingsRequested()
+    signal zaloStickerPicked(int stickerId, int cateId, int type)
 
     property real   pageWidth:       0
-    property int    categoryIndex:   0
     property bool   isDark:       false
     // "" = emoji keyboard, otherwise the id of the sticker pack on show.
     property string  activePackId: ""
@@ -29,29 +29,13 @@ Container {
     function reloadPacks() {
         var list = stickerManager.enabledPacks();
         emojiPanel.packs = list;
-        if (emojiPanel.activePackId === "") return;
+        if (emojiPanel.activePackId === "" || emojiPanel.activePackId === "__zalo__") return;
         for (var i = 0; i < list.length; i++) {
             if (list[i].id === emojiPanel.activePackId) { stickerGrid.load(emojiPanel.activePackId); return; }
         }
         emojiPanel.showEmoji();   // the pack was disabled or removed
     }
-    onCreationCompleted: reloadPacks()
-
-    function fileToChar(filename) {
-        var s = filename.replace("emoji_", "").replace("_64.png", "");
-        var parts = s.split("_");
-        var result = "";
-        for (var i = 0; i < parts.length; i++) {
-            var cp = parseInt(parts[i], 16);
-            if (cp > 0xFFFF) {
-                cp -= 0x10000;
-                result += String.fromCharCode(0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF));
-            } else {
-                result += String.fromCharCode(cp);
-            }
-        }
-        return result;
-    }
+    onCreationCompleted: { reloadPacks(); emojiModel.append(EmojiData.all()); }
 
     attachedObjects: [
         Connections {
@@ -74,131 +58,66 @@ Container {
         packs: emojiPanel.packs
         onEmojiTapped: { emojiPanel.showEmoji(); }
         onPackTapped: { emojiPanel.showPack(packId); }
+        onZaloTapped: { emojiPanel.activePackId = "__zalo__"; zaloPanel.activate(); }
         onShopTapped: { emojiPanel.stickerShopRequested(); }
         onSettingsTapped: { emojiPanel.stickerSettingsRequested(); }
     }
 
+    // The system emoji, one scrolling grid (as BBM's picker): the glyphs come from the OS emoji font.
     Container {
         id: emojiSection
         visible: emojiPanel.activePackId === ""
         horizontalAlignment: HorizontalAlignment.Fill
         layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-        layout: StackLayout { orientation: LayoutOrientation.TopToBottom }
+        layout: DockLayout {}
 
-        EmojiPeoplePage {
-            visible: categoryIndex === 0
-            pageWidth: emojiPanel.pageWidth
-            onEmojiFilePicked: { emojiPicked(fileToChar(file)) }
-        }
-
-        EmojiNaturePage {
-            visible: categoryIndex === 1
-            pageWidth: emojiPanel.pageWidth
-            onEmojiFilePicked: { emojiPicked(fileToChar(file)) }
-        }
-
-        EmojiObjectsPage {
-            visible: categoryIndex === 2
-            pageWidth: emojiPanel.pageWidth
-            onEmojiFilePicked: { emojiPicked(fileToChar(file)) }
-        }
-
-        EmojiPlacesPage {
-            visible: categoryIndex === 3
-            pageWidth: emojiPanel.pageWidth
-            onEmojiFilePicked: { emojiPicked(fileToChar(file)) }
-        }
-
-        EmojiSymbolsPage {
-            visible: categoryIndex === 4
-            pageWidth: emojiPanel.pageWidth
-            onEmojiFilePicked: { emojiPicked(fileToChar(file)) }
-        }
-
-        Container {
+        ListView {
+            id: emojiList
             horizontalAlignment: HorizontalAlignment.Fill
-            background: emojiPanel.isDark ? Color.create("#272727") : Color.create("#C8C8C8")
-            preferredHeight: ui.du(5.5)
-            layout: StackLayout { orientation: LayoutOrientation.LeftToRight }
-
-            Container {
-                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                layout: DockLayout {}
-                background: categoryIndex === 0 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-                onTouch: {
-                    if (event.isUp()) categoryIndex = 0;
-                }
-                ImageView {
-                    horizontalAlignment: HorizontalAlignment.Center
-                    verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                    imageSource: "asset:///images/ChatView/emoji/emoji_category_people.png"
-                }
+            verticalAlignment: VerticalAlignment.Fill
+            scrollIndicatorMode: ScrollIndicatorMode.Default
+            dataModel: ArrayDataModel { id: emojiModel }
+            layout: GridListLayout {
+                columnCount: 7
+                cellAspectRatio: 1.0
+                headerMode: ListHeaderMode.None
             }
-            Container {
-                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                layout: DockLayout {}
-                background: categoryIndex === 1 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-                onTouch: {
-                    if (event.isUp()) categoryIndex = 1;
-                }
-                ImageView {
-                    horizontalAlignment: HorizontalAlignment.Center
-                    verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                    imageSource: "asset:///images/ChatView/emoji/emoji_category_nature.png"
-                }
+            onTriggered: {
+                var d = emojiModel.data(indexPath);
+                if (d) emojiPanel.emojiPicked(d.ch);
             }
-            Container {
-                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                layout: DockLayout {}
-                background: categoryIndex === 2 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-                onTouch: {
-                    if (event.isUp()) categoryIndex = 2;
+            listItemComponents: [
+                ListItemComponent {
+                    type: ""
+                    Container {
+                        layout: DockLayout {}
+                        horizontalAlignment: HorizontalAlignment.Fill
+                        verticalAlignment: VerticalAlignment.Fill
+                        Label {
+                            horizontalAlignment: HorizontalAlignment.Center
+                            verticalAlignment: VerticalAlignment.Center
+                            text: ListItemData.ch
+                            textStyle.fontSize: FontSize.XLarge
+                            textStyle.textAlign: TextAlign.Center
+                        }
+                    }
                 }
-                ImageView {
-                    horizontalAlignment: HorizontalAlignment.Center
-                    verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                    imageSource: "asset:///images/ChatView/emoji/emoji_category_objects.png"
-                }
-            }
-            Container {
-                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                layout: DockLayout {}
-                background: categoryIndex === 3 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-                onTouch: {
-                    if (event.isUp()) categoryIndex = 3;
-                }
-                ImageView {
-                    horizontalAlignment: HorizontalAlignment.Center
-                    verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                    imageSource: "asset:///images/ChatView/emoji/emoji_category_places.png"
-                }
-            }
-            Container {
-                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
-                layout: DockLayout {}
-                background: categoryIndex === 4 ? (emojiPanel.isDark ? Color.create("#3a3a3a") : Color.create("#EFEFEF"))  : Color.Transparent
-                onTouch: {
-                    if (event.isUp()) categoryIndex = 4;
-                }
-                ImageView {
-                    horizontalAlignment: HorizontalAlignment.Center
-                    verticalAlignment: VerticalAlignment.Center
-                    preferredWidth: ui.du(5); preferredHeight: ui.du(5)
-                    imageSource: "asset:///images/ChatView/emoji/emoji_category_symbols.png"
-                }
-            }
+            ]
         }
     }
 
     StickerGrid {
         id: stickerGrid
-        visible: emojiPanel.activePackId !== ""
+        visible: emojiPanel.activePackId !== "" && emojiPanel.activePackId !== "__zalo__"
         isDark: emojiPanel.isDark
         onStickerTapped: { emojiPanel.stickerPicked(path); }
+    }
+
+    ZaloStickerPanel {
+        id: zaloPanel
+        visible: emojiPanel.activePackId === "__zalo__"
+        isDark: emojiPanel.isDark
+        onStickerTapped: { emojiPanel.zaloStickerPicked(stickerId, cateId, type); }
     }
 
 }

@@ -220,9 +220,34 @@ void ZaloService::onSendVideoChunkUploadDone()
     pending["fileSize"]  = ctx["fileSize"].toLongLong();
     pending["checksum"]  = ctx["checksum"].toString();
     pending["isFile"]    = isFile;
+    pending["waitSince"] = QDateTime::currentMSecsSinceEpoch();
     m_pendingVideoUpload[fileId] = pending;
     m_pendingVideoChunkUpload.remove(clientId);
+    qDebug() << "[Msg]" << (isFile ? "sendFile" : "sendVideo") << "uploaded, waiting for WS file_done (fileId len"
+             << fileId.size() << ")";
+    // The URL only arrives with WS file_done; if it never comes the bubble used to stay on "Sending..."
+    // forever. The watchdog fails it after FILE_DONE_TIMEOUT_MS so the user can resend.
+    QTimer::singleShot(15000, this, SLOT(onFileDoneWatchdog()));
+}
 
+void ZaloService::onFileDoneWatchdog()
+{
+    const qint64 FILE_DONE_TIMEOUT_MS = 90000;
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QStringList expired;
+    for (QMap<QString, QVariantMap>::const_iterator it = m_pendingVideoUpload.constBegin();
+         it != m_pendingVideoUpload.constEnd(); ++it) {
+        if (now - it.value().value("waitSince").toLongLong() >= FILE_DONE_TIMEOUT_MS) expired << it.key();
+    }
+    for (int i = 0; i < expired.size(); ++i) {
+        QVariantMap pending = m_pendingVideoUpload.take(expired[i]);
+        qWarning() << "[Msg]" << (pending["isFile"].toBool() ? "sendFile" : "sendVideo")
+                   << "no WS file_done after" << FILE_DONE_TIMEOUT_MS / 1000 << "s (ws connected:" << m_wsConnected
+                   << "), reporting failure";
+        emit messageSent(false, pending["threadId"].toString());
+    }
+    if (!m_pendingVideoUpload.isEmpty())
+        QTimer::singleShot(15000, this, SLOT(onFileDoneWatchdog()));
 }
 
 void ZaloService::handleFileUploadDone(const QString &fileId, const QString &fileUrl)

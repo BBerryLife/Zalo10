@@ -140,6 +140,14 @@ public:
     // Sticker images never change per id, so they are cached forever. stickerId is a QString:
     // a qint64 Q_INVOKABLE parameter caused SIGSEGV when QML numbers were marshalled in Qt 4.8.
     Q_INVOKABLE void downloadSticker(const QString &stickerId);
+    // Zalo's own stickers (ZaloService_ZaloStickers.cpp): the account's sticker categories, the
+    // stickers of one category, keyword search, and sending one as a real Zalo sticker message.
+    // Results arrive as zaloStickerCategoriesReady / zaloStickerListReady.
+    Q_INVOKABLE QVariantList zaloStickerCategories() const;      // cached list, may be empty
+    Q_INVOKABLE void fetchZaloStickerCategories(bool force);
+    Q_INVOKABLE void fetchZaloStickerCategory(int cateId);
+    Q_INVOKABLE void searchZaloStickers(const QString &keyword);
+    Q_INVOKABLE void sendZaloSticker(const QString &threadId, int stickerId, int cateId, int type, bool isGroup);
     Q_INVOKABLE void downloadUpdate(const QString &url, const QString &filename);
     Q_INVOKABLE QString downloadPhotoToGallery(const QString &localImagePath, const QString &msgId);
     Q_INVOKABLE void cancelUpdateDownload();
@@ -207,6 +215,14 @@ public:
     Q_INVOKABLE void startPhoneSync();
     Q_INVOKABLE void cancelPhoneSync();
     Q_INVOKABLE bool isPhoneSyncing() const;
+    // Phone-sync conversations that could not be matched automatically (part files kept in
+    // ~/phonesync_pending, summaries in phone_sync_pending_meta):
+    // [{kind "u"/"g", shortId, isGroup, count, lastTs, preview}]. phoneSyncAssign() maps one to a friend or
+    // group, imports its rows and returns how many were imported (-1 on error).
+    Q_INVOKABLE QVariantList phoneSyncUnmatched();
+    Q_INVOKABLE QVariantList phoneSyncCandidates(bool isGroup) const;
+    Q_INVOKABLE int phoneSyncAssign(const QString &kind, const QString &shortId, const QString &threadId);
+    Q_INVOKABLE void phoneSyncDismiss(const QString &kind, const QString &shortId);
     Q_INVOKABLE QVariantMap getThreadLastMessages() const;
     // Chats tab: one entry per 1-1 conversation that has at least one stored message (threadId, name,
     // avatar url, localAvatar). Read from the local database only, no network.
@@ -299,6 +315,9 @@ signals:
     void threadLastMessageChanged(const QString &threadId, const QString &lastMsg, const QString &lastTime);
     void avatarReady(const QString &threadId, const QString &localPath);
     void stickerReady(const QString &stickerId, const QString &localPath);
+    // cats: [{id, name, count}]; stickers: [{id, cateId, type}]. key = "c<cateId>" or "s:<keyword>".
+    void zaloStickerCategoriesReady(const QVariantList &cats, const QString &error);
+    void zaloStickerListReady(const QString &key, const QVariantList &stickers, const QString &error);
     void imageMsgReady(const QString &msgId, const QString &localPath, int width, int height);
     void blockUserDone(const QString &userId, bool success);
     void unblockUserDone(const QString &userId, bool success);
@@ -405,6 +424,7 @@ private slots:
     void onSendGifDone();
     void onSendVideoChunkUploadDone();
     void onSendVideoMsgDone();
+    void onFileDoneWatchdog();
     // ContactPicker emits exactly one of canceled/error/contactSelected per open() (single-select).
     void onContactPickerCanceled();
     void onContactPickerError();
@@ -430,6 +450,8 @@ private slots:
     void onAvatarDownloaded();
     void onAvatarTimeout();   // Lite: aborts an avatar download that hung (QNetworkReply::abort is not a slot in Qt4)
     void onStickerDownloaded();
+    void onZaloStickerReply();
+    void onZaloStickerSent();
     void onKeepAliveTimer();
     void onKeepAliveDone();
 
@@ -595,6 +617,13 @@ private:
     QString m_fileServiceUrl;
     QString m_quickMessageServiceUrl;
     QString m_reactionServiceUrl;
+    QString m_stickerServiceUrl;                       // zpwServiceMap.sticker[0]
+    QVariantList m_zaloStickerCats;                    // [{id, name, count}]
+    QMap<int, QVariantMap> m_zsCatInfo;                // category/detail answers being collected
+    int m_zsCatPending;
+    void zaloStickerGet(const QString &path, const QString &paramsJson, const QString &kind, const QString &key);
+    void zaloStickerCategoriesDone();
+    void zaloStickerCatsFromEntries(const QVariantList &entries, const QString &dataUrl);
                                     // Reactions use zpwServiceMap.reaction[0], not the chat/group hosts (they 404 on
                                     // /api/message/reaction), as in zca-js addReactionFactory().
 

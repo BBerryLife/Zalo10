@@ -6,6 +6,7 @@ events and packet counts. It never sends chat messages.
 """
 import argparse
 import base64
+import errno
 import json
 import os
 import select
@@ -34,6 +35,7 @@ class PhoneEngine:
         self.media=None;self.api=None;self.sequence=0;self.pending={};self.ready=False;self.muted=False
         self.api_buffer=b'';self.input_buffer=b'';self.running=True;self.test_started=None
         self.server=None;self.client=None;self.last_state={'event':'state','state':'idle'}
+        self.out_buffer=b'';self.video_out_dropped=0
         self.pending_open_ui=False
         self.broker_alert_id=''
         self.speaker=False;self.spk_server=None
@@ -93,19 +95,44 @@ class PhoneEngine:
         if event.get('event')=='state' and event.get('state')=='idle':
             if self.media:
                 event=dict(event);event['media_counts']=dict(self.media.stats)
+                event['media_counts']['video_out_dropped']=self.video_out_dropped
+            self.video_out_dropped=0
             if self.args.test_peer_file and self.test_started:
                 self.running=False
         if self.args.socket:
             if event.get('event')=='open_ui':
                 self.pending_open_ui=True
             if self.client:
-                try:
-                    self.client.sendall((json.dumps(event,sort_keys=True)+'\n').encode('utf-8'))
+                # Buffered, non-blocking: the app's UI thread can be busy for a moment (opening the
+                # camera takes ~0.7 s). A blocking send with a 0.1 s timeout dropped the app mid-call.
+                # Video frames are skipped while the app is behind; everything else is always queued.
+                video=event.get('event')=='remote_video'
+                if video and len(self.out_buffer)>262144:
+                    self.video_out_dropped+=1
+                else:
+                    self.out_buffer+=(json.dumps(event,sort_keys=True)+'\n').encode('utf-8')
                     if event.get('event')=='open_ui':self.pending_open_ui=False
-                except socket.error:
-                    self.client.close();self.client=None;self.input_buffer=b''
+                    self.flush_out()
         else:
             sys.stdout.write(json.dumps(event,sort_keys=True)+'\n');sys.stdout.flush()
+
+    def drop_client(self):
+        try:self.client.close()
+        except (OSError,socket.error):pass
+        self.client=None;self.input_buffer=b'';self.out_buffer=b''
+
+    def flush_out(self):
+        while self.client and self.out_buffer:
+            try:
+                sent=self.client.send(self.out_buffer[:65536])
+            except socket.error as error:
+                if getattr(error,'errno',None) in (errno.EAGAIN,errno.EWOULDBLOCK) or isinstance(error,socket.timeout):
+                    break
+                self.drop_client();return
+            if sent<=0:break
+            self.out_buffer=self.out_buffer[sent:]
+        if self.client and len(self.out_buffer)>4194304:
+            self.drop_client()          # the app stopped reading altogether; it reconnects
 
     def send(self,command,data):
         if not self.args.external_api and (not self.api or self.api.poll() is not None):
@@ -338,13 +365,16 @@ class PhoneEngine:
                     fds.append(self.media.sock.fileno())
                 if not self.args.socket and not self.args.lookup and not self.args.test_peer_file:
                     fds.append(sys.stdin.fileno())
-                available,_,_=select.select(fds,[],[],0.005)
+                wfds=[self.client.fileno()] if self.client and self.out_buffer else []
+                available,writable,_=select.select(fds,wfds,[],0.005)
+                if self.client and writable:
+                    self.flush_out()
                 if self.spk_server and self.spk_server.fileno() in available:
                     self.speaker_request()
                 if self.server and self.server.fileno() in available:
                     client,_=self.server.accept()
-                    if self.client: self.client.close()
-                    self.client=client;self.client.settimeout(.1);self.input_buffer=b''
+                    if self.client: self.drop_client()
+                    self.client=client;self.client.setblocking(False);self.input_buffer=b'';self.out_buffer=b''
                     self.emit({'event':'ready','voice_service':self.ready,'runs_on_q10':True})
                     self.emit(self.last_state)
                     if self.pending_open_ui:self.emit({'event':'open_ui'})
@@ -362,20 +392,32 @@ class PhoneEngine:
                     self.media.handle_udp()
                 input_fd=self.client.fileno() if self.client else (None if self.args.socket else sys.stdin.fileno())
                 if not self.args.lookup and not self.args.test_peer_file and input_fd in available:
-                    chunk=os.read(input_fd,65536)
+                    try:
+                        chunk=os.read(input_fd,65536)
+                    except OSError as error:
+                        if error.errno in (errno.EAGAIN,errno.EWOULDBLOCK):continue
+                        chunk=b''
                     if not chunk:
                         if self.args.socket:
-                            self.client.close();self.client=None;self.input_buffer=b'';continue
+                            self.drop_client();continue
                         self.core.finish('ui_closed');break
                     self.input_buffer+=chunk
                     if len(self.input_buffer)>1048576:
                         raise RuntimeError('UI IPC frame exceeded bound')
                     while b'\n' in self.input_buffer:
                         line,self.input_buffer=self.input_buffer.split(b'\n',1)
+                        frame=None
                         try:
-                            self.input(json.loads(line.decode('utf-8')))
-                        except (ValueError,TypeError):
-                            self.emit({'event':'error','reason':'invalid_ui_command'})
+                            frame=json.loads(line.decode('utf-8'))
+                            self.input(frame)
+                        except (ValueError,TypeError) as error:
+                            # kind/where: exception class and the action (or control act); never data
+                            where=''
+                            if isinstance(frame,dict):
+                                where=str(frame.get('action',''))[:24]
+                                content=frame.get('content')
+                                if isinstance(content,dict):where+='/'+str(content.get('act',''))[:24]
+                            self.emit({'event':'error','reason':'invalid_ui_command','kind':error.__class__.__name__,'where':where})
                 self.core.tick()
                 if self.media:
                     self.media.tick()

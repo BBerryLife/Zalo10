@@ -123,6 +123,7 @@ void ZaloService::onStep8Done()
     m_fileServiceUrl.clear();
     m_quickMessageServiceUrl.clear();
     m_reactionServiceUrl.clear();
+    m_stickerServiceUrl.clear();
     m_conversationServiceUrl.clear();
 
     QScriptValue svcMap = info.property("zpw_service_map_v3");
@@ -150,6 +151,8 @@ void ZaloService::onStep8Done()
         if (qmArr.isArray())     m_quickMessageServiceUrl = qmArr.property(0).toString();
         if (reactArr.isArray())  m_reactionServiceUrl  = reactArr.property(0).toString();
         if (convArr.isArray())   m_conversationServiceUrl = convArr.property(0).toString();
+        QScriptValue stkArr = svcMap.property("sticker");
+        if (stkArr.isArray())    m_stickerServiceUrl = stkArr.property(0).toString();
     }
 
     m_zpwWsUrls.clear();

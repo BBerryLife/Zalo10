@@ -6,7 +6,7 @@
 // Transport: JSON lines over a private unix socket (QLocalSocket). The engine owns call signalling
 // state (callcore.py), UDP/Opus media and the system ringtone; this class only (a) starts it,
 // (b) relays Zalo "voip" control frames from the WebSocket into it, and (c) mirrors its state as
-// QML properties. Voice (1:1) only: video needs the H.264 worker and is not wired up yet.
+// QML properties. 1:1 calls; for video calls VideoCallMedia adds the camera and the decoded pictures.
 
 #include <QObject>
 #include <QString>
@@ -19,6 +19,7 @@
 class QLocalSocket;
 class QProcess;
 class ZaloService;
+class VideoCallMedia;
 
 class VoiceCallBridge : public QObject
 {
@@ -34,6 +35,14 @@ class VoiceCallBridge : public QObject
     Q_PROPERTY(bool muted        READ muted     NOTIFY changed)
     Q_PROPERTY(bool available    READ available NOTIFY changed)
     Q_PROPERTY(QString duration  READ duration  NOTIFY durationChanged)
+    // Video calls (VideoCallMedia): the current call carries video, the camera is sending, and the
+    // latest decoded pictures (bb::cascades::Image, invalid until the first one) for an ImageView.
+    Q_PROPERTY(bool video        READ video     NOTIFY changed)
+    Q_PROPERTY(bool cameraOn     READ cameraOn  NOTIFY cameraChanged)
+    Q_PROPERTY(bool frontCamera  READ frontCamera NOTIFY cameraChanged)
+    Q_PROPERTY(bool hasRemoteVideo READ hasRemoteVideo NOTIFY remoteFrameChanged)
+    Q_PROPERTY(QVariant remoteFrame READ remoteFrame NOTIFY remoteFrameChanged)
+    Q_PROPERTY(QVariant localFrame  READ localFrame  NOTIFY localFrameChanged)
 
 public:
     explicit VoiceCallBridge(ZaloService *service, QObject *parent = 0);
@@ -50,9 +59,18 @@ public:
     bool muted() const { return m_muted; }
     bool available() const { return m_engineReady; }
     QString duration() const;
+    bool video() const { return m_video; }
+    bool cameraOn() const;
+    bool frontCamera() const;
+    bool hasRemoteVideo() const;
+    QVariant remoteFrame() const;
+    QVariant localFrame() const;
 
 public slots:
     Q_INVOKABLE void dial(const QString &peer, const QString &name);
+    Q_INVOKABLE void dialVideo(const QString &peer, const QString &name);
+    Q_INVOKABLE void setCameraOn(bool on);
+    Q_INVOKABLE void switchCamera();
     Q_INVOKABLE void answer();
     Q_INVOKABLE void hangup();
     Q_INVOKABLE void setMuted(bool muted);
@@ -69,8 +87,13 @@ signals:
     void callEnded(const QString &reason, int seconds);
     void engineError(const QString &message);
     void bringToFrontRequested(int shape);
+    void cameraChanged();
+    void remoteFrameChanged();
+    void localFrameChanged();
 
 private slots:
+    void onLocalVideo(bool key, const QByteArray &h264);
+    void onKeyframeNeeded();
     void connectEngine();
     void onEngineConnected();
     void onEngineDisconnected();
@@ -97,6 +120,15 @@ private:
     void startEngineProcess();
     void startEngine(bool force);
     static QString reasonText(const QString &reason);
+    void startDial(const QString &peer, const QString &name, bool video);
+    void updateVideoMedia();                 // start/stop camera + decoding to follow the call state
+    bool handleRemoteVideoLine(const QByteArray &line);
+
+    VideoCallMedia *m_videoMedia;
+    bool    m_video;
+    bool    m_videoRunning;      // VideoCallMedia started for the current call
+    bool    m_cameraWanted;      // user's camera choice for this call (on by default)
+    qint64  m_lastKeyReqMs;
 
     ZaloService  *m_service;
     QLocalSocket *m_socket;

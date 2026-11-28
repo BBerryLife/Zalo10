@@ -2,21 +2,6 @@
 
 static QString psKey(const PsPart &p) { return QString(p.isGroup ? "g:" : "u:") + p.shortId; }
 
-static QString psQueryString(sqlite3 *db, const char *sql, const QString &arg)
-{
-    QString out;
-    sqlite3_stmt *st = 0;
-    if (sqlite3_prepare_v2(db, sql, -1, &st, 0) == SQLITE_OK) {
-        if (!arg.isNull()) sqlite3_bind_text(st, 1, arg.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(st) == SQLITE_ROW) {
-            const unsigned char *c = sqlite3_column_text(st, 0);
-            if (c) out = QString::fromUtf8((const char *)c);
-        }
-        sqlite3_finalize(st);
-    }
-    return out;
-}
-
 void ZaloService::onPhoneSyncTick()
 {
     PhoneSyncRuntime *rt = m_psh.p;
@@ -27,10 +12,7 @@ void ZaloService::onPhoneSyncTick()
     clock.start();
 
     if (rt->phase == 0) {
-        sqlite3_exec(m_db,
-            "CREATE TABLE IF NOT EXISTS phone_sync_alias ("
-            "kind TEXT NOT NULL, shortId TEXT NOT NULL, longId TEXT NOT NULL, name TEXT, "
-            "PRIMARY KEY(kind, shortId))", 0, 0, 0);
+        psEnsureTables(m_db);
 
         QMap<QString, int> cnt;
         for (int i = 0; i < rt->parts.size(); ++i) {
@@ -64,6 +46,11 @@ void ZaloService::onPhoneSyncTick()
         }
         rt->senderLong[rt->meShort] = m_uid;
         rt->senderName[rt->meShort] = rt->myName;
+        if (!rt->meShort.isEmpty()) {
+            // Manual matching later (phoneSyncAssign) needs to know which phone sender is us.
+            QSettings ms("BerryLife", "Zalo10");
+            ms.setValue("phonesync/meShort_" + m_uid, rt->meShort);
+        }
 
         // Phone ids vs Zalo ids: log only lengths/flags (never the ids) to see whether they are related.
         {
@@ -133,7 +120,12 @@ void ZaloService::onPhoneSyncTick()
                 if ((rt->ri & 63) == 0 && clock.elapsed() >= PS_SLICE_MS) break;
             }
             if (rt->ri >= p.rows.size()) { rt->pi++; rt->ri = 0; }
-            if (clock.elapsed() >= PS_SLICE_MS) { rt->tick->start(); return; }
+            if (clock.elapsed() >= PS_SLICE_MS) {
+                int pct = 55 + (rt->parts.isEmpty() ? 0 : (int)(7 * rt->pi / rt->parts.size()));
+                emit phoneSyncProgress(pct, QString::fromUtf8("Matching conversations… (%1/%2)").arg(rt->pi).arg(rt->parts.size()));
+                rt->tick->start();
+                return;
+            }
         }
         for (int i = 0; i < rt->parts.size(); ++i) {
             PsPart &p = rt->parts[i];
@@ -174,9 +166,7 @@ void ZaloService::onPhoneSyncTick()
         sqlite3_exec(m_db, "COMMIT", 0, 0, 0);
 
         if (rt->find) { sqlite3_finalize(rt->find); rt->find = 0; }
-        sqlite3_prepare_v2(m_db,
-            "INSERT OR IGNORE INTO messages (msgId, threadId, content, senderId, dName, ts, isMine, isGroup, msgType, cliMsgId) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)", -1, &rt->ins, 0);
+        sqlite3_prepare_v2(m_db, psInsertSql(), -1, &rt->ins, 0);
         rt->phase = 2; rt->pi = 0; rt->ri = 0; rt->doneRows = 0;
         emit phoneSyncProgress(62, QString::fromUtf8("Importing messages…"));
         rt->tick->start();
@@ -187,7 +177,51 @@ void ZaloService::onPhoneSyncTick()
         sqlite3_exec(m_db, "BEGIN", 0, 0, 0);
         while (rt->pi < rt->parts.size()) {
             PsPart &p = rt->parts[rt->pi];
-            if (p.threadLong.isEmpty()) { rt->doneRows += p.rows.size(); rt->pi++; rt->ri = 0; continue; }
+            if (p.threadLong.isEmpty()) {
+                // Not matched automatically: keep the part file and a one-row summary so the user can assign
+                // the conversation by hand (Settings > Data & Backup > Match Conversations -> phoneSyncAssign()).
+                QString kind = p.isGroup ? "g" : "u";
+                int count = 0;
+                qint64 lastTs = 0;
+                QList<int> recent;   // indices of the 4 newest rows, newest first
+                for (int k = 0; k < p.rows.size(); ++k) {
+                    const PsRow &r = p.rows[k];
+                    if (r.glb == "0" || r.content.isEmpty()) continue;
+                    count++;
+                    if (r.ts > lastTs) lastTs = r.ts;
+                    int at = 0;
+                    while (at < recent.size() && p.rows[recent[at]].ts >= r.ts) at++;
+                    if (at < 4) { recent.insert(at, k); if (recent.size() > 4) recent.removeLast(); }
+                }
+                rt->doneRows += p.rows.size();
+                if (lastTs > 0 && lastTs < 1000000000000LL) lastTs *= 1000;
+                QStringList lines;
+                for (int k = recent.size() - 1; k >= 0; --k) {     // oldest first
+                    const PsRow &r = p.rows[recent[k]];
+                    int ot = 0; QString oc; qint64 stk = 0;
+                    if (!psConvertRow(r.type, r.content, ot, oc, stk)) continue;
+                    lines << ((r.sender == rt->meShort) ? QString::fromUtf8("You: ") : QString()) + psPreviewText(ot, oc);
+                }
+                if (count > 0 && !p.filePath.isEmpty() && psKeepFile(p.filePath, psPendingFile(kind, p.shortId))) {
+                    p.filePath.clear();
+                    sqlite3_stmt *mt = 0;
+                    if (sqlite3_prepare_v2(m_db,
+                            "INSERT OR REPLACE INTO phone_sync_pending_meta (kind, shortId, count, lastTs, preview) VALUES (?,?,?,?,?)",
+                            -1, &mt, 0) == SQLITE_OK) {
+                        sqlite3_bind_text (mt, 1, kind.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_text (mt, 2, p.shortId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_int  (mt, 3, count);
+                        sqlite3_bind_int64(mt, 4, (sqlite3_int64)lastTs);
+                        sqlite3_bind_text (mt, 5, lines.join("\n").toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                        sqlite3_step(mt);
+                        sqlite3_finalize(mt);
+                    }
+                    rt->staged++;
+                }
+                rt->pi++; rt->ri = 0;
+                if (clock.elapsed() >= PS_SLICE_MS) break;
+                continue;
+            }
             if (rt->ri == 0 && !rt->clearedAt.contains(p.threadLong)) {
                 rt->clearedAt[p.threadLong] = psQueryString(m_db, "SELECT clearedAt FROM cleared_threads WHERE threadId=?", p.threadLong).toLongLong();
             }
@@ -195,37 +229,46 @@ void ZaloService::onPhoneSyncTick()
             while (rt->ri < p.rows.size()) {
                 const PsRow &r = p.rows[rt->ri++];
                 rt->doneRows++;
-                if (r.type != 0 || r.glb == "0" || r.content.isEmpty()) continue;
+                rt->typeSeen[r.type]++;
+                if (!rt->typeKeys.contains(r.type) && !r.content.isEmpty()) {
+                    // Diagnostics for unknown phone types: JSON key names only, never values.
+                    QString keys = QString::fromUtf8("text");
+                    if (r.content.trimmed().startsWith(QChar('{')))
+                        keys = QString("json:%1 len %2").arg(psJsonKeys(r.content)).arg(r.content.size());
+                    rt->typeKeys[r.type] = keys;
+                }
+                if (r.glb == "0" || r.content.isEmpty()) continue;
                 qint64 ts = r.ts;
                 if (ts > 0 && ts < 1000000000000LL) ts *= 1000;
                 if (cleared > 0 && ts <= cleared) continue;
                 if (isMessageDeletedForMe(r.glb)) continue;
 
+                int outType = 0;
+                QString outContent;
+                qint64 stickerId = 0;
+                if (!psConvertRow(r.type, r.content, outType, outContent, stickerId)) continue;
+                if (stickerId > 0) rt->stickers.insert(stickerId);
+
                 bool isMine = (r.sender == rt->meShort);
                 QString sid = rt->senderLong.value(r.sender);
                 QString sname = rt->senderName.value(r.sender);
                 if (sid.isEmpty()) { sid = r.sender; sname = QString::fromUtf8("Member ") + r.sender; }
-                int outType = 0;
-                if (r.content.startsWith(QChar('{')) && (r.content.contains("\"normalUrl\"") || r.content.contains("\"thumbUrl\"") || r.content.contains("\"hdUrl\"")))
-                    outType = 2;
 
-                sqlite3_reset(rt->ins);
-                sqlite3_bind_text(rt->ins, 1, r.glb.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(rt->ins, 2, p.threadLong.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(rt->ins, 3, r.content.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(rt->ins, 4, sid.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(rt->ins, 5, sname.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_text(rt->ins, 6, QString::number((qlonglong)ts).toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                sqlite3_bind_int (rt->ins, 7, isMine ? 1 : 0);
-                sqlite3_bind_int (rt->ins, 8, p.isGroup ? 1 : 0);
-                sqlite3_bind_int (rt->ins, 9, outType);
-                sqlite3_bind_text(rt->ins, 10, r.cli.toUtf8().constData(), -1, SQLITE_TRANSIENT);
-                sqlite3_step(rt->ins);
-                if (sqlite3_changes(m_db) > 0) { rt->imported++; rt->importedThreads.insert(p.threadLong); }
+                if (psInsertMessage(m_db, rt->ins, r.glb, p.threadLong, outContent, sid, sname, ts,
+                                    isMine, p.isGroup, outType, r.cli)) {
+                    rt->imported++;
+                    rt->importedThreads.insert(p.threadLong);
+                    rt->typeOut[outType]++;
+                }
 
                 if ((rt->ri & 63) == 0 && clock.elapsed() >= PS_SLICE_MS) break;
             }
-            if (rt->ri >= p.rows.size()) { rt->pi++; rt->ri = 0; }
+            if (rt->ri >= p.rows.size()) {
+                // Matched now: drop what an earlier sync kept for manual matching, and the temporary file.
+                psDropPending(m_db, p.isGroup ? "g" : "u", p.shortId);
+                if (!p.filePath.isEmpty()) { QFile::remove(p.filePath); p.filePath.clear(); }
+                rt->pi++; rt->ri = 0;
+            }
             if (clock.elapsed() >= PS_SLICE_MS) break;
         }
         sqlite3_exec(m_db, "COMMIT", 0, 0, 0);
@@ -244,6 +287,17 @@ void ZaloService::onPhoneSyncTick()
     int imported = rt->imported;
     int threads = rt->importedThreads.size();
     int total = rt->parts.size();
+    int staged = rt->staged;
+    QList<qint64> stickerIds = rt->stickers.toList();
+    {
+        QString seen, out;
+        for (QMap<int,int>::const_iterator it = rt->typeSeen.constBegin(); it != rt->typeSeen.constEnd(); ++it)
+            seen += QString("%1:%2[%3] ").arg(it.key()).arg(it.value()).arg(rt->typeKeys.value(it.key()));
+        for (QMap<int,int>::const_iterator it = rt->typeOut.constBegin(); it != rt->typeOut.constEnd(); ++it)
+            out += QString("%1:%2 ").arg(it.key()).arg(it.value());
+        qDebug() << "[PhoneSync] phone types (type:rows[json keys]):" << seen;
+        qDebug() << "[PhoneSync] imported as msgType:" << out << "stickers=" << stickerIds.size() << "staged=" << staged;
+    }
     QSettings s("BerryLife", "Zalo10");
     s.setValue("phonesync/lastSync_" + m_uid, QDateTime::currentMSecsSinceEpoch());
 
@@ -253,9 +307,14 @@ void ZaloService::onPhoneSyncTick()
     delete rt;
     m_psh.p = 0;
 
+    // Warm the sticker cache for imported sticker messages (downloadSticker() dedups; capped).
+    for (int i = 0; i < stickerIds.size() && i < 150; ++i)
+        downloadSticker(QString::number(stickerIds[i]));
+
     QString msg = QString::fromUtf8("Imported %1 older message(s) into %2 conversation(s).").arg(imported).arg(threads);
     if (unmatched > 0)
-        msg += QString::fromUtf8("\n%1 of %2 conversations could not be matched yet (Zalo10 has not received any message from them). Run the sync again after a few days.").arg(unmatched).arg(total);
+        msg += QString::fromUtf8("\n%1 of %2 conversations could not be matched automatically. "
+                                 "Open Settings > Data & Backup > Match Conversations to choose who they are.").arg(unmatched).arg(total);
     qDebug() << "[PhoneSync] done:" << imported << "messages," << threads << "conversations," << unmatched << "of" << total << "not matched yet";
     emit phoneSyncProgress(100, QString::fromUtf8("Done"));
     if (imported > 0) emit historySynced(imported);

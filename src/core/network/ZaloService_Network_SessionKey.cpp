@@ -127,6 +127,8 @@ void ZaloService::onRefreshSessionKeyDone()
                     if (qm.isArray()) m_quickMessageServiceUrl = qm.property(0).toString();
                     if (rc.isArray()) m_reactionServiceUrl  = rc.property(0).toString();
                     if (cv.isArray()) m_conversationServiceUrl = cv.property(0).toString();
+                    QScriptValue sk= svcMap.property("sticker");
+                    if (sk.isArray()) m_stickerServiceUrl   = sk.property(0).toString();
                 }
 
                 QScriptValue wsArr = info.property("zpw_ws");
@@ -217,7 +219,8 @@ bool ZaloService::applyRefreshSessionResponseNative(const QByteArray &raw)
             { "friend",        &m_friendServiceUrl },
             { "quick_message", &m_quickMessageServiceUrl },
             { "reaction",      &m_reactionServiceUrl },
-            { "conversation",  &m_conversationServiceUrl }
+            { "conversation",  &m_conversationServiceUrl },
+            { "sticker",       &m_stickerServiceUrl }
         };
         for (unsigned i = 0; i < sizeof(picks) / sizeof(picks[0]); ++i) {
             QVariant a = svc.value(picks[i].key);

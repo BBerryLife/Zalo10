@@ -173,7 +173,10 @@ class CallCore:
                     self.finish("answered_on_another_device",False)
                 return
             p=obj(d.get("params"))
-            if int(d.get("status",p.get("status",0))):
+            # Video answers may carry status as "" or another non-number: that is not a decline.
+            try:status=int(d.get("status",p.get("status",0)) or 0)
+            except (ValueError,TypeError):status=0
+            if status:
                 self.finish("recipient_declined",False)
             elif c.get("server"):
                 self.connect()

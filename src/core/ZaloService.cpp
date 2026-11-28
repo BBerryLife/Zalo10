@@ -82,6 +82,7 @@ ZaloService::ZaloService(QObject *parent, bool cardMode)
 {
     m_manager->setCookieJar(new ZaloCookieJar(m_manager));
     m_activeAvatarDownloads = 0;
+    m_zsCatPending = 0;
     m_realtimeSuspended = false;
     m_appForeground = true;
     m_friendsPage = 1; m_friendsRetry = 0; m_friendsLegacy = false;

@@ -231,7 +231,9 @@ void ZaloService::handleWsGroupEvent(const QByteArray &data)
                 : fdV.toMap();
             QString fileUrl = fdMap["url"].toString();
             if (fileUrl.isEmpty()) fileUrl = fdMap["fileUrl"].toString();
-            qDebug() << "[WS] file upload done";
+            qDebug() << "[WS] file upload done: fileId len" << fileId.size() << "url" << !fileUrl.isEmpty()
+                     << "pending match" << m_pendingVideoUpload.contains(fileId)
+                     << "pending count" << m_pendingVideoUpload.size();
             if (!fileId.isEmpty() && !fileUrl.isEmpty())
                 handleFileUploadDone(fileId, fileUrl);
             continue;

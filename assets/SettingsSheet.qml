@@ -15,6 +15,15 @@ Sheet {
         settingsNav.push(p);
     }
 
+    // Sub-pages of a category (phone-sync matching).
+    function pushPage(p) {
+        p.sheet = settingsSheetRoot;
+        settingsNav.push(p);
+    }
+    function popPage() {
+        if (settingsNav.count() > 1) settingsNav.pop();
+    }
+
     NavigationPane {
         id: settingsNav
 

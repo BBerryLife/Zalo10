@@ -80,7 +80,7 @@ TitleBar {
                     preferredWidth: ui.du(8); preferredHeight: ui.du(8)
                     defaultImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
                     pressedImageSource: "asset:///images/ChatView/ic_bbm_video_answer.png"
-                    onClicked: { videoCallUnavailableToast.show() }
+                    onClicked: { if (!voice.active) voice.dialVideo(chatViewPage.threadId, chatViewPage.threadName) }
                 }
                 Container {
                     preferredWidth: ui.du(0.2)
